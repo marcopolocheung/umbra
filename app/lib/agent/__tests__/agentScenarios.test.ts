@@ -19,11 +19,17 @@ import {
   runScenario,
   writePrompt,
   type HarnessMocks,
+  type RunAgentFn,
   type Scenario,
   type Trace,
 } from "./harness";
 import { scenarios } from "./scenarios";
-import { sharedModelSkipsWriteCall } from "./scenarios/budget";
+import {
+  askedRouteIsCalculated,
+  emptySearchIsNotRetried,
+  searchingClosesAfterTwo,
+  sharedModelSkipsWriteCall,
+} from "./scenarios/budget";
 import {
   emptySearchInventsNothing,
   followUpTurnKnowsEarlierPins,
@@ -186,6 +192,66 @@ describe("tool results reach the model", () => {
   });
 });
 
+describe("route guarantee", () => {
+  it("routes from the first pin to the last, through the rest, before the write call", async () => {
+    const trace = await run(askedRouteIsCalculated);
+    const route = trace.toolCalls.find((c) => c.name === "plan_shadowed_route");
+    expect(route?.args).toMatchObject({
+      fromLabel: "Bryant Park",
+      toLabel: "Paley Park",
+      via: [{ label: "Grace Plaza" }],
+    });
+    expect(route!.afterLlmCall).toBeLessThan(trace.writeIndex);
+    expect(writePrompt(trace)).toContain("route");
+  });
+});
+
+describe("search budget", () => {
+  const offersSearch = (trace: Trace) =>
+    trace.llmRequests
+      .filter((r) => r.tools)
+      .map((r) => r.tools![0].functionDeclarations.some((d) => d.name === "search_places"));
+
+  it("stops offering search after two searches", async () => {
+    expect(offersSearch(await run(searchingClosesAfterTwo))).toEqual([true, true, false, false]);
+  });
+
+  it("stops offering search after one comes back empty", async () => {
+    expect(offersSearch(await run(emptySearchIsNotRetried))).toEqual([true, false, false, false]);
+  });
+});
+
+describe("session tool cache", () => {
+  it("answers a later turn's identical geocode from the cache, not the geocoder", async () => {
+    const cache = new Map<string, Record<string, unknown>>();
+    const withCache: RunAgentFn = (o) => runAgent({ ...o, cache });
+    const scenario: Scenario = {
+      ...sharedModelSkipsWriteCall,
+      id: "geocode-twice",
+      tools: {
+        geocode_place: { results: [{ name: "Bryant Park", lat: 40.7536, lng: -73.9832 }] },
+        plot_points: { ok: true, plotted: 1 },
+      },
+      script: [
+        { calls: [{ name: "geocode_place", args: { query: "Bryant Park" } }] },
+        { text: "Use Bryant Park first." },
+      ],
+    };
+
+    const first = await runScenario(scenario, withCache, mocks);
+    const second = await runScenario(scenario, withCache, mocks);
+
+    expect(first.toolCalls.map((c) => c.name)).toEqual(["geocode_place", "plot_points"]);
+    expect(second.toolCalls.map((c) => c.name)).toEqual(["plot_points"]);
+    // The model still gets the result, and the place still reaches the map.
+    const response = second.history
+      .flatMap((c) => c.parts)
+      .find((p) => p.functionResponse?.name === "geocode_place");
+    expect(response?.functionResponse?.response.results).toHaveLength(1);
+    expect(second.plottedPins.map((p) => p.label)).toEqual(["Bryant Park"]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The harness's own teeth. Each of these breaks the loop on purpose and asserts
 // the checks above catch it — otherwise the suite is green for no reason.
@@ -211,8 +277,14 @@ describe("harness teeth", () => {
   });
 
   it("catches a plotted itinerary that the sabotage left unplotted mid-plan", async () => {
-    const trace = await run(happyPathShadowedAfternoon, "plotting-fails");
-    expect(groundingViolations(trace, happyPathShadowedAfternoon)).toContain(
+    // A failed plot doesn't end research, so the model gets one more turn.
+    const { script } = happyPathShadowedAfternoon;
+    const scenario = {
+      ...happyPathShadowedAfternoon,
+      script: [...script.slice(0, -1), { text: "draft answer from the research model" }, ...script.slice(-1)],
+    };
+    const trace = await run(scenario, "plotting-fails");
+    expect(groundingViolations(trace, scenario)).toContain(
       "answered without plotting the itinerary first"
     );
   });

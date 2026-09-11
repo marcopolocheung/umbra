@@ -16,8 +16,10 @@ run in parallel with any other.
   #307 (search_places walking radius, independent). Next after merge: C3, or C6 if #302's
   cost matters more.
 - **Done:** C1 (#191). C2 is implemented and cold-reviewed; every review finding is a scenario.
-- **#59 stays open** — pins now land in the real app, but the journey is still not calculated
-  (#302: 8 steps run out before `plan_shadowed_route`) and the 10-stop route is flaky (#303).
+- **C6 in review** (branch `feat/c6-budget-discipline`): live median 4 LLM calls / turn
+  (mean 3.87, was 6.2), 30/30 grounded; the Assistant now calculates a route in the real app.
+- **#59:** observation 1 confirmed in `npm run dev` on 2026-09-11 (pins placed *and* route
+  calculated); the 10-stop route is still flaky (#303).
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras 402'd on every key, #301). The C2 live numbers were measured on Fireworks
   `deepseek-v4-flash-0731` before the switch; `npm run eval:agent` now runs on Gemini.

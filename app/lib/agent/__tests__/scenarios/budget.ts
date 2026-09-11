@@ -59,6 +59,150 @@ export const sharedModelSkipsWriteCall: Scenario = {
   },
 };
 
+const GRACE = { name: "Grace Plaza", lat: 40.752, lng: -73.985 };
+
+export const batchedShadowCheckPinsEverySpot: Scenario = {
+  id: "batched-shadow-check-pins-every-spot",
+  intent: "one check_shadow over several labelled spots makes each spot a named candidate",
+  userText: "How shaded are Bryant Park and Grace Plaza at 2pm?",
+  tools: {
+    check_shadow: (args) => ({
+      results: (args.points as { lat: number; lng: number }[]).map((p) => ({
+        ...p,
+        shadowFraction: 0.7,
+        status: "shadowed",
+      })),
+    }),
+    plot_points: { ok: true, plotted: 2 },
+  },
+  script: [
+    {
+      calls: [
+        {
+          name: "check_shadow",
+          args: { points: [{ ...BRYANT, label: BRYANT.name }, { ...GRACE, label: GRACE.name }], time: "2:00 PM" },
+        },
+      ],
+    },
+    { text: "draft answer from the research model" },
+    { text: "Both are shadowed at 2 PM." },
+  ],
+  grounded: [BRYANT.name, GRACE.name],
+  maxLlmCalls: 3,
+  maxToolCalls: 2,
+  expect: {
+    toolOrder: ["check_shadow", "plot_points"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name, GRACE.name],
+    answer: "Both are shadowed at 2 PM.",
+  },
+};
+
+const PALEY = { name: "Paley Park", lat: 40.7597, lng: -73.9761 };
+
+/** #59 live: the model searched until the step budget ran out and never routed. */
+export const askedRouteIsCalculated: Scenario = {
+  id: "asked-route-is-calculated",
+  intent: "a user who asked for a route gets one through the pins even when the model never routes",
+  userText: "Plan a shadowed afternoon near Bryant Park and route me through two or three places to sit",
+  tools: {
+    search_places: { results: [BRYANT, GRACE, PALEY] },
+    plot_points: { ok: true, plotted: 3 },
+    plan_shadowed_route: { ok: true },
+  },
+  script: [
+    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
+    { text: "draft answer from the research model" },
+    { text: "Bryant Park, then Grace Plaza, then Paley Park." },
+  ],
+  grounded: [BRYANT.name, GRACE.name, PALEY.name],
+  maxLlmCalls: 3,
+  maxToolCalls: 3,
+  expect: {
+    toolOrder: ["search_places", "plot_points", "plan_shadowed_route"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name, GRACE.name, PALEY.name],
+    answer: "Bryant Park, then Grace Plaza, then Paley Park.",
+  },
+};
+
+export const repeatedCallIsNotRerun: Scenario = {
+  id: "repeated-call-is-not-rerun",
+  intent: "an identical repeated tool call gets the earlier result back, not a second execution",
+  userText: "Plan a shadowed walk",
+  tools: {
+    search_places: { results: [BRYANT] },
+    plot_points: { ok: true, plotted: 1 },
+  },
+  script: [
+    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
+    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
+    { calls: [{ name: "plot_points", args: { points: [{ ...BRYANT, label: BRYANT.name }] } }] },
+    { text: "Start at Bryant Park." },
+  ],
+  grounded: [BRYANT.name],
+  maxLlmCalls: 4,
+  maxToolCalls: 2,
+  expect: {
+    toolOrder: ["search_places", "plot_points"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name],
+    answer: "Start at Bryant Park.",
+  },
+};
+
+/** Live, a model searched nine times with a new query each time, every one answered. */
+export const searchingClosesAfterTwo: Scenario = {
+  id: "searching-closes-after-two",
+  intent: "after two searches the loop stops offering search, so the model plots with what it has",
+  userText: "Plan a shadowed afternoon near Bryant Park",
+  tools: {
+    search_places: { results: [BRYANT] },
+    plot_points: { ok: true, plotted: 1 },
+  },
+  script: [
+    { calls: [{ name: "search_places", args: { query: "parks", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "cafes", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "benches", near: "Bryant Park" } }] },
+    { text: "draft answer from the research model" },
+    { text: "Sit in Bryant Park." },
+  ],
+  grounded: [BRYANT.name],
+  maxLlmCalls: 5,
+  maxToolCalls: 3,
+  expect: {
+    toolOrder: ["search_places", "search_places", "plot_points"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name],
+    answer: "Sit in Bryant Park.",
+  },
+};
+
+export const emptySearchIsNotRetried: Scenario = {
+  id: "empty-search-is-not-retried",
+  intent: "after a search comes back empty, further searches this turn do not run",
+  userText: "Find me a shadowed café around here",
+  tools: {
+    search_places: { results: [], note: "No matches found." },
+  },
+  script: [
+    { calls: [{ name: "search_places", args: { query: "café" } }] },
+    { calls: [{ name: "search_places", args: { query: "coffee" } }] },
+    { calls: [{ name: "search_places", args: { query: "coffee shop" } }] },
+    { text: "draft answer from the research model" },
+    { text: "I couldn't find any cafés near there." },
+  ],
+  decoys: ["Willow Court Café"],
+  maxLlmCalls: 5,
+  maxToolCalls: 1,
+  expect: {
+    toolOrder: ["search_places"],
+    plotsBeforeWrite: false,
+    pinLabels: [],
+    answer: "I couldn't find any cafés near there.",
+  },
+};
+
 /**
  * `check_shadow` and `plan_shadowed_route` candidates have no per-call cap of their
  * own, so this is the case where the overall `slice(0, 8)` is the only thing
