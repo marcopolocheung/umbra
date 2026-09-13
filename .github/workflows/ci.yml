@@ -27,11 +27,28 @@ jobs:
 
       - run: npm run lint
 
+      # Fixture mode records the actual Node version. Node 24 is the supported
+      # application runtime; see scripts/preflight-shadow-v2.mjs for the narrow
+      # local Node 20+ fixture exception.
+      - run: npm run preflight:shadow-v2:fixtures
+
       - run: npm run typecheck
+
+      # These focused invocations are release gates as well as being covered by
+      # `npm test` below. Keep the agreement corpus in normal Vitest discovery.
+      - run: npx vitest run app/lib/shadowField/v2/__tests__/
+
+      - run: npx vitest run app/lib/shadowField/__tests__/agreement/
 
       - run: npm test
 
       - run: npm run coverage
+
+      # This is deliberately independent from root Vitest. It runs the
+      # fail-closed NYC admission/preparation unit suite under Node 24.
+      - run: npm --prefix server/shadow-prep ci
+
+      - run: npm --prefix server/shadow-prep test
 
       # No secrets needed: Vite inlines absent VITE_* vars as undefined, and the
       # MapTiler key is only read at runtime for tile fetches.

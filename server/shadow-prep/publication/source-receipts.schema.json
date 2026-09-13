@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pinned local raw source receipts",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "assetId", "url", "release", "filename", "sha256", "horizontalCrs", "verticalDatum", "licence", "acquiredAt", "role"],
+    "properties": {
+      "id": { "enum": ["fabdem-v1.2", "overture-buildings", "overture-building-parts", "chmv2-height", "chmv2-validity-mask", "osm-tree-fallback", "usgs-3dep-controls", "workload-dense-tall", "workload-open", "workload-canopy-heavy", "workload-waterfront-boundary", "workload-long-low-sun"] },
+      "assetId": { "type": "string", "minLength": 1 },
+      "url": { "type": "string", "format": "uri" },
+      "release": { "type": "string", "minLength": 1 },
+      "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "filename": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" },
+      "horizontalCrs": { "type": "string", "minLength": 1 },
+      "verticalDatum": { "type": "string", "minLength": 1 },
+      "licence": { "type": "string", "minLength": 1 },
+      "acquiredAt": { "type": "string", "format": "date-time" },
+      "role": { "enum": ["terrain", "buildings", "building-parts", "canopy-height", "canopy-mask", "canopy-fallback", "control", "workload"] },
+      "validZero": { "type": "boolean" },
+      "nodata": { "type": "string" }
+    },
+    "additionalProperties": false
+  }
+}

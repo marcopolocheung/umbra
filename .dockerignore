@@ -1,0 +1,7 @@
+node_modules
+server/shadow-prep/node_modules
+dist
+.git
+.worktrees
+oldbuild
+server/shadow-prep/local

@@ -1,9 +1,11 @@
 # Shadow engine v2 — implementation plan
 
-Planning date: **2026-09-12**. This is an execution handoff, not an implementation
-or a qualification result. The numbered work below is future work. This session
-creates this document and one GitHub issue per phase; it creates no branch or code
-and changes no application files.
+Planning date: **2026-09-12**. This is the implementation plan, not an architecture
+document or a qualification result. Its original “future” paths describe the intended
+end state, not an assertion that a path currently exists. Read the current-state
+[execution handoff](./07-execution-handoff.md) and its machine-readable
+`execution-status.json` before acting; the handoff records partial work, blocks,
+exact commands, and the audit below.
 
 ## Authority and execution rules
 
@@ -20,7 +22,7 @@ streaming are settled. Do not reopen these choices through an implementation tas
 
 Paths below are relative to the repository root. **New** means a proposed file
 that this plan does not create. Brace lists enumerate individual files. Read
-`CLAUDE.md` and the relevant `.claude/rules/` before future source edits. Preserve
+`.claude/README.md` and the relevant `.claude/rules/` before future source edits. Preserve
 MapLibre 5.9.0, SunCalc 1.x, direct dependency declarations, lazy MapView loading,
 canvas readback invariants, and blue styling while compatibility consumers remain.
 Independently derive the engine; the inspected simulator is `UNLICENSED`.
@@ -251,20 +253,27 @@ as scoped blockers/deferred work, not prerequisites for fixture implementation.
 
 ## Phase B — First regional preparation
 
+Madrid remains a historical fixture/compression and agreement-evidence location in
+the documents cited above. It is not the first production activation region. The
+first production build and activation target is **New York City (the five boroughs)**;
+the exact municipal-boundary source, initial expanded support extent and any later
+coverage expansion are pinned in its regional manifest under item 5.
+
 ### 5. Pin one region, its sources and executable datum controls
 
 **Region-dependent. Depends on:** 4.
 
 **Files touched:** new `server/shadow-prep/{README.md,package.json,package-lock.json,Containerfile}`,
-`server/shadow-prep/regions/madrid-v1.json`,
+`server/shadow-prep/regions/new-york-city-v1.json`,
 `server/shadow-prep/src/{admission,datum}.ts`,
 `server/shadow-prep/test/datum.test.ts`, and
 `docs/shadow-engine-v2/evidence/04/preparation/{source-manifest,datum-controls}.json`;
 update `06-open-questions.md`.
 
-**Change:** start with Madrid, using 03's `[-3.720,40.405,-3.690,40.427]`
-west/south/east/north bbox as the initial build extent, not a completeness boundary.
-Pin FABDEM v1.2 assets and EGM2008→EGM96 grids/operations, Overture building/part
+**Change:** start with New York City, using the five-borough municipal boundary as
+the initial activation area and a declared surrounding support extent. Neither is a
+completeness boundary: expand the support extent when conservative sunward bounds
+require it. Pin FABDEM v1.2 assets and EGM2008→EGM96 grids/operations, Overture building/part
 release with explicit OSM recipe selections, and native CHMv2 heights/masks plus
 OSM fallback. Pin exact dates, URLs/revisions, hashes, horizontal/vertical frames,
 rights and operation areas. Include the retained 908-edge graph and a freshly
@@ -284,10 +293,12 @@ EU-DEM inversion are not dependencies of this direct-FABDEM first build.
 missing grids and out-of-area transforms. Datum controls meet the preregistered
 residual limits; an AGL witness receives no geoid shift. Real CHM base/mask blocks
 decode with valid-zero/nodata separation. The source manifest enumerates exact
-support and baseline/upgrade provenance; all unresolved admissions block the job.
+New York City support and baseline/upgrade provenance; all unresolved admissions
+block the job. Historical Madrid/Kent source probes and compression fixtures do
+not establish New York City source admission or datum controls.
 
 **Rollback condition:** unavailable native support, unvalidated datum/controls or
-rights mismatch. Keep Madrid blocked; do not substitute the old AWS compression
+rights mismatch. Keep New York City blocked; do not substitute the old Madrid AWS compression
 capture or coarser canopy. Continue fixture items 9–16 if useful.
 
 **02 §12:** depends on/closes **OI 1, 3, 5, 8** only for selected asset admission;
@@ -299,7 +310,7 @@ advances **OI 6, 7**. **OI 2 and 4** remain open for their unselected source pat
 
 **Files touched:** new `server/shadow-prep/src/{sources,terrain,buildings,canopy,normalize}.ts`,
 `server/shadow-prep/test/{normalization,sourceSeparation}.test.ts`;
-update `server/shadow-prep/regions/madrid-v1.json` and source manifest;
+update `server/shadow-prep/regions/new-york-city-v1.json` and source manifest;
 new `docs/shadow-engine-v2/evidence/04/preparation/normalization.json`.
 
 **Change:** stream native terrain/CHM blocks and whole Overture/OSM features;
@@ -381,7 +392,7 @@ Retain full raw records; repeat completed cold runs under the sample protocol in
 05 and include failure attempts. Rerun the unchanged fixture agreement gate after
 producer changes. This does not require the full app renderer or a phone.
 
-**Acceptance test:** one complete native-canopy, datum-correct regional build
+**Acceptance test:** one complete native-canopy, datum-correct New York City build
 finishes end to end within the declared 2 GB host and configured scratch limits;
 kill/restart resumes safely without duplicate active jobs or partial publication.
 A second build from identical inputs reproduces decoded objects/bounds identities.
@@ -675,7 +686,7 @@ qualification remains item 19. **OI 24–25** are not required accelerators.
 **Files touched:** new `e2e/shadowV2Delivery.spec.ts`,
 `server/shadow-prep/test/cdn.test.ts`,
 `docs/shadow-engine-v2/evidence/05/delivery/{requests.json,coverage.json,README.md,SHA256SUMS}`;
-update `server/shadow-prep/regions/madrid-v1.json`, `05-validation.md`, `06-open-questions.md`.
+update `server/shadow-prep/regions/new-york-city-v1.json`, `05-validation.md`, `06-open-questions.md`.
 
 **Change:** exercise real R2 custom-domain objects through the actual acquisition,
 codec/compositor, worker and candidate renderer. Verify GET/HEAD, ranges where
@@ -712,7 +723,7 @@ within the tested envelope; phone deadlines still depend on item 19.
 update `05-validation.md` and `06-open-questions.md`.
 
 **Change:** collect the preregistered georeferenced/timestamped observed shadows
-and independent solar/control calculations for the admitted region. Evaluate
+and independent solar/control calculations for the admitted New York City region. Evaluate
 ground/roof/crown placement and height errors separately from model discretization,
 source date and optical priors. Include dawn/low-sun dates, 2 km solar-cell errors,
 NOAA apparent-altitude correction and angular acquisition margins. Compare SPA
@@ -724,6 +735,8 @@ observations meet 05's predeclared physical/solar tolerances with residuals, sam
 counts, worst cases and uncertainty retained. No candidate-produced raster serves
 as its own physical oracle. Missing credible observations or unexplained residuals
 block validation acceptance; two matching Umbra implementations do not waive it.
+Historical Madrid agreement and compression evidence cannot substitute for these
+New York City observations.
 
 **Rollback condition:** independent accuracy/solar failures, unsupported acquisition
 margins or observations inconsistent with the selected source/model. Restrict
@@ -853,7 +866,7 @@ open item to its implementation/validation evidence. It does not mark work compl
 
 | OI | Responsible work items | Remaining scope or condition |
 |---|---|---|
-| 1 | 5, 7–8, 17, 20 | Initial Madrid build; each further region needs its own support/activation record |
+| 1 | 5, 7–8, 17, 20 | Initial New York City build; each further region needs its own support/activation record |
 | 2 | 4, 21 | AWS delivered datum stays unadmitted; direct FABDEM path bypasses it |
 | 3 | 5–6, 18 | Executed transforms/controls per asset and realization |
 | 4 | 4, 21 | EU-DEM/EGG08 inversion remains conditional on selecting that source |
@@ -883,6 +896,38 @@ open item to its implementation/validation evidence. It does not mark work compl
 | 28 | 4, 21 | Vendor deployment unknowns retained; no base implementation dependency |
 | 29 | 4, 8, 17–19, 21 | Durable scoped evidence, including failures and known losses |
 | 30 | This 04 and its phase issues; 4, 21 | 05/06 are future work in item 4; this session stops at the plan/issues |
+
+## Repository-reference audit — 2026-09-13
+
+The **Files touched** lists above are end-state scopes. They are not a promise that
+each path exists on `feat/shadow-v2-foundation-nyc`. This audit is deliberately
+kept here as well as in [07](./07-execution-handoff.md), so a reader entering from
+the plan does not look for an absent path or mistake an absent focused test for a
+passing check. “Future” is intentional; do not create it outside its numbered item.
+
+| Item | Files touched audit against this checkout | Acceptance-command audit |
+|---:|---|---|
+| 1 | Exists: `v2/{types,format}.ts`, `format.test.ts`. Future: `formatFixtures.ts`, `contracts/tile-format-v1.md`. | Existing exact command: `npx vitest run app/lib/shadowField/v2/__tests__/format.test.ts`; typecheck exists. |
+| 2 | Exists: `compose.ts`, `composition.test.ts`. Future: `lattice.ts`, `treeModel.ts`, `lattice.test.ts`, shared `formatFixtures.ts`. | “Focused suites” is not an exact command; currently use `composition.test.ts`; add the lattice path only with that test. |
+| 3 | All listed v2/legacy agreement paths and `receivers.test.ts` exist. The plan’s shorthand `agreement/{…}` means `app/lib/shadowField/__tests__/agreement/{…}`. | Exact current command: `npx vitest run app/lib/shadowField/__tests__/agreement/`; CI runs it and normal `npm test` discovers it. |
+| 4 | Exists: `05-validation.md`, `06-open-questions.md`. Future: `validation/{cases,thresholds}.json`. | Documentation review has no executable test yet; agreement/typecheck are preservation checks, not item acceptance. |
+| 5 | All listed prep package, region, admission/datum test files exist. Future/external: `evidence/04/preparation/{source-manifest,datum-controls}.json`. | `npm --prefix server/shadow-prep test` exists and must pass on Node 24; `admit` is intentionally fail-closed without external inputs. |
+| 6 | Exists: all listed source/normalizer modules and `normalization.test.ts`. Future: `sourceSeparation.test.ts`, external normalization evidence. | Prep test command exists; real build/verify requires admitted external data. |
+| 7 | Exists: `bounds.ts`, `bounds.test.ts`, `publication.test.ts`, publication schema/attribution. Future: `terrainPyramid.ts`, `publish.ts`, external bounds/publication evidence. | Prep test command exists; regional `verify` needs a built generation. |
+| 8 | Exists: prep README. Future: `fly.toml`, `src/{jobs,measure}.ts`, `restart.test.ts`, all cold-build evidence. | Prep tests exist; Docker `admit/build/verify` are blocked until inputs, and no Fly/R2 command is currently authorized. |
+| 9 | Existing `march.ts`, `receivers.ts`, `types.ts` are extensions, not new files. Future: `solar.ts`, `coordinates.ts`, three focused tests. | The listed focused paths do not yet exist; run them only when item 9 creates them, plus the existing agreement command. |
+| 10 | All listed acquisition/ledger modules and focused tests are future. | Focused commands are future test targets; no current no-op command counts as acceptance. |
+| 11 | All new worker/service/e2e paths are future; `ShadowField.ts` and `providers.ts` exist. | Vitest and Playwright targets are future until item 11 creates them. |
+| 12 | Listed existing callers exist except planned `routingPolicy.ts`, its tests, and `routing-evidence.md`, which are future. | Focused policy/caller commands are future until paths exist. |
+| 13 | All new `app/lib/shadow/v2` and v2 numeric e2e paths are future; adapters/sun worker exist. | Numeric Playwright target is future; agreement command already exists. |
+| 14 | New `surfaces.ts` and surface e2e are future; referenced adapters/canopy/MapView exist. Verification script names are future unless separately added. | Surface Playwright target is future; existing agreement command remains required. |
+| 15 | New offline module/tests/e2e are future; `public/sw.js`, saved-routes module and MapView exist. | Offline Vitest/Playwright targets are future. |
+| 16 | New exposure/export modules/tests/e2e are future; `AccumulationPanel.tsx` and adapters exist. | Exposure/export focused targets are future. |
+| 17 | Delivery e2e, CDN test and evidence paths are future; region manifest exists. | Delivery test target is future; prep test already exists but is not delivery qualification. |
+| 18 | Accuracy script and all accuracy evidence are future; 05/06 exist. | `python3 scripts/verify/shadow_v2_accuracy.py` is future and must not be run as if it exists today. |
+| 19 | Shadow-v2 Playwright config, bench, device evidence and possible ledger extensions are future. | The stated Playwright configuration/bench target is future. |
+| 20 | Engine-pair module/test/e2e/evidence and listed switch edits are future; referenced current files exist where named. | Activation e2e is future; repository gates exist but cannot qualify activation alone. |
+| 21 | Plan/05/06 and `docs/notes/evidence.md` exist; release evidence paths are future. | Fixture/prep/build commands exist (prep requires Node 24); artifact reproduction remains future. |
 
 **Handoff boundary:** item 1 has concrete paths, inputs, entry points, test commands,
 failure behavior and no regional or conversational prerequisite. No implementation,

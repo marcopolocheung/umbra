@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "status": "preregistered protocol; no candidate measurement is recorded here",
+  "authority": "02-architecture.md sections 7-10, 04-implementation-plan.md item 4, and the retained 02c agreement contract",
+  "thresholds": [
+    {
+      "id": "agreement-mean",
+      "category": "method-agreement",
+      "population": "300 non-null sidewalk readings from all 150 retained fixtures",
+      "operator": "<=",
+      "value": 0.04,
+      "units": "absolute shade fraction",
+      "derivation": "Retained 02c gate; it is a candidate-versus-fixed-reference comparison, not physical accuracy.",
+      "failureConsequence": "Fail the candidate agreement gate; do not change the ceiling, corpus, denominator, reference pixels, or width policy.",
+      "savedEvidence": ["agreement command log", "metric JSON", "fixture and source hashes", "eight-witness output"]
+    },
+    {
+      "id": "agreement-p90",
+      "category": "method-agreement",
+      "population": "same 300 non-null readings; nearest-rank percentile",
+      "operator": "<=",
+      "value": 0.05,
+      "units": "absolute shade fraction",
+      "derivation": "Retained 02c gate.",
+      "failureConsequence": "Fail the candidate agreement gate.",
+      "savedEvidence": ["agreement command log", "ordered disagreement values", "metric JSON"]
+    },
+    {
+      "id": "agreement-severe-share",
+      "category": "method-agreement",
+      "population": "same 300 non-null readings; strict disagreement > 0.25",
+      "operator": "<=",
+      "value": 0.04,
+      "units": "share of readings",
+      "derivation": "Retained 02c gate.",
+      "failureConsequence": "Fail the candidate agreement gate and retain the complete severe-tail listing.",
+      "savedEvidence": ["agreement command log", "severe-tail listing", "metric JSON"]
+    },
+    {
+      "id": "agreement-city-mean",
+      "category": "method-agreement",
+      "population": "non-null readings separately for Madrid, Singapore, and Kent WA",
+      "operator": "<=",
+      "value": 0.08,
+      "units": "absolute shade fraction",
+      "derivation": "Retained 02c gate.",
+      "failureConsequence": "Fail the candidate agreement gate even if the aggregate mean passes.",
+      "savedEvidence": ["per-city counts, null totals, exclusions, and means"]
+    },
+    {
+      "id": "agreement-invalid-share",
+      "category": "method-agreement-validity-guard",
+      "population": "all 2,020 scheduled evaluations overall and separately by city",
+      "operator": "<=",
+      "value": 0.25,
+      "units": "share of scheduled evaluations",
+      "derivation": "Retained amended 02c contract; it guards corpus validity and is not a routing policy threshold.",
+      "failureConsequence": "Fail the candidate agreement gate; report nulls separately and do not score them as agreement readings.",
+      "savedEvidence": ["validity-mask counts by city", "null totals", "candidate/reference mask identity evidence"]
+    },
+    {
+      "id": "analytic-height-quantization",
+      "category": "analytic-conformance",
+      "population": "quantized synthetic plane, roof, crown, and seam fixture coordinates",
+      "operator": "<=",
+      "value": 0.015625,
+      "units": "m",
+      "derivation": "One 1/64 m canonical-height quantum. The independent oracle evaluates the same declared quantized inputs; this bounds representation comparison only, not terrain/source error.",
+      "failureConsequence": "Fail the analytic fixture; do not present the kernel as conformant for that geometry.",
+      "savedEvidence": ["fixture bytes and hashes", "oracle inputs/output", "candidate output", "worst residual"]
+    },
+    {
+      "id": "analytic-classification",
+      "category": "analytic-conformance",
+      "population": "non-tangent analytic ray/plane/interval cases",
+      "operator": "=",
+      "value": 0,
+      "units": "classification mismatches",
+      "derivation": "For declared non-tangent inputs the independent exact-or-high-precision oracle has an unambiguous hit, validity, completeness, and building-only result.",
+      "failureConsequence": "Fail the fixture. Tangent cases are separately classified as indeterminate inside the declared uncertainty band, never counted as a passing hit/miss.",
+      "savedEvidence": ["oracle classification", "candidate classification", "tangent-distance record", "seed/input hash"]
+    },
+    {
+      "id": "gpu-worker-transmission",
+      "category": "implementation-method-agreement",
+      "population": "matched fixture receiver/time/generation outputs, including fractional canopy",
+      "operator": "<=",
+      "value": 0.000001,
+      "units": "absolute transmission fraction",
+      "derivation": "Float32 comparison budget after both consumers receive identical canonical Float32 material/solar inputs; it is not an optical or physical error allowance.",
+      "failureConsequence": "Fail numeric renderer conformance; keep the renderer inactive and retain the pair's identities and raw outputs.",
+      "savedEvidence": ["CPU and GPU numeric arrays", "generation/time/model identities", "software-WebGL trace", "worst residual"]
+    },
+    {
+      "id": "gpu-worker-discrete",
+      "category": "implementation-method-agreement",
+      "population": "matched validity, completeness, building-only termination, and generation fields",
+      "operator": "=",
+      "value": 0,
+      "units": "mismatches",
+      "derivation": "These are discrete shared-field semantics, not measured physical quantities.",
+      "failureConsequence": "Fail numeric renderer conformance and reject the affected output as complete.",
+      "savedEvidence": ["per-receiver CPU/GPU evidence records", "page/cursor identity", "failure trace if injected corruption is used"]
+    },
+    {
+      "id": "streamed-resident",
+      "category": "analytic-conformance",
+      "population": "all forced one-page/few-page continuation fixture outputs versus resident exact evaluation",
+      "operator": "=",
+      "value": 0,
+      "units": "numeric or discrete output differences",
+      "derivation": "Same canonical inputs and deterministic traversal; continuation is a scheduling change, so no numerical difference is allowed.",
+      "failureConsequence": "Fail streaming/ledger conformance; mark interrupted work incomplete rather than publishing an answer.",
+      "savedEvidence": ["resident and streamed arrays", "continuation trace", "page leases", "input hashes"]
+    },
+    {
+      "id": "managed-memory",
+      "category": "allocation-target",
+      "population": "each admitted fixture or later device request across retained pages/jobs/targets",
+      "operator": "<=",
+      "value": 192,
+      "units": "MiB managed total",
+      "derivation": "02 section 7 budget: 160 MiB pages, 16 MiB staging, 8 MiB continuations, 8 MiB output. It is an admission target, not measured phone evidence.",
+      "failureConsequence": "Reject or make the request incomplete; never remove casters or samples to fit it.",
+      "savedEvidence": ["ledger category trace", "reservation/eviction/cancellation trace", "peak managed bytes"]
+    },
+    {
+      "id": "runtime-driver-reserve",
+      "category": "device-measurement-requirement",
+      "population": "each named phone/browser/GPU profile during full-app qualification",
+      "operator": "<=",
+      "value": 64,
+      "units": "MiB runtime/driver increment above managed accounting",
+      "derivation": "02 section 7 reserve. It becomes a pass/fail threshold only after a profile and measurement method are admitted; no host or SwiftShader result satisfies it.",
+      "failureConsequence": "Reduce managed admission or reject the profile; activation remains blocked for that profile.",
+      "savedEvidence": ["named device/browser inventory", "whole-app memory trace", "managed ledger trace", "profile admission decision"]
+    },
+    {
+      "id": "shared-readiness",
+      "category": "regional-delivery-performance-target",
+      "population": "one end-to-end request through acquisition, decode, composition, query/render readiness",
+      "operator": "<=",
+      "value": 2500,
+      "units": "ms elapsed wall time",
+      "derivation": "Settled single shared readiness allowance in 02/04; it cannot be restarted for each source or phase.",
+      "failureConsequence": "Record incomplete/not-ready for the request; no complete 3-degree claim for the failing profile/domain.",
+      "savedEvidence": ["monotonic request trace", "cold/warm state", "network/decode/composition timestamps", "complete/incomplete result"]
+    },
+    {
+      "id": "event-cadence",
+      "category": "device-performance-target",
+      "population": "named device/browser full-app interactions, reported separately from correctness",
+      "operator": "report-against",
+      "value": [30, 50],
+      "units": "ms event cadence targets",
+      "derivation": "04 item 19 requires 30/50 ms targets to be reported separately; no previous benchmark is a pass.",
+      "failureConsequence": "No device envelope or event-performance claim for the failing profile; correctness results remain separately reported.",
+      "savedEvidence": ["interaction trace", "device/browser inventory", "cold/warm repetitions", "percentile and worst-case report"]
+    },
+    {
+      "id": "cached-route",
+      "category": "device-performance-target",
+      "population": "named device/browser cached-route requests under the admitted workload",
+      "operator": "<",
+      "value": 500,
+      "units": "ms elapsed wall time",
+      "derivation": "04 item 19 reporting target; it is not established by a kernel or host run.",
+      "failureConsequence": "No cached-route performance claim for the failing profile.",
+      "savedEvidence": ["route trace", "cache-state record", "device/browser inventory", "percentile and worst-case report"]
+    },
+    {
+      "id": "exposure-constant",
+      "category": "analytic-integration",
+      "population": "constant-transmission analytic fixtures",
+      "operator": "=",
+      "value": 0,
+      "units": "direct-sun hours absolute error",
+      "derivation": "The integral of constant transmission over declared durations is exact in the fixture model.",
+      "failureConsequence": "Fail exposure conformance; do not emit a successful numeric export.",
+      "savedEvidence": ["time grid", "analytic integral", "candidate result", "job identity"]
+    },
+    {
+      "id": "exposure-transition",
+      "category": "analytic-integration",
+      "population": "single controlled transmission-transition fixtures with declared maximum step",
+      "operator": "<=",
+      "value": 0.125,
+      "units": "direct-sun hours absolute error",
+      "derivation": "Half of the preregistered maximum 0.25-hour integration step bounds a single unresolved step transition. This is integration discretization only, not atmospheric or physical error.",
+      "failureConsequence": "Fail exposure conformance or reduce the declared step before rerunning.",
+      "savedEvidence": ["time grid", "transition time", "analytic integral", "candidate result", "worst residual"]
+    },
+    {
+      "id": "numeric-export-roundtrip",
+      "category": "serialization-conformance",
+      "population": "all exported Float32 fixture pixels, nodata/valid-duration values, CRS/geotransform and required metadata",
+      "operator": "=",
+      "value": 0,
+      "units": "decoded-value, georeferencing-field, or metadata mismatches",
+      "derivation": "An independent GeoTIFF decoder reads serialized bytes; exact Float32 bits and declared fields must round-trip.",
+      "failureConsequence": "Fail numeric export; an RGB export cannot substitute.",
+      "savedEvidence": ["GeoTIFF bytes and SHA-256", "independent-decoder report", "source arrays", "metadata record"]
+    },
+    {
+      "id": "physical-observation-design",
+      "category": "physical-observation-protocol",
+      "population": "at least 36 independently georeferenced NYC observation events, selected before candidate evaluation with at least six events in each of opaque-ground, roof/wall, crown, open-control, low-sun, and part/courtyard strata; strata may overlap but all events remain individually retained",
+      "operator": ">=",
+      "value": 36,
+      "units": "observation events",
+      "derivation": "Coverage requirement for a future protocol, not a confidence or accuracy claim. The residual tolerance remains deliberately unadmitted until the independent control/georeferencing error budget is signed before analysis.",
+      "failureConsequence": "Block physical-validation acceptance and all physical-accuracy claims, even if method agreement passes.",
+      "savedEvidence": ["preregistered selection manifest", "raw photos/observations", "control survey", "UTC/time-zone record", "weather/leaf-state/source-date records", "independent solar calculation", "hash manifest"]
+    },
+    {
+      "id": "physical-residual",
+      "category": "physical-accuracy",
+      "status": "not declared",
+      "population": "future independently controlled NYC observation events selected by physical-observation-design",
+      "units": "m and angular degrees, pending a signed independent control/georeferencing error budget",
+      "derivation": "No source, observation-registration, temporal, or optical uncertainty budget has been admitted. A numerical value would be postulated rather than derived.",
+      "failureConsequence": "Physical accuracy and activation remain blocked; method agreement, analytic conformance, and device tests cannot substitute.",
+      "savedEvidence": ["signed preregistration with residual budget", "raw observations", "independent controls/solar output", "residual report including worst cases"]
+    },
+    {
+      "id": "evidence-completeness",
+      "category": "evidence-retention",
+      "population": "each required evidence package for a scoped OI, release, or separately authorized deferred capability",
+      "operator": "=",
+      "value": 1,
+      "units": "complete required evidence package",
+      "derivation": "A claim is admissible only when every required saved artifact named by its case entry is retained, hashable, and reproducible. This is an evidence gate, not a physical or performance metric.",
+      "failureConsequence": "Keep the OI open and make no corresponding capability, vendor-parity, release, or accuracy claim.",
+      "savedEvidence": ["artifact list", "SHA-256 manifest", "reproduction command/log", "scope and limitation record"]
+    }
+  ]
+}
