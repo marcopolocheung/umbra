@@ -4,6 +4,7 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./server/shadow-prep/
 RUN cd server/shadow-prep && npm ci
 COPY app ./app
+COPY scripts/preflight-shadow-v2.mjs ./scripts/preflight-shadow-v2.mjs
 COPY server/shadow-prep ./server/shadow-prep
 ENV SHADE_PREP_ROOT=/data
 ENTRYPOINT ["node", "server/shadow-prep/node_modules/tsx/dist/cli.mjs", "server/shadow-prep/src/cli.ts"]

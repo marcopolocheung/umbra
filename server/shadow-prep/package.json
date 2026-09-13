@@ -4,6 +4,10 @@
   "type": "module",
   "engines": { "node": "24.x" },
   "scripts": {
+    "pretest": "node ../../scripts/preflight-shadow-v2.mjs prep",
+    "preadmit": "node ../../scripts/preflight-shadow-v2.mjs prep",
+    "prebuild": "node ../../scripts/preflight-shadow-v2.mjs prep",
+    "preverify": "node ../../scripts/preflight-shadow-v2.mjs prep",
     "admit": "tsx src/cli.ts admit",
     "build": "tsx src/cli.ts build",
     "verify": "tsx src/cli.ts verify",
