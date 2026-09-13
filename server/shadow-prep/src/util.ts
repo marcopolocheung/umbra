@@ -12,7 +12,7 @@ export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).
 export async function fileHash(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256"); const stream = createReadStream(path);
-    stream.on("data", (chunk: Buffer) => { hash.update(chunk); });
+    stream.on("data", (chunk: string | Buffer) => { hash.update(chunk); });
     stream.on("error", reject);
     stream.on("end", () => { resolve(hash.digest("hex")); });
   });
