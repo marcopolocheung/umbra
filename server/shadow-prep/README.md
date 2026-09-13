@@ -33,7 +33,54 @@ docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:
 docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj:/usr/share/proj umbra-shadow-prep controls
 docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj:/usr/share/proj umbra-shadow-prep approve-controls NYC-DATUM-ROUNDTRIP-2026-09-13-R1 0.000000001
 docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj:/usr/share/proj umbra-shadow-prep receipts
+docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj:/usr/share/proj umbra-shadow-prep normalize --plan
 ```
+
+`normalize` now materializes Item-6 candidates only. It streams each terrain and
+canopy tile through temporary GDAL scratch, preserves the 258×258 one-cell
+gutter, performs the admitted EGM2008→EGM96 conversion, joins complete Overture
+parents and parts before clipping, and writes source-separated terrain,
+buildings, and canopy planes. It writes each plane and validates its SHA-256
+readback before writing `descriptor.json` as the final completion marker. It
+still never invokes `build`, `verify`, a manifest, or a current pointer.
+
+For deterministic Batch-style work splitting, use `normalize --shard 0/32`;
+shards are sorted z18 keys assigned by index modulo shard count. A retry verifies
+the existing descriptor and every plane hash, then skips only valid completed
+tiles. `normalize --smoke` processes the first four sorted support tiles under
+`normalized/validation/<normalization-id>/`, separate from production
+candidates. It is a cloud-I/O/native-tool validation, not a support-completion
+claim.
+
+Set `SHADE_PREP_STORAGE=filesystem` (the default) to keep candidates beneath the
+external `SHADE_PREP_ROOT`. Set `SHADE_PREP_STORAGE=s3`,
+`SHADE_PREP_S3_BUCKET=<normalized-bucket>`, and optionally
+`SHADE_PREP_S3_PREFIX=<prefix>` for object publication. S3 uses the same
+`normalized/<normalization-id>/...` layout and descriptor-last protocol.
+
+## AWS preparation (not a deployment instruction)
+
+`aws/cloudformation.yml` defines private S3 raw/normalized/evidence buckets,
+ECR, OIDC-only GitHub image publishing, and a zero-minimum EC2 Spot Batch
+environment. The initial job definition is limited to 4 vCPUs, one attempt and
+one hour, with a 200 GB encrypted scratch disk. It creates no access keys and it
+does not submit any work. The surrounding VPC is intentionally supplied as
+private-subnet and no-ingress-security-group parameters rather than being
+silently created.
+
+Before any deployment, review the CloudFormation change set and a validation-job
+estimate against the separately approved $25-after-credits ceiling. Budget
+alerts are not a hard cap; the vCPU, timeout, and retry settings are the actual
+technical limits. Deployment, paid-account upgrade, workflow dispatch, and a
+full NYC run require explicit operator approval. After a reviewed stack exists,
+set the GitHub environment secret `AWS_SHADOW_PREP_PUBLISH_ROLE_ARN` to the stack
+output and manually run `Publish shadow-prep image`; it exchanges GitHub OIDC for
+the narrowly scoped role and pushes an immutable commit-SHA image tag. No raw or
+candidate object is public, and candidates have no expiry rule until a future
+verified Item-7 handoff explicitly adds one. Before submitting even the smoke
+job, update the reviewed stack’s `PrepImageTag` parameter from `bootstrap` to
+that published commit SHA; this makes the Batch definition point at a pinned
+image rather than an implicitly moving tag.
 
 `admit` downloads and freezes the DCP 26b boundary if it is absent, verifies its
 pinned SHA-256 on every run, and rejects the region until every required source,
@@ -48,7 +95,11 @@ rechecks the manifest, component hashes, decoded words and parent enclosure.
 Raw source bytes, normalized inputs, build scratch and published generations are
 all deliberately external to Git. Each command writes `evidence/` with command,
 tool versions, hashes, byte counts, wall/CPU time, peak RSS, scratch and result.
-The absence of a signed numerical datum-control residual threshold is intentionally
-an admission blocker: retaining controls is evidence, not a physical-accuracy
-result and not permission to begin item 6. Do not run `build` or `verify` as part
-of Item 5.
+`normalize --plan` re-runs admission, checks every admitted source against the
+frozen `acquisition/nyc-five-borough-20km-support.geojson` hash, enumerates the
+globally anchored, support-intersecting z18 tiles, and reports the maximum
+candidate footprint plus its required 25% free-space margin. `normalize` is an
+external candidate operation only: it has no manifest, hierarchy, current pointer,
+publication, deployment, or build/verify side effect. Candidate plane bytes use
+canonical little-endian words and their descriptor is renamed atomically only after
+all planes exist. Do not run `build` or `verify` as part of Item 6.

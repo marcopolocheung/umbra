@@ -88,7 +88,7 @@ function isForbiddenSubstitute(receipt: Receipt, asset: RawAsset): boolean {
   return /(?:^|[\/_ .-])(normalized|intermediate|mosaic)(?:$|[\/_ .-])/i.test(`${asset.filename} ${asset.format}`);
 }
 function validNormalization(receipt: Receipt): boolean {
-  const policy = receipt.normalization as Record<string, unknown> | undefined;
+  const policy = receipt.normalization as unknown as Record<string, unknown> | undefined;
   if (receipt.id === "fabdem-v1.2") return !!policy && policy.kind === "terrain" && typeof policy.datumOperation === "string" && /^[a-f0-9]{64}$/.test(String(policy.datumOperationHash)) && policy.datumOperationHash === sha256(Buffer.from(String(policy.datumOperation))) && /EGM2008/i.test(String(policy.datumOperation)) && /EGM96/i.test(String(policy.datumOperation)) && /us_nga_egm08_25\.tif/i.test(String(policy.datumOperation)) && /us_nga_egm96_15\.tif/i.test(String(policy.datumOperation));
   if (receipt.id === "overture-buildings" || receipt.id === "overture-building-parts") return !!policy && policy.kind === (receipt.id === "overture-buildings" ? "buildings" : "building-parts") && typeof policy.selection === "string" && policy.selection.length > 0 && policy.priority === "overture-then-osm" && policy.missingHeight === "reject" && policy.raisedStructure === "retain-conflict";
   if (receipt.id === "chmv2-height" || receipt.id === "chmv2-validity-mask") return !!policy && policy.kind === receipt.id && typeof policy.heightFormat === "string" && policy.heightFormat.length > 0 && typeof policy.maskFormat === "string" && policy.maskFormat.length > 0 && policy.validZero === true && typeof policy.nodata === "string" && policy.nodata.length > 0 && policy.maskHole === "unavailable" && policy.osmFallback === "only-on-unavailable";

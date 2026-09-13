@@ -5,7 +5,10 @@ import { admit } from "./admission";
 import { build, current, verifyGeneration } from "./build";
 import { approveDatumControls, packageDatumControls } from "./controls";
 import { assembleReceipts } from "./receipts";
+import { normalizeAdmitted, planNormalization } from "./normalize";
 import { directoryBytes, requireRoot, writeJson } from "./util";
+import { S3Store } from "./storage";
+import { readFile } from "node:fs/promises";
 
 const exec = promisify(execFile);
 async function versions(): Promise<Record<string, string>> {
@@ -16,19 +19,34 @@ async function versions(): Promise<Record<string, string>> {
   return result;
 }
 async function main(): Promise<void> {
-  const command = process.argv[2]; if (!(["admit", "controls", "approve-controls", "receipts", "build", "verify"] as string[]).includes(command)) throw new Error("usage: shadow-prep <admit|controls|approve-controls <signed-decision-id> <maximum-residual>|receipts|build|verify>");
+  const command = process.argv[2]; if (!(["admit", "controls", "approve-controls", "receipts", "normalize", "build", "verify"] as string[]).includes(command)) throw new Error("usage: shadow-prep <admit|controls|approve-controls <signed-decision-id> <maximum-residual>|receipts|normalize [--plan|--smoke|--shard <index>/<count>]|build|verify>");
   const started = process.hrtime.bigint(); const cpuStart = process.cpuUsage(); const root = requireRoot(); let result: unknown;
   try {
     if (command === "admit") result = await admit();
     else if (command === "controls") result = await packageDatumControls();
     else if (command === "approve-controls") result = await approveDatumControls(String(process.argv[3] ?? ""), Number(process.argv[4]));
     else if (command === "receipts") result = await assembleReceipts();
+    else if (command === "normalize") {
+      const admission = await admit(); const plan = await planNormalization(admission);
+      if (process.argv[3] === "--plan") {
+        const summary = { normalizationId: plan.normalizationId, supportHash: plan.supportHash, tileCount: plan.tiles.length, maximumCandidateBytes: plan.maximumCandidateBytes, requiredFreeBytes: plan.requiredFreeBytes };
+        await writeJson(join(root, "evidence", `normalize-plan-${plan.normalizationId}.json`), { ...summary, supportPath: plan.supportPath, tiles: plan.tiles.map((tile) => tile.key), policy: "plan-only; no candidate output" }); result = summary;
+      } else {
+        const smoke = process.argv.includes("--smoke"); const shardArgument = process.argv.indexOf("--shard"); const shardValue = shardArgument >= 0 ? process.argv[shardArgument + 1] : undefined;
+        const match = shardValue?.match(/^(\d+)\/(\d+)$/); if (shardValue && !match) throw new Error("--shard requires <zero-based-index>/<count>");
+        // Smoke output is isolated under normalized/validation/, never the
+        // production-candidate normalization id/prefix.
+        const candidatePlan = smoke ? { ...plan, normalizationId: `validation/${plan.normalizationId}` } : plan;
+        result = await normalizeAdmitted(admission, candidatePlan, { smoke, shard: match ? { index: Number(match[1]), count: Number(match[2]) } : undefined });
+      }
+    }
     else if (command === "build") result = await build();
     else { const generation = await current(); await verifyGeneration(generation); result = { generation }; }
   }
   finally {
     const usage = process.resourceUsage(); const evidence = { command, at: new Date().toISOString(), versions: await versions(), wallMs: Number(process.hrtime.bigint() - started) / 1e6, cpuMicros: process.cpuUsage(cpuStart), peakRssKiB: usage.maxRSS, rawBytes: await directoryBytes(join(root, "raw")), outputBytes: await directoryBytes(join(root, "generations")), scratchBytes: await directoryBytes(join(root, "staging")) };
-    await writeJson(join(root, "evidence", `${command}-${Date.now()}.json`), evidence);
+    const evidencePath = join(root, "evidence", `${command}-${Date.now()}.json`); await writeJson(evidencePath, evidence);
+    if (process.env.SHADE_PREP_EVIDENCE_BUCKET) { const store = new S3Store(process.env.SHADE_PREP_EVIDENCE_BUCKET, process.env.SHADE_PREP_EVIDENCE_PREFIX ?? "jobs"); await store.write(`${command}/${evidence.at.replaceAll(":", "-")}.json`, new Uint8Array(await readFile(evidencePath)), "application/json"); }
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

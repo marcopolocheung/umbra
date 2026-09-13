@@ -15,6 +15,7 @@ export type PlaneName =
   | "foundationPresent"
   | "buildingAglQ"
   | "buildingMask"
+  | "buildingSupport"
   | "buildingFeatureId"
   | "buildingPriority"
   | "canopyHeightAglQ"
@@ -41,6 +42,8 @@ export const COMPONENT_FLAGS = {
   canopyFallback: 1 << 3,
   canopyConflict: 1 << 4,
   terrainUnknown: 1 << 5,
+  buildingUnknown: 1 << 6,
+  canopyUnknown: 1 << 7,
 } as const;
 
 export interface ComponentPlane {
