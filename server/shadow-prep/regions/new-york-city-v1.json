@@ -1,0 +1,28 @@
+{
+  "id": "new-york-city-v1",
+  "boundary": {
+    "publisher": "NYC Department of City Planning",
+    "release": "26b",
+    "url": "https://data.cityofnewyork.us/api/geospatial/gthc-hcne?method=export&format=GeoJSON",
+    "localName": "nyc-borough-boundaries-26b.geojson",
+    "sha256": "3c7cd4002cb34b8b818af903338c0292d5a1b1ca61bc7a5d365bad66220d050a",
+    "requiredBoroughs": ["Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island"],
+    "licence": "NYC Open Data Terms of Use"
+  },
+  "support": { "initialBufferMetres": 20000, "exteriorPolicy": "unknown-and-incomplete; expand only after conservative bounds require it" },
+  "datum": {
+    "horizontal": "EPSG:4326",
+    "inputVertical": "EGM2008",
+    "outputVertical": "EGM96",
+    "operation": "PROJ pipeline selected with --spatial-test intersects and --grid-check known_available; ballpark forbidden",
+    "grids": ["us_nga_egm08_25.tif", "us_nga_egm96_15.tif"]
+  },
+  "sources": [
+    { "id": "fabdem-v1.2", "kind": "terrain", "url": "https://data.bris.ac.uk/data/dataset/s5hqmjcdj8yo2ibzi9b4ew3sn", "licence": "CC BY-NC-SA 4.0", "horizontalCrs": "EPSG:4326", "verticalDatum": "EGM2008", "required": true },
+    { "id": "overture-buildings", "kind": "buildings", "url": "https://docs.overturemaps.org/guides/buildings/", "licence": "ODbL 1.0", "horizontalCrs": "EPSG:4326", "verticalDatum": "AGL", "required": true, "selection": "building and building_part; retain explicit OSM selections and stable ids" },
+    { "id": "chmv2-native", "kind": "canopy", "url": "s3://dataforgood-fb-data/forests/v2/global/dinov3_global_chm_v2_ml3/", "licence": "CC BY 4.0", "horizontalCrs": "EPSG:3857", "verticalDatum": "AGL", "required": true, "selection": "native height GeoTIFF plus validity-mask asset" },
+    { "id": "osm-tree-fallback", "kind": "canopy-fallback", "url": "https://www.openstreetmap.org/copyright", "licence": "ODbL 1.0", "horizontalCrs": "EPSG:4326", "verticalDatum": "AGL", "required": true, "selection": "only native CHMv2 unavailable or nodata; never positive/valid-zero cells" },
+    { "id": "usgs-3dep-controls", "kind": "controls", "url": "https://www.usgs.gov/3d-elevation-program", "licence": "USGS public domain", "horizontalCrs": "declared-per-control", "verticalDatum": "declared-per-control", "required": true, "selection": "independent NYC datum controls only; never auto-promote into production terrain" }
+  ],
+  "workloads": { "requiredCategories": ["dense-tall", "open", "canopy-heavy", "waterfront-boundary", "long-low-sun"], "graphCapture": "current app Overpass graph path; raw response, requested endpoints and graph sha256 required" }
+}

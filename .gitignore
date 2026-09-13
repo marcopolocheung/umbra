@@ -65,3 +65,8 @@ docs/research/shadowstudy*.pdf
 
 # Local scratch: app screenshots kept for reference, not repo content.
 issues/
+
+# Downloaded GIS sources and immutable local shadow-preparation generations must
+# live outside this checkout. This catches an accidental in-repository mount.
+/server/shadow-prep/local/
+/server/shadow-prep/node_modules/

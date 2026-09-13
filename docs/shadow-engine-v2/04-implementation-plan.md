@@ -251,20 +251,27 @@ as scoped blockers/deferred work, not prerequisites for fixture implementation.
 
 ## Phase B — First regional preparation
 
+Madrid remains a historical fixture/compression and agreement-evidence location in
+the documents cited above. It is not the first production activation region. The
+first production build and activation target is **New York City (the five boroughs)**;
+the exact municipal-boundary source, initial expanded support extent and any later
+coverage expansion are pinned in its regional manifest under item 5.
+
 ### 5. Pin one region, its sources and executable datum controls
 
 **Region-dependent. Depends on:** 4.
 
 **Files touched:** new `server/shadow-prep/{README.md,package.json,package-lock.json,Containerfile}`,
-`server/shadow-prep/regions/madrid-v1.json`,
+`server/shadow-prep/regions/new-york-city-v1.json`,
 `server/shadow-prep/src/{admission,datum}.ts`,
 `server/shadow-prep/test/datum.test.ts`, and
 `docs/shadow-engine-v2/evidence/04/preparation/{source-manifest,datum-controls}.json`;
 update `06-open-questions.md`.
 
-**Change:** start with Madrid, using 03's `[-3.720,40.405,-3.690,40.427]`
-west/south/east/north bbox as the initial build extent, not a completeness boundary.
-Pin FABDEM v1.2 assets and EGM2008→EGM96 grids/operations, Overture building/part
+**Change:** start with New York City, using the five-borough municipal boundary as
+the initial activation area and a declared surrounding support extent. Neither is a
+completeness boundary: expand the support extent when conservative sunward bounds
+require it. Pin FABDEM v1.2 assets and EGM2008→EGM96 grids/operations, Overture building/part
 release with explicit OSM recipe selections, and native CHMv2 heights/masks plus
 OSM fallback. Pin exact dates, URLs/revisions, hashes, horizontal/vertical frames,
 rights and operation areas. Include the retained 908-edge graph and a freshly
@@ -284,10 +291,12 @@ EU-DEM inversion are not dependencies of this direct-FABDEM first build.
 missing grids and out-of-area transforms. Datum controls meet the preregistered
 residual limits; an AGL witness receives no geoid shift. Real CHM base/mask blocks
 decode with valid-zero/nodata separation. The source manifest enumerates exact
-support and baseline/upgrade provenance; all unresolved admissions block the job.
+New York City support and baseline/upgrade provenance; all unresolved admissions
+block the job. Historical Madrid/Kent source probes and compression fixtures do
+not establish New York City source admission or datum controls.
 
 **Rollback condition:** unavailable native support, unvalidated datum/controls or
-rights mismatch. Keep Madrid blocked; do not substitute the old AWS compression
+rights mismatch. Keep New York City blocked; do not substitute the old Madrid AWS compression
 capture or coarser canopy. Continue fixture items 9–16 if useful.
 
 **02 §12:** depends on/closes **OI 1, 3, 5, 8** only for selected asset admission;
@@ -299,7 +308,7 @@ advances **OI 6, 7**. **OI 2 and 4** remain open for their unselected source pat
 
 **Files touched:** new `server/shadow-prep/src/{sources,terrain,buildings,canopy,normalize}.ts`,
 `server/shadow-prep/test/{normalization,sourceSeparation}.test.ts`;
-update `server/shadow-prep/regions/madrid-v1.json` and source manifest;
+update `server/shadow-prep/regions/new-york-city-v1.json` and source manifest;
 new `docs/shadow-engine-v2/evidence/04/preparation/normalization.json`.
 
 **Change:** stream native terrain/CHM blocks and whole Overture/OSM features;
@@ -381,7 +390,7 @@ Retain full raw records; repeat completed cold runs under the sample protocol in
 05 and include failure attempts. Rerun the unchanged fixture agreement gate after
 producer changes. This does not require the full app renderer or a phone.
 
-**Acceptance test:** one complete native-canopy, datum-correct regional build
+**Acceptance test:** one complete native-canopy, datum-correct New York City build
 finishes end to end within the declared 2 GB host and configured scratch limits;
 kill/restart resumes safely without duplicate active jobs or partial publication.
 A second build from identical inputs reproduces decoded objects/bounds identities.
@@ -675,7 +684,7 @@ qualification remains item 19. **OI 24–25** are not required accelerators.
 **Files touched:** new `e2e/shadowV2Delivery.spec.ts`,
 `server/shadow-prep/test/cdn.test.ts`,
 `docs/shadow-engine-v2/evidence/05/delivery/{requests.json,coverage.json,README.md,SHA256SUMS}`;
-update `server/shadow-prep/regions/madrid-v1.json`, `05-validation.md`, `06-open-questions.md`.
+update `server/shadow-prep/regions/new-york-city-v1.json`, `05-validation.md`, `06-open-questions.md`.
 
 **Change:** exercise real R2 custom-domain objects through the actual acquisition,
 codec/compositor, worker and candidate renderer. Verify GET/HEAD, ranges where
@@ -712,7 +721,7 @@ within the tested envelope; phone deadlines still depend on item 19.
 update `05-validation.md` and `06-open-questions.md`.
 
 **Change:** collect the preregistered georeferenced/timestamped observed shadows
-and independent solar/control calculations for the admitted region. Evaluate
+and independent solar/control calculations for the admitted New York City region. Evaluate
 ground/roof/crown placement and height errors separately from model discretization,
 source date and optical priors. Include dawn/low-sun dates, 2 km solar-cell errors,
 NOAA apparent-altitude correction and angular acquisition margins. Compare SPA
@@ -724,6 +733,8 @@ observations meet 05's predeclared physical/solar tolerances with residuals, sam
 counts, worst cases and uncertainty retained. No candidate-produced raster serves
 as its own physical oracle. Missing credible observations or unexplained residuals
 block validation acceptance; two matching Umbra implementations do not waive it.
+Historical Madrid agreement and compression evidence cannot substitute for these
+New York City observations.
 
 **Rollback condition:** independent accuracy/solar failures, unsupported acquisition
 margins or observations inconsistent with the selected source/model. Restrict
@@ -853,7 +864,7 @@ open item to its implementation/validation evidence. It does not mark work compl
 
 | OI | Responsible work items | Remaining scope or condition |
 |---|---|---|
-| 1 | 5, 7–8, 17, 20 | Initial Madrid build; each further region needs its own support/activation record |
+| 1 | 5, 7–8, 17, 20 | Initial New York City build; each further region needs its own support/activation record |
 | 2 | 4, 21 | AWS delivered datum stays unadmitted; direct FABDEM path bypasses it |
 | 3 | 5–6, 18 | Executed transforms/controls per asset and realization |
 | 4 | 4, 21 | EU-DEM/EGG08 inversion remains conditional on selecting that source |

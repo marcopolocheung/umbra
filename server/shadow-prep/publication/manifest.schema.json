@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Umbra local source-separated generation manifest",
+  "type": "object",
+  "required": ["generation", "recipeHash", "datumHash", "hierarchyHash", "components", "objects"],
+  "properties": {
+    "generation": { "type": "string", "minLength": 1 },
+    "recipeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "datumHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "hierarchyHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "components": { "type": "array", "minItems": 3 },
+    "objects": { "type": "array", "minItems": 3 }
+  },
+  "additionalProperties": false
+}
