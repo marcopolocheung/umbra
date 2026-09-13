@@ -1,6 +1,6 @@
-import type { Admission, Receipt, ReceiptId } from "./admission";
+import type { Admission, AdmittedReceipt, ReceiptId } from "./admission";
 
-export function receipt(admission: Admission, id: ReceiptId): Receipt & { path: string; bytes: number } {
+export function receipt(admission: Admission, id: ReceiptId): AdmittedReceipt {
   const found = admission.receipts.find((item) => item.id === id);
   if (!found) throw new Error(`admission lacks pinned receipt ${id}`);
   return found;

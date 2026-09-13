@@ -1,39 +1,77 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pinned local raw source receipts",
+  "description": "One logical source receipt can pin one or more immutable raw assets. This schema intentionally excludes normalized mosaics and intermediates.",
   "type": "array",
-  "items": {
-    "type": "object",
-    "required": ["id", "assetId", "url", "release", "filename", "sha256", "horizontalCrs", "verticalDatum", "licence", "rights", "supportExtent", "acquiredAt", "role"],
-    "properties": {
-      "id": { "enum": ["fabdem-v1.2", "overture-buildings", "overture-building-parts", "chmv2-height", "chmv2-validity-mask", "osm-tree-fallback", "usgs-3dep-controls", "workload-dense-tall", "workload-open", "workload-canopy-heavy", "workload-waterfront-boundary", "workload-long-low-sun"] },
-      "assetId": { "type": "string", "minLength": 1 },
-      "url": { "type": "string", "format": "uri" },
-      "release": { "type": "string", "minLength": 1 },
-      "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-      "filename": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" },
-      "horizontalCrs": { "type": "string", "minLength": 1 },
-      "verticalDatum": { "type": "string", "minLength": 1 },
-      "licence": { "type": "string", "minLength": 1 },
-      "rights": { "type": "string", "format": "uri" },
-      "supportExtent": { "type": "string", "minLength": 1 },
-      "acquiredAt": { "type": "string", "format": "date-time" },
-      "role": { "enum": ["terrain", "buildings", "building-parts", "canopy-height", "canopy-mask", "canopy-fallback", "control", "workload"] },
-      "validZero": { "type": "boolean" },
-      "nodata": { "type": "string" },
-      "datumControlEvidence": {
-        "type": "object",
-        "required": ["outputFilename", "outputSha256", "operation", "operationHash", "thresholdStatus"],
-        "properties": {
-          "outputFilename": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" },
-          "outputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "operation": { "type": "string", "minLength": 1 },
-          "operationHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "thresholdStatus": { "const": "unadmitted" }
-        },
-        "additionalProperties": false
-      }
+  "minItems": 12,
+  "maxItems": 12,
+  "items": { "$ref": "#/$defs/receipt" },
+  "$defs": {
+    "safeFilename": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\).+$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "coverage": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "enum": ["Polygon", "MultiPolygon"] },
+        "coordinates": { "type": "array", "minItems": 1 }
+      },
+      "additionalProperties": false
     },
-    "additionalProperties": false
+    "asset": {
+      "type": "object",
+      "required": ["filename", "publisherUrl", "release", "sha256", "format", "acquiredAt", "horizontalCrs", "verticalDatum", "supportCoverage"],
+      "properties": {
+        "filename": { "$ref": "#/$defs/safeFilename" },
+        "publisherUrl": { "type": "string", "format": "uri" },
+        "release": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "format": { "type": "string", "minLength": 1 },
+        "acquiredAt": { "type": "string", "format": "date-time" },
+        "horizontalCrs": { "type": "string", "minLength": 1 },
+        "verticalDatum": { "type": "string", "minLength": 1 },
+        "supportCoverage": { "$ref": "#/$defs/coverage" }
+      },
+      "additionalProperties": false
+    },
+    "datumControls": {
+      "type": "object",
+      "required": ["outputFilename", "outputSha256", "reportFilename", "reportSha256", "operation", "operationHash", "metric", "units", "evaluatedPopulation", "methodVersionHash", "observedWorstResidual", "thresholdStatus"],
+      "properties": {
+        "outputFilename": { "$ref": "#/$defs/safeFilename" },
+        "outputSha256": { "$ref": "#/$defs/sha256" },
+        "reportFilename": { "$ref": "#/$defs/safeFilename" },
+        "reportSha256": { "$ref": "#/$defs/sha256" },
+        "operation": { "type": "string", "minLength": 1 },
+        "operationHash": { "$ref": "#/$defs/sha256" },
+        "metric": { "type": "string", "minLength": 1 },
+        "units": { "type": "string", "minLength": 1 },
+        "evaluatedPopulation": { "type": "integer", "minimum": 1 },
+        "methodVersionHash": { "$ref": "#/$defs/sha256" },
+        "observedWorstResidual": { "type": "number", "minimum": 0 },
+        "thresholdStatus": { "enum": ["unadmitted", "approved"] },
+        "signedDecisionId": { "$ref": "#/$defs/safeFilename" },
+        "maximumResidual": { "type": "number", "minimum": 0 }
+      },
+      "allOf": [{
+        "if": { "properties": { "thresholdStatus": { "const": "approved" } } },
+        "then": { "required": ["signedDecisionId", "maximumResidual"] }
+      }],
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": "object",
+      "required": ["id", "licence", "rights", "role", "assets"],
+      "properties": {
+        "id": { "enum": ["fabdem-v1.2", "overture-buildings", "overture-building-parts", "chmv2-height", "chmv2-validity-mask", "osm-tree-fallback", "usgs-3dep-controls", "workload-dense-tall", "workload-open", "workload-canopy-heavy", "workload-waterfront-boundary", "workload-long-low-sun"] },
+        "licence": { "type": "string", "minLength": 1 },
+        "rights": { "type": "string", "format": "uri" },
+        "role": { "enum": ["terrain", "buildings", "building-parts", "canopy-height", "canopy-mask", "canopy-fallback", "control", "workload"] },
+        "assets": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/asset" } },
+        "normalization": { "type": "object" },
+        "datumControlEvidence": { "$ref": "#/$defs/datumControls" }
+      },
+      "additionalProperties": false
+    }
   }
 }

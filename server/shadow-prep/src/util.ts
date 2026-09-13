@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 
@@ -8,7 +9,14 @@ export function requireRoot(): string {
   return root;
 }
 export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-export async function fileHash(path: string): Promise<string> { return sha256(await readFile(path)); }
+export async function fileHash(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256"); const stream = createReadStream(path);
+    stream.on("data", (chunk: Buffer) => { hash.update(chunk); });
+    stream.on("error", reject);
+    stream.on("end", () => { resolve(hash.digest("hex")); });
+  });
+}
 export async function json<T>(path: string): Promise<T> { return JSON.parse(await readFile(path, "utf8")) as T; }
 export async function writeJson(path: string, value: unknown): Promise<void> { await mkdir(dirname(path), { recursive: true }); await writeFile(path, `${JSON.stringify(value, null, 2)}\n`); }
 export async function atomicJson(path: string, value: unknown): Promise<void> { const temporary = `${path}.${process.pid}.tmp`; await writeJson(temporary, value); await rename(temporary, path); }
