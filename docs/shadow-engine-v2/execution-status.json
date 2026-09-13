@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "capturedAt": "2026-09-13",
   "branch": "phase-b-item-5-nyc-admission",
-  "head": "working tree; see item-5 preparation evidence",
+  "head": "run git rev-parse HEAD; this status intentionally does not self-record a commit hash",
   "mergedToMain": false,
   "activeNext": [9],
   "verificationLimitations": [
