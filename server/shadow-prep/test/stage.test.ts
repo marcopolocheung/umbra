@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { Region } from "../src/admission";
 import { stageAdmittedInputs } from "../src/stage";
-import { FilesystemStore } from "../src/storage";
+import { FilesystemStore, type ObjectStore } from "../src/storage";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -29,5 +29,14 @@ test("raw staging fails before download when the bounded scratch allowance is to
   try {
     await mkdir(join(source, "raw"), { recursive: true }); await writeFile(join(source, "raw", "source-receipts.json"), "[]");
     await assert.rejects(stageAdmittedInputs(new FilesystemStore(source), { root: target, maxScratchBytes: 1 }), /exceeding SHADE_PREP_SCRATCH_MAX_BYTES/);
+  } finally { await rm(source, { recursive: true, force: true }); await rm(target, { recursive: true, force: true }); }
+});
+
+test("raw staging rejects expected objects without S3 sha256 metadata", async () => {
+  const source = await mkdtemp(join(tmpdir(), "stage-source-")); const target = await mkdtemp(join(tmpdir(), "stage-target-"));
+  try {
+    const backing = new FilesystemStore(source); const missingMetadata: ObjectStore = { kind: "s3", read: backing.read.bind(backing), write: backing.write.bind(backing), copyToFile: backing.copyToFile.bind(backing), async head(key) { const value = await backing.head(key); return value && { bytes: value.bytes }; } };
+    await mkdir(join(source, "raw"), { recursive: true }); await writeFile(join(source, "raw", "source-receipts.json"), "[]"); await writeFile(join(source, "raw", "nyc-borough-boundaries-26b.geojson"), "not accepted without metadata");
+    await assert.rejects(stageAdmittedInputs(missingMetadata, { root: target, maxScratchBytes: 1024 * 1024 }), /sha256 metadata is missing/);
   } finally { await rm(source, { recursive: true, force: true }); await rm(target, { recursive: true, force: true }); }
 });

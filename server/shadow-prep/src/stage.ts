@@ -29,7 +29,8 @@ async function localMatches(path: string, expected?: string): Promise<boolean> {
 async function stageOne(store: ObjectStore, item: Item): Promise<"staged" | "reused"> {
   if (await localMatches(item.destination, item.sha256)) return "reused";
   const head = await store.head(item.key); if (!head) throw new Error(`required staged object is missing: ${item.key}`);
-  if (item.sha256 && head.sha256 && head.sha256 !== item.sha256) throw new Error(`S3 metadata hash mismatch for ${item.key}`);
+  if (item.sha256 && !head.sha256) throw new Error(`required S3 sha256 metadata is missing for ${item.key}`);
+  if (item.sha256 && head.sha256 !== item.sha256) throw new Error(`S3 metadata hash mismatch for ${item.key}`);
   await mkdir(dirname(item.destination), { recursive: true });
   const temporary = `${item.destination}.${process.pid}.stage`;
   try {
@@ -44,7 +45,8 @@ async function preflight(store: ObjectStore, items: Item[], root: string, maximu
   for (const item of items) {
     if (await localMatches(item.destination, item.sha256)) continue;
     const head = await store.head(item.key); if (!head) throw new Error(`required staged object is missing: ${item.key}`);
-    if (item.sha256 && head.sha256 && head.sha256 !== item.sha256) throw new Error(`S3 metadata hash mismatch for ${item.key}`);
+    if (item.sha256 && !head.sha256) throw new Error(`required S3 sha256 metadata is missing for ${item.key}`);
+    if (item.sha256 && head.sha256 !== item.sha256) throw new Error(`S3 metadata hash mismatch for ${item.key}`);
     incoming += head.bytes;
   }
   await mkdir(root, { recursive: true }); const used = await directoryBytes(root); const required = used + incoming;
