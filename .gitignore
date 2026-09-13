@@ -70,3 +70,4 @@ issues/
 # live outside this checkout. This catches an accidental in-repository mount.
 /server/shadow-prep/local/
 /server/shadow-prep/node_modules/
+/shade-prep-data/

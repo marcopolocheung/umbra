@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-13T18:44:06Z",
+  "scope": "Item-5 preparation verification; no source-normalization, regional-generation, deployment, or physical-accuracy test was run.",
+  "checks": [
+    {
+      "command": "npx -y -p node@24 -p npm@11 npm --prefix server/shadow-prep ci && npx -y -p node@24 -p npm@11 npm --prefix server/shadow-prep test",
+      "runtime": "Node v24.21.0",
+      "result": "pass; nine tests"
+    },
+    {
+      "command": "npx -y -p node@24 -p npm@11 npm run typecheck",
+      "runtime": "Node v24.21.0",
+      "result": "pass"
+    },
+    {
+      "command": "SHADE_PREP_ROOT=~/shade-prep-data PROJ_DATA=~/shade-prep-data/proj node .../cli.ts admit",
+      "result": "expected fail-closed rejection",
+      "blockersObserved": ["host lacks projinfo", "source receipt manifest is not an array"],
+      "note": "The external admission record retained both expected grid hashes and a null operation hash; this is not an operation proof."
+    },
+    {
+      "command": "npm --prefix server/shadow-prep run test:container-smoke",
+      "result": "blocked before image build",
+      "blocker": "permission denied while connecting to unix:///var/run/docker.sock"
+    }
+  ]
+}

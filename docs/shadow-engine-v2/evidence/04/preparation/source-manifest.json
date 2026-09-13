@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-13T18:40:45Z",
+  "scope": "Item 5 NYC source/datum preparation only; this is not an admission or physical-accuracy result.",
+  "region": {
+    "id": "new-york-city-v1",
+    "boundary": {
+      "release": "NYC DCP 26b",
+      "url": "https://data.cityofnewyork.us/api/geospatial/gthc-hcne?method=export&format=GeoJSON",
+      "sha256": "3c7cd4002cb34b8b818af903338c0292d5a1b1ca61bc7a5d365bad66220d050a",
+      "status": "copied to the external raw mount"
+    },
+    "support": "five boroughs with the manifest's initial 20 km buffer; exterior remains unknown and incomplete"
+  },
+  "externalMount": {
+    "path": "~/shade-prep-data",
+    "gitTracked": false,
+    "repoLocalCopy": "preserved but ignored; it was copied rather than deleted"
+  },
+  "grids": [
+    {
+      "filename": "us_nga_egm08_25.tif",
+      "url": "https://cdn.proj.org/us_nga_egm08_25.tif",
+      "release": "PROJ-data CDN catalog, hash-pinned asset",
+      "acquiredAt": "2026-09-13T18:40:45Z",
+      "sha256": "4191d471eefebf24091b56dbc604353cb3b8cf8cc70e448bb9ae56a272bef17a",
+      "licence": "PROJ-data MIT licence; catalog attributes the source to US NGA",
+      "horizontalCrs": "EPSG:4979 / WGS 84",
+      "verticalDatum": "EPSG:3855 EGM2008 height",
+      "supportExtent": "World; NYC command area is -74.26,40.49,-73.70,40.92",
+      "status": "installed in external read-only /opt/proj mount source"
+    },
+    {
+      "filename": "us_nga_egm96_15.tif",
+      "url": "https://cdn.proj.org/us_nga_egm96_15.tif",
+      "release": "PROJ-data CDN catalog, hash-pinned asset",
+      "acquiredAt": "2026-09-13T18:40:45Z",
+      "sha256": "db493027562c9b004d7220fa881f5603adada4e1c5029b933fa7de4547b0e78d",
+      "licence": "PROJ-data MIT licence; catalog attributes the source to US NGA",
+      "horizontalCrs": "EPSG:4979 / WGS 84",
+      "verticalDatum": "EPSG:5773 EGM96 height",
+      "supportExtent": "World; NYC command area is -74.26,40.49,-73.70,40.92",
+      "status": "installed in external read-only /opt/proj mount source"
+    }
+  ],
+  "requiredReceipts": [
+    "fabdem-v1.2",
+    "overture-buildings",
+    "overture-building-parts",
+    "chmv2-height",
+    "chmv2-validity-mask",
+    "osm-tree-fallback",
+    "usgs-3dep-controls",
+    "workload-dense-tall",
+    "workload-open",
+    "workload-canopy-heavy",
+    "workload-waterfront-boundary",
+    "workload-long-low-sun"
+  ],
+  "receiptStatus": "No raw/source-receipts.json has been created. The listed source assets, five workload captures, and independent 3DEP controls are not represented as acquired; admission remains fail-closed.",
+  "blockers": [
+    "all twelve source receipts and their exact raw bytes/rights/support declarations",
+    "independent 3DEP controls and retained transformation output",
+    "PROJ NYC operation execution evidence",
+    "preregistered numerical datum-control residual threshold"
+  ]
+}

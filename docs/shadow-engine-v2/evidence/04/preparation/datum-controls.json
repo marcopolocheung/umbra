@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-13T18:40:45Z",
+  "scope": "Preparation record only; no residual, regional admission, or physical-accuracy result is asserted.",
+  "requiredOperation": {
+    "command": "projinfo -s EPSG:4326+3855 -t EPSG:4326+5773 --bbox -74.26,40.49,-73.70,40.92 --spatial-test intersects --grid-check known_available",
+    "inputVertical": "EGM2008",
+    "outputVertical": "EGM96",
+    "ballparkAllowed": false,
+    "outOfAreaAllowed": false,
+    "requiredGrids": ["us_nga_egm08_25.tif", "us_nga_egm96_15.tif"],
+    "status": "not executed: host has no projinfo and this session cannot access the Docker daemon"
+  },
+  "gridIdentity": {
+    "us_nga_egm08_25.tif": "4191d471eefebf24091b56dbc604353cb3b8cf8cc70e448bb9ae56a272bef17a",
+    "us_nga_egm96_15.tif": "db493027562c9b004d7220fa881f5603adada4e1c5029b933fa7de4547b0e78d"
+  },
+  "independentControls": {
+    "receiptId": "usgs-3dep-controls",
+    "status": "not acquired; no input or transformation-output hash can be retained yet"
+  },
+  "aglWitness": {
+    "test": "transformHeight(12, 0.41, true) === 12",
+    "status": "covered by server/shadow-prep/test/datum.test.ts; AGL receives no geoid shift"
+  },
+  "residualAcceptance": {
+    "status": "unadmitted",
+    "numericalThreshold": null,
+    "effect": "fail closed: retained controls cannot admit the region or authorize item 6"
+  }
+}
