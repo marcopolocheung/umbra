@@ -11,8 +11,8 @@ This is the current-state companion to [the implementation plan](./04-implementa
 
 | Item | Status | Exact current state |
 |---:|---|---|
-| 1 | partial | Codec/types/tests exist; the planned reusable fixture producer and public format contract do not. |
-| 2 | partial | Minimal compositor/test exists; lattice, tree model, and required seam/ownership coverage do not. |
+| 1 | completed | Source-separated codec, synthetic reusable fixture producer, portable v1 contract/golden directory, and acceptance/rejection coverage are present. |
+| 2 | completed | Deterministic source-separated composition, lattice and tree model, fail-closed support/dependency/reservation behavior, and synthetic seam/ownership/crown coverage are present. |
 | 3 | completed | The candidate fixture path and retained 150-case agreement gate exist and run under normal Vitest discovery. |
 | 4 | completed | `05-validation.md`, `06-open-questions.md`, `validation/cases.json`, and `validation/thresholds.json` preregister every §10 witness and all 30 OIs. They record no new measurement or physical-accuracy result. |
 | 5 | blocked | Fail-closed NYC admission implementation/tests exist; real admission lacks named raw assets, receipts/hashes, NGA grids, and Docker validation. |
@@ -55,29 +55,29 @@ The prep preflight is intentionally strict: `npm --prefix server/shadow-prep tes
 
 Each **read first** list is mandatory. “Future” means the path is intentionally not present yet; create it only in that item. Save command output, `git rev-parse HEAD`, input hashes, and any stated evidence artifact outside the repository where appropriate.
 
-### 1. Separate-object format and fixture producer — partial
+### 1. Separate-object format and fixture producer — completed
 
 - Preconditions / environment: fixture mode; no geography, credentials, or browser needed.
 - Read first: plan item 1; 02 §§3–5, 7; `app/lib/shadowField/v2/{types,format}.ts`; `format.test.ts`; `.claude/README.md` and `.claude/rules/{change-discipline,tests}.md`.
 - Preserve: existing codec API, `DecompressionStream` decoding, z18/258 dimensions, and current format tests.
 - Setup: `npm ci && npm run preflight:shadow-v2:fixtures`.
 - Verify: `npx vitest run app/lib/shadowField/v2/__tests__/format.test.ts && npm run typecheck`.
-- Expected result: both pass; create future `formatFixtures.ts` and `contracts/tile-format-v1.md` only when their full contract/golden-object acceptance is met.
+- Completed evidence: `formatFixtures.ts` supplies deterministic independent terrain/building/canopy objects with injected node:zlib level-6 gzip; `contracts/tile-format-v1.md` specifies framing, tables, identity, limits and an annotated golden directory. The format suite covers predictors, corruption/truncation/ranges, format/codec/predictor/table failures, checksums, length cap, dependencies and independent-object bytes.
 - External inputs: none; synthetic inputs only.
 - Done / evidence: full round-trip/rejection matrix, independent-byte fixture proof, contract golden object, command log and fixture hashes.
-- Next: item 2 completion work only if needed; the directed current next item is 4.
+- Next: item 2 is complete; fixture-mode item 9 remains the directed next item because item 5 is blocked.
 
-### 2. Deterministic worker composition — partial
+### 2. Deterministic worker composition — completed
 
 - Preconditions / environment: fixture mode and item-1 codec behavior.
 - Read first: plan item 2; `types.ts`, `compose.ts`, `composition.test.ts`, and 02 §5.2.
 - Preserve: source separation, allocation reservation, and no fused distributable object.
 - Setup: `npm ci && npm run preflight:shadow-v2:fixtures`.
-- Verify: `npx vitest run app/lib/shadowField/v2/__tests__/composition.test.ts && npm run typecheck`.
-- Expected result: current suite passes; future `lattice.ts`, `treeModel.ts`, `lattice.test.ts`, and `formatFixtures.ts` are required before calling the item complete.
+- Verify: `npx vitest run app/lib/shadowField/v2/__tests__/composition.test.ts app/lib/shadowField/v2/__tests__/lattice.test.ts && npm run typecheck`.
+- Completed evidence: `compose.ts`, `lattice.ts`, and `treeModel.ts` keep source objects separate, require manifest identity and reservation before a page, return support/evidence/accounting, use NW–SE terrain and fixed ownership, and apply native-mask/fallback/roof rules.
 - External inputs: none; synthetic cases only.
 - Done / evidence: exact seam/courtyard/cross-tile/zero-mask fixtures, reservation failures, and preserved independent object bytes.
-- Next: item 3 remains complete; item 4 is directed next.
+- Next: items 3–4 remain complete; fixture-mode item 9 is the next permitted item while item 5 remains blocked.
 
 ### 3. First v2 agreement output — completed
 
