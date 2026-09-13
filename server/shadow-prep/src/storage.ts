@@ -1,7 +1,8 @@
-import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, relative } from "node:path";
 import { createHash } from "node:crypto";
+import { pipeline } from "node:stream/promises";
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 /** A deliberately small object-store contract.  Candidate publication depends on
@@ -10,6 +11,8 @@ import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from 
 export interface ObjectStore {
   readonly kind: "filesystem" | "s3";
   read(key: string): Promise<Uint8Array>;
+  /** Streams a remote object to a caller-owned local temporary path. */
+  copyToFile(key: string, destination: string): Promise<void>;
   write(key: string, value: Uint8Array, contentType?: string): Promise<void>;
   head(key: string): Promise<{ bytes: number; sha256?: string } | undefined>;
 }
@@ -29,6 +32,7 @@ export class FilesystemStore implements ObjectStore {
     return path;
   }
   async read(key: string): Promise<Uint8Array> { return new Uint8Array(await readFile(this.path(key))); }
+  async copyToFile(key: string, destination: string): Promise<void> { await mkdir(dirname(destination), { recursive: true }); await copyFile(this.path(key), destination); }
   async write(key: string, value: Uint8Array): Promise<void> {
     const path = this.path(key); await mkdir(dirname(path), { recursive: true });
     const temporary = `${path}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
@@ -54,6 +58,12 @@ export class S3Store implements ObjectStore {
     const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: this.key(key) }));
     if (!result.Body) throw new Error(`S3 object has no body: ${key}`);
     return new Uint8Array(await result.Body.transformToByteArray());
+  }
+  async copyToFile(key: string, destination: string): Promise<void> {
+    const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: this.key(key) }));
+    if (!result.Body) throw new Error(`S3 object has no body: ${key}`);
+    await mkdir(dirname(destination), { recursive: true });
+    await pipeline(result.Body as unknown as NodeJS.ReadableStream, createWriteStream(destination, { flags: "w" }));
   }
   async write(key: string, value: Uint8Array, contentType = "application/octet-stream"): Promise<void> {
     const digest = createHash("sha256").update(value).digest("hex");

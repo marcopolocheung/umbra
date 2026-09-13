@@ -1,5 +1,5 @@
 FROM node:24-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin proj-bin proj-data ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin proj-bin proj-data unzip ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace
 COPY server/shadow-prep/package.json server/shadow-prep/package-lock.json ./server/shadow-prep/
 RUN cd server/shadow-prep && npm ci

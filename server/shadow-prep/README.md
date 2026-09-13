@@ -58,6 +58,28 @@ external `SHADE_PREP_ROOT`. Set `SHADE_PREP_STORAGE=s3`,
 `SHADE_PREP_S3_PREFIX=<prefix>` for object publication. S3 uses the same
 `normalized/<normalization-id>/...` layout and descriptor-last protocol.
 
+When `SHADE_PREP_RAW_BUCKET` is set, `admit`, `normalize`, and other
+admission-backed commands first run the same bounded staging protocol used by
+Batch. The private raw bucket must preserve this object layout exactly:
+
+```
+raw/source-receipts.json
+raw/<every receipt asset filename>
+raw/nyc-borough-boundaries-26b.geojson
+acquisition/nyc-five-borough-20km-support.geojson
+acquisition/nyc-acquisition-manifest.json
+proj/us_nga_egm08_25.tif
+proj/us_nga_egm96_15.tif
+evidence/<each datum-control output/report named by source-receipts.json>
+```
+
+Every receipt asset and both grid objects must carry their recorded SHA-256;
+staging streams objects to a temporary scratch file, verifies that hash, then
+renames it into the local admission layout. `SHADE_PREP_SCRATCH_MAX_BYTES`
+defaults to 180 GiB; Batch sets it to 180 GiB on the encrypted 200 GB disk.
+Use `shadow-prep stage` to test this transfer alone. Staging never uploads,
+alters, or approves raw data.
+
 ## AWS preparation (not a deployment instruction)
 
 `aws/cloudformation.yml` defines private S3 raw/normalized/evidence buckets,

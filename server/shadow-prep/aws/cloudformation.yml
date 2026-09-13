@@ -139,6 +139,10 @@ Resources:
         ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
         Command: ['normalize', '--smoke']
         Environment:
+          - { Name: SHADE_PREP_ROOT, Value: /scratch }
+          - { Name: SHADE_PREP_RAW_BUCKET, Value: !Ref RawBucket }
+          - { Name: SHADE_PREP_RAW_PREFIX, Value: '' }
+          - { Name: SHADE_PREP_SCRATCH_MAX_BYTES, Value: '193273528320' }
           - { Name: SHADE_PREP_STORAGE, Value: s3 }
           - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
           - { Name: SHADE_PREP_S3_PREFIX, Value: '' }
