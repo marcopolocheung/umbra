@@ -25,6 +25,10 @@ jobs:
 
       - run: npm ci
 
+      # Root TypeScript discovery includes shadow-prep source files, so its
+      # private dependencies must be present before the root typecheck.
+      - run: npm --prefix server/shadow-prep ci
+
       - run: npm run lint
 
       # Fixture mode records the actual Node version. Node 24 is the supported
@@ -46,8 +50,6 @@ jobs:
 
       # This is deliberately independent from root Vitest. It runs the
       # fail-closed NYC admission/preparation unit suite under Node 24.
-      - run: npm --prefix server/shadow-prep ci
-
       - run: npm --prefix server/shadow-prep test
 
       # No secrets needed: Vite inlines absent VITE_* vars as undefined, and the
