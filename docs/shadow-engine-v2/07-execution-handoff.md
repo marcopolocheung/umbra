@@ -4,7 +4,7 @@ This is the current-state companion to [the implementation plan](./04-implementa
 
 ## Current state
 
-- Branch / PR: `feat/shadow-v2-foundation-nyc` at `06a350d2118f1c0244e8d80d3acf5fa01ad7d6f1`; [PR #321](https://github.com/marcopolocheung/umbrapriv/pull/321) is open against `main` and **not merged** (`mergedAt: null`).
+- Branch: `phase-b-item-5-nyc-admission`, started from updated `origin/main` with the prerequisite Phase-A commits replayed. It is local preparation work only; no PR, deployment, or activation result is asserted here.
 - Active next work: implement **item 9** in fixture mode while NYC remains blocked. Item 4's documentation protocol is complete; do not interpret the NYC block as permission to begin item 17+.
 - Machine-readable counterpart: [execution-status.json](./execution-status.json). Update Markdown and JSON in the same change.
 - Preservation-check limitation: `python3 docs/shadow-engine-v2/evidence/02c/verify.py` currently stops at its recorded `02-architecture.md` SHA-256 (`fd874070…860f3`) versus this checkout's unchanged current file (`ce5d7f47…27f97`). This item did not alter either file or historical evidence. Do not regenerate, overwrite, or relax that historical record; a separately authorized evidence/architecture reconciliation is required before that verifier can pass.
@@ -15,7 +15,7 @@ This is the current-state companion to [the implementation plan](./04-implementa
 | 2 | completed | Deterministic source-separated composition, lattice and tree model, fail-closed support/dependency/reservation behavior, and synthetic seam/ownership/crown coverage are present. |
 | 3 | completed | The candidate fixture path and retained 150-case agreement gate exist and run under normal Vitest discovery. |
 | 4 | completed | `05-validation.md`, `06-open-questions.md`, `validation/cases.json`, and `validation/thresholds.json` preregister every §10 witness and all 30 OIs. They record no new measurement or physical-accuracy result. |
-| 5 | blocked | Fail-closed NYC admission implementation/tests exist; real admission lacks named raw assets, receipts/hashes, NGA grids, and Docker validation. |
+| 5 | partial | The Containerfile dependency-copy correction, receipt/control fail-closed checks, external-mount policy, and Docker smoke script exist. The DCP boundary was copied externally and both hash-pinned NGA grids were installed externally. The twelve source receipts/raw inputs, independent controls/output, executed NYC PROJ evidence, Docker validation, and a numerical control residual threshold remain missing. This is not regional admission and does not permit item 6. |
 | 6 | blocked | Skeleton normalizers/tests exist; it requires item-5-admitted NYC inputs. |
 | 7 | blocked | Basic bounds/publication tests exist; regional hierarchy/publication evidence requires item 6. |
 | 8 | blocked | No cold-build/Fly/R2 qualification; requires items 5–7, valid Docker run, and credentials. |
@@ -46,7 +46,7 @@ Raw assets, generated regional objects, credentials, and device captures are ext
 | Mode | Covers | Required environment | Bootstrap and expected result |
 |---|---|---|---|
 | Fixture | 1–4, 9–16 | Node/npm; Node 24 is supported application runtime. Node 20+ is accepted only for deterministic fixture checks and is recorded. | `npm ci` → `npm run preflight:shadow-v2:fixtures` → `npx vitest run app/lib/shadowField/v2/__tests__/` → `npx vitest run app/lib/shadowField/__tests__/agreement/` → `npm run typecheck` → `npm run build`. Preflight emits JSON with actual Node version; tests/typecheck/build pass. |
-| NYC local-prep | 5–8 | Docker, Node 24, GDAL/PROJ with NGA grids, and an external data mount. | `npm --prefix server/shadow-prep ci` → `npm --prefix server/shadow-prep test` → `docker build -f server/shadow-prep/Containerfile -t umbra-shadow-prep .` → `docker run --rm -v "$PWD/../shade-prep-data:/data" umbra-shadow-prep admit`. Unit tests pass. `admit` is **expected to reject** until all named raw assets, receipts, hashes, grids, and controls are present; that is fail-closed, not a broken implementation. |
+| NYC local-prep | 5–8 | Docker, Node 24, GDAL/PROJ with NGA grids, and an external data mount. | `npm --prefix server/shadow-prep ci` → `npm --prefix server/shadow-prep test` → `docker build -f server/shadow-prep/Containerfile -t umbra-shadow-prep .` → `docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj umbra-shadow-prep admit`. The external grid mount is read-only. `admit` is **expected to reject** until every named raw asset/receipt/control and the unadmitted residual-threshold blocker are resolved; that is fail-closed, not a broken implementation. |
 | Deployment/device | 17–21 | Credentials, admitted regional generation, real deployment endpoints, and named target phones. | First rerun fixture mode and a successful NYC prep admission/build/verify. Then run each item’s delivery/device command below. Expected result is a retained, scoped evidence record; without these inputs the commands must not be treated as a pass. |
 
 The prep preflight is intentionally strict: `npm --prefix server/shadow-prep test` runs a `pretest` check and rejects any Node major other than 24. Fixture preflight prints the actual version instead of pretending that a Node-20 fixture pass is app/prep runtime support.
@@ -103,16 +103,16 @@ Each **read first** list is mandatory. “Future” means the path is intentiona
 - Done / evidence: case/threshold JSON with units, population, authority, failure effect, test target, independent oracle, OI closure/applicability, and a review log.
 - Next: item 9 in fixture mode; item 5 stays blocked.
 
-### 5. NYC source/datum admission — blocked
+### 5. NYC source/datum admission — partial
 
 - Preconditions / environment: NYC local-prep mode; Node 24, Docker, GDAL/PROJ and named grids.
 - Read first: plan item 5; `server/shadow-prep/README.md`, `regions/new-york-city-v1.json`, `src/admission.ts`, `test/{admission,datum}.test.ts`, and `06-open-questions.md`.
 - Preserve: fail-closed receipt/hash/grid controls, external-data-only policy, and existing admission tests.
 - Setup: `npm --prefix server/shadow-prep ci && npm --prefix server/shadow-prep test`; only after external prerequisites, run the Docker sequence in the matrix.
-- Verify: `npm --prefix server/shadow-prep test`; then `docker run --rm -v "$PWD/../shade-prep-data:/data" umbra-shadow-prep admit`.
-- Expected result: unit tests pass everywhere on Node 24. `admit` rejects until named raw assets, receipts, hashes, NGA grids, and controls exist; save the rejection, do not weaken it.
+- Verify: `npm --prefix server/shadow-prep test`; `npm --prefix server/shadow-prep run test:container-smoke`; then `docker run --rm -v "$HOME/shade-prep-data:/data" -v "$HOME/shade-prep-data/proj:/opt/proj:ro" -e PROJ_DATA=/opt/proj umbra-shadow-prep admit`.
+- Expected result: Node-24 unit tests pass. The smoke script reaches admission logic rather than module resolution. `admit` rejects until named raw assets, receipts/hashes/rights/support extents, NGA operation evidence, controls, and the deliberately unadmitted numerical residual threshold are resolved; save the rejection, do not weaken it.
 - External inputs: pinned raw source bytes/rights/receipts, DCP boundary, NGA grids, independent controls, Docker.
-- Done / evidence: admitted external manifest, controls/residuals, source hashes, grid operation evidence, and valid-zero/nodata evidence.
+- Current evidence: [source manifest](./evidence/04/preparation/source-manifest.json), [datum controls](./evidence/04/preparation/datum-controls.json), [Docker smoke record](./evidence/04/preparation/docker-smoke.json), and [verification record](./evidence/04/preparation/verification.json) record only external-input/Docker progress and blockers. They are not an admitted external manifest, control residual result, or valid-zero/nodata data proof.
 - Next: 6 after successful admission; otherwise 9 only.
 
 ### 6. Normalize complete features — blocked

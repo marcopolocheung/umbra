@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "capturedAt": "2026-09-13",
-  "branch": "feat/shadow-v2-foundation-nyc",
-  "head": "06a350d2118f1c0244e8d80d3acf5fa01ad7d6f1",
+  "branch": "phase-b-item-5-nyc-admission",
+  "head": "run git rev-parse HEAD; this status intentionally does not self-record a commit hash",
   "mergedToMain": false,
   "activeNext": [9],
   "verificationLimitations": [
@@ -18,7 +18,7 @@
     { "item": 2, "status": "completed", "blockers": [], "nextAllowed": [9], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/composition.test.ts app/lib/shadowField/v2/__tests__/lattice.test.ts", "npm run typecheck"], "deliverables": ["app/lib/shadowField/v2/lattice.ts", "app/lib/shadowField/v2/treeModel.ts"] },
     { "item": 3, "status": "completed", "blockers": [], "nextAllowed": [4, 9], "verification": ["npx vitest run app/lib/shadowField/__tests__/agreement/"] },
     { "item": 4, "status": "completed", "blockers": [], "nextAllowed": [9], "verification": ["python3 docs/shadow-engine-v2/evidence/02c/verify.py", "python3 docs/shadow-engine-v2/evidence/02d/verify.py", "npx vitest run app/lib/shadowField/__tests__/agreement/", "npm run typecheck"], "deliverables": ["docs/shadow-engine-v2/05-validation.md", "docs/shadow-engine-v2/06-open-questions.md", "docs/shadow-engine-v2/validation/cases.json", "docs/shadow-engine-v2/validation/thresholds.json"] },
-    { "item": 5, "status": "blocked", "blockers": ["pinned raw sources", "source receipts and hashes", "NGA grids", "Docker validation"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test", "npm --prefix server/shadow-prep run admit"] },
+    { "item": 5, "status": "partial", "blockers": ["twelve pinned raw source receipts/bytes/rights/support declarations", "independent 3DEP controls and retained transform output", "PROJ NYC operation execution", "numerical datum-control residual threshold is unadmitted", "Docker daemon access for Node-24 image validation"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test", "npm --prefix server/shadow-prep run test:container-smoke", "docker run --rm -v \"$HOME/shade-prep-data:/data\" -v \"$HOME/shade-prep-data/proj:/opt/proj:ro\" -e PROJ_DATA=/opt/proj umbra-shadow-prep admit"], "deliverables": ["docs/shadow-engine-v2/evidence/04/preparation/source-manifest.json", "docs/shadow-engine-v2/evidence/04/preparation/datum-controls.json", "docs/shadow-engine-v2/evidence/04/preparation/docker-smoke.json", "docs/shadow-engine-v2/evidence/04/preparation/verification.json"] },
     { "item": 6, "status": "blocked", "blockers": ["item 5 admission", "admitted NYC raw inputs"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test"] },
     { "item": 7, "status": "blocked", "blockers": ["item 6 normalized generation", "local publication evidence"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test"] },
     { "item": 8, "status": "blocked", "blockers": ["items 5-7", "Docker validation", "Fly credentials", "R2 credentials"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test", "docker build -f server/shadow-prep/Containerfile -t umbra-shadow-prep ."] },

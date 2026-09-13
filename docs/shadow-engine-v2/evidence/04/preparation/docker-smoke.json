@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-13T18:40:45Z",
+  "command": "npm --prefix server/shadow-prep run test:container-smoke",
+  "purpose": "Build the Node 24/GDAL/PROJ image and prove that admit reaches fail-closed admission logic instead of failing to resolve tsx.",
+  "status": "not executed",
+  "blocker": "permission denied while connecting to unix:///var/run/docker.sock",
+  "interpretation": "The smoke script exists but this environment supplied neither a Docker build nor Node-24 container validation. No Docker success is claimed."
+}
