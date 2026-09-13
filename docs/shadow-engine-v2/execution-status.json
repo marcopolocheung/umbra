@@ -4,17 +4,25 @@
   "branch": "feat/shadow-v2-foundation-nyc",
   "head": "06a350d2118f1c0244e8d80d3acf5fa01ad7d6f1",
   "mergedToMain": false,
-  "activeNext": [4, 9],
+  "activeNext": [9],
+  "verificationLimitations": [
+    {
+      "scope": "docs/shadow-engine-v2/evidence/02c/verify.py",
+      "status": "blocked",
+      "reason": "Recorded 02-architecture.md SHA-256 fd87407043cd97b59af25e98f539135939f8f4a6d0c6df8bf2b0202a8ef860f3 differs from unchanged checkout SHA-256 ce5d7f47b9b9d818ad0b36fceb97c736a0a316018b1948b5c24d7f6047027f97.",
+      "consequence": "Historical 02c verifier cannot pass until separately authorized evidence/architecture reconciliation; do not regenerate or alter historical evidence."
+    }
+  ],
   "items": [
     { "item": 1, "status": "partial", "blockers": ["format fixture producer", "tile-format contract"], "nextAllowed": [4], "verification": ["npm run preflight:shadow-v2:fixtures", "npx vitest run app/lib/shadowField/v2/__tests__/format.test.ts", "npm run typecheck"] },
     { "item": 2, "status": "partial", "blockers": ["lattice implementation", "tree model", "cross-tile composition fixtures"], "nextAllowed": [4], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/composition.test.ts", "npm run typecheck"] },
     { "item": 3, "status": "completed", "blockers": [], "nextAllowed": [4, 9], "verification": ["npx vitest run app/lib/shadowField/__tests__/agreement/"] },
-    { "item": 4, "status": "partial", "blockers": ["validation cases JSON", "thresholds JSON", "full OI/witness register"], "nextAllowed": [9], "verification": ["npm run typecheck", "npx vitest run app/lib/shadowField/__tests__/agreement/"] },
+    { "item": 4, "status": "completed", "blockers": [], "nextAllowed": [9], "verification": ["python3 docs/shadow-engine-v2/evidence/02c/verify.py", "python3 docs/shadow-engine-v2/evidence/02d/verify.py", "npx vitest run app/lib/shadowField/__tests__/agreement/", "npm run typecheck"], "deliverables": ["docs/shadow-engine-v2/05-validation.md", "docs/shadow-engine-v2/06-open-questions.md", "docs/shadow-engine-v2/validation/cases.json", "docs/shadow-engine-v2/validation/thresholds.json"] },
     { "item": 5, "status": "blocked", "blockers": ["pinned raw sources", "source receipts and hashes", "NGA grids", "Docker validation"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test", "npm --prefix server/shadow-prep run admit"] },
     { "item": 6, "status": "blocked", "blockers": ["item 5 admission", "admitted NYC raw inputs"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test"] },
     { "item": 7, "status": "blocked", "blockers": ["item 6 normalized generation", "local publication evidence"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test"] },
     { "item": 8, "status": "blocked", "blockers": ["items 5-7", "Docker validation", "Fly credentials", "R2 credentials"], "nextAllowed": [9], "verification": ["npm --prefix server/shadow-prep test", "docker build -f server/shadow-prep/Containerfile -t umbra-shadow-prep ."] },
-    { "item": 9, "status": "unstarted", "blockers": ["item 4 completion"], "nextAllowed": [10], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/solar.test.ts app/lib/shadowField/v2/__tests__/march.test.ts app/lib/shadowField/v2/__tests__/coordinates.test.ts", "npm run typecheck"] },
+    { "item": 9, "status": "unstarted", "blockers": [], "nextAllowed": [10], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/solar.test.ts app/lib/shadowField/v2/__tests__/march.test.ts app/lib/shadowField/v2/__tests__/coordinates.test.ts", "npm run typecheck"] },
     { "item": 10, "status": "unstarted", "blockers": ["item 9"], "nextAllowed": [11], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/acquisition.test.ts app/lib/shadowField/v2/__tests__/streaming.test.ts app/lib/shadowField/v2/__tests__/memoryLedger.test.ts", "npm run typecheck"] },
     { "item": 11, "status": "unstarted", "blockers": ["item 10"], "nextAllowed": [12, 13], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/service.test.ts app/lib/shadowField/v2/__tests__/workerProtocol.test.ts", "npx playwright test e2e/shadowV2Worker.spec.ts"] },
     { "item": 12, "status": "unstarted", "blockers": ["item 11", "null-cost product policy"], "nextAllowed": [14], "verification": ["npx vitest run app/lib/shadowField/v2/__tests__/routingPolicy.test.ts app/hooks/__tests__/shadowV2Callers.test.ts", "npm run typecheck"] },

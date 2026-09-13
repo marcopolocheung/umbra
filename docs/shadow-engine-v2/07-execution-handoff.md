@@ -5,15 +5,16 @@ This is the current-state companion to [the implementation plan](./04-implementa
 ## Current state
 
 - Branch / PR: `feat/shadow-v2-foundation-nyc` at `06a350d2118f1c0244e8d80d3acf5fa01ad7d6f1`; [PR #321](https://github.com/marcopolocheung/umbrapriv/pull/321) is open against `main` and **not merged** (`mergedAt: null`).
-- Active next work: complete **item 4**, then implement **item 9** in fixture mode while NYC remains blocked. Do not interpret the NYC block as permission to skip the fixture dependencies or to begin item 17+.
+- Active next work: implement **item 9** in fixture mode while NYC remains blocked. Item 4's documentation protocol is complete; do not interpret the NYC block as permission to begin item 17+.
 - Machine-readable counterpart: [execution-status.json](./execution-status.json). Update Markdown and JSON in the same change.
+- Preservation-check limitation: `python3 docs/shadow-engine-v2/evidence/02c/verify.py` currently stops at its recorded `02-architecture.md` SHA-256 (`fd874070…860f3`) versus this checkout's unchanged current file (`ce5d7f47…27f97`). This item did not alter either file or historical evidence. Do not regenerate, overwrite, or relax that historical record; a separately authorized evidence/architecture reconciliation is required before that verifier can pass.
 
 | Item | Status | Exact current state |
 |---:|---|---|
 | 1 | partial | Codec/types/tests exist; the planned reusable fixture producer and public format contract do not. |
 | 2 | partial | Minimal compositor/test exists; lattice, tree model, and required seam/ownership coverage do not. |
 | 3 | completed | The candidate fixture path and retained 150-case agreement gate exist and run under normal Vitest discovery. |
-| 4 | partial | `05-validation.md` and `06-open-questions.md` exist; `validation/cases.json`, `thresholds.json`, and the complete witness/OI register do not. |
+| 4 | completed | `05-validation.md`, `06-open-questions.md`, `validation/cases.json`, and `validation/thresholds.json` preregister every §10 witness and all 30 OIs. They record no new measurement or physical-accuracy result. |
 | 5 | blocked | Fail-closed NYC admission implementation/tests exist; real admission lacks named raw assets, receipts/hashes, NGA grids, and Docker validation. |
 | 6 | blocked | Skeleton normalizers/tests exist; it requires item-5-admitted NYC inputs. |
 | 7 | blocked | Basic bounds/publication tests exist; regional hierarchy/publication evidence requires item 6. |
@@ -90,14 +91,14 @@ Each **read first** list is mandatory. “Future” means the path is intentiona
 - Done / evidence: printed metric report, witness outputs, and CI log for this exact command.
 - Next: item 4, then item 9; rerun after all candidate-kernel changes.
 
-### 4. Validation protocol and blocker register — partial, active next
+### 4. Validation protocol and blocker register — completed
 
 - Preconditions / environment: fixture mode; do not measure, download, or alter historical evidence.
 - Read first: plan item 4; 02 §10 and §12; existing `05-validation.md`, `06-open-questions.md`, and evidence directories `02c`, `02d`, `03`.
 - Preserve: existing thresholds/blockers, historical artifacts, and the distinction between agreement, analytic, physical, and device evidence.
 - Setup: `npm ci && npm run preflight:shadow-v2:fixtures`.
-- Verify: `npx vitest run app/lib/shadowField/__tests__/agreement/ && npm run typecheck`; review every 02 §10 witness and all 30 OIs against the new JSON.
-- Expected result: commands pass; add future `validation/cases.json` and `validation/thresholds.json`; no new physical measurement is claimed.
+- Verify: `npx vitest run app/lib/shadowField/__tests__/agreement/ && npm run typecheck`; run the documented immutable-fixture checks and review every 02 §10 witness and all 30 OIs against both JSON registers.
+- Expected result: preservation commands pass; `validation/cases.json` and `validation/thresholds.json` exist; no new physical measurement is claimed.
 - External inputs: none for protocol completion; device inventory and observations remain recorded blockers, not defaults.
 - Done / evidence: case/threshold JSON with units, population, authority, failure effect, test target, independent oracle, OI closure/applicability, and a review log.
 - Next: item 9 in fixture mode; item 5 stays blocked.
