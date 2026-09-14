@@ -26,8 +26,8 @@ import {
 import { scenarios } from "./scenarios";
 import {
   askedRouteIsCalculated,
-  emptySearchIsNotRetried,
-  searchingClosesAfterTwo,
+  emptySearchIsReformulated,
+  searchingClosesAfterFour,
   sharedModelSkipsWriteCall,
 } from "./scenarios/budget";
 import {
@@ -212,12 +212,29 @@ describe("search budget", () => {
       .filter((r) => r.tools)
       .map((r) => r.tools![0].functionDeclarations.some((d) => d.name === "search_places"));
 
-  it("stops offering search after two searches", async () => {
-    expect(offersSearch(await run(searchingClosesAfterTwo))).toEqual([true, true, false, false]);
+  it("keeps offering search for reformulations, then closes after four", async () => {
+    expect(offersSearch(await run(searchingClosesAfterFour))).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
   });
 
-  it("stops offering search after one comes back empty", async () => {
-    expect(offersSearch(await run(emptySearchIsNotRetried))).toEqual([true, false, false, false]);
+  it("answers an empty search with a reformulation steer, not a dead end", async () => {
+    const trace = await run(emptySearchIsReformulated);
+    const first = trace.history
+      .flatMap((c) => c.parts)
+      .find((p) => p.functionResponse?.name === "search_places");
+    expect(first?.functionResponse?.response.results).toEqual([]);
+    expect(String(first?.functionResponse?.response.note)).toMatch(/different/);
+    expect(trace.toolCalls.map((c) => c.name)).toEqual([
+      "search_places",
+      "search_places",
+      "plot_points",
+    ]);
   });
 });
 

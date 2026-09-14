@@ -20,9 +20,11 @@ over on 429/5xx and 401/403. There is no per-role key split — all roles draw t
 A real turn costs a median of 4 LLM calls (C6 live eval; 6.2 before it). What holds it
 there: research ends at the model's first successful `plot_points`, and the loop draws a
 route through the pins when the user asked for one; `check_shadow` takes every spot in one
-call; a repeated identical call, or a search after two searches or one empty search, is
-answered without running (and search stops being offered at all); geocodes, searches and
-shadow checks are cached for the session (`useAgent`'s `cache`).
+call; an identical repeated call is answered from the earlier result, not re-run, and
+search closes after four per turn (an empty search steers a reformulation — it never
+closes search); non-empty geocodes, searches and shadow checks are cached for the session
+(`useAgent`'s `cache`). Empty searches are deliberately never cached: a miss now must not
+veto a retry later.
 
 **Adding an LLM round-trip is a real cost, not a refactor.** The 5/min ceiling is what makes
 latency user-visible.

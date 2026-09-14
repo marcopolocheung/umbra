@@ -152,9 +152,9 @@ export const repeatedCallIsNotRerun: Scenario = {
 };
 
 /** Live, a model searched nine times with a new query each time, every one answered. */
-export const searchingClosesAfterTwo: Scenario = {
-  id: "searching-closes-after-two",
-  intent: "after two searches the loop stops offering search, so the model plots with what it has",
+export const searchingClosesAfterFour: Scenario = {
+  id: "searching-closes-after-four",
+  intent: "reformulations stay offered up to four searches, then the loop closes search so the model plots",
   userText: "Plan a shadowed afternoon near Bryant Park",
   tools: {
     search_places: { results: [BRYANT] },
@@ -164,11 +164,42 @@ export const searchingClosesAfterTwo: Scenario = {
     { calls: [{ name: "search_places", args: { query: "parks", near: "Bryant Park" } }] },
     { calls: [{ name: "search_places", args: { query: "cafes", near: "Bryant Park" } }] },
     { calls: [{ name: "search_places", args: { query: "benches", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "fountains", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "kiosks", near: "Bryant Park" } }] },
     { text: "draft answer from the research model" },
     { text: "Sit in Bryant Park." },
   ],
   grounded: [BRYANT.name],
-  maxLlmCalls: 5,
+  maxLlmCalls: 7,
+  maxToolCalls: 5,
+  expect: {
+    toolOrder: ["search_places", "search_places", "search_places", "search_places", "plot_points"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name],
+    answer: "Sit in Bryant Park.",
+  },
+};
+
+export const emptySearchIsReformulated: Scenario = {
+  id: "empty-search-is-reformulated",
+  intent: "one empty search steers a reformulation, and the retry's hits reach the map",
+  userText: "Find me a shadowed café around here",
+  tools: {
+    search_places: (args) =>
+      String(args.query ?? "") === "café"
+        ? { results: [], note: "No matches found." }
+        : { results: [BRYANT] },
+    plot_points: { ok: true, plotted: 1 },
+  },
+  script: [
+    { calls: [{ name: "search_places", args: { query: "café" } }] },
+    { calls: [{ name: "search_places", args: { query: "parks" } }] },
+    { text: "draft answer from the research model" },
+    { text: "Sit in Bryant Park." },
+  ],
+  grounded: [BRYANT.name],
+  decoys: ["Willow Court Café"],
+  maxLlmCalls: 4,
   maxToolCalls: 3,
   expect: {
     toolOrder: ["search_places", "search_places", "plot_points"],
@@ -178,28 +209,32 @@ export const searchingClosesAfterTwo: Scenario = {
   },
 };
 
-export const emptySearchIsNotRetried: Scenario = {
-  id: "empty-search-is-not-retried",
-  intent: "after a search comes back empty, further searches this turn do not run",
-  userText: "Find me a shadowed café around here",
+/** The reported regression: "Where's a shady spot to sit at 2pm?" answered with advice and no pins. */
+export const vagueSitQueryFindsPins: Scenario = {
+  id: "vague-sit-query-finds-pins",
+  intent: "a vague first guess that misses is reformulated, and the retry's hits are plotted and named",
+  userText: "Where's a shady spot to sit at 2pm?",
   tools: {
-    search_places: { results: [], note: "No matches found." },
+    search_places: (args) =>
+      String(args.query ?? "") === "somewhere to sit"
+        ? { results: [], note: "No matches found." }
+        : { results: [BRYANT] },
+    plot_points: { ok: true, plotted: 1 },
   },
   script: [
-    { calls: [{ name: "search_places", args: { query: "café" } }] },
-    { calls: [{ name: "search_places", args: { query: "coffee" } }] },
-    { calls: [{ name: "search_places", args: { query: "coffee shop" } }] },
+    { calls: [{ name: "search_places", args: { query: "somewhere to sit" } }] },
+    { calls: [{ name: "search_places", args: { query: "parks", near: "Bryant Park" } }] },
     { text: "draft answer from the research model" },
-    { text: "I couldn't find any cafés near there." },
+    { text: "Sit in Bryant Park at 2 PM." },
   ],
-  decoys: ["Willow Court Café"],
-  maxLlmCalls: 5,
-  maxToolCalls: 1,
+  grounded: [BRYANT.name],
+  maxLlmCalls: 4,
+  maxToolCalls: 3,
   expect: {
-    toolOrder: ["search_places"],
-    plotsBeforeWrite: false,
-    pinLabels: [],
-    answer: "I couldn't find any cafés near there.",
+    toolOrder: ["search_places", "search_places", "plot_points"],
+    plotsBeforeWrite: true,
+    pinLabels: [BRYANT.name],
+    answer: "Sit in Bryant Park at 2 PM.",
   },
 };
 

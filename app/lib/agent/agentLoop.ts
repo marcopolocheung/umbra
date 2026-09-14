@@ -26,14 +26,14 @@ const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. 
 
 The current map context (center, local time, whether the user's location is known) is given to you below — use it directly; do NOT ask for it.
 
-Procedure (follow in order, each step at most once):
+Procedure (follow in order):
 1. If locationKnown is false: if the user said "here"/"near me", call locate_user; otherwise ask which area they mean. Never invent a location.
 2. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
-3. Find stops: one search_places per kind of stop (anchor to lat/lng or a 'near' name), or geocode_place for named places. If a search comes back empty, say nothing was found — do not search again.
+3. Find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
 4. Only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
 5. Call plot_points with the FULL ordered list of stops (numbered pins, map auto-framed). This ends your research: if the user asked for a walk or route, one through the pins is drawn for you.
 
-Rules: never repeat a call; stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted.`;
+Rules: never repeat an identical call; stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted.`;
 
 // The happy path needs about five tool-emitting turns (locate_user, set_time,
 // search_places, plot_points, plan_shadowed_route). A lower cap strands the loop
@@ -45,13 +45,16 @@ const CACHEABLE = new Set(["geocode_place", "search_places", "check_shadow"]);
 
 const REPEAT_NOTE = "You already made this exact call; this is its earlier result. Do not repeat it — move on.";
 const EMPTY_SEARCH_NOTE =
-  "A search already came back empty this turn, so this one was not run. Do not search again — tell the user nothing was found.";
+  "No matches for that query. Try again with a different kind of stop or a different anchor — do not repeat this exact call.";
 
-// Two searches return up to eight hits — the pin cap. Live, a model kept
-// searching with new queries, ignoring notes, until the step budget ran out, so
-// after two (or one empty) the loop stops offering search at all.
-const MAX_SEARCHES = 2;
-const SEARCH_CAP_NOTE = "The search limit for this turn is reached, so this one was not run. Use the places already found.";
+// Four searches admit a vague first guess plus reformulations, and still bound
+// the worst case well under MAX_STEPS. What stops a spiral is the identical-call
+// dedupe above (an exact repeat is answered, not re-run), never one empty
+// result: live, the first guess at a vague query often misses, and the
+// reformulation is the turn's most valuable call. Past the cap the loop stops
+// offering search at all.
+const MAX_SEARCHES = 4;
+const SEARCH_CAP_NOTE = "The search limit for this turn is reached, so this one was not run. Use the places already found, or tell the user what wasn't found.";
 
 /** The most pins one answer puts on the map. */
 const MAX_PINS = 8;
@@ -183,9 +186,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const { ctx, onToolEvent, cache = new Map() } = opts;
   // This turn's successful results by call, so a repeat is answered, not re-run.
   const turnResults = new Map<string, Record<string, unknown>>();
-  let emptySearch = false;
   let searches = 0;
-  const searchClosed = () => emptySearch || searches >= MAX_SEARCHES;
+  const searchClosed = () => searches >= MAX_SEARCHES;
   const contents: LlmContent[] = [
     ...opts.history,
     { role: "user", parts: [{ text: opts.userText }] },
@@ -354,7 +356,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       if (earlier) {
         result = { ...earlier, note: REPEAT_NOTE };
       } else if (fc.name === "search_places" && searchClosed()) {
-        result = { results: [], note: emptySearch ? EMPTY_SEARCH_NOTE : SEARCH_CAP_NOTE };
+        result = { results: [], note: SEARCH_CAP_NOTE };
       } else if (cacheable && cache.has(key)) {
         result = cache.get(key)!;
         if (fc.name === "search_places") searches++;
@@ -366,11 +368,23 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         } catch (err) {
           result = { error: err instanceof Error ? err.message : "Tool failed." };
         }
-        if (!result.error && cacheable) cache.set(key, result);
+        // An empty search depends on the query wording and the map viewport, so
+        // it is never reused across turns — a miss now must not veto a retry
+        // later. (The per-turn dedupe above still answers an identical repeat.)
+        const emptySearchResult =
+          fc.name === "search_places" &&
+          Array.isArray(result.results) &&
+          result.results.length === 0;
+        if (!result.error && cacheable && !emptySearchResult) cache.set(key, result);
       }
       if (!result.error) turnResults.set(key, result);
-      if (fc.name === "search_places" && Array.isArray(result.results) && result.results.length === 0) {
-        emptySearch = true;
+      if (
+        fc.name === "search_places" &&
+        Array.isArray(result.results) &&
+        result.results.length === 0 &&
+        !searchClosed()
+      ) {
+        result = { ...result, note: EMPTY_SEARCH_NOTE };
       }
       if (fc.name === "plot_points" && !result.error) {
         mapPins = parsePins(args.points);
