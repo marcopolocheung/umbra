@@ -103,7 +103,7 @@ alters, or approves raw data.
 ## AWS preparation (not a deployment instruction)
 
 `aws/cloudformation.yml` defines private S3 raw/normalized/evidence buckets,
-ECR, OIDC-only GitHub image publishing, and a zero-minimum EC2 Spot Batch
+ECR, OIDC-only GitHub image publishing, and a zero-minimum EC2 On-Demand Batch
 environment. The initial job definition is limited to 4 vCPUs, one attempt and
 one hour, with a 200 GB encrypted scratch disk. It creates no access keys and it
 does not submit any work. The surrounding VPC is intentionally supplied as
