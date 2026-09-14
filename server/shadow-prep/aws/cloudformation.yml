@@ -87,7 +87,9 @@ Resources:
       State: ENABLED
       ServiceRole: !GetAtt BatchServiceRole.Arn
       ComputeResources:
-        Type: ON_DEMAND
+        # AWS Batch calls On-Demand EC2 capacity "EC2"; "ON_DEMAND" is not
+        # a valid ComputeResources.Type value.
+        Type: EC2
         AllocationStrategy: BEST_FIT_PROGRESSIVE
         MinvCpus: 0
         MaxvCpus: 4
