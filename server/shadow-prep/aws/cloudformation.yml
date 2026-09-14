@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private AWS Batch preparation infrastructure for Item 6 candidates (does not submit jobs).
+Parameters:
+  Name:
+    Type: String
+    Default: shademap-prep
+    AllowedPattern: '^[a-z][a-z0-9-]{2,40}$'
+  GitHubRepository:
+    Type: String
+    Description: Exact owner/repository allowed to publish the ECR image through OIDC.
+  GitHubBranch:
+    Type: String
+    Default: main
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Existing private subnets with NAT/ECR/S3 access; this stack never creates public networking.
+  BatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Existing no-ingress security group for Batch instances.
+  PrepImageTag:
+    Type: String
+    Default: bootstrap
+    AllowedPattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+    Description: Immutable ECR commit-SHA tag. Leave bootstrap only until the image-publish workflow has completed.
+Resources:
+  RawBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration: { Rules: [{ Id: retain-raw, Status: Enabled }] }
+  NormalizedBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      VersioningConfiguration: { Status: Enabled }
+      # Candidate expiry is intentionally absent. Item 7 may later add a
+      # lifecycle rule only after verified-generation handoff.
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      VersioningConfiguration: { Status: Enabled }
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref Name
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration: { EncryptionType: AES256 }
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: batch.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole']
+  BatchInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ec2.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role']
+  BatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: { Roles: [!Ref BatchInstanceRole] }
+  SpotFleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: spotfleet.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole']
+  BatchLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: { VolumeSize: 200, VolumeType: gp3, DeleteOnTermination: true, Encrypted: true }
+  BatchComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      State: ENABLED
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      ComputeResources:
+        Type: SPOT
+        AllocationStrategy: SPOT_CAPACITY_OPTIMIZED
+        MinvCpus: 0
+        MaxvCpus: 4
+        DesiredvCpus: 0
+        SpotIamFleetRole: !GetAtt SpotFleetRole.Arn
+        InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        InstanceTypes: ['optimal']
+        Subnets: !Ref PrivateSubnets
+        SecurityGroupIds: [!Ref BatchSecurityGroup]
+        LaunchTemplate: { LaunchTemplateId: !Ref BatchLaunchTemplate, Version: !GetAtt BatchLaunchTemplate.LatestVersionNumber }
+  BatchQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder: [{ Order: 1, ComputeEnvironment: !Ref BatchComputeEnvironment }]
+  BatchJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      Policies:
+        - PolicyName: admitted-inputs-and-candidates-only
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:ListBucket]
+                Resource: [!GetAtt RawBucket.Arn, !Sub '${RawBucket.Arn}/*']
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource: [!GetAtt NormalizedBucket.Arn, !Sub '${NormalizedBucket.Arn}/*', !GetAtt EvidenceBucket.Arn, !Sub '${EvidenceBucket.Arn}/*']
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy']
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      Timeout: { AttemptDurationSeconds: 3600 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 4
+        Memory: 15360
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['normalize', '--smoke']
+        Environment:
+          - { Name: SHADE_PREP_ROOT, Value: /scratch }
+          - { Name: SHADE_PREP_RAW_BUCKET, Value: !Ref RawBucket }
+          - { Name: SHADE_PREP_RAW_PREFIX, Value: '' }
+          - { Name: SHADE_PREP_SCRATCH_MAX_BYTES, Value: '193273528320' }
+          - { Name: SHADE_PREP_STORAGE, Value: s3 }
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_S3_PREFIX, Value: '' }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          - { Name: SHADE_PREP_EVIDENCE_PREFIX, Value: evidence }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: prep } }
+  BatchLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: { RetentionInDays: 30 }
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  GitHubPublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Federated: !GetAtt GitHubOidcProvider.Arn }
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals: { 'token.actions.githubusercontent.com:aud': sts.amazonaws.com }
+              StringLike: { 'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}' }
+      Policies:
+        - PolicyName: publish-only-this-repository
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ecr:GetAuthorizationToken]
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:CompleteLayerUpload, ecr:InitiateLayerUpload, ecr:PutImage, ecr:UploadLayerPart]
+                Resource: !GetAtt EcrRepository.Arn
+Outputs:
+  RawBucket: { Value: !Ref RawBucket }
+  NormalizedBucket: { Value: !Ref NormalizedBucket }
+  EvidenceBucket: { Value: !Ref EvidenceBucket }
+  EcrRepositoryUri: { Value: !GetAtt EcrRepository.RepositoryUri }
+  BatchQueue: { Value: !Ref BatchQueue }
+  BatchJobDefinition: { Value: !Ref BatchJobDefinition }
+  GitHubPublisherRoleArn: { Value: !GetAtt GitHubPublisherRole.Arn }

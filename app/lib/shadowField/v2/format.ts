@@ -25,6 +25,7 @@ const PLANE_NAMES = new Set<ComponentPlane["name"]>([
   "foundationPresent",
   "buildingAglQ",
   "buildingMask",
+  "buildingSupport",
   "buildingFeatureId",
   "buildingPriority",
   "canopyHeightAglQ",

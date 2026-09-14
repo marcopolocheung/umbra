@@ -16,6 +16,8 @@ export interface CompositionEvidence {
   buildings: "present" | "known-empty";
   canopy: "present" | "known-empty";
   complete: boolean;
+  buildingUnknownCells?: number;
+  canopyUnknownCells?: number;
 }
 export interface CompositionAccounting {
   outputBytes: number;
@@ -120,6 +122,7 @@ export function composeTile(
   const foundationPresent = plane(terrain, "foundationPresent");
   const buildingAgl = plane(buildings, "buildingAglQ");
   const buildingMask = plane(buildings, "buildingMask");
+  const buildingSupport = plane(buildings, "buildingSupport");
   const buildingFeature = plane(buildings, "buildingFeatureId");
   const flagsSource = plane(canopy, "flagsAndMaterial") ?? plane(buildings, "flagsAndMaterial");
   const provenanceSource = plane(canopy, "provenanceIndex") ?? plane(buildings, "provenanceIndex");
@@ -141,6 +144,10 @@ export function composeTile(
     accounting: { outputBytes, reservedBytes: outputBytes },
   };
   for (let index = 0; index < words; index++) {
+    // 0 is known support, 1 is known-empty support, 2 is explicitly unknown.
+    // Unknown never becomes clear space in the in-memory field.
+    if (buildingSupport?.[index] === 2) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.buildingUnknown; result.evidence!.complete = false; result.evidence!.buildingUnknownCells = (result.evidence!.buildingUnknownCells ?? 0) + 1; continue; }
+    if (plane(canopy, "canopySupport")?.[index] === 2) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.canopyUnknown; result.evidence!.complete = false; result.evidence!.canopyUnknownCells = (result.evidence!.canopyUnknownCells ?? 0) + 1; }
     const hasBuilding = buildingMask ? buildingMask[index] !== 0 : signed(buildingAgl, index) !== 0;
     if (hasBuilding) {
       if (pinned && (!foundation || !foundationPresent?.[index]))

@@ -1,0 +1,38 @@
+name: Publish shadow-prep image
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region containing the reviewed preparation stack
+        default: us-east-1
+        required: true
+        type: string
+      ecr_repository:
+        description: ECR repository URI emitted by the stack
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: aws-prep-publish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_SHADOW_PREP_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+      - id: login
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push immutable image
+        env:
+          REPOSITORY: ${{ inputs.ecr_repository }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --pull -f server/shadow-prep/Containerfile -t "$REPOSITORY:$IMAGE_TAG" .
+          docker push "$REPOSITORY:$IMAGE_TAG"
