@@ -1,67 +1,57 @@
 {
-  "schemaVersion": 1,
-  "recordedAt": "2026-09-13T18:40:45Z",
-  "scope": "Item 5 NYC source/datum preparation only; this is not an admission or physical-accuracy result.",
-  "region": {
-    "id": "new-york-city-v1",
-    "boundary": {
-      "release": "NYC DCP 26b",
-      "url": "https://data.cityofnewyork.us/api/geospatial/gthc-hcne?method=export&format=GeoJSON",
-      "sha256": "3c7cd4002cb34b8b818af903338c0292d5a1b1ca61bc7a5d365bad66220d050a",
-      "status": "copied to the external raw mount"
+  "schemaVersion": 2,
+  "recordedAt": "2026-09-13T20:18:25.364Z",
+  "scope": "Item 5 NYC source admission only. This record does not authorize Item 6 normalization, builds, publication, deployment, or physical-accuracy claims.",
+  "region": "new-york-city-v1",
+  "status": "admitted",
+  "admit": {
+    "command": "docker run --rm -v $HOME/shade-prep-data:/data -v $HOME/shade-prep-data/proj:/opt/proj:ro -e PROJ_DATA=/opt/proj:/usr/share/proj umbra-shadow-prep admit",
+    "blockers": [],
+    "rawBytes": 5434647717,
+    "runtime": {
+      "node": "v24.21.0",
+      "gdalinfo": "GDAL 3.6.2, released 2023/01/02",
+      "proj": "Rel. 9.1.1, December 1st, 2022",
+      "projinfo": "available; exact operation retained externally"
     },
-    "support": "five boroughs with the manifest's initial 20 km buffer; exterior remains unknown and incomplete"
+    "externalEvidence": "admit-1789330705457.json",
+    "evidenceSha256": "8fed47e077f7bf1b9d8a7ac122a945a71f36572c9180af4485e58c89160193f0"
   },
-  "externalMount": {
-    "path": "~/shade-prep-data",
-    "gitTracked": false,
-    "repoLocalCopy": "preserved but ignored; it was copied rather than deleted"
+  "boundary": {
+    "release": "NYC DCP 26b",
+    "sha256": "3c7cd4002cb34b8b818af903338c0292d5a1b1ca61bc7a5d365bad66220d050a"
   },
-  "grids": [
-    {
-      "filename": "us_nga_egm08_25.tif",
-      "url": "https://cdn.proj.org/us_nga_egm08_25.tif",
-      "release": "PROJ-data CDN catalog, hash-pinned asset",
-      "acquiredAt": "2026-09-13T18:40:45Z",
-      "sha256": "4191d471eefebf24091b56dbc604353cb3b8cf8cc70e448bb9ae56a272bef17a",
-      "licence": "PROJ-data MIT licence; catalog attributes the source to US NGA",
-      "horizontalCrs": "EPSG:4979 / WGS 84",
-      "verticalDatum": "EPSG:3855 EGM2008 height",
-      "supportExtent": "World; NYC command area is -74.26,40.49,-73.70,40.92",
-      "status": "installed in external read-only /opt/proj mount source"
-    },
-    {
-      "filename": "us_nga_egm96_15.tif",
-      "url": "https://cdn.proj.org/us_nga_egm96_15.tif",
-      "release": "PROJ-data CDN catalog, hash-pinned asset",
-      "acquiredAt": "2026-09-13T18:40:45Z",
-      "sha256": "db493027562c9b004d7220fa881f5603adada4e1c5029b933fa7de4547b0e78d",
-      "licence": "PROJ-data MIT licence; catalog attributes the source to US NGA",
-      "horizontalCrs": "EPSG:4979 / WGS 84",
-      "verticalDatum": "EPSG:5773 EGM96 height",
-      "supportExtent": "World; NYC command area is -74.26,40.49,-73.70,40.92",
-      "status": "installed in external read-only /opt/proj mount source"
-    }
+  "grids": {
+    "us_nga_egm08_25.tif": "4191d471eefebf24091b56dbc604353cb3b8cf8cc70e448bb9ae56a272bef17a",
+    "us_nga_egm96_15.tif": "db493027562c9b004d7220fa881f5603adada4e1c5029b933fa7de4547b0e78d"
+  },
+  "rawReceiptManifestSha256": "8328c7f7eaa62524fc5071715f3f0c97b53a108b531610c1e9877e9a4956ef20",
+  "receiptInputs": [
+    { "id": "fabdem-v1.2", "assetCount": 1, "aggregateSha256": "a156aa148f75283dd2d97fa24b2eafc32796a070137673490df9154fc5e86b9b" },
+    { "id": "overture-buildings", "assetCount": 1, "aggregateSha256": "c8b9e2644d1dcb90d19b5ed6912461107e76ffbe96f28e72bb43da4c4fbd53fc" },
+    { "id": "overture-building-parts", "assetCount": 1, "aggregateSha256": "95ede116ba11603ba7e673a339fc465c5d01a59fa2ddd78b5bf170f99e2bc882" },
+    { "id": "chmv2-height", "assetCount": 14, "aggregateSha256": "73eeafbab0d3013d52e68209fbecb3173d1c6eb6c5861ade78d0dba278f06715" },
+    { "id": "chmv2-validity-mask", "assetCount": 1, "aggregateSha256": "3f158628d0eb357c3208a8f146eb1010b7d514e5f8c52643f211d1ff1a8c6a10" },
+    { "id": "osm-tree-fallback", "assetCount": 1, "aggregateSha256": "743a9023a4a0cc5b6dad7cd077f75cf74cfc8ae98f8d93d9693883685a5373fc" },
+    { "id": "usgs-3dep-controls", "assetCount": 5, "aggregateSha256": "70ba3a51135617a6df82489814657e065530f86a66ac96c0399da38c750efb4b" },
+    { "id": "workload-dense-tall", "assetCount": 1, "aggregateSha256": "639c89f5130e35cdacc34f567ab09863e619d587490880d79715ebb9e4067810" },
+    { "id": "workload-open", "assetCount": 1, "aggregateSha256": "bdbb149a44fa87a506d69bf85df109e2671189bd1ac82dbf2b106acedbd3714b" },
+    { "id": "workload-canopy-heavy", "assetCount": 1, "aggregateSha256": "f1f089e202be33e055e55095196da2563e6fd27b4f00aecf9ecd4894c8ebe4f5" },
+    { "id": "workload-waterfront-boundary", "assetCount": 1, "aggregateSha256": "7bd3c8ac789cf9f5cce5db2eeabdd21ea24f2a7e3ca9f6e25605206307f736d7" },
+    { "id": "workload-long-low-sun", "assetCount": 1, "aggregateSha256": "5ba867f0485da5cb78a1318393f49d140c802b8edb18f5dcf00d7be5b4f3b4d2" }
   ],
-  "requiredReceipts": [
-    "fabdem-v1.2",
-    "overture-buildings",
-    "overture-building-parts",
-    "chmv2-height",
-    "chmv2-validity-mask",
-    "osm-tree-fallback",
-    "usgs-3dep-controls",
-    "workload-dense-tall",
-    "workload-open",
-    "workload-canopy-heavy",
-    "workload-waterfront-boundary",
-    "workload-long-low-sun"
-  ],
-  "receiptStatus": "No raw/source-receipts.json has been created. The listed source assets, five workload captures, and independent 3DEP controls are not represented as acquired; admission remains fail-closed.",
-  "blockers": [
-    "all twelve source receipts and their exact raw bytes/rights/support declarations",
-    "independent 3DEP controls and retained transformation output",
-    "PROJ NYC operation execution evidence",
-    "preregistered numerical datum-control residual threshold"
-  ]
+  "datumControls": {
+    "thresholdStatus": "approved",
+    "signedDecisionId": "NYC-DATUM-ROUNDTRIP-2026-09-13-R1",
+    "maximumResidualMetres": 0.000000001,
+    "observedWorstResidualMetres": 0,
+    "methodVersionSha256": "8ab0555c3822241ff04d4d389dbccbc4fab6936f9739f44f2989a398db845007",
+    "operationSha256": "bd05e36de3df049e6f308d350a37e07f981d54e2d484add077ad503ca959f4b7",
+    "transformedOutputSha256": "5965ac1199132fbbb9313b07d13617173f2349a5e39b410c8db3135516c03b84",
+    "residualReportSha256": "7158c76eebba32087704b92ffcddc5457c242484e301b6fad50b36de2d028014",
+    "decisionSha256": "1114290ef76efec83cb98e91d4f337b6dcd73977ed0e0f2d4b6d3a447986d775",
+    "interpretation": "Numerical forward/inverse PROJ-pipeline reversibility only; not a physical-accuracy claim."
+  },
+  "externalDataRoot": "~/shade-prep-data",
+  "rawDataOrReceiptsCommitted": false
 }
