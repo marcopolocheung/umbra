@@ -171,6 +171,10 @@ Resources:
                 'token.actions.githubusercontent.com:sub':
                   - !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
                   - !Sub 'repo:${GitHubRepository}:environment:aws-prep-publish'
+                  # GitHub's optional immutable-subject mode inserts stable numeric
+                  # owner and repository IDs after the corresponding names.
+                  - !Sub 'repo:${GitHubRepository}@*:ref:refs/heads/${GitHubBranch}'
+                  - !Sub 'repo:${GitHubRepository}@*:environment:aws-prep-publish'
       Policies:
         - PolicyName: publish-only-this-repository
           PolicyDocument:
