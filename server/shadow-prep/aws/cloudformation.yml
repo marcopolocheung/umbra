@@ -167,7 +167,10 @@ Resources:
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals: { 'token.actions.githubusercontent.com:aud': sts.amazonaws.com }
-              StringLike: { 'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}' }
+              StringLike:
+                'token.actions.githubusercontent.com:sub':
+                  - !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                  - !Sub 'repo:${GitHubRepository}:environment:aws-prep-publish'
       Policies:
         - PolicyName: publish-only-this-repository
           PolicyDocument:
