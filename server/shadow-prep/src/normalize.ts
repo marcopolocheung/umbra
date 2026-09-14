@@ -3,10 +3,10 @@ import type { Admission } from "./admission";
 import { normalizeBuildings, type RawBuilding } from "./buildings";
 import { selectCanopy, type CanopyCell } from "./canopy";
 import { candidateBytesPerTile, candidateDescriptorKey, completedCandidate, writeCandidate } from "./candidates";
-import { readGeoParquet } from "./geoparquet";
+import { readGeoParquetByIds, readGeoParquetIntersecting } from "./geoparquet";
 import { buildingPlanes, canopyPlanes, terrainPlanes } from "./materialize";
 import { receipt } from "./sources";
-import { supportTiles, type Z18Tile } from "./tiles";
+import { supportTiles, tileBounds, type Z18Tile } from "./tiles";
 import { requireRoot, sha256 } from "./util";
 import { candidateStore } from "./storage";
 import { loadFrozenSupport } from "./support";
@@ -87,15 +87,18 @@ function supportCounts(planes: ComponentPlane[]): { known: number; empty: number
  * bounded scratch and publishes planes before its completion descriptor. */
 export async function normalizeAdmitted(admission: Admission, suppliedPlan?: NormalizationPlan, options: NormalizeOptions = {}): Promise<NormalizationRun> {
   const plan = suppliedPlan ?? await planNormalization(admission);
-  const buildings = await readGeoParquet(receipt(admission, "overture-buildings").path, "buildings");
-  const parts = await readGeoParquet(receipt(admission, "overture-building-parts").path, "parts");
-  // Validate and parent-join complete records before clipping. No tile can be
-  // marked completed if the global authoritative vector stream is malformed.
-  for (const row of [...buildings, ...parts]) if (row.height < 0 || row.minHeight < 0 || row.minHeight > row.height) throw new Error(`missing, invalid, or contradictory building/part height: ${row.id}`);
-  const parentIds = new Set(buildings.map((row) => row.id)); for (const part of parts) if (!parentIds.has(part.buildingId!)) throw new Error(`building part ${part.id} has no complete parent ${part.buildingId}`);
   const store = candidateStore(requireRoot()); const selected = deterministicShard(options.smoke ? plan.tiles.slice(0, Math.min(4, plan.tiles.length)) : plan.tiles, options.shard); const descriptors: string[] = []; let completedTiles = 0, skippedTiles = 0;
   for (const tile of selected) {
     const prior = await completedCandidate(store, plan.normalizationId, tile.key); if (prior) { skippedTiles++; descriptors.push(`${tile.key}:${(await store.head(candidateDescriptorKey(plan.normalizationId, tile.key)))!.sha256}`); continue; }
+    const bounds = tileBounds(tile, 1); const buildingPath = receipt(admission, "overture-buildings").path;
+    const parts = await readGeoParquetIntersecting(receipt(admission, "overture-building-parts").path, "parts", bounds);
+    const intersectingBuildings = await readGeoParquetIntersecting(buildingPath, "buildings", bounds);
+    const presentParents = new Set(intersectingBuildings.map((row) => row.id)); const requiredParents = parts.map((part) => part.buildingId!).filter((id) => !presentParents.has(id));
+    const buildings = [...intersectingBuildings, ...await readGeoParquetByIds(buildingPath, requiredParents)].sort((a, b) => a.id.localeCompare(b.id));
+    // Acquisition validated the complete, immutable regional extracts. Repeat
+    // the material conditions for the tile-local slice before writing anything.
+    for (const row of [...buildings, ...parts]) if (row.height < 0 || row.minHeight < 0 || row.minHeight > row.height) throw new Error(`missing, invalid, or contradictory building/part height: ${row.id}`);
+    const parentIds = new Set(buildings.map((row) => row.id)); for (const part of parts) if (!parentIds.has(part.buildingId!)) throw new Error(`building part ${part.id} has no complete parent ${part.buildingId}`);
     const terrain = await terrainPlanes(admission, tile); const ground = terrain.find((item) => item.name === "groundQ")!.words;
     const rawBuilding = buildingPlanes(tile, ground, buildings, parts);
     for (const name of ["foundationQ", "foundationPresent"] as const) terrain.find((item) => item.name === name)!.words.set(rawBuilding.find((item) => item.name === name)!.words);

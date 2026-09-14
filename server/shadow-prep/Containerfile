@@ -3,6 +3,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin proj-b
 WORKDIR /workspace
 COPY server/shadow-prep/package.json server/shadow-prep/package-lock.json ./server/shadow-prep/
 RUN cd server/shadow-prep && npm ci
+# Normalization uses GeoParquet's native GEOMETRY predicate per tile. Bake this
+# DuckDB extension into the immutable image so workers never need a runtime
+# extension download (and therefore do not depend on NAT for this operation).
+RUN cd server/shadow-prep && node --input-type=module -e "import { DuckDBConnection } from '@duckdb/node-api'; const connection = await DuckDBConnection.create(); await connection.run('INSTALL spatial;'); connection.closeSync();"
 COPY app ./app
 COPY scripts/preflight-shadow-v2.mjs ./scripts/preflight-shadow-v2.mjs
 COPY server/shadow-prep ./server/shadow-prep
