@@ -11,6 +11,8 @@
     "prebuild": "node ../../scripts/preflight-shadow-v2.mjs prep",
     "preverify": "node ../../scripts/preflight-shadow-v2.mjs prep",
     "admit": "tsx src/cli.ts admit",
+    "acquire:plan": "tsx src/cli.ts acquire --plan",
+    "acquire": "tsx src/cli.ts acquire --execute",
     "controls": "tsx src/cli.ts controls",
     "approve-controls": "tsx src/cli.ts approve-controls",
     "receipts": "tsx src/cli.ts receipts",

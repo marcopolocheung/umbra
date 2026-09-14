@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
 import type { Admission } from "./admission";
 import { normalizeBuildings, type RawBuilding } from "./buildings";
@@ -9,8 +7,9 @@ import { readGeoParquet } from "./geoparquet";
 import { buildingPlanes, canopyPlanes, terrainPlanes } from "./materialize";
 import { receipt } from "./sources";
 import { supportTiles, type Z18Tile } from "./tiles";
-import { fileHash, requireRoot, sha256 } from "./util";
+import { requireRoot, sha256 } from "./util";
 import { candidateStore } from "./storage";
+import { loadFrozenSupport } from "./support";
 
 export interface NormalizedTile { tile: string; terrain: ComponentPlane[]; buildings: ComponentPlane[]; canopy: ComponentPlane[]; evidence: Record<string, string>; }
 export const NORMALIZER_VERSION = "nyc-z18-normalizer-v1";
@@ -33,27 +32,28 @@ export function normalizeFixture(tile: string, groundQ: number, features: RawBui
   return { tile, terrain: [plane("groundQ", "i32", terrain), plane("foundationQ", "i32", foundation)], buildings: [plane("buildingAglQ", "i32", buildingAgl)], canopy: [plane("crownBaseAglQ", "i32", new Uint32Array(cells)), plane("crownTopAglQ", "i32", crownTop), plane("flagsAndMaterial", "u32", flags)], evidence: { fixture: "explicit-test-only", wholeFeatureCount: String(buildings.length) } };
 }
 
-function geometry(value: unknown): import("./admission").PolygonalCoverage {
-  const candidate = value as { type?: string; coordinates?: unknown };
-  if ((candidate.type !== "Polygon" && candidate.type !== "MultiPolygon") || !Array.isArray(candidate.coordinates)) throw new Error("frozen support geometry is not a polygon or multipolygon");
-  return candidate as import("./admission").PolygonalCoverage;
-}
-async function frozenSupport(): Promise<{ path: string; hash: string; geometry: import("./admission").PolygonalCoverage }> {
-  const root = requireRoot(); const path = join(root, "acquisition", "nyc-five-borough-20km-support.geojson");
-  const manifestPath = join(root, "acquisition", "nyc-acquisition-manifest.json"); const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { support?: { filename?: string; sha256?: string } };
-  if (manifest.support?.filename !== "acquisition/nyc-five-borough-20km-support.geojson" || !/^[a-f0-9]{64}$/.test(String(manifest.support.sha256))) throw new Error("frozen support acquisition manifest lacks the exact pinned support hash");
-  const hash = await fileHash(path); if (hash !== manifest.support.sha256) throw new Error(`frozen support hash mismatch: expected ${manifest.support.sha256}, got ${hash}`);
-  const document = JSON.parse(await readFile(path, "utf8")) as { type?: string; geometry?: unknown; features?: Array<{ geometry?: unknown }> };
-  // The frozen acquisition emitter uses a one-feature FeatureCollection. Accept
-  // that wrapper, but not a collection whose union/order would be an unstated
-  // normalization recipe.
-  const supportObject = document.type === "Feature" ? document.geometry : document.type === "FeatureCollection" && document.features?.length === 1 ? document.features[0].geometry : document;
-  return { path, hash, geometry: geometry(supportObject) };
-}
 function coverageContains(coverage: import("./admission").PolygonalCoverage, point: number[]): boolean {
   const polygons = coverage.type === "Polygon" ? [coverage.coordinates as number[][][]] : coverage.coordinates as number[][][][];
-  const insideRing = (ring: number[][]): boolean => { let inside=false; for(let i=0,j=ring.length-1;i<ring.length;j=i++) { const a=ring[i],b=ring[j]; if ((a[1]>point[1]) !== (b[1]>point[1]) && point[0] < (b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0]) inside=!inside; } return inside; };
-  return polygons.some((polygon) => insideRing(polygon[0]) && !polygon.slice(1).some(insideRing));
+  // Return -1 on an edge, 0 outside, and 1 inside.  Source coverage is
+  // closed: a frozen-support vertex lying exactly on its own boundary must
+  // not be rejected merely because a conventional ray cast is strict.
+  const ringPosition = (ring: number[][]): -1 | 0 | 1 => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i], b = ring[j]; const dx = b[0] - a[0], dy = b[1] - a[1];
+      const cross = (point[0] - a[0]) * dy - (point[1] - a[1]) * dx;
+      const dot = (point[0] - a[0]) * (point[0] - b[0]) + (point[1] - a[1]) * (point[1] - b[1]);
+      if (Math.abs(cross) <= 1e-12 && dot <= 1e-18) return -1;
+      if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < dx * (point[1] - a[1]) / dy + a[0]) inside = !inside;
+    }
+    return inside ? 1 : 0;
+  };
+  return polygons.some((polygon) => {
+    if (ringPosition(polygon[0]) === 0) return false;
+    // A hole's interior is unavailable, but its boundary remains part of the
+    // closed source coverage for this vertex-only admission proof.
+    return !polygon.slice(1).some((ring) => ringPosition(ring) === 1);
+  });
 }
 function sourceCoversSupport(admission: Admission, support: import("./admission").PolygonalCoverage): void {
   const rings = support.type === "Polygon" ? support.coordinates as number[][][] : (support.coordinates as number[][][][]).flat();
@@ -65,7 +65,7 @@ function sourceCoversSupport(admission: Admission, support: import("./admission"
 export async function planNormalization(admission: Admission): Promise<NormalizationPlan> {
   if (admission.blockers.length) throw new Error(`normalization requires successful Item-5 admission: ${admission.blockers.join("; ")}`);
   if (!admission.datum.operationHash || !admission.datum.operationEvidence) throw new Error("normalization requires the recorded EGM2008→EGM96 PROJ operation");
-  const support = await frozenSupport(); sourceCoversSupport(admission, support.geometry); const tiles = supportTiles(support.geometry);
+  const support = await loadFrozenSupport(); sourceCoversSupport(admission, support.geometry); const tiles = supportTiles(support.geometry);
   if (!tiles.length) throw new Error("frozen support intersects no z18 tiles");
   const receiptAggregate = admission.receipts.map((item) => `${item.id}:${item.sha256}`).sort().join("\n");
   const normalizationId = sha256(Buffer.from(JSON.stringify({ receiptAggregate, supportHash: support.hash, operation: admission.datum.operationHash, normalizer: NORMALIZER_VERSION, terrain: BILINEAR_TERRAIN_POLICY, tree: TREE_MODEL_RECIPE }))).slice(0, 32);
@@ -91,8 +91,8 @@ export async function normalizeAdmitted(admission: Admission, suppliedPlan?: Nor
   const parts = await readGeoParquet(receipt(admission, "overture-building-parts").path, "parts");
   // Validate and parent-join complete records before clipping. No tile can be
   // marked completed if the global authoritative vector stream is malformed.
-  for (const row of [...buildings, ...parts]) if (row.height < 0 || row.minHeight < 0 || row.minHeight > row.height) throw new Error(`missing, invalid, or contradictory building/part height: ${row.recordId}`);
-  const parentIds = new Set(buildings.map((row) => row.recordId)); for (const part of parts) if (!parentIds.has(part.buildingId!)) throw new Error(`building part ${part.recordId} has no complete parent ${part.buildingId}`);
+  for (const row of [...buildings, ...parts]) if (row.height < 0 || row.minHeight < 0 || row.minHeight > row.height) throw new Error(`missing, invalid, or contradictory building/part height: ${row.id}`);
+  const parentIds = new Set(buildings.map((row) => row.id)); for (const part of parts) if (!parentIds.has(part.buildingId!)) throw new Error(`building part ${part.id} has no complete parent ${part.buildingId}`);
   const store = candidateStore(requireRoot()); const selected = deterministicShard(options.smoke ? plan.tiles.slice(0, Math.min(4, plan.tiles.length)) : plan.tiles, options.shard); const descriptors: string[] = []; let completedTiles = 0, skippedTiles = 0;
   for (const tile of selected) {
     const prior = await completedCandidate(store, plan.normalizationId, tile.key); if (prior) { skippedTiles++; descriptors.push(`${tile.key}:${(await store.head(candidateDescriptorKey(plan.normalizationId, tile.key)))!.sha256}`); continue; }
