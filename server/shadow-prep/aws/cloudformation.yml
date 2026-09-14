@@ -73,11 +73,6 @@ Resources:
   BatchInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties: { Roles: [!Ref BatchInstanceRole] }
-  SpotFleetRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: spotfleet.amazonaws.com }, Action: 'sts:AssumeRole' }] }
-      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole']
   BatchLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
@@ -92,12 +87,11 @@ Resources:
       State: ENABLED
       ServiceRole: !GetAtt BatchServiceRole.Arn
       ComputeResources:
-        Type: SPOT
-        AllocationStrategy: SPOT_CAPACITY_OPTIMIZED
+        Type: ON_DEMAND
+        AllocationStrategy: BEST_FIT_PROGRESSIVE
         MinvCpus: 0
         MaxvCpus: 4
         DesiredvCpus: 0
-        SpotIamFleetRole: !GetAtt SpotFleetRole.Arn
         InstanceRole: !GetAtt BatchInstanceProfile.Arn
         InstanceTypes: ['optimal']
         Subnets: !Ref PrivateSubnets
