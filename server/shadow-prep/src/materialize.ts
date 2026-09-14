@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { quantizeHeight } from "../../../app/lib/shadowField/v2/format";
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
 import type { Admission, AdmittedAsset, PolygonalCoverage } from "./admission";
-import { joinBuildingParts, ownsCellCentre, wholeFoundationQ, type OverturePart, type RawBuilding } from "./buildings";
+import { ownsCellCentre, wholeFoundationQ, type RawRing } from "./buildings";
 import { selectCanopy } from "./canopy";
 import type { GeoParquetRow } from "./geoparquet";
 import { receipt } from "./sources";
@@ -22,19 +22,30 @@ const supported = (coverage: PolygonalCoverage, point: readonly [number, number]
   return polygons.some((polygon) => inside(polygon[0]) && !polygon.slice(1).some(inside));
 };
 
-async function sourcePath(asset: AdmittedAsset): Promise<string> {
-  if (!/zip/i.test(asset.format)) return asset.path;
-  // FABDEM deliveries are ZIP containers, not GDAL datasets themselves. Pick a
-  // deterministic GeoTIFF member; a selected archive with multiple rasters is
-  // rejected here rather than allowing GDAL to choose an implicit one.
-  const listing = await exec("unzip", ["-Z1", asset.path]); const members = listing.stdout.split(/\r?\n/).filter((name) => /\.tiff?$/i.test(name)).sort();
-  if (members.length !== 1) throw new Error(`raw ZIP ${asset.filename} must contain exactly one selected GeoTIFF, found ${members.length}`);
-  return `/vsizip/${asset.path}/${members[0]}`;
+interface Bounds { west: number; south: number; east: number; north: number; }
+function fabdemBounds(member: string): Bounds | undefined {
+  const match = member.match(/(?:^|\/)N(\d{2})W(\d{3})_FABDEM_V1-2\.tiff?$/i);
+  if (!match) return undefined;
+  const south = Number(match[1]), west = -Number(match[2]); return { west, south, east: west + 1, north: south + 1 };
 }
-async function xyzRaster(source: string, tile: Z18Tile, args: string[]): Promise<Float64Array> {
+function intersects(a: Bounds, b: Bounds): boolean { return a.west < b.east && a.east > b.west && a.south < b.north && a.north > b.south; }
+/** Select every one-degree FABDEM member with non-zero overlap.  A z18 tile can
+ * cross a degree boundary, so choosing by its centre would introduce nodata. */
+export function selectFabdemMembers(members: readonly string[], bounds: Bounds): string[] {
+  return members.filter((member) => { const coverage = fabdemBounds(member); return !!coverage && intersects(coverage, bounds); }).sort();
+}
+async function sourcePaths(asset: AdmittedAsset, tile: Z18Tile): Promise<string[]> {
+  if (!/zip/i.test(asset.format)) return [asset.path];
+  const listing = await exec("unzip", ["-Z1", asset.path]); const members = listing.stdout.split(/\r?\n/).filter((name) => /\.tiff?$/i.test(name)).sort();
+  const bounds = tileBounds(tile, 1); const selected = selectFabdemMembers(members, bounds);
+  if (selected.length) return selected.map((member) => `/vsizip/${asset.path}/${member}`);
+  if (members.length === 1) return [`/vsizip/${asset.path}/${members[0]}`];
+  throw new Error(`raw ZIP ${asset.filename} has no FABDEM GeoTIFF covering ${tile.key}`);
+}
+async function xyzRaster(sources: readonly string[], tile: Z18Tile, args: string[]): Promise<Float64Array> {
   const directory = await mkdtemp(join(tmpdir(), "shadow-prep-raster-")); const output = join(directory, "tile.xyz"); const bounds = tileBounds(tile, 1);
   try {
-    await exec("gdalwarp", ["-overwrite", "-q", "-te", String(bounds.west), String(bounds.south), String(bounds.east), String(bounds.north), "-ts", String(STORED_SIZE), String(STORED_SIZE), "-r", "bilinear", "-of", "XYZ", ...args, source, output], { maxBuffer: 1024 * 1024 });
+    await exec("gdalwarp", ["-overwrite", "-q", "-te", String(bounds.west), String(bounds.south), String(bounds.east), String(bounds.north), "-ts", String(STORED_SIZE), String(STORED_SIZE), "-r", "bilinear", "-of", "XYZ", ...args, ...sources, output], { maxBuffer: 1024 * 1024 });
     const rows = (await readFile(output, "utf8")).trim().split(/\r?\n/).filter(Boolean);
     if (rows.length !== words) throw new Error(`GDAL yielded ${rows.length} raster samples; expected ${words}`);
     const result = new Float64Array(words);
@@ -47,37 +58,49 @@ export async function terrainPlanes(admission: Admission, tile: Z18Tile): Promis
   const terrain = receipt(admission, "fabdem-v1.2"); const asset = terrain.assets[0];
   // GDAL applies the installed, admitted EGM2008→EGM96 grids while resampling;
   // admission has already persisted and hash-pinned the applicable PROJ result.
-  const values = await xyzRaster(await sourcePath(asset), tile, ["-s_srs", "EPSG:4326+3855", "-t_srs", "EPSG:4326+5773"]);
+  const values = await xyzRaster(await sourcePaths(asset, tile), tile, ["-s_srs", "EPSG:4326+3855", "-t_srs", "EPSG:4326+5773"]);
   const ground = new Uint32Array(words);
   for (let index = 0; index < words; index++) { if (!Number.isFinite(values[index])) throw new Error(`FABDEM nodata in required support tile ${tile.key}`); ground[index] = quantizeHeight(values[index]) >>> 0; }
   return [plane("groundQ", "i32", ground), plane("foundationQ", "i32", new Uint32Array(words)), plane("foundationPresent", "u32", new Uint32Array(words))];
 }
 
-function rawBuilding(row: GeoParquetRow): Omit<RawBuilding, "parts"> {
-  if (row.geometry.polygons.length !== 1) throw new Error(`building ${row.id} is not a single polygon; release selection must expand multipart features deterministically`);
-  const polygon = row.geometry.polygons[0]; return { id: row.id, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing), height: row.height, minHeight: row.minHeight };
-}
+interface Surface { id: string; height: number; minHeight: number; outer: RawRing; holes: RawRing[]; }
+interface CompleteBuilding { id: string; height: number; minHeight: number; footprints: Surface[]; parts: Surface[]; }
+const surfaces = (row: GeoParquetRow): Surface[] => {
+  if (!row.geometry.polygons.length) throw new Error(`building ${row.id} has no polygonal geometry`);
+  // Overture permits a WKB MultiPolygon.  Preserve every component under its
+  // source feature id; the enclosing building retains a single foundation and
+  // the component order is the WKB order, which is admitted as source data.
+  return row.geometry.polygons.map((polygon, index) => ({ id: row.geometry.polygons.length === 1 ? row.id : `${row.id}:${index}`, height: row.height, minHeight: row.minHeight, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing) }));
+};
+const surfaceBounds = (surface: Surface): Bounds => {
+  const coordinates = surface.outer.coordinates;
+  return { west: Math.min(...coordinates.map(([x]) => x)), south: Math.min(...coordinates.map(([, y]) => y)), east: Math.max(...coordinates.map(([x]) => x)), north: Math.max(...coordinates.map(([, y]) => y)) };
+};
+const overlapsTile = (surface: Surface, tile: Bounds): boolean => intersects(surfaceBounds(surface), tile);
 function featureId(id: string): number { let value = 2166136261; for (const character of id) { value ^= character.charCodeAt(0); value = Math.imul(value, 16777619); } return value >>> 0; }
 export function buildingPlanes(tile: Z18Tile, terrain: Uint32Array, buildingRows: GeoParquetRow[], partRows: GeoParquetRow[]): ComponentPlane[] {
-  const parent = buildingRows.map(rawBuilding); const parts: OverturePart[] = partRows.map((row) => {
-    if (row.geometry.polygons.length !== 1) throw new Error(`building part ${row.id} is not a single polygon`);
-    const polygon = row.geometry.polygons[0]; return { id: row.id, buildingId: row.buildingId!, height: row.height, minHeight: row.minHeight, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing) };
-  });
-  const buildings = joinBuildingParts(parent, parts); const agl = new Uint32Array(words), mask = new Uint32Array(words), support = new Uint32Array(words), ids = new Uint32Array(words), priority = new Uint32Array(words), foundationQ = new Uint32Array(words), foundationPresent = new Uint32Array(words);
+  const partsByParent = new Map<string, Surface[]>();
+  for (const row of partRows) partsByParent.set(row.buildingId!, [...(partsByParent.get(row.buildingId!) ?? []), ...surfaces(row)]);
+  // Do this inexpensive envelope cull before rasterizing: the admitted vector
+  // extract is regional, while each candidate is one z18 tile.
+  const bounds = tileBounds(tile, 1);
+  const buildings: CompleteBuilding[] = buildingRows.map((row) => ({ id: row.id, height: row.height, minHeight: row.minHeight, footprints: surfaces(row), parts: partsByParent.get(row.id) ?? [] })).filter((building) => building.footprints.some((surface) => overlapsTile(surface, bounds)) || building.parts.some((surface) => overlapsTile(surface, bounds)));
+  const agl = new Uint32Array(words), mask = new Uint32Array(words), support = new Uint32Array(words), ids = new Uint32Array(words), priority = new Uint32Array(words), foundationQ = new Uint32Array(words), foundationPresent = new Uint32Array(words);
   const cellsByBuilding = new Map<string, number[]>();
   for (const building of buildings) cellsByBuilding.set(building.id, []);
   for (let index = 0; index < words; index++) {
     const x = index % STORED_SIZE, y = Math.floor(index / STORED_SIZE); const [lon, lat] = tileCellLonLat(tile, x, y);
-    for (const building of buildings) if (ownsCellCentre(building.outer, building.holes, lon, lat)) cellsByBuilding.get(building.id)!.push(index);
+    for (const building of buildings) if (building.footprints.some((surface) => ownsCellCentre(surface.outer, surface.holes, lon, lat))) cellsByBuilding.get(building.id)!.push(index);
   }
   for (const building of buildings) {
     const cells = cellsByBuilding.get(building.id)!; if (!cells.length) continue;
     const foundation = wholeFoundationQ(cells.map((index) => terrain[index] | 0));
-    const features = [{ id: building.id, height: building.height, minHeight: building.minHeight, outer: building.outer, holes: building.holes }, ...building.parts.filter((part) => part.outer).map((part) => ({ id: part.id, height: part.height, minHeight: part.minHeight, outer: part.outer!, holes: part.holes ?? [] }))];
+    const features = [...building.footprints.map((surface) => ({ ...surface, id: building.id, priority: 1 })), ...building.parts.map((surface) => ({ ...surface, priority: 2 }))];
     for (const feature of features) for (let index = 0; index < words; index++) {
       const [lon, lat] = tileCellLonLat(tile, index % STORED_SIZE, Math.floor(index / STORED_SIZE)); if (!ownsCellCentre(feature.outer, feature.holes, lon, lat)) continue;
       const height = quantizeHeight(feature.height - feature.minHeight); const roof = foundation + height; const oldRoof = mask[index] ? (terrain[index] | 0) + (agl[index] | 0) : -Infinity;
-      if (roof > oldRoof || (roof === oldRoof && featureId(feature.id) < ids[index])) { agl[index] = height >>> 0; mask[index] = 1; ids[index] = featureId(feature.id); priority[index] = feature === features[0] ? 1 : 2; foundationQ[index] = foundation >>> 0; foundationPresent[index] = 1; }
+      if (roof > oldRoof || (roof === oldRoof && featureId(feature.id) < ids[index])) { agl[index] = height >>> 0; mask[index] = 1; ids[index] = featureId(feature.id); priority[index] = feature.priority; foundationQ[index] = foundation >>> 0; foundationPresent[index] = 1; }
     }
   }
   // Foundation values are returned alongside building planes so the caller can
@@ -99,7 +122,7 @@ export async function canopyPlanes(admission: Admission, tile: Z18Tile): Promise
   const nativeAssets = receipt(admission, "chmv2-height").assets; const fallback = await fallbackFeatures(admission); const height = new Uint32Array(words), base = new Uint32Array(words), mask = new Uint32Array(words), support = new Uint32Array(words), fallbackTop = new Uint32Array(words), fallbackBase = new Uint32Array(words), fallbackMask = new Uint32Array(words), fallbackId = new Uint32Array(words), flags = new Uint32Array(words);
   const nativeValues = new Float64Array(words); nativeValues.fill(Number.NaN);
   for (const asset of nativeAssets) {
-    const values = await xyzRaster(await sourcePath(asset), tile, ["-t_srs", "EPSG:4326"]);
+    const values = await xyzRaster(await sourcePaths(asset, tile), tile, ["-t_srs", "EPSG:4326"]);
     for (let index = 0; index < words; index++) { const point = tileCellLonLat(tile, index % STORED_SIZE, Math.floor(index / STORED_SIZE)); if (supported(asset.supportCoverage, point)) nativeValues[index] = values[index]; }
   }
   for (let index = 0; index < words; index++) {
