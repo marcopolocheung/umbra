@@ -52,6 +52,8 @@ export function useAgent(args: UseAgentArgs) {
   // Pins outlive a turn, so the next turn's write call has to know what is
   // already on the map.
   const pinsRef = useRef<AssistantPin[]>([]);
+  // Geocodes, searches and shadow checks, reused across the session's turns.
+  const toolCacheRef = useRef(new Map<string, Record<string, unknown>>());
 
   // AgentContext is stable across renders; it reads through refs/callbacks.
   const ctxRef = useRef<AgentContext>({
@@ -95,6 +97,7 @@ export function useAgent(args: UseAgentArgs) {
         pins: pinsRef.current,
         userText: trimmed,
         ctx: ctxRef.current,
+        cache: toolCacheRef.current,
         onToolEvent: (e) => {
           const label = TOOL_LABELS[e.name] ?? e.name;
           setMessages((prev) => [

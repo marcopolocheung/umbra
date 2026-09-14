@@ -152,15 +152,26 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
   {
     name: "check_shadow",
     description:
-      "Real building-shadow at a spot and time from building geometry. Returns shadowFraction 0..1.",
+      "Real building-shadow at every listed spot at one time, in ONE call. Returns shadowFraction 0..1 per spot.",
     parameters: {
       type: "object",
       properties: {
-        lat: { type: "number" },
-        lng: { type: "number" },
+        points: {
+          type: "array",
+          description: "Every spot to check.",
+          items: {
+            type: "object",
+            properties: {
+              lat: { type: "number" },
+              lng: { type: "number" },
+              label: { type: "string" },
+            },
+            required: ["lat", "lng"],
+          },
+        },
         time: { type: "string", description: "Local time, e.g. '2:00 PM'. Defaults to current." },
       },
-      required: ["lat", "lng"],
+      required: ["points"],
     },
   },
   {
@@ -392,9 +403,21 @@ export async function executeTool(
     }
 
     case "check_shadow": {
+      // Several spots: one probe each, one result list — a round-trip per spot was
+      // the costliest thing the loop did live (twelve probes in one turn).
+      if (Array.isArray(args.points)) {
+        const pins = parsePins(args.points);
+        if (pins.length === 0) return { error: "points needs at least one lat/lng." };
+        const results = [];
+        for (const p of pins) {
+          const r = await executeTool("check_shadow", { lat: p.lat, lng: p.lng, time: args.time }, ctx);
+          results.push({ label: p.label, lat: p.lat, lng: p.lng, ...r });
+        }
+        return { results };
+      }
       const lat = num(args.lat);
       const lng = num(args.lng);
-      if (lat == null || lng == null) return { error: "lat and lng are required." };
+      if (lat == null || lng == null) return { error: "points is required." };
 
       const probeDate = dateAtLocalTime(ctx.dateRef.current, offset, str(args.time));
       const geometryShadow = ctx.shadowLayerRef.current?.queryPointShadow?.(lng, lat, { date: probeDate });

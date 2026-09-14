@@ -17,7 +17,14 @@ The LLM is **Google Gemini free tier only**, capped per key per minute and per d
 goes into one comma-separated shared pool (`VITE_GEMINI_API_KEY`, numbered `_1/_2/_3` in dev,
 `_1..._9` in prod); the client in dev and `api/agent.js` in prod round-robin the pool and fail
 over on 429/5xx and 401/403. There is no per-role key split — all roles draw the one pool.
-A real turn costs ~6–7 LLM calls (live eval, #302).
+A real turn costs a median of 4 LLM calls (C6 live eval; 6.2 before it). What holds it
+there: research ends at the model's first successful `plot_points`, and the loop draws a
+route through the pins when the user asked for one; `check_shadow` takes every spot in one
+call; an identical repeated call is answered from the earlier result, not re-run, and
+search closes after four per turn (an empty search steers a reformulation — it never
+closes search); non-empty geocodes, searches and shadow checks are cached for the session
+(`useAgent`'s `cache`). Empty searches are deliberately never cached: a miss now must not
+veto a retry later.
 
 **Adding an LLM round-trip is a real cost, not a refactor.** The 5/min ceiling is what makes
 latency user-visible.

@@ -105,7 +105,6 @@ describe("runAgent fallback plotting", () => {
           },
         },
       ]))
-      .mockResolvedValueOnce(modelResponse([{ text: "Pinned Bryant Park." }]))
       .mockResolvedValueOnce(modelResponse([{ text: "Pinned Bryant Park." }]));
 
     await runAgent({

@@ -29,18 +29,32 @@ The current map context (center, local time, whether the user's location is know
 Procedure (follow in order):
 1. If locationKnown is false: if the user said "here"/"near me", call locate_user; otherwise ask which area they mean. Never invent a location.
 2. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
-3. Find stops with search_places (anchor to lat/lng or a 'near' name) or geocode_place for named places.
-4. Confirm shadow at the key stops with check_shadow(lat,lng,time) — it returns real building-shadow 0..1.
-5. Call plot_points with the FULL ordered list of stops (numbered pins, map auto-framed).
-6. Optionally plan_shadowed_route through the ordered stops; pass intermediate stops in via.
+3. Find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
+4. Only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
+5. Call plot_points with the FULL ordered list of stops (numbered pins, map auto-framed). This ends your research: if the user asked for a walk or route, one through the pins is drawn for you.
 
-Rules: stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted.`;
+Rules: never repeat an identical call; stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted.`;
 
-// The happy path needs 6 tool-emitting turns (get_current_context, locate_user,
-// set_time, search_places, check_shadow×N, plot_points). A lower cap strands the
-// loop before plot_points runs — so no pins ever reach the map. Keep headroom
-// for an extra check_shadow per candidate.
+// The happy path needs about five tool-emitting turns (locate_user, set_time,
+// search_places, plot_points, plan_shadowed_route). A lower cap strands the loop
+// before plot_points runs — so no pins ever reach the map.
 const MAX_STEPS = 8;
+
+/** Tools whose result depends only on their arguments (and, for shadow, the set time). */
+const CACHEABLE = new Set(["geocode_place", "search_places", "check_shadow"]);
+
+const REPEAT_NOTE = "You already made this exact call; this is its earlier result. Do not repeat it — move on.";
+const EMPTY_SEARCH_NOTE =
+  "No matches for that query. Try again with a different kind of stop or a different anchor — do not repeat this exact call.";
+
+// Four searches admit a vague first guess plus reformulations, and still bound
+// the worst case well under MAX_STEPS. What stops a spiral is the identical-call
+// dedupe above (an exact repeat is answered, not re-run), never one empty
+// result: live, the first guess at a vague query often misses, and the
+// reformulation is the turn's most valuable call. Past the cap the loop stops
+// offering search at all.
+const MAX_SEARCHES = 4;
+const SEARCH_CAP_NOTE = "The search limit for this turn is reached, so this one was not run. Use the places already found, or tell the user what wasn't found.";
 
 /** The most pins one answer puts on the map. */
 const MAX_PINS = 8;
@@ -65,6 +79,8 @@ export interface RunAgentOptions {
   ctx: AgentContext;
   /** Called when the agent decides to invoke a tool (for UI activity display). */
   onToolEvent?: (e: ToolEvent) => void;
+  /** Results of cacheable tools, kept across turns by the caller. */
+  cache?: Map<string, Record<string, unknown>>;
 }
 
 export interface RunAgentResult {
@@ -111,6 +127,7 @@ function collectPointCandidates(
 
   if (toolName === "check_shadow") {
     add(args.lat, args.lng);
+    for (const p of parsePins(args.points)) add(p.lat, p.lng, p.label);
     return;
   }
 
@@ -166,7 +183,11 @@ function plottedPointSummary(pins: AssistantPin[]): string {
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
-  const { ctx, onToolEvent } = opts;
+  const { ctx, onToolEvent, cache = new Map() } = opts;
+  // This turn's successful results by call, so a repeat is answered, not re-run.
+  const turnResults = new Map<string, Record<string, unknown>>();
+  let searches = 0;
+  const searchClosed = () => searches >= MAX_SEARCHES;
   const contents: LlmContent[] = [
     ...opts.history,
     { role: "user", parts: [{ text: opts.userText }] },
@@ -213,6 +234,30 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     await plot(pointCandidates.slice(0, MAX_PINS));
   };
 
+  // A user who asked for a route gets one: live, the model spent its steps
+  // searching and never routed (#59), so the loop routes through the pins itself.
+  let routedThisTurn = false;
+  const routeFallback = async (): Promise<void> => {
+    if (routedThisTurn || mapPins.length < 2 || !/\b(route|walk)/i.test(opts.userText)) return;
+    const from = mapPins[0];
+    const to = mapPins[mapPins.length - 1];
+    const args = {
+      fromLat: from.lat,
+      fromLng: from.lng,
+      fromLabel: from.label,
+      toLat: to.lat,
+      toLng: to.lng,
+      toLabel: to.label,
+      via: mapPins.slice(1, -1),
+    };
+    onToolEvent?.({ name: "plan_shadowed_route", args });
+    try {
+      routedThisTurn = !(await executeTool("plan_shadowed_route", args, ctx)).error;
+    } catch {
+      /* the write call is told only about a route that started */
+    }
+  };
+
   // The write prompt's rule, enforced in code: a place a tool returned that the
   // answer names but the map doesn't show is pinned now. A place no tool
   // returned has no coordinates, so against pure invention the prompt is all
@@ -244,7 +289,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     const res = await callModel(
       {
         contents,
-        tools: [{ functionDeclarations: toolDeclarations }],
+        tools: [
+          {
+            functionDeclarations: searchClosed()
+              ? toolDeclarations.filter((t) => t.name !== "search_places")
+              : toolDeclarations,
+          },
+        ],
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT + ctxLine }] },
         generationConfig: { temperature: 0 },
       },
@@ -262,6 +313,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (calls.length === 0) {
       // Done researching.
       await plotFallbackPoints();
+      await routeFallback();
       // Same config for both roles → research model's answer IS the answer, and
       // returning it saves a full-context write call (TPD savings). So does a
       // turn that called no tool at all — a refusal, or a question back to the
@@ -282,7 +334,6 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     const responseParts: LlmPart[] = [];
     for (const part of calls) {
       const fc = part.functionCall!;
-      onToolEvent?.({ name: fc.name, args: fc.args ?? {} });
       let args = fc.args ?? {};
       // The model's own plot obeys the pin cap too, and a bare pin sitting on a
       // place a tool returned takes that place's name — Gemini plotted twelve
@@ -295,28 +346,69 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           );
         args = { ...args, points };
       }
+      // A shadow check without a time reads the set time, so that is part of its key.
+      const key = `${fc.name}${JSON.stringify(args)}${fc.name === "check_shadow" ? ctx.dateRef.current.getTime() : ""}`;
+      // An unanchored search reads the moving map, so it is only a repeat within the turn.
+      const cacheable =
+        CACHEABLE.has(fc.name) && !(fc.name === "search_places" && args.lat == null && args.near == null);
       let result: Record<string, unknown>;
-      try {
-        result = await executeTool(fc.name, args, ctx);
-      } catch (err) {
-        result = { error: err instanceof Error ? err.message : "Tool failed." };
+      const earlier = turnResults.get(key);
+      if (earlier) {
+        result = { ...earlier, note: REPEAT_NOTE };
+      } else if (fc.name === "search_places" && searchClosed()) {
+        result = { results: [], note: SEARCH_CAP_NOTE };
+      } else if (cacheable && cache.has(key)) {
+        result = cache.get(key)!;
+        if (fc.name === "search_places") searches++;
+      } else {
+        if (fc.name === "search_places") searches++;
+        onToolEvent?.({ name: fc.name, args });
+        try {
+          result = await executeTool(fc.name, args, ctx);
+        } catch (err) {
+          result = { error: err instanceof Error ? err.message : "Tool failed." };
+        }
+        // An empty search depends on the query wording and the map viewport, so
+        // it is never reused across turns — a miss now must not veto a retry
+        // later. (The per-turn dedupe above still answers an identical repeat.)
+        const emptySearchResult =
+          fc.name === "search_places" &&
+          Array.isArray(result.results) &&
+          result.results.length === 0;
+        if (!result.error && cacheable && !emptySearchResult) cache.set(key, result);
+      }
+      if (!result.error) turnResults.set(key, result);
+      if (
+        fc.name === "search_places" &&
+        Array.isArray(result.results) &&
+        result.results.length === 0 &&
+        !searchClosed()
+      ) {
+        result = { ...result, note: EMPTY_SEARCH_NOTE };
       }
       if (fc.name === "plot_points" && !result.error) {
         mapPins = parsePins(args.points);
         plottedThisTurn = true;
       }
+      if (fc.name === "plan_shadowed_route" && !result.error) routedThisTurn = true;
       collectPointCandidates(fc.name, args, result, pointCandidates);
       responseParts.push({ functionResponse: { name: fc.name, response: result } });
     }
     contents.push({ role: "user", parts: responseParts });
+    // The model's plot is its last research step — asking it again only buys a
+    // draft the write call discards. The loop routes, if asked, below.
+    if (plottedThisTurn) break;
   }
 
   await plotFallbackPoints();
+  await routeFallback();
 
   // Always state what the map shows — including pins the model placed itself,
   // which is the list the write prompt tells it to stay inside.
   const pinnedLine = mapPins.length
-    ? `\n\nMap state guarantee: these pins are on the map, and they are the only places you may name: ${plottedPointSummary(mapPins)}.`
+    ? `\n\nMap state guarantee: these pins are on the map, and they are the only places you may name: ${plottedPointSummary(mapPins)}.${
+        routedThisTurn ? " A shadow-aware walking route through them is being calculated on the map." : ""
+      }`
     : "\n\nNothing is pinned on the map, so name no specific place.";
 
   // --- Write phase: final answer on the "response" model, no tools. ---

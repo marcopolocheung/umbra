@@ -136,7 +136,12 @@ const DEFAULT_WORLD: Scenario["tools"] = {
     results: [],
     note: "No matches in that area. Try a broader query or a different anchor.",
   },
-  check_shadow: { shadowFraction: 0.5, status: "partial sun", atLocalTime: "2:00 PM" },
+  check_shadow: (args) => {
+    const probe = { shadowFraction: 0.5, status: "partial sun", atLocalTime: "2:00 PM" };
+    return Array.isArray(args.points)
+      ? { results: args.points.map((p: Record<string, unknown>) => ({ ...p, ...probe })) }
+      : probe;
+  },
   set_time: (args) => ({ ok: true, newLocalTime: String(args.time ?? "2:00 PM") }),
   plot_points: (args) => ({
     ok: true,
@@ -206,7 +211,7 @@ const rows: Row[] = [];
 /** Whether any call produced a place the loop could pin — the live condition for requiring a plot. */
 function gatheredAPlace(trace: Trace): boolean {
   return trace.toolCalls.some((c) => {
-    if (c.name === "check_shadow") return typeof c.args.lat === "number";
+    if (c.name === "check_shadow") return typeof c.args.lat === "number" || Array.isArray(c.args.points);
     if (c.name === "plan_shadowed_route") return typeof c.args.fromLat === "number";
     return Array.isArray(c.result.results) && c.result.results.length > 0;
   });

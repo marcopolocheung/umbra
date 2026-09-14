@@ -97,6 +97,27 @@ describe("agent route tools", () => {
     expect(ctx.setDate).not.toHaveBeenCalled();
   });
 
+  it("checks every listed spot in one check_shadow call", async () => {
+    const ctx = makeCtx();
+    ctx.shadowLayerRef.current = {
+      queryPointShadow: vi.fn((lng: number) => ({
+        shadowFraction: lng < -74 ? 0.9 : 0.1,
+        source: "geometry-cache",
+      })),
+    } as any;
+
+    const result = await executeTool(
+      "check_shadow",
+      { points: [{ lat: 40.7, lng: -74.01, label: "A" }, { lat: 40.7, lng: -73.99 }] },
+      ctx
+    );
+
+    expect(result.results).toMatchObject([
+      { label: "A", lat: 40.7, lng: -74.01, shadowFraction: 0.9, status: "shadowed" },
+      { lat: 40.7, lng: -73.99, shadowFraction: 0.1, status: "sunlit" },
+    ]);
+  });
+
   it("uses offscreen building geometry for check_shadow without requiring the map", async () => {
     const ctx = makeCtx();
     const fetchMock = vi.fn().mockResolvedValue({
