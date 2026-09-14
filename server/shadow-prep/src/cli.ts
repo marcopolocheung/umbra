@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { admit } from "./admission";
 import { build, current, verifyGeneration } from "./build";
 import { approveDatumControls, packageDatumControls } from "./controls";
 import { assembleReceipts } from "./receipts";
 import { normalizeAdmitted, planNormalization } from "./normalize";
-import { directoryBytes, requireRoot, writeJson } from "./util";
+import { directoryBytes, files, requireRoot, writeJson } from "./util";
 import { S3Store } from "./storage";
 import { readFile } from "node:fs/promises";
 import { stageAdmittedInputs } from "./stage";
@@ -31,6 +31,12 @@ async function normalizeCommand(root: string): Promise<unknown> {
   // production-candidate normalization id/prefix.
   const candidatePlan = smoke ? { ...plan, normalizationId: `validation/${plan.normalizationId}` } : plan;
   return normalizeAdmitted(admission, candidatePlan, { smoke, shard: match ? { index: Number(match[1]), count: Number(match[2]) } : undefined });
+}
+async function retainEvidence(root: string, command: string, path: string): Promise<void> {
+  const bucket = process.env.SHADE_PREP_EVIDENCE_BUCKET; if (!bucket) return;
+  const jobStore = new S3Store(bucket, "jobs"); const evidenceStore = new S3Store(bucket, process.env.SHADE_PREP_EVIDENCE_PREFIX ?? "evidence");
+  await jobStore.write(`${command}/${Date.now()}.json`, new Uint8Array(await readFile(path)), "application/json");
+  for (const directory of [join(root, "evidence"), join(root, "admission")]) for (const file of await files(directory)) await evidenceStore.write(relative(root, file), new Uint8Array(await readFile(file)), file.endsWith(".json") ? "application/json" : "text/plain");
 }
 async function main(): Promise<void> {
   const command = process.argv[2]; if (!(["stage", "admit", "controls", "approve-controls", "receipts", "normalize", "build", "verify"] as string[]).includes(command)) throw new Error("usage: shadow-prep <stage|admit|controls|approve-controls <signed-decision-id> <maximum-residual>|receipts|normalize [--plan|--smoke|--shard <index>/<count>]|build|verify>");
@@ -57,8 +63,7 @@ async function main(): Promise<void> {
   }
   finally {
     const usage = process.resourceUsage(); const evidence = { command, at: new Date().toISOString(), versions: await versions(), wallMs: Number(process.hrtime.bigint() - started) / 1e6, cpuMicros: process.cpuUsage(cpuStart), peakRssKiB: usage.maxRSS, rawBytes: await directoryBytes(join(root, "raw")), outputBytes: await directoryBytes(join(root, "generations")), scratchBytes: await directoryBytes(join(root, "staging")) };
-    const evidencePath = join(root, "evidence", `${command}-${Date.now()}.json`); await writeJson(evidencePath, evidence);
-    if (process.env.SHADE_PREP_EVIDENCE_BUCKET) { const store = new S3Store(process.env.SHADE_PREP_EVIDENCE_BUCKET, process.env.SHADE_PREP_EVIDENCE_PREFIX ?? "jobs"); await store.write(`${command}/${evidence.at.replaceAll(":", "-")}.json`, new Uint8Array(await readFile(evidencePath)), "application/json"); }
+    const evidencePath = join(root, "evidence", `${command}-${Date.now()}.json`); await writeJson(evidencePath, evidence); await retainEvidence(root, command, evidencePath);
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

@@ -147,7 +147,7 @@ Resources:
           - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
           - { Name: SHADE_PREP_S3_PREFIX, Value: '' }
           - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
-          - { Name: SHADE_PREP_EVIDENCE_PREFIX, Value: jobs }
+          - { Name: SHADE_PREP_EVIDENCE_PREFIX, Value: evidence }
         LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: prep } }
   BatchLogs:
     Type: AWS::Logs::LogGroup
