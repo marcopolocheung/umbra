@@ -110,6 +110,16 @@ does not submit any work. The surrounding VPC is intentionally supplied as
 private-subnet and no-ingress-security-group parameters rather than being
 silently created.
 
+For a new account with only public default subnets, deploy the separate,
+reviewed `aws/private-network.yml` prerequisite first. It creates a dedicated
+one-AZ private Batch subnet, no-ingress security group, free S3 gateway endpoint
+and a NAT gateway for outbound-only AWS access. Its NAT gateway is intentionally
+separate from the preparation stack because it is a billable temporary network
+resource; remove it after the isolated smoke run if no further work is approved.
+Pass its `PrivateSubnetId` and `BatchSecurityGroupId` outputs to
+`cloudformation.yml`. It is a smoke-run convenience, not a multi-AZ production
+network design.
+
 Before any deployment, review the CloudFormation change set and a validation-job
 estimate against the separately approved $25-after-credits ceiling. Budget
 alerts are not a hard cap; the vCPU, timeout, and retry settings are the actual
