@@ -11,6 +11,10 @@ Parameters:
   GitHubBranch:
     Type: String
     Default: main
+  GitHubImmutableSubjectPrefix:
+    Type: String
+    Default: ''
+    Description: Optional exact GitHub immutable OIDC subject prefix, as reported by GitHub's OIDC customization API.
   PrivateSubnets:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Existing private subnets with NAT/ECR/S3 access; this stack never creates public networking.
@@ -22,6 +26,8 @@ Parameters:
     Default: bootstrap
     AllowedPattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
     Description: Immutable ECR commit-SHA tag. Leave bootstrap only until the image-publish workflow has completed.
+Conditions:
+  HasGitHubImmutableSubjectPrefix: !Not [!Equals [!Ref GitHubImmutableSubjectPrefix, '']]
 Resources:
   RawBucket:
     Type: AWS::S3::Bucket
@@ -168,13 +174,14 @@ Resources:
             Condition:
               StringEquals: { 'token.actions.githubusercontent.com:aud': sts.amazonaws.com }
               StringLike:
-                'token.actions.githubusercontent.com:sub':
-                  - !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
-                  - !Sub 'repo:${GitHubRepository}:environment:aws-prep-publish'
-                  # GitHub's optional immutable-subject mode inserts stable numeric
-                  # owner and repository IDs after the corresponding names.
-                  - !Sub 'repo:${GitHubRepository}@*:ref:refs/heads/${GitHubBranch}'
-                  - !Sub 'repo:${GitHubRepository}@*:environment:aws-prep-publish'
+                'token.actions.githubusercontent.com:sub': !If
+                  - HasGitHubImmutableSubjectPrefix
+                  - - !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                    - !Sub 'repo:${GitHubRepository}:environment:aws-prep-publish'
+                    - !Sub '${GitHubImmutableSubjectPrefix}:ref:refs/heads/${GitHubBranch}'
+                    - !Sub '${GitHubImmutableSubjectPrefix}:environment:aws-prep-publish'
+                  - - !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                    - !Sub 'repo:${GitHubRepository}:environment:aws-prep-publish'
       Policies:
         - PolicyName: publish-only-this-repository
           PolicyDocument:

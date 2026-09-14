@@ -127,9 +127,10 @@ technical limits. Deployment, paid-account upgrade, workflow dispatch, and a
 full NYC run require explicit operator approval. After a reviewed stack exists,
 set the GitHub environment secret `AWS_SHADOW_PREP_PUBLISH_ROLE_ARN` to the stack
 output and manually run `Publish shadow-prep image`; it exchanges GitHub OIDC for
-the narrowly scoped role and pushes an immutable commit-SHA image tag. The role
-also recognizes GitHub's optional immutable-subject form (which adds stable numeric
-IDs to the exact configured owner/repository name). No raw or
+the narrowly scoped role and pushes an immutable commit-SHA image tag. If GitHub
+has immutable OIDC subjects enabled, set `GitHubImmutableSubjectPrefix` to the
+exact `sub_claim_prefix` reported by `gh api repos/OWNER/REPO/actions/oidc/customization/sub`;
+the role then recognizes that precise immutable identity as well. No raw or
 candidate object is public, and candidates have no expiry rule until a future
 verified Item-7 handoff explicitly adds one. Before submitting even the smoke
 job, update the reviewed stack’s `PrepImageTag` parameter from `bootstrap` to
