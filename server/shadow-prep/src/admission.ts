@@ -41,11 +41,7 @@ export async function validateBoundary(path: string, boundary: Region["boundary"
 
 async function boundary(region: Region, raw: string): Promise<{ path: string; sha256: string; boroughs: string[] }> {
   const path = join(raw, region.boundary.localName);
-  if (!(await exists(path))) {
-    const response = await fetch(region.boundary.url);
-    if (!response.ok) throw new Error(`DCP boundary download failed: ${response.status}`);
-    await mkdir(raw, { recursive: true }); await writeFile(path, new Uint8Array(await response.arrayBuffer()));
-  }
+  if (!(await exists(path))) throw new Error("DCP boundary is absent; run shadow-prep acquire --execute to obtain the pinned raw bundle");
   return validateBoundary(path, region.boundary);
 }
 

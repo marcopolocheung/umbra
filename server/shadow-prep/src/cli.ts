@@ -10,6 +10,7 @@ import { directoryBytes, files, requireRoot, writeJson } from "./util";
 import { S3Store } from "./storage";
 import { readFile } from "node:fs/promises";
 import { stageAdmittedInputs } from "./stage";
+import { acquire } from "./acquire";
 
 const exec = promisify(execFile);
 async function versions(): Promise<Record<string, string>> {
@@ -39,12 +40,17 @@ async function retainEvidence(root: string, command: string, path: string): Prom
   for (const directory of [join(root, "evidence"), join(root, "admission")]) for (const file of await files(directory)) await evidenceStore.write(relative(root, file), new Uint8Array(await readFile(file)), file.endsWith(".json") ? "application/json" : "text/plain");
 }
 async function main(): Promise<void> {
-  const command = process.argv[2]; if (!(["stage", "admit", "controls", "approve-controls", "receipts", "normalize", "build", "verify"] as string[]).includes(command)) throw new Error("usage: shadow-prep <stage|admit|controls|approve-controls <signed-decision-id> <maximum-residual>|receipts|normalize [--plan|--smoke|--shard <index>/<count>]|build|verify>");
+  const command = process.argv[2]; if (!(["acquire", "stage", "admit", "controls", "approve-controls", "receipts", "normalize", "build", "verify"] as string[]).includes(command)) throw new Error("usage: shadow-prep <acquire --plan|--execute|stage|admit|controls|approve-controls <signed-decision-id> <maximum-residual>|receipts|normalize [--plan|--smoke|--shard <index>/<count>]|build|verify>");
+  // A planning invocation is explicitly observational: it must not create an
+  // evidence directory or even a command timing record.
+  if (command === "acquire" && process.argv[3] === "--plan") { process.stdout.write(`${JSON.stringify(await acquire("plan"), null, 2)}\n`); return; }
+  if (command === "acquire" && process.argv[3] !== "--execute") throw new Error("acquire requires exactly --plan or --execute");
   const started = process.hrtime.bigint(); const cpuStart = process.cpuUsage(); const root = requireRoot(); let result: unknown;
   try {
     // Cloud jobs use immutable objects in the raw bucket. Stage before any
     // command that invokes admission; local runs remain entirely untouched.
-    if (command === "stage") result = await stageAdmittedInputs();
+    if (command === "acquire") result = await acquire("execute");
+    else if (command === "stage") result = await stageAdmittedInputs();
     else if (process.env.SHADE_PREP_RAW_BUCKET && ["admit", "controls", "approve-controls", "normalize", "build"].includes(command)) {
       await stageAdmittedInputs();
       if (command === "admit") result = await admit();

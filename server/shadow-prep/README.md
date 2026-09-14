@@ -4,9 +4,29 @@ This package creates **local-only**, immutable, source-separated preparation
 generations. It does not deploy, upload, activate the app, or make a physical
 accuracy claim. Node 24, GDAL and PROJ are intentionally container-only.
 
-Create an external data directory (never a directory inside this repository), then
-place only selected immutable raw assets under `raw/`. Install the two pinned NGA
-files in `~/shade-prep-data/proj`; this directory is read-only in the container.
+Create an external data directory (never a directory inside this repository). The
+only supported way to populate it is the reproducible local acquisition command:
+
+```sh
+docker run --rm -v "$HOME/shade-prep-data:/data" umbra-shadow-prep acquire --plan
+docker run --rm -v "$HOME/shade-prep-data:/data" -e PROJ_DATA=/data/proj:/usr/share/proj umbra-shadow-prep acquire --execute
+```
+
+`acquire --plan` reports the pinned URLs, external output paths, and required free
+space without making a network request or writing a file. `--execute` streams each
+response to a temporary file, records response metadata plus SHA-256, and publishes
+it without replacing a hash-valid object. It fetches only DCP 26b, the FABDEM v1.2
+archive, the two pinned NGA grids, CHMv2's index and its 14 frozen selected COGs,
+the two 2026-08-19.0 Overture extracts, five USGS controls, and bounded OSM fallback
+and workload snapshots. It then freezes the five-borough union plus a 20 km EPSG:32618
+buffer, runs admission/controls/approved 1e-9 m decision/receipts/normalization plan,
+and writes `evidence/nyc-acquisition-handoff.json`. It never uploads, deploys,
+publishes an image, creates CloudFormation resources, or submits Batch work.
+
+Preparation is personal, non-commercial only. FABDEM-derived output must retain
+its CC BY-NC-SA 4.0 attribution and may not be public, paid, ad-supported, or
+distributed to customers. The command supplies the pinned NGA files in
+`~/shade-prep-data/proj`; this directory is read-only in the container.
 `raw/source-receipts.json` has exactly twelve logical receipt IDs, and each receipt
 lists one or more assets with its publisher URL, release, SHA-256, concrete format,
 acquisition time, CRS/datum and exact polygonal coverage. Every file in `raw/`,
@@ -104,8 +124,8 @@ job, update the reviewed stack’s `PrepImageTag` parameter from `bootstrap` to
 that published commit SHA; this makes the Batch definition point at a pinned
 image rather than an implicitly moving tag.
 
-`admit` downloads and freezes the DCP 26b boundary if it is absent, verifies its
-pinned SHA-256 on every run, and rejects the region until every required source,
+`admit` never downloads. It verifies the boundary acquired by `acquire --execute`
+against its pinned SHA-256 on every run, and rejects the region until every required source,
 licence/rights, exact receipt, hash, mask, retained datum-control output/report and grid is locally present. It saves the exact `projinfo --bbox -74.26,40.49,-73.70,40.92 --grid-check known_available` result in external evidence and checks that terrain and control evidence use that result. Receipts live at
 `raw/source-receipts.json` and conform to
 `publication/source-receipts.schema.json`; an unrecorded extra file or an

@@ -54,14 +54,14 @@ export async function terrainPlanes(admission: Admission, tile: Z18Tile): Promis
 }
 
 function rawBuilding(row: GeoParquetRow): Omit<RawBuilding, "parts"> {
-  if (row.geometry.polygons.length !== 1) throw new Error(`building ${row.recordId} is not a single polygon; release selection must expand multipart features deterministically`);
-  const polygon = row.geometry.polygons[0]; return { id: row.recordId, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing), height: row.height, minHeight: row.minHeight };
+  if (row.geometry.polygons.length !== 1) throw new Error(`building ${row.id} is not a single polygon; release selection must expand multipart features deterministically`);
+  const polygon = row.geometry.polygons[0]; return { id: row.id, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing), height: row.height, minHeight: row.minHeight };
 }
 function featureId(id: string): number { let value = 2166136261; for (const character of id) { value ^= character.charCodeAt(0); value = Math.imul(value, 16777619); } return value >>> 0; }
 export function buildingPlanes(tile: Z18Tile, terrain: Uint32Array, buildingRows: GeoParquetRow[], partRows: GeoParquetRow[]): ComponentPlane[] {
   const parent = buildingRows.map(rawBuilding); const parts: OverturePart[] = partRows.map((row) => {
-    if (row.geometry.polygons.length !== 1) throw new Error(`building part ${row.recordId} is not a single polygon`);
-    const polygon = row.geometry.polygons[0]; return { id: row.recordId, buildingId: row.buildingId!, height: row.height, minHeight: row.minHeight, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing) };
+    if (row.geometry.polygons.length !== 1) throw new Error(`building part ${row.id} is not a single polygon`);
+    const polygon = row.geometry.polygons[0]; return { id: row.id, buildingId: row.buildingId!, height: row.height, minHeight: row.minHeight, outer: asRing(polygon.outer), holes: polygon.holes.map(asRing) };
   });
   const buildings = joinBuildingParts(parent, parts); const agl = new Uint32Array(words), mask = new Uint32Array(words), support = new Uint32Array(words), ids = new Uint32Array(words), priority = new Uint32Array(words), foundationQ = new Uint32Array(words), foundationPresent = new Uint32Array(words);
   const cellsByBuilding = new Map<string, number[]>();
