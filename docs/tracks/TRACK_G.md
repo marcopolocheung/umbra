@@ -10,8 +10,16 @@ A's fixtures), ⚠️ E (G6 rewrites E's biggest file). **G6 runs alone.**
 
 ## Current state
 
-- **Active checkpoint:** **G2** — PR #260 open (stacked on **#258**, the instrument fix). G1's
-  PR #177 merged before it and the smoke test runs in CI.
+- **Active checkpoint:** **G6(a)** — `useNavigation.ts` split PR open (fixes #362, the
+  in-flight freeze notice). `useNavigation` is a thin facade over `useTrip` /
+  `useSketch` / `useRouting` (`app/hooks/`, pure helpers in
+  `app/lib/navigationHelpers.ts`); page.tsx, useAgent and all tests compile
+  untouched against the pinned return key set (`useNavigationKeys.test.ts`).
+  `MapView.tsx` (#313) and `page.tsx` (#343) splits are separate PRs and out of
+  scope here — G6(b/c) take those files next.
+- **Done — G2.** `npm run bench:route` landed with the committed baseline in
+  `docs/notes/performance-baseline.md` (see the G2 section below for the split,
+  the warm-slower-than-cold finding and issues #259, #261–#266).
 - **Open PRs:** **#258** (`fix/g2-metrics-instrument`, #182 + #183) and **#260**
   (`feat/g2-route-benchmark`, G2 + the #243 sweep). **Merge #258 first** — #260's warm scenarios
   call `clearMetrics()` and its cross-check reads `summary.p50TotalMs`, so it does not build
@@ -348,6 +356,13 @@ Medium (was sized when the burn-down was still open).
 | `app/page.tsx` | 932 | stays a composition root; each track contributes one hook + one panel |
 
 Pure refactor, no behavior change, one file per PR, tests green at every step.
+**G6(a) recorded choice:** mode settings (`navMode`, `routeMode`, `travelMode`,
+`shadowPreference`), `handleMapClick`/`handleClear`/`handleExportRoute`/
+`handleCalculateRoute` and `canTransit` stay in the facade — each spans trip,
+sketch and routing, and the facade IS that seam. `filteredRoutes` and the
+selected-route derives live in `useRouting` (`routeMode` arrives as a value).
+Trip↔routing construct in opposite orders, so trip reads routing back lazily
+through `NavSeam` (event-time only); render-time values travel as explicit args.
 **Acceptance.** No behavior change (the routing tests and `useNavigation.test.tsx` pass
 unmodified); each track's future edits land in a file it owns; `MapView` still only imported via
 `React.lazy`; the compatibility matrix in `docs/tracks/README.md` is updated to drop the ⚠️s

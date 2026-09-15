@@ -144,7 +144,7 @@ approach needs to change.
 |---|---|---|
 | `app/page.tsx` | Root component: composes hooks + layout; owns only small UI state | `.claude/rules/components-and-map.md` |
 | `app/main.tsx` | Entry; BrowserRouter (`/`, `/about`) | — |
-| `app/hooks/` | All real state: `useShadowTime`, `useNavigation` (routing pipeline), `useAppState` (phase FSM) | `.claude/rules/hooks-and-state.md` |
+| `app/hooks/` | All real state: `useShadowTime`, `useNavigation` facade over `useTrip`/`useSketch`/`useRouting`, `useAppState` (phase FSM) | `.claude/rules/hooks-and-state.md` |
 | `app/components/` | UI components incl. `MapView` (map + layers) | `.claude/rules/components-and-map.md` |
 | `app/lib/` | Pure TS: routing, overpass, trainGraph, shadow sampling, exports | `.claude/rules/routing-and-shadow.md` |
 | `app/lib/shadow/` | Local WebGL shadow renderer (CustomLayerInterface) | `.claude/rules/shadow-renderer.md` |
@@ -161,9 +161,9 @@ approach needs to change.
 | Shadow rendering (look, correctness, perf) | `app/lib/shadow/LocalShadowAdapter.ts` |
 | Timeline slider, play/pause, date/time input | `app/components/TimelineSlider.tsx`, `app/hooks/useShadowTime.ts` |
 | Walking-route algorithm, cost model, Pareto | `app/lib/routing.ts` (+ `__tests__/routing.test.ts`) |
-| Route UX: waypoints, calc flow, cards, save/export | `app/hooks/useNavigation.ts`, `app/components/DirectionsPanel.tsx` |
-| Sketch / draw-route mode | `useNavigation.ts` (`calculateSketchRoute`), `MapView.tsx` (sketch layers) |
-| Train/transit routing | `app/lib/trainGraph.ts`, `useNavigation.ts` (`calculateRoute`) |
+| Route UX: waypoints, calc flow, cards, save/export | `app/hooks/useTrip.ts` (trip state), `app/hooks/useRouting.ts` (pipeline), `app/components/DirectionsPanel.tsx` (`useNavigation.ts` stays a thin facade — see `.claude/rules/hooks-and-state.md`) |
+| Sketch / draw-route mode | `app/hooks/useSketch.ts` (`calculateSketchRoute`), `MapView.tsx` (sketch layers) |
+| Train/transit routing | `app/lib/trainGraph.ts`, `app/hooks/useRouting.ts` (`calculateRoute`) |
 | Search, geocoding, place details | `app/components/SearchBar.tsx`, `app/services/foursquare.ts` |
 | Map layers, markers, popups, 3D | `.claude/rules/components-and-map.md` | `app/components/MapView.tsx` |
 | Sun-exposure mode, GeoTIFF export | `app/components/AccumulationPanel.tsx` |
@@ -175,7 +175,9 @@ approach needs to change.
 
 `page.tsx` composes three hooks and passes props down — components hold no app state:
 - `useShadowTime` — date/time, slider mode, play animation, map center/zoom/UTC offset, `mapRef`
-- `useNavigation` — waypoints, routes, sketch mode, saved routes, the entire route-calculation pipeline
+- `useNavigation` — thin facade over `useTrip` (waypoints/legs/saved), `useSketch`
+  (draw mode + sketch pipeline) and `useRouting` (route-calculation pipeline);
+  owns only mode settings and cross-group handlers, returns the same object as before
 - `useAppState` — UI phase FSM: `IDLE → PLACE_DETAIL → DIRECTIONS → NAVIGATING → ARRIVAL`
 
 Map instance flows up once via `onMapReady(map)` into a ref (never state).

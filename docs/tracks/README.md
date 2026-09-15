@@ -78,7 +78,7 @@ this to get going, the brief is the thing to fix — not the prompt.
 | An assistant answer or a new user-facing number | `grounding-auditor` | The honesty guardrail is the one claim this product can't get wrong |
 | A diff touching `app/components/**` or `page.tsx` | `interface-reviewer` | Outdoors, bright sun, one-handed is a review standard nobody applies by default |
 | Sequential checkpoints (A2 → A3 → A4) | **No subagent.** Do it yourself, in order | Each one's output is the next one's input; a swarm just serializes with extra steps and lost context |
-| Anything touching `useNavigation.ts`, `MapView.tsx`, or `page.tsx` | **No subagent** (until G6 lands) | Three contested files; concurrent edits conflict, and they're where the invariants bite |
+| Anything touching `MapView.tsx` or `page.tsx` | **No subagent** (until G6b/c land) | Two contested files left; concurrent edits conflict, and they're where the invariants bite |
 | "Go do Track B" as a whole | **Never** | A track is weeks of dependent work with an evolving state block. That's a session, not a task |
 
 ### The rule of thumb
@@ -99,7 +99,7 @@ pasting a prompt. Each is tool-scoped and model-scoped to its job.
 | `grounding-auditor` | no | Assistant answers and any user-facing number — the honesty guardrail. |
 | `interface-reviewer` | no | Anything touching `app/components/**` or `page.tsx`. |
 | `scribe` | no | Batch-filing findings as labelled issues at the end of a checkpoint. |
-| `builder` | **yes** | One provably disjoint slice, in its own worktree. Never the contested three. |
+| `builder` | **yes** | One provably disjoint slice, in its own worktree. Never the contested two (`MapView.tsx`, `page.tsx`). |
 
 Spawn them with the Agent tool, giving the specific question or the pasted acceptance
 criteria — the standing instructions live in the agent file, so the prompt only needs to carry
@@ -139,10 +139,10 @@ no application code.
 | | A | B | C | D | E | G | H |
 |---|---|---|---|---|---|---|---|
 | **A** Shadow Engine | — | ✅ | ✅ | ⚠️ A6/D1 share the sweep API | ⚠️ both edit `routing.ts` | ⚠️ G4 owns A's fixtures | ⚠️ both edit `routing.ts`; H consumes A6 |
-| **B** Navigation | ✅ | — | ✅ | ✅ | ⚠️ both want `Trip` + `useNavigation` | ✅ | ✅ |
+| **B** Navigation | ✅ | — | ✅ | ✅ | ⚠️ B8 consumes `Trip`, E5 defines it | ✅ | ✅ |
 | **C** Copilot | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ (H6 consumes C's job contract) |
 | **D** Heat & Timing | ⚠️ | ✅ | ✅ | — | ✅ | ✅ | ✅ (H supplies minutes, D converts) |
-| **E** Journeys & Modes | ⚠️ | ⚠️ | ✅ | ✅ | — | ⚠️ G6 splits E's files | ⚠️ both edit `routing.ts`; H5 consumes `Trip` |
+| **E** Journeys & Modes | ⚠️ | ⚠️ B8 consumes `Trip`, E5 defines it | ✅ | ✅ | — | ⚠️ G6 splits E's files | ⚠️ both edit `routing.ts`; H5 consumes `Trip` |
 | **G** Proving Ground | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | — | ⚠️ H4 shares G's fixtures |
 | **H** Sun Budget | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | — |
 | **P** Publication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
