@@ -11,12 +11,12 @@
 
 ## Current state
 
-- **Active checkpoint:** E4 (scoot/skate profile — `feat/e4-scoot-profile`)
-- **Done:** E1 (merged #346: bike cost model, selector, share-URL mode), E2 (merged #350: mode-aware output)
-- **Open PRs:** #355 (E4 — `feat/e4-scoot-profile`)
-- **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; Pareto budget excludes crossing penalties so walk matches main exactly; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations. E2: `shadowStrength` does NOT scale with speed — the 1/v time normalization cancels (derived in `docs/notes/mode-shadow-weight.md`); the 250 m Pareto flat and 15 m crossing penalty are walk-metres time-normalized by `v_mode/v_walk` (walk ratio exactly 1, walk byte-identical); heat/dose definitions untouched — Track D owns them, convective cooling filed as #349; acceptance deviation: no weighting added to force route divergence beyond what the derivation supports. E4: one mode, id `scoot` (kick scooters + skateboards; e-scooters excluded — legally bike-like, use bike mode); speed 3.0 m/s stated as assumption (drives ETA + E2 normalization); steps *excluded* by prohibition (`highway=steps`, `foot=no` except on dedicated `highway=cycleway` — segregated cycleways are the smooth network scooters legally ride, banning them would strand scoot where it should shine; `access=no` with a foot yes/designated/permissive override — no scooter/skateboard access tag invented, `bicycle=*` ignored); bad surfaces *penalized* near-disqualifying (+1000 m, still routes when no smooth option) over `cobblestone|sett|gravel|sand|unpaved|dirt|ground` (`sett` included: Madrid tags stone setts as `sett`); `smoothness` overrides surface where tagged (excellent/good free, intermediate +50 m, bad-or-worse +1000 m), absent falls back to surface; no cycleway discount for scoot so `minCostRatio` derives from policy (1 for walk/scoot, 0.5 for bike); E4 review fix: the Pareto detour allowance prices the baseline's physical length (`shortestCost + shortestPhys×(factor−1) + flat`) instead of doubling penalties — doubling a +1000 m sett penalty admitted ~4× detours; walk is bit-identical, bike shifts by (physical−cost) on the baseline path, pinned by a sett-corridor regression test; `RouteResult/RouteOption.surfaceMetresM` carries physical metres per surface and the card confesses ("includes N m of …") instead of implying smooth; Madrid-centre coverage measured 2026-09-15 (bbox 40.4118,-3.7088,40.4218,-3.6988 around Puerta del Sol, n=681 ways, one Overpass query): 91.8% `surface`, 30.8% `smoothness` — no sparse-data note needed for surface, smoothness fallback documented; acceptance metric is raw-surface share (walk >90% → scoot <10% on fixture O-D 21734300→351959168, detour <2×), smoothness-blind by construction
-- **Blocked on:** nothing
-- **Next action:** get E4 reviewed; then wait for G6 (E5) or take E7 (unblocks E3)
+- **Active checkpoint:** none in flight. Next is E7, slices (a)–(c), which can build on a stub; E5 waits for G6
+- **Done:** E1 (merged #346: bike cost model, selector, share-URL mode), E2 (merged #350: mode-aware output), E4 (merged #355: scoot/skate profile)
+- **Open PRs:** none
+- **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; Pareto budget excludes crossing penalties so walk matches main exactly; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations. E2: `shadowStrength` does NOT scale with speed — the 1/v time normalization cancels (derived in `docs/notes/mode-shadow-weight.md`); the 250 m Pareto flat and 15 m crossing penalty are walk-metres time-normalized by `v_mode/v_walk` (walk ratio exactly 1, walk byte-identical); heat/dose definitions untouched — Track D owns them, convective cooling filed as #349; acceptance deviation: no weighting added to force route divergence beyond what the derivation supports. E4: one mode, id `scoot` (kick scooters + skateboards; e-scooters excluded — legally bike-like, use bike mode); speed 3.0 m/s stated as assumption (drives ETA + E2 normalization); steps *excluded* by prohibition (`highway=steps`, `foot=no` except on dedicated `highway=cycleway` — segregated cycleways are the smooth network scooters legally ride, banning them would strand scoot where it should shine; `access=no` with a foot yes/designated/permissive override — no scooter/skateboard access tag invented, `bicycle=*` ignored); bad surfaces *penalized* near-disqualifying (+1000 m, still routes when no smooth option) over `cobblestone|sett|gravel|sand|unpaved|dirt|ground` (`sett` included: Madrid tags stone setts as `sett`); `smoothness` overrides surface where tagged (excellent/good free, intermediate +50 m, bad-or-worse +1000 m), absent falls back to surface; no cycleway discount for scoot so `minCostRatio` derives from policy (1 for walk/scoot, 0.5 for bike); E4 review fix: the Pareto detour allowance prices the baseline's physical length (`shortestCost + shortestPhys×(factor−1) + flat`) instead of doubling penalties — doubling a +1000 m sett penalty admitted ~4× detours; walk is bit-identical, bike shifts by (physical−cost) on the baseline path, pinned by a sett-corridor regression test; `RouteResult/RouteOption.surfaceMetresM` carries physical metres per surface and the card confesses ("includes N m of …") instead of implying smooth; Madrid-centre coverage measured 2026-09-15 (bbox 40.4118,-3.7088,40.4218,-3.6988 around Puerta del Sol, n=681 ways, one Overpass query): 91.8% `surface`, 30.8% `smoothness` — no sparse-data note needed for surface, smoothness fallback documented; acceptance metric is raw-surface share (walk >90% → scoot <10% on fixture O-D 21734300→351959168, detour <2×), smoothness-blind by construction. 2026-09-15 rescope: E7 reads the shadow engine v2's prepared terrain (NYC first) behind an `ElevationSource` interface, not MapTiler terrain. Unknown elevation stays null, never flat. The site is moving from Vercel to Cloudflare (#360); that move strands `localStorage` saved routes unless a handoff ships first (#357)
+- **Blocked on:** E7 slice (d) only, on #356 (NYC terrain is FABDEM, which can't be published) and the first published v2 NYC generation. E7 slices (a)–(c) are unblocked
+- **Next action:** E7 slices (a)–(c) against a fixture stub; or wait for G6 (E5)
 - **Last verified:** 2026-09-15, 917 tests green on the branch (60 files; jsdom-component suites can't start workers on this machine — pre-existing, identical on clean main), e2e smoke green incl. the new Scoot round-trip step, lint/typecheck/build clean; review round 2 (budget inflation + Scoot accessible name) fixed with a sensitivity-checked regression test
 
 ---
@@ -163,16 +163,47 @@ each `TripLeg` carries its own mode and the totals sum across modes.
 100% shadowed and should say why); a bike leg that can't continue underground is handled explicitly.
 **Files.** `app/lib/trip/**`, `trainGraph.ts`, `useNavigation.ts` (⚠️). **Size.** Large.
 
-### E7 — Elevation *(unblocks E3)*
-Per-edge grade from a free terrain source — MapTiler terrain tiles are **already in the stack**
-(`MapView.tsx:690`, `TERRAIN_SOURCE_SPEC`). Also improves walk-speed estimates on hills, which
-makes every ETA in the app better. Acceptance: grade available per edge with a documented
-sampling method; ETA on a known hilly route improves against a measured reference.
+### E7 — Elevation *(unblocks E3; rescoped 2026-09-15)*
+**Goal.** Per-edge grade from **the same terrain the shadow engine uses**, so the hill that
+casts a shadow and the hill that slows you down are the same hill.
+**Why rescoped.** The original plan read MapTiler terrain tiles (`MapView.tsx`,
+`TERRAIN_SOURCE_SPEC`). Shadow engine v2 (`docs/shadow-engine-v2/`, `server/shadow-prep/`)
+now prepares terrain regionally, starting with New York City, and publishes it as immutable
+objects served from R2 (#360). A second elevation source would disagree with the shadows and
+bring its own terms (03-data-sources §T1). The NYC source isn't settled either:
+`regions/new-york-city-v1.json` requires FABDEM (CC BY-NC-SA), which `publication/ATTRIBUTION.md`
+says must not be made public. **#356 has to resolve before any public grade ships.** 3DEP is
+the recommended source.
+**Approach, stub first.**
+(a) `app/lib/elevation/`: an `ElevationSource` interface that batches `[lng, lat][] →
+Promise<(number | null)[]>` and carries provenance (source, generation, vertical datum).
+`null` means unknown and never becomes 0, the same rule v2 applies to shadow. Tests use a fixture stub.
+(b) Per-edge elevation profile: sample the endpoints plus interior points at a stated
+spacing, and compute directed grade (edges are directed). State the resolution limit: a
+~30 m DEM can't see a 20 m ramp. The sidewalk split copies tags with a spread, so check new
+edge fields survive it, with a test.
+(c) Slope-speed model for ETA: a cited function per mode (e.g. Tobler's hiking function for
+walk; bike needs its own source). Changing route **cost** needs an E2-style derivation note.
+Where elevation is null, ETA and routing stay byte-identical for walk, bike and scoot.
+(d) Swap the stub for v2's published terrain reader, reusing v2's decoder rather than a
+parallel tile reader. This needs #356 and a published NYC generation (v2 items 7 and 17, #315/#318).
+**Outside prepared regions:** elevation is `null` and the card says so. A worldwide fallback
+source is a separate later decision that needs its own licence review, not a silent
+MapTiler default.
+**Acceptance.** Interface and stub tests; null propagates end to end (unknown elevation
+never reads as flat); no routing change where elevation is null. With admitted NYC terrain,
+ETA on a named NYC hill route (e.g. Washington Heights, or Staten Island's Grymes Hill) gets
+closer to a timed reference walk, with the method and sample count recorded.
+**Files.** `app/lib/elevation/**` (new), `routing.ts` (edge fields), `travelMode.ts`
+(slope speed), `useNavigation.ts` (⚠️ attach elevation after the graph fetch, minimal).
+**Size.** Medium for (a)–(c), small for (d).
 
 ### E8 — Saved journeys
 Home/Work + a commute `Trip` that reopens with today's shadow. Part of **#64**; pairs with
 Track D's D6/D7 to close the habit loop. Extends `savedRoutes.ts` from routes to trips
-(with a migration for existing saved data — don't strand it).
+(with a migration for existing saved data — don't strand it). Saved routes live in
+origin-scoped `localStorage`, so the Vercel → Cloudflare move strands them too. The handoff
+in #357 has to land before cutover, whether or not E8 has started.
 
 ---
 
@@ -199,9 +230,17 @@ Track D's D6/D7 to close the habit loop. Extends `savedRoutes.ts` from routes to
    city is worse than none — it promises and fails. Mitigation: report data coverage honestly
    in the route card ("kerb data sparse here").
 4. **`Trip` migration stranding saved data.** Write the migration in the same PR as the model.
+5. **The hosting move stranding saved data and share links.** `localStorage` belongs to one
+   origin, and share URLs are absolute. See #357: the handoff must ship before cutover, and the
+   old domain must 308-redirect preserving the query.
+6. **Grade from a source we can't publish.** NYC terrain is currently FABDEM (non-public).
+   E7 slice (d) waits on #356; never fall back to an unreviewed source to unblock it.
 
 ## Out of scope / hand-offs
 
 - Shadow math → **Track A**. Heat weighting → **Track D** (E applies, D defines).
+- Terrain preparation and publication → **shadow engine v2** (`docs/shadow-engine-v2/`); E7
+  consumes it. Hosting, R2 and the proxy port → the Cloudflare migration (#360), which the
+  repo owner owns.
 - Live guidance and leg *browsing UI* → **Track B** (B8 consumes `Trip`).
 - Splitting `useNavigation.ts` → **Track G** (G6). Don't do it opportunistically mid-checkpoint.
