@@ -18,6 +18,7 @@ import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClien
 import type { AgentContext, AssistantPin } from "../tools";
 import type { RoutePlan } from "../../routePlanJob";
 import type { ClaimSupportMetrics, VerifiedAnswer } from "../receipts";
+import type { AuthorityAuditEvent } from "../authority";
 
 // ---------------------------------------------------------------------------
 // Scenario shape
@@ -122,6 +123,7 @@ export interface Trace {
   answer: string;
   verified?: VerifiedAnswer;
   metrics?: ClaimSupportMetrics;
+  authorityEvents: AuthorityAuditEvent[];
   history: LlmContent[];
 }
 
@@ -196,6 +198,7 @@ export type RunAgentFn = (opts: {
   userText: string;
   ctx: AgentContext;
   onToolEvent?: (e: { name: string; args: Record<string, unknown> }) => void;
+  onAuthorityEvent?: (event: AuthorityAuditEvent) => void;
 }) => Promise<{
   text: string;
   history: LlmContent[];
@@ -348,6 +351,7 @@ async function replay(
     answer: "",
     verified: undefined,
     metrics: undefined,
+    authorityEvents: [],
     history: [],
   };
 
@@ -388,6 +392,7 @@ async function replay(
     userText: scenario.userText,
     ctx: makeScenarioContext(),
     onToolEvent: (e) => trace.toolEvents.push(e.name),
+    onAuthorityEvent: (event) => trace.authorityEvents.push(event),
   });
   trace.answer = text;
   trace.verified = answer;

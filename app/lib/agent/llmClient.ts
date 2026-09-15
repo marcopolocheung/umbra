@@ -24,9 +24,12 @@
  * (VITE_GEMINI_RESEARCH_MODEL / VITE_GEMINI_RESPONSE_MODEL). Both share the one
  * key pool.
  */
+import type { ContentProvenance } from "./authority";
 
 export interface LlmPart {
   text?: string;
+  /** C10 source label preserved by the neutral transcript IR. */
+  provenance?: ContentProvenance;
   /**
    * `extra` is provider data that must be echoed back with this call on the
    * next request — Gemini 3's thought signature. Opaque to the loop.
@@ -111,7 +114,7 @@ function geminiKeys(): string[] {
     import.meta.env.VITE_GEMINI_API_KEY as string | undefined,
     import.meta.env.VITE_GEMINI_API_KEY_1 as string | undefined,
     import.meta.env.VITE_GEMINI_API_KEY_2 as string | undefined,
-    import.meta.env.VITE_GEMINI_API_KEY_3 as string | undefined
+    import.meta.env.VITE_GEMINI_API_KEY_3 as string | undefined,
   );
 }
 
@@ -145,7 +148,7 @@ const FAIL_OVER = new Set([401, 403, 429]);
 async function fetchAcrossKeys(
   tag: string,
   keys: string[],
-  makeReq: (key: string) => Promise<Response>
+  makeReq: (key: string) => Promise<Response>,
 ): Promise<Response> {
   const start = rrStart(tag, keys.length);
   let last: Response | null = null;
@@ -193,10 +196,14 @@ const OVERLOAD_BACKOFF_MS = [2000, 6000];
  */
 async function withRateLimitRetry(
   doFetch: () => Promise<Response>,
-  maxRetries = 2
+  maxRetries = 2,
 ): Promise<Response> {
   let res = await doFetch();
-  for (let attempt = 0; attempt < maxRetries && (res.status === 429 || res.status === 503); attempt++) {
+  for (
+    let attempt = 0;
+    attempt < maxRetries && (res.status === 429 || res.status === 503);
+    attempt++
+  ) {
     const waitMs = res.status === 503 ? OVERLOAD_BACKOFF_MS[attempt] : await parseRetryMs(res);
     if (waitMs == null || waitMs > 15000) break; // unknown / too long → give up
     await delay(waitMs + 250);
@@ -229,7 +236,10 @@ interface OpenAIMessage {
 function toOpenAIBody(req: LlmRequest, model: string): Record<string, unknown> {
   const messages: OpenAIMessage[] = [];
 
-  const sys = req.systemInstruction?.parts.map((p) => p.text).join("\n").trim();
+  const sys = req.systemInstruction?.parts
+    .map((p) => p.text)
+    .join("\n")
+    .trim();
   if (sys) messages.push({ role: "system", content: sys });
 
   // Tool calls need stable ids; assign deterministically while walking history.
@@ -240,7 +250,10 @@ function toOpenAIBody(req: LlmRequest, model: string): Record<string, unknown> {
 
   for (const content of req.contents) {
     if (content.role === "model") {
-      const text = content.parts.map((p) => p.text ?? "").join("").trim();
+      const text = content.parts
+        .map((p) => p.text ?? "")
+        .join("")
+        .trim();
       const fcs = content.parts.filter((p) => p.functionCall);
       const msg: OpenAIMessage = { role: "assistant", content: text || null };
       if (fcs.length > 0) {
@@ -273,7 +286,10 @@ function toOpenAIBody(req: LlmRequest, model: string): Record<string, unknown> {
         });
         pendingCallIds = [];
       }
-      const text = content.parts.map((p) => p.text ?? "").join("").trim();
+      const text = content.parts
+        .map((p) => p.text ?? "")
+        .join("")
+        .trim();
       if (text) messages.push({ role: "user", content: text });
     }
   }
@@ -284,9 +300,7 @@ function toOpenAIBody(req: LlmRequest, model: string): Record<string, unknown> {
   }));
 
   const temperature =
-    typeof req.generationConfig?.temperature === "number"
-      ? req.generationConfig.temperature
-      : 0;
+    typeof req.generationConfig?.temperature === "number" ? req.generationConfig.temperature : 0;
 
   // Determinism: temperature 0 + top_p 1. No `seed` — Gemini's endpoint
   // rejects the whole request if one is present.
@@ -346,9 +360,7 @@ function sliceBalancedJson(s: string, start: number): string | null {
  * `<tool_call>{"name":...,"arguments":{...}}</tool_call>`. Salvage those so the
  * agent executes them instead of leaking the raw syntax into the chat.
  */
-function extractTextToolCalls(
-  text: string
-): { name: string; args: Record<string, unknown> }[] {
+function extractTextToolCalls(text: string): { name: string; args: Record<string, unknown> }[] {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
 
   // <function=NAME> ... {json}  (closing tag optional)
@@ -444,7 +456,7 @@ function fromOpenAI(data: OpenAIResponse): LlmResponse {
 
 export async function callModel(
   req: LlmRequest,
-  role: ModelRole = "research"
+  role: ModelRole = "research",
 ): Promise<LlmResponse> {
   const body = toOpenAIBody(req, modelForRole(role));
 
@@ -455,7 +467,7 @@ export async function callModel(
         throw new AgentConfigError(
           "Missing VITE_GEMINI_API_KEY. Get a free key at " +
             "https://aistudio.google.com/apikey and add it to .env. You can list " +
-            "several (comma-separated) to pool the free per-key quota."
+            "several (comma-separated) to pool the free per-key quota.",
         );
       }
       // Dev: route through the Vite proxy (vite.config.ts → /__gemini) for CORS.
@@ -464,7 +476,7 @@ export async function callModel(
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
           body: JSON.stringify(body),
-        })
+        }),
       );
     }
     return fetch("/api/agent", {

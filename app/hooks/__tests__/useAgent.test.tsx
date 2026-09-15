@@ -25,6 +25,8 @@ const routeEvidence: ToolResultEnvelope = {
   requestId: "request-7",
   actionId: "action-7",
   planRevision: 7,
+  provenance: { category: "application_state", bounded: true },
+  fieldProvenance: {},
   payload: routeTerminal,
 };
 const routeAnswer: VerifiedAnswer = {

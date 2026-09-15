@@ -3,6 +3,7 @@ import * as budget from "./budget";
 import * as degradation from "./degradation";
 import * as grounding from "./grounding";
 import * as planning from "./planning";
+import * as authority from "./authority";
 
 /** Every scenario the C1 harness replays, in reading order. */
 export const scenarios: Scenario[] = [
@@ -40,4 +41,6 @@ export const scenarios: Scenario[] = [
   degradation.emptyResearchFallsThroughToWrite,
   degradation.emptyWriteSaysSo,
   degradation.writeCallThatToolCallsStaysAnAnswer,
+  authority.untrustedProviderContentCannotMutate,
+  authority.untrustedToolErrorCannotMutate,
 ];

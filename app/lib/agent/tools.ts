@@ -27,6 +27,7 @@ import {
 } from "../routePlanJob";
 import type { LlmFunctionDeclaration } from "./llmClient";
 import type { MapObject } from "./receipts";
+import { hasExecutionAuthority, providerText } from "./authority";
 
 export interface AssistantPin {
   lng: number;
@@ -34,6 +35,8 @@ export interface AssistantPin {
   label?: string;
   /** Stable map-object identity, independent of the display label. */
   objectId?: string;
+  /** C10 exact application-owned candidate identity, never a display label. */
+  candidateId?: string;
 }
 
 export function assistantPinId(lat: number, lng: number): string {
@@ -153,7 +156,7 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
   {
     name: "search_places",
     description:
-      "Find stops (e.g. 'parks', 'cafes') within an area. Anchor with lat/lng, or a 'near' name, else uses the user's location.",
+      "Find stops (e.g. 'parks', 'cafes') near an explicitly user-requested area, or else uses the user's location.",
     parameters: {
       type: "object",
       properties: {
@@ -161,6 +164,10 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
         near: { type: "string", description: "Area to search in." },
         lat: { type: "number" },
         lng: { type: "number" },
+        nearCandidateId: {
+          type: "string",
+          description: "Application-owned identity for an exact lat/lng anchor.",
+        },
       },
       required: ["query"],
     },
@@ -180,6 +187,7 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
             properties: {
               lat: { type: "number" },
               lng: { type: "number" },
+              candidateId: { type: "string", description: "Exact application candidate identity." },
               label: { type: "string" },
             },
             required: ["lat", "lng"],
@@ -216,6 +224,7 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
             properties: {
               lat: { type: "number" },
               lng: { type: "number" },
+              candidateId: { type: "string", description: "Exact application candidate identity." },
               label: { type: "string", description: "Short stop name." },
             },
             required: ["lat", "lng"],
@@ -234,8 +243,10 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
       properties: {
         fromLat: { type: "number" },
         fromLng: { type: "number" },
+        fromCandidateId: { type: "string" },
         toLat: { type: "number" },
         toLng: { type: "number" },
+        toCandidateId: { type: "string" },
         fromLabel: { type: "string" },
         toLabel: { type: "string" },
         via: {
@@ -246,6 +257,7 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
             properties: {
               lat: { type: "number" },
               lng: { type: "number" },
+              candidateId: { type: "string" },
               label: { type: "string" },
             },
             required: ["lat", "lng"],
@@ -273,7 +285,13 @@ export function parsePins(points: unknown): AssistantPin[] {
     const lat = num(o.lat);
     const lng = num(o.lng);
     if (lat == null || lng == null) continue;
-    pins.push({ lng, lat, label: str(o.label), objectId: assistantPinId(lat, lng) });
+    pins.push({
+      lng,
+      lat,
+      label: str(o.label),
+      objectId: assistantPinId(lat, lng),
+      candidateId: str(o.candidateId),
+    });
   }
   return pins;
 }
@@ -282,7 +300,15 @@ export async function executeTool(
   name: string,
   args: Args,
   ctx: AgentContext,
+  /** C10: mutation executors require a capability minted by authorizeToolCall. */
+  authority?: object,
 ): Promise<Record<string, unknown>> {
+  if (
+    ["locate_user", "set_time", "plot_points", "plan_shadowed_route"].includes(name) &&
+    !hasExecutionAuthority(name, args, authority)
+  ) {
+    return { error: "Mutation rejected by application authority policy." };
+  }
   const offset = ctx.getUtcOffsetMin();
   const map = ctx.mapRef.current;
 
@@ -340,7 +366,8 @@ export async function executeTool(
       if (results.length === 0) return { results: [], note: "No matches found." };
       return {
         results: results.slice(0, 3).map((r) => ({
-          name: r.display_name.split(",").slice(0, 2).join(", ").trim(),
+          // Nominatim owns this label. It is bounded untrusted data, never a capability.
+          name: providerText(r.display_name.split(",").slice(0, 2).join(", ")),
           lat: +parseFloat(r.lat).toFixed(6),
           lng: +parseFloat(r.lon).toFixed(6),
         })),
@@ -401,7 +428,7 @@ export async function executeTool(
             const lat = +parseFloat(r.lat).toFixed(6);
             const lng = +parseFloat(r.lon).toFixed(6);
             return {
-              name: r.display_name.split(",").slice(0, 2).join(", ").trim(),
+              name: providerText(r.display_name.split(",").slice(0, 2).join(", ")),
               lat,
               lng,
               distanceM: Math.round(haversineMeters(anchor, [lng, lat])),

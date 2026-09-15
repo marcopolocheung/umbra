@@ -18,8 +18,12 @@ export const happyPathShadowedAfternoon: Scenario = {
     plot_points: { ok: true, plotted: 1 },
   },
   script: [
-    { calls: [{ name: "search_places", args: { query: "parks", lat: 40.7536, lng: -73.9832 } }] },
-    { calls: [{ name: "check_shadow", args: { lat: BRYANT.lat, lng: BRYANT.lng, time: "3:00 PM" } }] },
+    { calls: [{ name: "search_places", args: { query: "parks" } }] },
+    {
+      calls: [
+        { name: "check_shadow", args: { lat: BRYANT.lat, lng: BRYANT.lng, time: "3:00 PM" } },
+      ],
+    },
     {
       calls: [
         {
@@ -70,6 +74,7 @@ export const modelPlotsItselfNoDuplicate: Scenario = {
   intent: "a model-issued plot_points suppresses the fallback plot",
   userText: "Show me Bryant Park",
   tools: { geocode_place: gazetteer([BRYANT]), plot_points: { ok: true, plotted: 1 } },
+  mapPins: [{ ...BRYANT, candidateId: "scenario:bryant" }],
   script: [
     {
       calls: [
@@ -135,6 +140,7 @@ export const setTimePrecedesShadowCheck: Scenario = {
     check_shadow: { shadowFraction: 0.81, status: "shadowed", time: "5:30 PM" },
     plot_points: { ok: true, plotted: 1 },
   },
+  mapPins: [{ ...MADISON, candidateId: "scenario:madison" }],
   script: [
     { calls: [{ name: "set_time", args: { time: "5:30 PM" } }] },
     { calls: [{ name: "check_shadow", args: { lat: MADISON.lat, lng: MADISON.lng } }] },
@@ -168,6 +174,10 @@ export const routePlanningPlotsEndpoints: Scenario = {
     plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 2 },
   },
+  mapPins: [
+    { ...BRYANT, candidateId: "scenario:bryant" },
+    { ...MADISON, candidateId: "scenario:madison" },
+  ],
   script: [
     {
       calls: [

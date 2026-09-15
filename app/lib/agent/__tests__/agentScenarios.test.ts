@@ -269,6 +269,7 @@ describe("session tool cache", () => {
     const scenario: Scenario = {
       ...sharedModelSkipsWriteCall,
       id: "geocode-twice",
+      userText: "Plan a shadowed walk through Bryant Park",
       tools: {
         geocode_place: { results: [{ name: "Bryant Park", lat: 40.7536, lng: -73.9832 }] },
         plot_points: { ok: true, plotted: 1 },
