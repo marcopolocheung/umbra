@@ -3,6 +3,7 @@ import { executeTool, toolDeclarations } from "../agent/tools";
 import type { AgentContext } from "../agent/tools";
 import { geocodeNear } from "../nominatim";
 import type { RoutePlan, RoutePlanRequest } from "../routePlanJob";
+import { authorizeToolCall } from "../agent/authority";
 
 vi.mock("../nominatim", () => ({ geocodeForward: vi.fn(), geocodeNear: vi.fn() }));
 
@@ -50,7 +51,42 @@ function makeCtx(): AgentContext {
   };
 }
 
+function routeAuthority(args: Record<string, unknown>): object {
+  const all = [
+    { lat: args.fromLat, lng: args.fromLng },
+    { lat: args.toLat, lng: args.toLng },
+    ...(Array.isArray(args.via) ? args.via : []),
+  ] as Array<{ lat: number; lng: number }>;
+  args.fromCandidateId = "candidate-0";
+  args.toCandidateId = "candidate-1";
+  if (Array.isArray(args.via)) {
+    args.via = args.via.map((raw, index) => ({
+      ...(raw as Record<string, unknown>),
+      candidateId: `candidate-${index + 2}`,
+    }));
+  }
+  const decision = authorizeToolCall(
+    {
+      currentUserText: "Walk this route",
+      candidates: all.map((point, index) => ({ id: `candidate-${index}`, ...point })),
+    },
+    "plan_shadowed_route",
+    args,
+    ["current_user_intent", "application_state"],
+  );
+  if (!decision.execution) throw new Error("test route authority was rejected");
+  return decision.execution;
+}
+
 describe("agent route tools", () => {
+  it("fails closed at the executor when a mutation lacks an authority capability", async () => {
+    const ctx = makeCtx();
+    const result = await executeTool("set_time", { time: "5:30 PM" }, ctx);
+
+    expect(result).toEqual({ error: "Mutation rejected by application authority policy." });
+    expect(ctx.setDate).not.toHaveBeenCalled();
+  });
+
   it("exposes ordered via stops on plan_shadowed_route", () => {
     const routeTool = toolDeclarations.find((tool) => tool.name === "plan_shadowed_route");
     expect(routeTool?.parameters.properties).toHaveProperty("via");
@@ -59,36 +95,32 @@ describe("agent route tools", () => {
   it("awaits a terminal multi-stop route result", async () => {
     const ctx = makeCtx();
 
-    const result = await executeTool(
-      "plan_shadowed_route",
-      {
-        fromLat: 40.7,
-        fromLng: -74.0,
-        fromLabel: "Start cafe",
-        toLat: 40.73,
-        toLng: -73.98,
-        toLabel: "Dinner",
-        via: [
-          { lat: 40.71, lng: -73.99, label: "Park" },
-          { lat: 40.72, lng: -73.985, label: "Museum" },
-          { lat: "bad", lng: -73.0 },
-        ],
-      },
-      ctx,
-    );
+    const args = {
+      fromLat: 40.7,
+      fromLng: -74.0,
+      fromLabel: "Start cafe",
+      toLat: 40.73,
+      toLng: -73.98,
+      toLabel: "Dinner",
+      via: [
+        { lat: 40.71, lng: -73.99, label: "Park" },
+        { lat: 40.72, lng: -73.985, label: "Museum" },
+      ],
+    };
+    const result = await executeTool("plan_shadowed_route", args, ctx, routeAuthority(args));
 
     expect(result).toMatchObject({ status: "completed", inputVersion: 1 });
     expect(ctx.submitRoutePlan).toHaveBeenCalledWith(
       expect.objectContaining({
-      requestId: "test-1",
-      inputVersion: 1,
-      planRevision: 1,
-      actionId: "test-action-1",
-      retry: 0,
-      idempotencyKey: "test:1",
-      plan: expect.objectContaining({
-        from: [-74.0, 40.7],
-        to: [-73.98, 40.73],
+        requestId: "test-1",
+        inputVersion: 1,
+        planRevision: 1,
+        actionId: "test-action-1",
+        retry: 0,
+        idempotencyKey: "test:1",
+        plan: expect.objectContaining({
+          from: [-74.0, 40.7],
+          to: [-73.98, 40.73],
           via: [
             [-73.99, 40.71],
             [-73.985, 40.72],
@@ -101,11 +133,12 @@ describe("agent route tools", () => {
   it("clears stale additional waypoints for a two-stop shadowed route", async () => {
     const ctx = makeCtx();
 
-    await executeTool("plan_shadowed_route", { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 }, ctx);
+    const args = { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 };
+    await executeTool("plan_shadowed_route", args, ctx, routeAuthority(args));
 
     expect(ctx.submitRoutePlan).toHaveBeenCalledWith(
       expect.objectContaining({
-      plan: expect.objectContaining({ via: [] }),
+        plan: expect.objectContaining({ via: [] }),
       }),
     );
   });
@@ -123,11 +156,8 @@ describe("agent route tools", () => {
       metrics: [{ label: "Claimed", distanceM: 100, shadowCoverage: 0.5 }],
       shadowProvenance: null,
     });
-    const result = await executeTool(
-      "plan_shadowed_route",
-      { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 },
-      ctx,
-    );
+    const args = { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 };
+    const result = await executeTool("plan_shadowed_route", args, ctx, routeAuthority(args));
     expect(result).toMatchObject({
       status: "error",
       requestId: "test-1",

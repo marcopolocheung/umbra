@@ -31,6 +31,16 @@ import {
   type VerifiedAnswer,
   type VerifiedAnswerBlock,
 } from "./receipts";
+import {
+  authorizeToolCall,
+  candidateIdentities,
+  boundUntrustedPayload,
+  currentTurnTerms,
+  isContentProvenance,
+  toolErrorText,
+  type AuthorityAuditEvent,
+  type FieldSourceCategory,
+} from "./authority";
 
 const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around shadow and sun comfort: shadowed walks, where to sit or eat out of the sun at a given hour, and shadow-aware routes. If asked anything else, reply in one sentence that you only help plan around shadow, and stop. Do not answer off-topic questions.
 
@@ -91,6 +101,8 @@ export interface RunAgentOptions {
   ctx: AgentContext;
   /** Called when the agent decides to invoke a tool (for UI activity display). */
   onToolEvent?: (e: ToolEvent) => void;
+  /** C10 structured, content-free authority decisions for application audit sinks. */
+  onAuthorityEvent?: (event: AuthorityAuditEvent) => void;
   /** Results of cacheable tools, kept across turns by the caller. */
   cache?: Map<string, ToolResultEnvelope>;
   /** Session evidence graph, intentionally separate from the Gemini transcript. */
@@ -108,6 +120,7 @@ export interface RunAgentResult {
   answer: VerifiedAnswer;
   evidence: ToolResultEnvelope[];
   metrics: ClaimSupportMetrics;
+  authorityEvents: AuthorityAuditEvent[];
 }
 
 function extractText(content: LlmContent | undefined): string {
@@ -135,26 +148,41 @@ function collectPointCandidates(
   args: Record<string, unknown>,
   result: Record<string, unknown>,
   candidates: AssistantPin[],
+  resultId?: string,
 ): void {
-  const add = (lat: unknown, lng: unknown, label?: unknown) => {
+  const add = (lat: unknown, lng: unknown, label?: unknown, candidateId?: unknown) => {
     const nLat = num(lat);
     const nLng = num(lng);
     if (nLat == null || nLng == null) return;
     const key = pinKey(nLat, nLng);
     if (candidates.some((p) => pinKey(p.lat, p.lng) === key)) return;
-    candidates.push({ lat: nLat, lng: nLng, label: str(label) });
+    candidates.push({ lat: nLat, lng: nLng, label: str(label), candidateId: str(candidateId) });
   };
 
-  if (toolName === "check_shadow") {
-    add(args.lat, args.lng);
-    for (const p of parsePins(args.points)) add(p.lat, p.lng, p.label);
+  // A successful shadow observation is application-generated evidence for the
+  // queried point. Failed/provider-error text never contributes a candidate.
+  if (toolName === "check_shadow" && !result.error) {
+    add(
+      args.lat,
+      args.lng,
+      undefined,
+      resultId ? `shadow-candidate:${resultId}:single` : undefined,
+    );
+    for (const [index, p] of parsePins(args.points).entries()) {
+      add(
+        p.lat,
+        p.lng,
+        p.label,
+        p.candidateId ?? (resultId ? `shadow-candidate:${resultId}:${index}` : undefined),
+      );
+    }
     return;
   }
 
   if (toolName === "plan_shadowed_route") {
-    add(args.fromLat, args.fromLng, args.fromLabel);
-    for (const stop of parsePins(args.via)) add(stop.lat, stop.lng, stop.label);
-    add(args.toLat, args.toLng, args.toLabel);
+    add(args.fromLat, args.fromLng, args.fromLabel, args.fromCandidateId);
+    for (const stop of parsePins(args.via)) add(stop.lat, stop.lng, stop.label, stop.candidateId);
+    add(args.toLat, args.toLng, args.toLabel, args.toCandidateId);
     return;
   }
 
@@ -162,9 +190,9 @@ function collectPointCandidates(
   // a place the answer can name, and reconcilePins needs its coordinates.
   if (toolName === "geocode_place" || toolName === "search_places") {
     const results = Array.isArray(result.results) ? result.results : [];
-    for (const item of results) {
+    for (const [index, item] of results.entries()) {
       const o = (item ?? {}) as Record<string, unknown>;
-      add(o.lat, o.lng, o.name);
+      add(o.lat, o.lng, o.name, resultId ? `candidate:${resultId}:${index}` : undefined);
     }
   }
 }
@@ -369,6 +397,64 @@ function evidenceProposal(
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const { ctx, onToolEvent, cache = new Map() } = opts;
+  const authorityEvents: AuthorityAuditEvent[] = [];
+  const audit = (event: AuthorityAuditEvent) => {
+    authorityEvents.push(event);
+    opts.onAuthorityEvent?.(event);
+  };
+  // Persisted history, C5 evidence and cache entries are transcript boundaries.
+  // Missing provenance is a rejection, rather than a compatibility guess.
+  const malformedBoundary =
+    opts.history.some((content) =>
+      content.parts.some((part) => !isContentProvenance(part.provenance)),
+    ) ||
+    (opts.evidence ?? []).some((entry) => !validateToolResultEnvelope(entry)) ||
+    [...cache.values()].some((entry) => !validateToolResultEnvelope(entry));
+  if (malformedBoundary) {
+    const event: AuthorityAuditEvent = {
+      tool: "transcript",
+      fieldSourceCategories: [],
+      decision: "rejected",
+      reasonCode: "missing_or_malformed_provenance",
+    };
+    audit(event);
+    const answer: VerifiedAnswer = {
+      blocks: [
+        { kind: "notice", code: "unverified", detail: "Transcript provenance was rejected." },
+      ],
+      receipts: [],
+      rejectedProseCount: 0,
+      danglingClaimBlocks: 0,
+      duplicateClaimProposals: 0,
+    };
+    const evidence = opts.evidence ?? [];
+    return {
+      text: noticeLabel(answer.blocks[0] as Extract<VerifiedAnswerBlock, { kind: "notice" }>),
+      history: opts.history,
+      answer,
+      evidence,
+      metrics: claimSupportMetrics(answer, { evidence, mapObjects: ctx.getMapObjects() }),
+      authorityEvents,
+    };
+  }
+  // A persisted current-turn label must never become authority on a later
+  // invocation. Model output likewise becomes prior-assistant data. Tool
+  // response provenance stays attached to its provider/application boundary.
+  const priorHistory: LlmContent[] = opts.history.map((content) => ({
+    ...content,
+    parts: content.parts.map((part) => {
+      const category = part.provenance?.category;
+      const priorCategory =
+        category === "current_user_intent"
+          ? "prior_user_content"
+          : content.role === "model" && category === "model_generated"
+            ? "prior_assistant_content"
+            : category;
+      return priorCategory
+        ? { ...part, provenance: { category: priorCategory, bounded: true } }
+        : part;
+    }),
+  }));
   // This turn's successful results by call, so a repeat is answered, not re-run.
   const turnResults = new Map<string, ToolResultEnvelope>();
   const evidence = [...(opts.evidence ?? [])];
@@ -386,6 +472,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     const terminal =
       name === "plan_shadowed_route" ? validateRoutePlanTerminalResult(enriched) : null;
     const sequence = ++resultSequence;
+    const category: FieldSourceCategory =
+      typeof enriched.error === "string"
+        ? "tool_provider_error"
+        : name === "geocode_place" || name === "search_places"
+          ? "provider_controlled"
+          : "application_state";
+    const sanitized =
+      category === "provider_controlled"
+        ? boundUntrustedPayload(enriched)
+        : category === "tool_provider_error"
+          ? boundUntrustedPayload(enriched, "tool_provider_error")
+          : { value: enriched, fieldProvenance: {} };
+    const boundedPayload = sanitized.value as Record<string, unknown>;
+    if (typeof boundedPayload.error === "string")
+      boundedPayload.error = toolErrorText(boundedPayload.error);
     const envelope: ToolResultEnvelope = {
       resultId: opts.resultIdFactory?.({ toolName: name, sequence }) ?? `result-${sequence}`,
       toolName: name,
@@ -395,10 +496,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       requestId: terminal?.requestId,
       actionId: terminal?.actionId,
       planRevision: terminal?.planRevision,
-      payload: enriched,
+      provenance: { category, bounded: true },
+      fieldProvenance: sanitized.fieldProvenance,
+      payload: boundedPayload,
     };
     if (!validateToolResultEnvelope(envelope))
-      envelope.payload = { error: "The tool returned an invalid evidence payload." };
+      Object.assign(envelope, {
+        provenance: { category: "tool_provider_error" as const, bounded: true as const },
+        fieldProvenance: {
+          "payload.error": { category: "tool_provider_error" as const, bounded: true as const },
+        },
+        payload: { error: "The tool returned an invalid evidence payload." },
+      });
     evidence.push(envelope);
     if (name === "check_shadow") {
       const values = Array.isArray(enriched.results) ? enriched.results : [enriched];
@@ -424,12 +533,28 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const modelResult = (envelope: ToolResultEnvelope, reused = false): Record<string, unknown> => ({
     ...envelope.payload,
     _receipt: { resultId: envelope.resultId, producedAt: envelope.producedAt, reused },
+    // Deliberately visible to the model and retained when replayed. This is a
+    // label, not a prompt-only defense: authorization reads envelope provenance.
+    _provenance: {
+      category: envelope.provenance.category,
+      fields: envelope.fieldProvenance,
+      authority: "none",
+      dataOnly: true,
+    },
   });
   let searches = 0;
   const searchClosed = () => searches >= MAX_SEARCHES;
   const contents: LlmContent[] = [
-    ...opts.history,
-    { role: "user", parts: [{ text: opts.userText }] },
+    ...priorHistory,
+    {
+      role: "user",
+      parts: [
+        {
+          text: opts.userText.slice(0, 2000),
+          provenance: { category: "current_user_intent", bounded: true },
+        },
+      ],
+    },
   ];
 
   // Deterministic pre-injection: the map center / local time / location-known
@@ -454,12 +579,142 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   /** What the map shows: earlier turns' pins until this turn plots. */
   let mapPins: AssistantPin[] = opts.pins ?? [];
   let plottedThisTurn = false;
+  const authorityState = () => ({
+    currentUserText: opts.userText,
+    candidates: [
+      ...evidence.flatMap((entry) => candidateIdentities(entry.resultId, entry.payload)),
+      ...mapPins.map((pin, index) => ({
+        id: pin.candidateId ?? pin.objectId ?? `map-pin:${index}`,
+        lat: pin.lat,
+        lng: pin.lng,
+      })),
+      ...pointCandidates.flatMap((pin) =>
+        pin.candidateId ? [{ id: pin.candidateId, lat: pin.lat, lng: pin.lng }] : [],
+      ),
+    ],
+  });
+  const attachExactCandidateIds = (tool: string, rawArgs: Record<string, unknown>) => {
+    const candidates = authorityState().candidates;
+    const idFor = (lat: unknown, lng: unknown) =>
+      candidates.find((candidate) => candidate.lat === lat && candidate.lng === lng)?.id;
+    if (tool === "plot_points" && Array.isArray(rawArgs.points)) {
+      return {
+        ...rawArgs,
+        points: rawArgs.points.map((raw) => {
+          const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+          return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+        }),
+      };
+    }
+    if (tool === "check_shadow") {
+      const pointWithId = (raw: unknown) => {
+        const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+        return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+      };
+      return Array.isArray(rawArgs.points)
+        ? { ...rawArgs, points: rawArgs.points.map(pointWithId) }
+        : {
+            ...rawArgs,
+            candidateId: rawArgs.candidateId ?? idFor(rawArgs.lat, rawArgs.lng),
+          };
+    }
+    if (tool === "search_places" && (rawArgs.lat != null || rawArgs.lng != null)) {
+      return {
+        ...rawArgs,
+        nearCandidateId: rawArgs.nearCandidateId ?? idFor(rawArgs.lat, rawArgs.lng),
+      };
+    }
+    if (tool === "plan_shadowed_route") {
+      return {
+        ...rawArgs,
+        fromCandidateId: rawArgs.fromCandidateId ?? idFor(rawArgs.fromLat, rawArgs.fromLng),
+        toCandidateId: rawArgs.toCandidateId ?? idFor(rawArgs.toLat, rawArgs.toLng),
+        via: Array.isArray(rawArgs.via)
+          ? rawArgs.via.map((raw) => {
+              const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+              return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+            })
+          : rawArgs.via,
+      };
+    }
+    return rawArgs;
+  };
+  const sourceCategoriesForCall = (
+    tool: string,
+    args: Record<string, unknown>,
+  ): FieldSourceCategory[] => {
+    // A function call is always a model proposal.  The additional category is
+    // only attached after deterministic validation identifies the authority
+    // source for its sensitive fields; the proposal itself never grants it.
+    if (tool === "set_time" || tool === "locate_user")
+      return ["model_generated", "current_user_intent"];
+    if (tool === "plot_points" || tool === "plan_shadowed_route")
+      return ["model_generated", "current_user_intent", "application_state"];
+    if (tool === "check_shadow")
+      return ["model_generated", "current_user_intent", "application_state"];
+    const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
+    const userTerms = currentTurnTerms(opts.userText);
+    const queryTerms = query.match(/[a-z]{3,}/g) ?? [];
+    const userGrounds = (word: string) =>
+      userTerms.positive.has(word) ||
+      [...userTerms.positive].some(
+        (userWord) =>
+          userWord.startsWith(word.slice(0, 4)) || word.startsWith(userWord.slice(0, 4)),
+      );
+    const userExcludes = (word: string) =>
+      userTerms.negative.has(word) ||
+      [...userTerms.negative].some(
+        (userWord) =>
+          userWord.startsWith(word.slice(0, 4)) || word.startsWith(userWord.slice(0, 4)),
+      );
+    // The model may choose only a small, application-defined search taxonomy
+    // for a broad current-turn outing request.  Free-form query terms remain
+    // model-generated unless they are words the user supplied this turn.
+    const applicationSearchTerms = new Set([
+      "park",
+      "parks",
+      "plaza",
+      "plazas",
+      "cafe",
+      "cafes",
+      "coffee",
+      "shadow",
+      "shadowed",
+      "shade",
+      "shaded",
+      "sun",
+      "sunny",
+      "bench",
+      "benches",
+      "fountain",
+      "fountains",
+      "kiosk",
+      "kiosks",
+      "somewhere",
+    ]);
+    // Every term must be either from this user turn or this small application
+    // taxonomy. One safe-looking overlap cannot launder an added directive.
+    const queryIsCurrentTurnBound =
+      queryTerms.length > 0 &&
+      queryTerms.every(
+        (word) => !userExcludes(word) && (userGrounds(word) || applicationSearchTerms.has(word)),
+      );
+    return queryIsCurrentTurnBound
+      ? ["model_generated", "current_user_intent"]
+      : ["model_generated"];
+  };
 
   const plot = async (pins: AssistantPin[]): Promise<void> => {
-    onToolEvent?.({ name: "plot_points", args: { points: pins } });
+    const args = { points: pins };
+    const authorization = authorizeToolCall(authorityState(), "plot_points", args, [
+      "application_state",
+    ]);
+    audit(authorization.event);
+    if (!authorization.execution) return;
+    onToolEvent?.({ name: "plot_points", args });
     try {
-      const raw = await executeTool("plot_points", { points: pins }, ctx);
-      const result = observe("plot_points", { points: pins }, raw);
+      const raw = await executeTool("plot_points", args, ctx, authorization.execution);
+      const result = observe("plot_points", args, raw);
       if (!result.payload.error) {
         mapPins = pins;
         // Keep the application-owned pin registry in sync even when an
@@ -469,11 +724,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         plottedThisTurn = true;
       }
     } catch (error) {
-      observe(
-        "plot_points",
-        { points: pins },
-        { error: error instanceof Error ? error.message : "Tool failed." },
-      );
+      observe("plot_points", args, {
+        error: error instanceof Error ? error.message : "Tool failed.",
+      });
     }
   };
 
@@ -504,6 +757,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       answer,
       evidence,
       metrics: claimSupportMetrics(answer, { evidence, mapObjects }),
+      authorityEvents,
     };
   };
   const finalizeNotice = (
@@ -529,6 +783,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       answer,
       evidence,
       metrics: claimSupportMetrics(answer, { evidence, mapObjects }),
+      authorityEvents,
     };
   };
 
@@ -548,15 +803,22 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     const args = {
       fromLat: from.lat,
       fromLng: from.lng,
+      fromCandidateId: from.candidateId,
       fromLabel: from.label,
       toLat: to.lat,
       toLng: to.lng,
+      toCandidateId: to.candidateId,
       toLabel: to.label,
       via: mapPins.slice(1, -1),
     };
+    const authorization = authorizeToolCall(authorityState(), "plan_shadowed_route", args, [
+      "application_state",
+    ]);
+    audit(authorization.event);
+    if (!authorization.execution) return;
     onToolEvent?.({ name: "plan_shadowed_route", args });
     try {
-      const raw = await executeTool("plan_shadowed_route", args, ctx);
+      const raw = await executeTool("plan_shadowed_route", args, ctx, authorization.execution);
       const result = observe("plan_shadowed_route", args, raw);
       terminalRouteResult =
         asRouteTerminalResult(result.payload) ?? malformedRouteTerminalResult(result.payload);
@@ -620,8 +882,16 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       if (blocked) return finalizeNotice("blocked", blocked);
       break; // nothing came back — fall through to the write phase
     }
+    // Provider output is never allowed to self-assert a trusted source label.
+    const taggedCandidate: LlmContent = {
+      role: candidate.role,
+      parts: candidate.parts.map((part) => ({
+        ...part,
+        provenance: { category: "model_generated", bounded: true },
+      })),
+    };
 
-    const calls = candidate.parts.filter((p) => p.functionCall);
+    const calls = taggedCandidate.parts.filter((p) => p.functionCall);
     if (calls.length === 0) {
       // Done researching.
       await plotFallbackPoints();
@@ -635,8 +905,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       // user: there is nothing gathered for the write call to ground, and
       // rewriting it turned "which area?" into generic advice in the live eval.
       if (!separateWrite || step === 0) {
-        contents.push({ role: candidate.role ?? "model", parts: candidate.parts });
-        const text = extractText(candidate) || "(no reply)";
+        contents.push(taggedCandidate);
+        const text = extractText(taggedCandidate) || "(no reply)";
         await reconcilePins(text);
         if (step === 0 && evidence.length === 0)
           return finalizeNotice(ctxSnapshot.locationKnown === false ? "clarification" : "refusal");
@@ -647,7 +917,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
 
     // Persist the tool-call turn, execute the calls, feed results back.
-    contents.push({ role: candidate.role ?? "model", parts: candidate.parts });
+    contents.push(taggedCandidate);
     const responseParts: LlmPart[] = [];
     for (const part of calls) {
       const fc = part.functionCall!;
@@ -665,6 +935,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           );
         args = { ...args, points };
       }
+      args = attachExactCandidateIds(fc.name, args);
+      const authorization = authorizeToolCall(
+        authorityState(),
+        fc.name,
+        args,
+        sourceCategoriesForCall(fc.name, args),
+      );
+      audit(authorization.event);
       // A shadow check without a time reads the set time, so that is part of its key.
       const key = `${fc.name}${JSON.stringify(args)}${fc.name === "check_shadow" ? ctx.dateRef.current.getTime() : ""}`;
       // An unanchored search reads the moving map, so it is only a repeat within the turn.
@@ -673,8 +951,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         !(fc.name === "search_places" && args.lat == null && args.near == null);
       let envelope: ToolResultEnvelope | undefined;
       let result: Record<string, unknown>;
-      const earlier = turnResults.get(key);
-      if (earlier) {
+      const earlier = authorization.allowed ? turnResults.get(key) : undefined;
+      if (!authorization.allowed) {
+        result = { error: "Tool call rejected by application authority policy." };
+      } else if (earlier) {
         envelope = earlier;
         result = { ...modelResult(envelope, true), note: REPEAT_NOTE };
       } else if (fc.name === "search_places" && searchClosed()) {
@@ -687,11 +967,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         if (fc.name === "search_places") searches++;
         onToolEvent?.({ name: fc.name, args });
         try {
-          result = await executeTool(fc.name, args, ctx);
+          result = await executeTool(fc.name, args, ctx, authorization.execution);
         } catch (err) {
-          result = { error: err instanceof Error ? err.message : "Tool failed." };
+          result = { error: toolErrorText(err instanceof Error ? err.message : "Tool failed.") };
         }
         envelope = observe(fc.name as AgentToolName, args, result);
+        // The transcript consumes the canonical bounded envelope, never the
+        // raw executor object (including on future provider integrations).
+        result = envelope.payload;
         // An empty search depends on the query wording and the map viewport, so
         // it is never reused across turns — a miss now must not veto a retry
         // later. (The per-turn dedupe above still answers an identical repeat.)
@@ -719,7 +1002,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         routedThisTurn =
           terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
       }
-      collectPointCandidates(fc.name, args, result, pointCandidates);
+      collectPointCandidates(fc.name, args, result, pointCandidates, envelope?.resultId);
       responseParts.push({
         functionResponse: {
           name: fc.name,
@@ -731,8 +1014,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
                   producedAt: envelope.producedAt,
                   reused: earlier != null || (cacheable && cache.get(key) === envelope),
                 },
+                _provenance: {
+                  category: envelope.provenance.category,
+                  fields: envelope.fieldProvenance,
+                  authority: "none",
+                  dataOnly: true,
+                },
               }
             : result,
+        },
+        provenance: {
+          category: envelope?.provenance?.category ?? "tool_provider_error",
+          bounded: true,
         },
       });
     }
@@ -786,7 +1079,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           .map((p) => p.label ?? "an unnamed stop")
           .join(", ")}. Ask again and I'll pick up from here.`
       : "I didn't get a written answer back. Try asking again.");
-  contents.push({ role: "model", parts: [{ text }] });
+  contents.push({
+    role: "model",
+    parts: [{ text, provenance: { category: "model_generated", bounded: true } }],
+  });
   await reconcilePins(text);
   return finalize(text, parseModelAnswer(text));
 }

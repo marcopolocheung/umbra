@@ -179,6 +179,11 @@ export const viaStopsBecomePins: Scenario = {
     plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 3 },
   },
+  mapPins: [
+    { ...BRYANT, candidateId: "scenario:bryant" },
+    { ...GRACE, candidateId: "scenario:grace" },
+    { ...MADISON, candidateId: "scenario:madison" },
+  ],
   script: [
     {
       calls: [
@@ -370,7 +375,11 @@ export const evictionSparesNamedPins: Scenario = {
           name: "plot_points",
           // The model's own labels, over the search hits' coordinates.
           args: {
-            points: MANY.slice(0, 8).map((p, i) => ({ lat: p.lat, lng: p.lng, label: `Stop ${i + 1}` })),
+            points: MANY.slice(0, 8).map((p, i) => ({
+              lat: p.lat,
+              lng: p.lng,
+              label: `Stop ${i + 1}`,
+            })),
           },
         },
       ],
@@ -384,7 +393,16 @@ export const evictionSparesNamedPins: Scenario = {
     toolOrder: ["search_places", "plot_points", "plot_points"],
     plotsBeforeWrite: true,
     // "Stop 8" sits on Park 8, which the answer names, so "Stop 7" makes room instead.
-    pinLabels: ["Stop 1", "Stop 2", "Stop 3", "Stop 4", "Stop 5", "Stop 6", "Stop 8", MANY[11].name],
+    pinLabels: [
+      "Stop 1",
+      "Stop 2",
+      "Stop 3",
+      "Stop 4",
+      "Stop 5",
+      "Stop 6",
+      "Stop 8",
+      MANY[11].name,
+    ],
     answer: "Park 8 is closest; Park 12 is the quietest.",
   },
 };
@@ -410,7 +428,9 @@ export const onePlaceOnePin: Scenario = {
       calls: [
         {
           name: "plot_points",
-          args: { points: [{ lat: 40.7536, lng: -73.9832, label: "Bryant Park (north lawn)" }] },
+          args: {
+            points: [{ lat: 40.753612, lng: -73.983201, label: "Bryant Park (north lawn)" }],
+          },
         },
       ],
     },
@@ -435,7 +455,11 @@ export const modelsBarePinsGetNamesAndTheCap: Scenario = {
   script: [
     { calls: [{ name: "search_places", args: { query: "parks" } }] },
     // Seen live on Gemini: every hit plotted, none labelled, no cap.
-    { calls: [{ name: "plot_points", args: { points: MANY.map((p) => ({ lat: p.lat, lng: p.lng })) } }] },
+    {
+      calls: [
+        { name: "plot_points", args: { points: MANY.map((p) => ({ lat: p.lat, lng: p.lng })) } },
+      ],
+    },
     { text: "Park 1 first, then Park 2." },
   ],
   grounded: [MANY[0].name, MANY[1].name],

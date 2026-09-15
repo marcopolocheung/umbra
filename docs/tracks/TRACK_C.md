@@ -12,8 +12,9 @@ run in parallel with any other.
 
 ## Current state
 
-- **Active checkpoint:** C5 — typed claim receipts and deterministic verification, PR #342 open
-  from merged C4 PR #341. C3 may proceed independently when its ShadowField inputs are ready.
+- **Current checkpoint:** C10 — untrusted content and tool authority. C5's typed claim receipts
+  merged as PR #342 at `7a8433c3568375e13a6158947c260ffe801c56be`. C3 may proceed independently
+  when its ShadowField inputs are ready.
 - **Done in the inspected Track C/public head:** C1, C2, C6, walking-radius place search, and the
   empty-search reformulation fix. The scenario index contains 34 cases. Do not reopen the old
   one-empty-search closeout; exact-call deduplication plus the four-search budget is the current
@@ -41,6 +42,20 @@ run in parallel with any other.
   opened the assistant panel, but its no-`.env` environment cannot produce a live Gemini claim;
   the receipt render/focus interaction is covered deterministically. The complete deterministic
   suite passed 910 tests under Node 24; a credentialed live-claim browser smoke remains unrecorded.
+- **C10 implementation (2026-09-15):** application code now carries typed transcript/evidence
+  provenance, bounds provider strings at ingress and cache/replay/receipt boundaries, and records
+  model calls as proposals rather than authority. It rejects provider, prior-assistant, OCR, EXIF,
+  and tool-error argument provenance; parses only positive current-turn clauses, with explicit
+  negative terms overriding search taxonomy and destination phrases; requires exact application-owned
+  candidate IDs for every coordinate search anchor, probe, plot, or route; and binds accepted
+  mutations to single-use, canonical tool-and-argument capabilities. Unknown or rejected calls never reach executors. Decisions are
+  content-free structured audit events. This is a forward-looking boundary over the current narrow
+  OSM display-name exposure; it does not claim remediation of a known exploit. OCR/EXIF adversarial
+  fields are typed C12 fixtures only—the agent does not yet consume images, EXIF, Foursquare prose,
+  reviews, or URLs. Focused C10 adversarial/positive-control coverage and the complete Node 24
+  deterministic suite pass (931 tests in 70 files); production build passes. Typecheck is limited
+  only by the existing missing optional `server/shadow-prep` packages (`@duckdb/node-api` and
+  `@aws-sdk/client-s3`).
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
   `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.

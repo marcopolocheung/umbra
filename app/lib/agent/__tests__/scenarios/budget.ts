@@ -21,6 +21,11 @@ export const stepBudgetExhaustedStillPlots: Scenario = {
     check_shadow: { shadowFraction: 0.5, status: "partial sun" },
     plot_points: { ok: true, plotted: 8 },
   },
+  mapPins: PROBES.map((point, index) => ({
+    ...point,
+    name: `Probe ${index + 1}`,
+    candidateId: `scenario:probe:${index}`,
+  })),
   script: [
     ...PROBES.map((p) => ({ calls: [{ name: "check_shadow", args: { ...p } }] })),
     { text: "The block is half shadowed; the probes are pinned." },
@@ -75,12 +80,22 @@ export const batchedShadowCheckPinsEverySpot: Scenario = {
     }),
     plot_points: { ok: true, plotted: 2 },
   },
+  mapPins: [
+    { ...BRYANT, candidateId: "scenario:bryant" },
+    { ...GRACE, candidateId: "scenario:grace" },
+  ],
   script: [
     {
       calls: [
         {
           name: "check_shadow",
-          args: { points: [{ ...BRYANT, label: BRYANT.name }, { ...GRACE, label: GRACE.name }], time: "2:00 PM" },
+          args: {
+            points: [
+              { ...BRYANT, label: BRYANT.name },
+              { ...GRACE, label: GRACE.name },
+            ],
+            time: "2:00 PM",
+          },
         },
       ],
     },
@@ -104,14 +119,15 @@ const PALEY = { name: "Paley Park", lat: 40.7597, lng: -73.9761 };
 export const askedRouteIsCalculated: Scenario = {
   id: "asked-route-is-calculated",
   intent: "a user who asked for a route gets one through the pins even when the model never routes",
-  userText: "Plan a shadowed afternoon near Bryant Park and route me through two or three places to sit",
+  userText:
+    "Plan a shadowed afternoon near Bryant Park and route me through two or three places to sit",
   tools: {
     search_places: { results: [BRYANT, GRACE, PALEY] },
     plot_points: { ok: true, plotted: 3 },
     plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
   },
   script: [
-    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
+    { calls: [{ name: "search_places", args: { query: "plazas" } }] },
     { text: "draft answer from the research model" },
     { text: "Bryant Park, then Grace Plaza, then Paley Park." },
   ],
@@ -135,8 +151,8 @@ export const repeatedCallIsNotRerun: Scenario = {
     plot_points: { ok: true, plotted: 1 },
   },
   script: [
-    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
-    { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
+    { calls: [{ name: "search_places", args: { query: "plazas" } }] },
+    { calls: [{ name: "search_places", args: { query: "plazas" } }] },
     { calls: [{ name: "plot_points", args: { points: [{ ...BRYANT, label: BRYANT.name }] } }] },
     { text: "Start at Bryant Park." },
   ],
@@ -154,14 +170,15 @@ export const repeatedCallIsNotRerun: Scenario = {
 /** Live, a model searched nine times with a new query each time, every one answered. */
 export const searchingClosesAfterFour: Scenario = {
   id: "searching-closes-after-four",
-  intent: "reformulations stay offered up to four searches, then the loop closes search so the model plots",
+  intent:
+    "reformulations stay offered up to four searches, then the loop closes search so the model plots",
   userText: "Plan a shadowed afternoon near Bryant Park",
   tools: {
     search_places: { results: [BRYANT] },
     plot_points: { ok: true, plotted: 1 },
   },
   script: [
-    { calls: [{ name: "search_places", args: { query: "parks", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "parks" } }] },
     { calls: [{ name: "search_places", args: { query: "cafes", near: "Bryant Park" } }] },
     { calls: [{ name: "search_places", args: { query: "benches", near: "Bryant Park" } }] },
     { calls: [{ name: "search_places", args: { query: "fountains", near: "Bryant Park" } }] },
@@ -212,7 +229,8 @@ export const emptySearchIsReformulated: Scenario = {
 /** The reported regression: "Where's a shady spot to sit at 2pm?" answered with advice and no pins. */
 export const vagueSitQueryFindsPins: Scenario = {
   id: "vague-sit-query-finds-pins",
-  intent: "a vague first guess that misses is reformulated, and the retry's hits are plotted and named",
+  intent:
+    "a vague first guess that misses is reformulated, and the retry's hits are plotted and named",
   userText: "Where's a shady spot to sit at 2pm?",
   tools: {
     search_places: (args) =>
@@ -223,7 +241,7 @@ export const vagueSitQueryFindsPins: Scenario = {
   },
   script: [
     { calls: [{ name: "search_places", args: { query: "somewhere to sit" } }] },
-    { calls: [{ name: "search_places", args: { query: "parks", near: "Bryant Park" } }] },
+    { calls: [{ name: "search_places", args: { query: "parks" } }] },
     { text: "draft answer from the research model" },
     { text: "Sit in Bryant Park at 2 PM." },
   ],
@@ -258,6 +276,24 @@ export const candidatesOverflowCapAtEightPins: Scenario = {
     plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 8 },
   },
+  mapPins: [
+    ...PROBES.slice(0, 4).map((point, index) => ({
+      ...point,
+      candidateId: `scenario:probe:${index}`,
+    })),
+    ...LEGS.flatMap((_, index) => [
+      {
+        lat: 41 + index * 0.01,
+        lng: -74 - index * 0.01,
+        candidateId: `scenario:leg:${index}:from`,
+      },
+      {
+        lat: 41.005 + index * 0.01,
+        lng: -74.005 - index * 0.01,
+        candidateId: `scenario:leg:${index}:to`,
+      },
+    ]),
+  ],
   script: [
     ...PROBES.slice(0, 4).map((p) => ({ calls: [{ name: "check_shadow", args: { ...p } }] })),
     ...LEGS.map((leg, i) => ({

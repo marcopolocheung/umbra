@@ -37,6 +37,8 @@ const envelope = (
   toolName,
   payload,
   producedAt,
+  provenance: { category: "application_state", bounded: true },
+  fieldProvenance: {},
   ...(toolName === "plan_shadowed_route"
     ? { requestId: route.requestId, actionId: route.actionId, planRevision: route.planRevision }
     : {}),

@@ -1,4 +1,11 @@
 import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
+import {
+  isContentProvenance,
+  providerText,
+  toolErrorText,
+  type FieldProvenance,
+  type FieldSourceCategory,
+} from "./authority";
 
 /** The public tools which can produce evidence. `get_current_context` is ambient state, not evidence. */
 export type AgentToolName =
@@ -19,6 +26,10 @@ export interface ToolResultEnvelope<TPayload = Record<string, unknown>> {
   requestId?: string;
   actionId?: string;
   planRevision?: number;
+  /** C10 provenance survives cache/replay/receipt storage. */
+  provenance: { category: FieldSourceCategory; bounded: true };
+  /** Per-field source category, especially for future OCR and EXIF data. */
+  fieldProvenance: FieldProvenance;
   payload: TPayload;
 }
 
@@ -70,7 +81,20 @@ export function validateToolResultEnvelope(value: unknown): boolean {
     !asString(value.resultId) ||
     !asString(value.toolName) ||
     !asString(value.producedAt) ||
+    !isContentProvenance(value.provenance) ||
+    !isFieldProvenance(value.fieldProvenance) ||
     !isRecord(value.payload)
+  )
+    return false;
+  if (!isAgentToolName(value.toolName)) return false;
+  if (
+    !hasBoundedUntrustedPayload(
+      value as {
+        provenance: { category: FieldSourceCategory };
+        fieldProvenance: FieldProvenance;
+        payload: Record<string, unknown>;
+      },
+    )
   )
     return false;
   if (typeof value.payload.error === "string") return true;
@@ -103,6 +127,61 @@ export function validateToolResultEnvelope(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isFieldProvenance(value: unknown): value is FieldProvenance {
+  return isRecord(value) && Object.values(value).every((entry) => isContentProvenance(entry));
+}
+
+function payloadStrings(value: unknown, path = "payload"): Array<[string, string]> {
+  if (typeof value === "string") return [[path, value]];
+  if (Array.isArray(value))
+    return value.flatMap((item, index) => payloadStrings(item, `${path}[${index}]`));
+  if (!isRecord(value)) return [];
+  return Object.entries(value).flatMap(([key, item]) => payloadStrings(item, `${path}.${key}`));
+}
+
+function hasBoundedUntrustedPayload(value: {
+  provenance: { category: FieldSourceCategory };
+  fieldProvenance: FieldProvenance;
+  payload: Record<string, unknown>;
+}): boolean {
+  if (
+    value.provenance.category !== "provider_controlled" &&
+    value.provenance.category !== "tool_provider_error"
+  )
+    return true;
+  const expectedText =
+    value.provenance.category === "tool_provider_error" ? toolErrorText : providerText;
+  const allowedCategories =
+    value.provenance.category === "tool_provider_error"
+      ? new Set<FieldSourceCategory>(["tool_provider_error"])
+      : new Set<FieldSourceCategory>([
+          "provider_controlled",
+          "image_ocr_content",
+          "image_exif_content",
+        ]);
+  return payloadStrings(value.payload).every(([path, text]) => {
+    const field = value.fieldProvenance[path];
+    return (
+      field != null &&
+      field.bounded === true &&
+      allowedCategories.has(field.category) &&
+      text === expectedText(text)
+    );
+  });
+}
+
+function isAgentToolName(value: unknown): value is AgentToolName {
+  return [
+    "locate_user",
+    "geocode_place",
+    "search_places",
+    "check_shadow",
+    "set_time",
+    "plot_points",
+    "plan_shadowed_route",
+  ].includes(value as AgentToolName);
 }
 
 export type ClaimKind = "place" | "shadow" | "time" | "route" | "accessibility";
