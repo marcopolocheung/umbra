@@ -13,7 +13,7 @@
 
 - **Active checkpoint:** E1 (in review — bike cost model + selector)
 - **Done:** nothing merged — E1 implements the cost model, UI, and share-URL mode
-- **Open PRs:** (E1 PR — see git log on `feat/e1-mode-cost-model`)
+- **Open PRs:** #346 (E1 — `feat/e1-mode-cost-model`)
 - **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations, dose/heat weighting deferred to E2/Track D
 - **Blocked on:** nothing
 - **Next action:** get E1 reviewed; then E5 (`Trip`)
