@@ -77,10 +77,13 @@ describe("RouteConditionsLine", () => {
     expect(screen.queryByText(/of this walk is in sun/)).toBeNull();
   });
 
-  it("says cycling, not walking, on a scored bike route", () => {
+  it("states the walking-pace basis, not a cycling estimate, on a scored bike route", () => {
+    // The heat model estimates felt temperature while walking; cycling airflow
+    // is unmodeled (#349), so the bike detail must not read "cycling this".
     render(<RouteConditionsLine route={bikeRoute(1200, 0.4)} weather={HOT} />);
 
-    expect(screen.getByText(/cycling this/)).toBeTruthy();
+    expect(screen.getByText(/walking-pace estimate/)).toBeTruthy();
+    expect(screen.queryByText(/cycling this/)).toBeNull();
     expect(screen.queryByText(/walking this/)).toBeNull();
   });
 

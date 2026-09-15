@@ -66,13 +66,21 @@ export default function RouteConditionsLine({
 
   const headline = scored ? heatBand(selected.score) : `${selected.score}% of this ${policy.journeyNoun} is in sun`;
 
+  // The heat model estimates felt temperature while walking (heat/score.ts) —
+  // cycling airflow is unmodeled (#349) — so a bike route must not label the
+  // number a cycling estimate. It states its basis instead.
+  const feelsLike =
+    policy.id === "walk"
+      ? `feels about ${feltC} °C walking this`
+      : `feels about ${feltC} °C on this ${policy.journeyNoun} (walking-pace estimate)`;
+
   // Three rungs, three sentences. The middle one exists because a dry-bulb estimate
   // and an apparent-temperature one otherwise render identically, and the difference
   // is humidity and wind being absent from the number entirely.
   const detail = !scored
     ? "no weather forecast — heat not scored"
     : selected.inputs.ambientIsApparent
-      ? `feels about ${feltC} °C ${policy.gerund} this`
+      ? feelsLike
       : `about ${feltC} °C — air temperature only`;
 
   const secondary = scored
