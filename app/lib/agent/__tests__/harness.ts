@@ -17,6 +17,7 @@
 import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClient";
 import type { AgentContext, AssistantPin } from "../tools";
 import type { RoutePlan } from "../../routePlanJob";
+import type { VerifiedAnswer } from "../receipts";
 
 // ---------------------------------------------------------------------------
 // Scenario shape
@@ -119,6 +120,7 @@ export interface Trace {
   /** Pins on the map at the end: the last successful `plot_points`, else the scenario's `mapPins`. */
   plottedPins: AssistantPin[];
   answer: string;
+  verified?: VerifiedAnswer;
   history: LlmContent[];
 }
 
@@ -193,7 +195,7 @@ export type RunAgentFn = (opts: {
   userText: string;
   ctx: AgentContext;
   onToolEvent?: (e: { name: string; args: Record<string, unknown> }) => void;
-}) => Promise<{ text: string; history: LlmContent[] }>;
+}) => Promise<{ text: string; history: LlmContent[]; answer?: VerifiedAnswer }>;
 
 const DEFAULT_CONTEXT = {
   center: { lat: 40.7536, lng: -73.9832 },
@@ -242,6 +244,8 @@ export function makeScenarioContext(): AgentContext {
     }),
     submitRoutePlan: async () => COMPLETED_ROUTE_TERMINAL,
     cancelRoutePlan: () => false,
+    // Scripted route terminals use revision 1 even when executeTool is mocked.
+    getCurrentPlanRevision: () => Math.max(version, 1),
     setPins: noop,
   };
 }
@@ -334,6 +338,7 @@ async function replay(
     toolEvents: [],
     plottedPins: scenario.mapPins ?? [],
     answer: "",
+    verified: undefined,
     history: [],
   };
 
@@ -368,7 +373,7 @@ async function replay(
     return result;
   });
 
-  const { text, history } = await runAgent({
+  const { text, history, answer } = await runAgent({
     history: [],
     pins: scenario.mapPins,
     userText: scenario.userText,
@@ -376,6 +381,7 @@ async function replay(
     onToolEvent: (e) => trace.toolEvents.push(e.name),
   });
   trace.answer = text;
+  trace.verified = answer;
   trace.history = history;
   return trace;
 }

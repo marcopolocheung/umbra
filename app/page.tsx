@@ -36,6 +36,7 @@ import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { useAgent } from "./hooks/useAgent";
+import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import { fetchCloudCoverForecast } from "./services/weather";
 
 const MapView = lazy(() => import("./components/MapView"));
@@ -225,7 +226,7 @@ export default function Home() {
     handleSwapWaypoints,
     handleClearWaypointA, handleClearWaypointB,
     handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan,
+    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan, getCurrentPlanRevision,
     selectedNavRoute, navTrainDrawData, navMrtEntrances,
     filteredRoutes, canTransit, shadowField,
   } = nav;
@@ -262,7 +263,7 @@ export default function Home() {
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantPins, setAssistantPins] = useState<{ lng: number; lat: number; label?: string }[]>([]);
+  const [assistantPins, setAssistantPins] = useState<AssistantPin[]>([]);
   const agent = useAgent({
     mapRef,
     shadowLayerRef,
@@ -276,7 +277,30 @@ export default function Home() {
     createRoutePlanRequest,
     submitRoutePlan,
     cancelRoutePlan,
+    getCurrentPlanRevision,
     setPins: setAssistantPins,
+    // Map-object ownership stays in the application. Receipt verification only
+    // carries an opaque id and cannot manipulate map state itself.
+    focusMapObject: (objectId) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const pin = assistantPins.find((candidate) => (candidate.objectId ?? assistantPinId(candidate.lat, candidate.lng)) === objectId);
+      if (pin) {
+        map.flyTo({ center: [pin.lng, pin.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+        return;
+      }
+      if (objectId.startsWith("route:") && selectedNavRoute) {
+        const feature = selectedNavRoute.type === "FeatureCollection" ? selectedNavRoute.features[0] : selectedNavRoute;
+        if (feature?.geometry.type === "LineString") {
+          const coordinates = feature.geometry.coordinates;
+          if (coordinates.length) {
+            const lngs = coordinates.map((point) => point[0]);
+            const lats = coordinates.map((point) => point[1]);
+            map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 80, duration: 500 });
+          }
+        }
+      }
+    },
   });
 
   // Sync activeTab with phase
@@ -995,6 +1019,7 @@ export default function Home() {
         isThinking={agent.isThinking}
         onSend={agent.sendMessage}
         onReset={agent.reset}
+        onFocusMapObject={agent.focusMapObject}
       />
     </>
   );

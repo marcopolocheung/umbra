@@ -12,8 +12,8 @@ run in parallel with any other.
 
 ## Current state
 
-- **Active checkpoint:** C4 — terminal plan job contract, PR #341 open. C3 may proceed
-  independently when its ShadowField inputs are ready; C5 follows C4's result shape.
+- **Active checkpoint:** C5 — typed claim receipts and deterministic verification, PR #342 open
+  from merged C4 PR #341. C3 may proceed independently when its ShadowField inputs are ready.
 - **Done in the inspected Track C/public head:** C1, C2, C6, walking-radius place search, and the
   empty-search reformulation fix. The scenario index contains 34 cases. Do not reopen the old
   one-empty-search closeout; exact-call deduplication plus the four-search budget is the current
@@ -31,6 +31,13 @@ run in parallel with any other.
   typecheck through that point. The current UI has no terminal-job status surface (C15 owns that
   interaction), so browser smoke verifies a completed drawn route while deterministic hook tests
   verify failed/cancelled terminal results. This checkpoint did not modify `server/shadow-prep/**`.
+- **C5 observed verification (2026-09-14):** 119 focused receipt, agent-loop, tool, route-job,
+  navigation-hook and panel tests pass under Node 24. The declared typecheck reaches only the
+  pre-existing `server/shadow-prep` missing optional dependencies (`@duckdb/node-api` and
+  `@aws-sdk/client-s3`); C5 application files typecheck through that point. A local browser smoke
+  opened the assistant panel, but its no-`.env` environment cannot produce a live Gemini claim;
+  the receipt render/focus interaction is covered deterministically. The complete deterministic
+  suite passed 902 tests under Node 24; a credentialed live-claim browser smoke remains unrecorded.
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
   `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.

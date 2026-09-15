@@ -43,6 +43,7 @@ function makeCtx(): AgentContext {
       shadowProvenance: null,
     })),
     cancelRoutePlan: vi.fn(() => false),
+    getCurrentPlanRevision: () => version,
     setPins: vi.fn(),
   };
 }

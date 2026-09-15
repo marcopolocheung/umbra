@@ -31,6 +31,12 @@ export interface AssistantPin {
   lng: number;
   lat: number;
   label?: string;
+  /** Stable map-object identity, independent of the display label. */
+  objectId?: string;
+}
+
+export function assistantPinId(lat: number, lng: number): string {
+  return `assistant-pin:${lat.toFixed(5)}:${lng.toFixed(5)}`;
 }
 
 export interface AgentContext {
@@ -49,6 +55,8 @@ export interface AgentContext {
   createRoutePlanRequest: (plan: RoutePlan) => RoutePlanRequest;
   submitRoutePlan: (request: RoutePlanRequest) => Promise<RoutePlanTerminalResult>;
   cancelRoutePlan: (requestId: string) => boolean;
+  /** C4's route owner is the authority for whether an older receipt is current. */
+  getCurrentPlanRevision: () => number;
   /** Replace the assistant's itinerary pins on the map. */
   setPins: (pins: AssistantPin[]) => void;
 }
@@ -267,7 +275,7 @@ export function parsePins(points: unknown): AssistantPin[] {
     const lat = num(o.lat);
     const lng = num(o.lng);
     if (lat == null || lng == null) continue;
-    pins.push({ lng, lat, label: str(o.label) });
+    pins.push({ lng, lat, label: str(o.label), objectId: assistantPinId(lat, lng) });
   }
   return pins;
 }

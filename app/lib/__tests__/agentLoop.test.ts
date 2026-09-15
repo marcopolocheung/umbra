@@ -48,6 +48,7 @@ function makeCtx(): AgentContext {
     }),
     submitRoutePlan: vi.fn(),
     cancelRoutePlan: vi.fn(() => false),
+    getCurrentPlanRevision: () => version,
     setPins: vi.fn(),
   };
 }
@@ -95,7 +96,7 @@ describe("runAgent fallback plotting", () => {
       onToolEvent: (event) => toolEvents.push(event.name),
     });
 
-    expect(result.text).toBe("Bryant Park is plotted for your walk.");
+    expect(result.answer.receipts.some((receipt) => receipt.kind === "place" && receipt.verification === "verified")).toBe(true);
     expect(toolEvents).toEqual(["search_places", "plot_points"]);
     expect(mockExecuteTool).toHaveBeenCalledWith(
       "plot_points",
@@ -147,7 +148,7 @@ describe("runAgent fallback plotting", () => {
       ctx: makeCtx(),
     });
 
-    expect(result.text).toBe("Use Bryant Park first.");
+    expect(result.answer.receipts.some((receipt) => receipt.kind === "place" && receipt.verification === "verified")).toBe(true);
     expect(mockExecuteTool).toHaveBeenCalledWith(
       "plot_points",
       expect.objectContaining({ points: expect.any(Array) }),

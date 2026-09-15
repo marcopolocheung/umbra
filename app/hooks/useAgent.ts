@@ -4,11 +4,13 @@ import type { LlmContent } from "../lib/agent/llmClient";
 import type { AgentContext, AssistantPin } from "../lib/agent/tools";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import type { RoutePlan, RoutePlanRequest, RoutePlanTerminalResult } from "../lib/routePlanJob";
+import type { ToolResultEnvelope, VerifiedAnswer } from "../lib/agent/receipts";
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   text: string;
+  answer?: VerifiedAnswer;
 }
 
 interface UseAgentArgs {
@@ -25,7 +27,9 @@ interface UseAgentArgs {
   createRoutePlanRequest: (plan: RoutePlan) => RoutePlanRequest;
   submitRoutePlan: (request: RoutePlanRequest) => Promise<RoutePlanTerminalResult>;
   cancelRoutePlan: (requestId: string) => boolean;
+  getCurrentPlanRevision: () => number;
   setPins: (pins: AssistantPin[]) => void;
+  focusMapObject: (objectId: string) => void;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -39,7 +43,7 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 let idCounter = 0;
-const nextId = () => `m${Date.now()}_${idCounter++}`;
+const nextId = () => `message-${++idCounter}`;
 
 export function useAgent(args: UseAgentArgs) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -56,7 +60,8 @@ export function useAgent(args: UseAgentArgs) {
   // already on the map.
   const pinsRef = useRef<AssistantPin[]>([]);
   // Geocodes, searches and shadow checks, reused across the session's turns.
-  const toolCacheRef = useRef(new Map<string, Record<string, unknown>>());
+  const toolCacheRef = useRef(new Map<string, ToolResultEnvelope>());
+  const evidenceRef = useRef<ToolResultEnvelope[]>([]);
 
   // AgentContext is stable across renders; it reads through refs/callbacks.
   const ctxRef = useRef<AgentContext>({
@@ -72,6 +77,7 @@ export function useAgent(args: UseAgentArgs) {
     createRoutePlanRequest: args.createRoutePlanRequest,
     submitRoutePlan: args.submitRoutePlan,
     cancelRoutePlan: args.cancelRoutePlan,
+    getCurrentPlanRevision: args.getCurrentPlanRevision,
     setPins: args.setPins,
   });
   // Refresh callback identities (cheap; keeps closures current).
@@ -82,6 +88,7 @@ export function useAgent(args: UseAgentArgs) {
   ctxRef.current.createRoutePlanRequest = args.createRoutePlanRequest;
   ctxRef.current.submitRoutePlan = args.submitRoutePlan;
   ctxRef.current.cancelRoutePlan = args.cancelRoutePlan;
+  ctxRef.current.getCurrentPlanRevision = args.getCurrentPlanRevision;
   ctxRef.current.setPins = (pins) => {
     pinsRef.current = pins;
     args.setPins(pins);
@@ -105,6 +112,7 @@ export function useAgent(args: UseAgentArgs) {
         userText: trimmed,
         ctx: ctxRef.current,
         cache: toolCacheRef.current,
+        evidence: evidenceRef.current,
         onToolEvent: (e) => {
           const label = TOOL_LABELS[e.name] ?? e.name;
           setMessages((prev) => [
@@ -114,9 +122,10 @@ export function useAgent(args: UseAgentArgs) {
         },
       });
       historyRef.current = result.history;
+      evidenceRef.current = result.evidence;
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: "assistant", text: result.text },
+        { id: nextId(), role: "assistant", text: result.text, answer: result.answer },
       ]);
     } catch (err) {
       setMessages((prev) => [
@@ -137,8 +146,9 @@ export function useAgent(args: UseAgentArgs) {
 
   const reset = useCallback(() => {
     historyRef.current = [];
+    evidenceRef.current = [];
     setMessages([]);
   }, []);
 
-  return { messages, isThinking, sendMessage, reset };
+  return { messages, isThinking, sendMessage, reset, focusMapObject: args.focusMapObject };
 }

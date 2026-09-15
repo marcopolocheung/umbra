@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useAgent";
+import { receiptDetail, receiptLabel } from "../lib/agent/receipts";
 
 interface AssistantPanelProps {
   open: boolean;
@@ -8,6 +9,7 @@ interface AssistantPanelProps {
   isThinking: boolean;
   onSend: (text: string) => void;
   onReset: () => void;
+  onFocusMapObject: (objectId: string) => void;
 }
 
 const SUGGESTIONS = [
@@ -23,13 +25,15 @@ export default function AssistantPanel({
   isThinking,
   onSend,
   onReset,
+  onFocusMapObject,
 }: AssistantPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messageCount = messages.length;
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, isThinking]);
+    scrollRef.current?.scrollTo?.({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messageCount, isThinking]);
 
   if (!open) return null;
 
@@ -136,7 +140,30 @@ export default function AssistantPanel({
                 borderBottomLeftRadius: isUser ? undefined : 4,
               }}
             >
-              {m.text}
+              {m.answer ? (
+                <div className="flex flex-col gap-1.5">
+                  {m.answer.blocks.map((block) => {
+                    if (block.kind === "text" || block.kind === "unknown") return <span key={`${block.kind}:${block.text}`}>{block.text}</span>;
+                    const receipt = m.answer!.receipts.find((candidate) => candidate.claimId === block.claimId);
+                    if (!receipt) return null;
+                    const mapObjectId = "mapObjectId" in receipt ? receipt.mapObjectId : undefined;
+                    return (
+                      <div key={receipt.claimId} className="rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--md-outline-variant)" }}>
+                        <button
+                          type="button"
+                          onClick={() => { if (mapObjectId && receipt.verification === "verified") onFocusMapObject(mapObjectId); }}
+                          disabled={!mapObjectId || receipt.verification !== "verified"}
+                          className="w-full text-left text-xs font-semibold disabled:cursor-default"
+                          aria-label={`${receiptLabel(receipt)}. ${receiptDetail(receipt)}`}
+                        >
+                          {receiptLabel(receipt)}
+                        </button>
+                        <p className="mt-0.5 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>{receiptDetail(receipt)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : m.text}
             </div>
           );
         })}
@@ -170,7 +197,7 @@ export default function AssistantPanel({
               color: "var(--md-on-surface)",
               maxHeight: 96,
             }}
-          />
+      />
           <button type="button"
             onClick={submit}
             disabled={isThinking || !input.trim()}

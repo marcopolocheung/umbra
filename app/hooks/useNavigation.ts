@@ -1885,6 +1885,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
   const cancelRoutePlan = useCallback((requestId: string) =>
     agentRouteJobsRef.current.cancel(requestId), []);
+  // Read-only seam for C5 receipt verification. The routing owner remains the
+  // sole writer of this revision and C5 never infers it from drawn geometry.
+  const getCurrentPlanRevision = useCallback(() => routePlanRevisionRef.current, []);
 
   const handleCalculateRoute = useCallback(() => {
     // A direct user calculation is a new map application, even when the
@@ -1952,7 +1955,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     handleSwapWaypoints,
     handleClearWaypointA, handleClearWaypointB,
     handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan,
+    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan, getCurrentPlanRevision,
 
     // Derived
     selectedNavRoute, navTrainDrawData, navMrtEntrances,
