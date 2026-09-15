@@ -5,6 +5,8 @@ import {
   minCostRatio,
   modeAdjustedDistanceM,
   parseTravelMode,
+  roughSurfaceLine,
+  scootSurfacePenaltyM,
   speedRatioVsWalk,
   travelTimeSeconds,
 } from "../travelMode";
@@ -110,9 +112,147 @@ describe("parseTravelMode / minCostRatio", () => {
     expect(parseTravelMode("car")).toBe("walk");
   });
 
+  it("accepts scoot and still falls back to walk on unknown values", () => {
+    expect(parseTravelMode("scoot")).toBe("scoot");
+    expect(parseTravelMode("")).toBe("walk");
+    expect(parseTravelMode("SCOOT")).toBe("walk");
+  });
+
   it("bounds the cheapest possible cost ratio for the Pareto heuristic", () => {
     expect(minCostRatio("walk")).toBe(1);
     expect(minCostRatio("bike")).toBe(0.5);
+  });
+
+  it("derives the bound from each mode's discount policy (scoot has none)", () => {
+    // Scoot only ever adds penalties, so every edge costs at least its length.
+    expect(minCostRatio("scoot")).toBe(1);
+    expect(getTravelModePolicy("scoot").cyclewayPreferenceM).toBe(0);
+  });
+});
+
+describe("scoot mode policy (E4)", () => {
+  it("defines scoot between walking and cycling speed", () => {
+    const scoot = getTravelModePolicy("scoot");
+    expect(scoot.label).toBe("Scoot");
+    expect(scoot.speedMps).toBeGreaterThan(getTravelModePolicy("walk").speedMps);
+    expect(scoot.speedMps).toBeLessThan(getTravelModePolicy("bike").speedMps);
+    expect(travelTimeSeconds(180, "scoot")).toBeCloseTo(60);
+  });
+
+  it("excludes steps by prohibition, not by penalty", () => {
+    expect(isProhibitedEdge({ distanceM: 100, highway: "steps" }, "scoot")).toBe(true);
+    expect(getTravelModePolicy("scoot").stepsPenaltyM).toBe(0);
+    // …while walk still takes them and bike prices them.
+    expect(isProhibitedEdge({ distanceM: 100, highway: "steps" }, "walk")).toBe(false);
+    expect(isProhibitedEdge({ distanceM: 100, highway: "steps" }, "bike")).toBe(false);
+  });
+
+  it("honours foot=no and access=no, with a foot override — and ignores bicycle tags", () => {
+    expect(isProhibitedEdge({ distanceM: 100, foot: "no" }, "scoot")).toBe(true);
+    expect(isProhibitedEdge({ distanceM: 100, access: "no" }, "scoot")).toBe(true);
+    for (const foot of ["yes", "designated", "permissive"]) {
+      expect(isProhibitedEdge({ distanceM: 100, access: "no", foot }, "scoot")).toBe(false);
+    }
+    // Bicycle tags are about bikes: bicycle=no must not strand a scooter …
+    expect(isProhibitedEdge({ distanceM: 100, bicycle: "no" }, "scoot")).toBe(false);
+    // … but an access=no the bicycle tag would excuse still bans scoot without foot.
+    expect(isProhibitedEdge({ distanceM: 100, access: "no", bicycle: "yes" }, "scoot")).toBe(true);
+  });
+
+  it("stays on dedicated cycleways even where foot is banned from them", () => {
+    // Segregated cycle/foot pairs tag the cycleway half foot=no; that half is
+    // the smooth network scooters legally ride, so only it is exempt.
+    expect(
+      isProhibitedEdge({ distanceM: 100, highway: "cycleway", foot: "no" }, "scoot"),
+    ).toBe(false);
+    expect(
+      isProhibitedEdge({ distanceM: 100, highway: "footway", foot: "no" }, "scoot"),
+    ).toBe(true);
+    expect(
+      isProhibitedEdge({ distanceM: 100, highway: "cycleway", access: "no" }, "scoot"),
+    ).toBe(true);
+  });
+
+  it("penalizes rough surfaces near-disqualifyingly, not flatly like bike", () => {
+    for (const surface of ["cobblestone", "sett", "gravel", "sand", "unpaved", "dirt", "ground"]) {
+      expect(modeAdjustedDistanceM({ distanceM: 100, surface }, "scoot")).toBe(1100);
+    }
+    // Smooth laid surfaces ride free.
+    for (const surface of ["asphalt", "paving_stones", "concrete", undefined]) {
+      expect(modeAdjustedDistanceM({ distanceM: 100, surface }, "scoot")).toBe(100);
+    }
+    // Bike behavior is untouched by the scoot list.
+    expect(modeAdjustedDistanceM({ distanceM: 100, surface: "sett" }, "bike")).toBe(100);
+    expect(modeAdjustedDistanceM({ distanceM: 100, surface: "unpaved" }, "bike")).toBe(100);
+  });
+
+  it("lets smoothness override surface where tagged", () => {
+    // Excellent/good ride free even on cobbles …
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "cobblestone", smoothness: "excellent" })).toBe(0);
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "sett", smoothness: "good" })).toBe(0);
+    // … intermediate costs a little …
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "asphalt", smoothness: "intermediate" })).toBe(50);
+    // … bad and worse are near-disqualifying even on asphalt …
+    for (const smoothness of ["bad", "very_bad", "horrible", "very_horrible", "impassable"]) {
+      expect(scootSurfacePenaltyM({ distanceM: 100, surface: "asphalt", smoothness })).toBe(1000);
+    }
+    // … and absent or unknown smoothness falls back to surface.
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "cobblestone" })).toBe(1000);
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "cobblestone", smoothness: "bogus" })).toBe(1000);
+    expect(scootSurfacePenaltyM({ distanceM: 100, surface: "asphalt", smoothness: "bogus" })).toBe(0);
+  });
+
+  it("ignores smoothness in walk and bike mode (byte-identical E1 behavior)", () => {
+    const edge = { distanceM: 100, surface: "cobblestone", smoothness: "bad" };
+    expect(modeAdjustedDistanceM(edge, "walk")).toBe(100);
+    expect(modeAdjustedDistanceM(edge, "bike")).toBe(175);
+    const smooth = { distanceM: 100, surface: "asphalt", smoothness: "excellent" };
+    expect(modeAdjustedDistanceM(smooth, "bike")).toBe(100);
+  });
+
+  it("never discounts cycleways in scoot mode", () => {
+    expect(modeAdjustedDistanceM({ distanceM: 200, cycleway: "lane" }, "scoot")).toBe(200);
+    expect(modeAdjustedDistanceM({ distanceM: 200, highway: "cycleway" }, "scoot")).toBe(200);
+    // … while the bike discount is unchanged.
+    expect(modeAdjustedDistanceM({ distanceM: 200, cycleway: "lane" }, "bike")).toBe(160);
+  });
+
+  it("keeps scoot edge costs at or above physical distance (Pareto stays admissible)", () => {
+    const edges = [
+      { distanceM: 100, surface: "asphalt" },
+      { distanceM: 100, surface: "cobblestone", smoothness: "excellent" },
+      { distanceM: 1, cycleway: "lane" },
+      { distanceM: 60, cycleway: "lane", surface: "sett" },
+    ];
+    for (const edge of edges) {
+      expect(modeAdjustedDistanceM(edge, "scoot")).toBeGreaterThanOrEqual(edge.distanceM);
+    }
+  });
+});
+
+describe("roughSurfaceLine (E4 route card)", () => {
+  it("confesses cobbles in scoot mode", () => {
+    expect(roughSurfaceLine({ cobblestone: 120, asphalt: 400 }, "scoot")).toBe(
+      "includes 120 m of cobblestone",
+    );
+  });
+
+  it("lists several rough surfaces longest-first", () => {
+    expect(
+      roughSurfaceLine({ sett: 30, cobblestone: 120, asphalt: 400 }, "scoot"),
+    ).toBe("includes 120 m of cobblestone and 30 m of sett");
+  });
+
+  it("stays silent on walk mode and on smooth routes", () => {
+    expect(roughSurfaceLine({ cobblestone: 120 }, "walk")).toBeNull();
+    expect(roughSurfaceLine({ asphalt: 400 }, "scoot")).toBeNull();
+    expect(roughSurfaceLine(undefined, "scoot")).toBeNull();
+    expect(roughSurfaceLine({}, "bike")).toBeNull();
+  });
+
+  it("uses the bike surface list for bike mode", () => {
+    expect(roughSurfaceLine({ cobblestone: 80 }, "bike")).toBe("includes 80 m of cobblestone");
+    expect(roughSurfaceLine({ sett: 80 }, "bike")).toBeNull();
   });
 });
 
@@ -127,6 +267,10 @@ describe("speedRatioVsWalk (E2)", () => {
     // 4.5 / 1.4: a 15 m crossing reads as ~48 bike-metres ≈ the same ~11 s.
     expect(speedRatioVsWalk("bike")).toBeCloseTo(4.5 / 1.4, 10);
     expect(15 * speedRatioVsWalk("bike")).toBeCloseTo(48.21, 2);
+  });
+
+  it("time-normalizes scoot constants from the stated 3.0 m/s assumption", () => {
+    expect(speedRatioVsWalk("scoot")).toBeCloseTo(3.0 / 1.4, 10);
   });
 
   it("names the trip for user-facing sentences", () => {

@@ -1173,6 +1173,7 @@ describe("parallelSidewalkEdges", () => {
     const tags = {
       highway: "footway",
       surface: "asphalt",
+      smoothness: "good",
       cycleway: "lane",
       bicycle: "designated",
       foot: "no",
@@ -1315,6 +1316,90 @@ describe("paretoRoutes — travel mode cost (E1)", () => {
     for (const r of routes) {
       expect(r.nodeIds).toEqual([1, 2, 3]);
     }
+  });
+});
+
+// ── E4: scoot/skate profile ─────────────────────────────────────────────────
+// Behavior: surface-dominant costing. Shadow strength is 0 throughout so only
+// the mode policy decides.
+
+describe("dijkstra — scoot mode cost (E4)", () => {
+  it("walk takes the cobbled shortcut; scoot takes smooth asphalt", () => {
+    expect(dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("scoot avoids the stairs shortcut entirely (excluded, not priced)", () => {
+    expect(
+      dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("smoothness=excellent lets scoot ride the cobbles", () => {
+    const graph = makeRoughShortcutGraph();
+    for (const edges of graph.adj.values()) {
+      for (const edge of edges) {
+        if (edge.surface === "cobblestone") edge.smoothness = "excellent";
+      }
+    }
+    expect(
+      dijkstra(graph, 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 3]);
+  });
+
+  it("smoothness=bad prices a smooth-looking edge out", () => {
+    // Direct 1→3 is asphalt — but tagged bad, so it costs 100 + 1000 against
+    // the 160 m smooth detour. Walk still takes it (smoothness is scoot-only).
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.001, lon: 0.001 }],
+      [3, { id: 3, lat: 0.0, lon: 0.002 }],
+    ]);
+    const adj = new Map<number, GraphEdge[]>([
+      [1, [
+        { toId: 3, distanceM: 100, shadowFactor: 0, surface: "asphalt", smoothness: "bad" },
+        { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+      [2, [
+        { toId: 1, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+        { toId: 3, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+      [3, [
+        { toId: 1, distanceM: 100, shadowFactor: 0, surface: "asphalt", smoothness: "bad" },
+        { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+    ]);
+    const graph: RoutingGraph = { nodes, adj };
+    expect(dijkstra(graph, 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(dijkstra(graph, 1, 3, 0, { travelMode: "scoot" })!.nodeIds).toEqual([1, 2, 3]);
+  });
+
+  it("reports physical metres per surface on the chosen path", () => {
+    const walk = dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!;
+    expect(walk.surfaceMetresM).toEqual({ cobblestone: 100 });
+    const scoot = dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!;
+    expect(scoot.surfaceMetresM).toEqual({ asphalt: 160 });
+    // Untagged edges report under "unknown" rather than vanishing.
+    const plain = dijkstra(makeCyclewayGraph(), 1, 3, 0)!;
+    expect(plain.surfaceMetresM).toEqual({ unknown: 200 });
+  });
+});
+
+describe("paretoRoutes — scoot mode cost (E4)", () => {
+  it("prices the cobbled shortcut out of every representative", () => {
+    const routes = paretoRoutes(makeRoughShortcutGraph(), 1, 3, { travelMode: "scoot" });
+    expect(routes.length).toBeGreaterThan(0);
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+      expect(r.surfaceMetresM).toEqual({ asphalt: 160 });
+    }
+  });
+
+  it("walk results carry surface metres too (same search, new field)", () => {
+    const routes = paretoRoutes(makeRoughShortcutGraph(), 1, 3);
+    expect(routes[0].surfaceMetresM).toEqual({ cobblestone: 100 });
   });
 });
 

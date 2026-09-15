@@ -52,4 +52,19 @@ describe("routeLegSummary", () => {
       detail: "Cycling segment",
     });
   });
+
+  it("labels legs from the mode policy, so new modes never read as walking", () => {
+    const leg: RouteLeg = {
+      type: "walk",
+      geojson: line,
+      distanceM: 500,
+      shadowCoverage: 0.5,
+    };
+    expect(routeLegSummary(leg, 0, "scoot").title).toBe("Leg 1: Scoot");
+    const bare: RouteLeg = { type: "walk", geojson: line };
+    expect(routeLegSummary(bare, 0, "scoot")).toEqual({
+      title: "Leg 1: Scoot",
+      detail: "Riding segment",
+    });
+  });
 });

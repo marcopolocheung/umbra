@@ -127,7 +127,7 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
     })
     .toBeGreaterThan(routeLinePixelsBefore + 200);
 
-  // 4. The Walk/Bike travel selector (E1) syncs to the share URL. The desktop
+  // 4. The Walk/Bike/Scoot travel selector (E1/E4) syncs to the share URL. The desktop
   //    and mobile layouts each mount a directions panel; only one is displayed
   //    at this viewport.
   const travelSelector = page.getByTestId("travel-mode-selector").filter({ visible: true });
@@ -148,6 +148,35 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
     .poll(() => new URL(page.url()).searchParams.get("mode"), {
       timeout: 10_000,
       message: "picking Walk did not clear mode from the share URL",
+    })
+    .toBeNull();
+
+  // 5. The Scoot travel selector (E4) syncs to the share URL and fits its row.
+  await travelSelector.getByRole("button", { name: "Scoot" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("mode"), {
+      timeout: 10_000,
+      message: "picking Scoot did not persist mode=scoot to the share URL",
+    })
+    .toBe("scoot");
+  await expect(travelSelector.getByRole("button", { name: "Scoot" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect
+    .poll(
+      () =>
+        travelSelector.evaluate(
+          (el) => el.scrollWidth <= el.clientWidth + 1,
+        ),
+      { timeout: 10_000, message: "the three travel buttons overflow their row" },
+    )
+    .toBe(true);
+  await travelSelector.getByRole("button", { name: "Walk" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("mode"), {
+      timeout: 10_000,
+      message: "leaving Scoot did not clear mode from the share URL",
     })
     .toBeNull();
 });

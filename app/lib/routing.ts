@@ -27,6 +27,8 @@ export interface GraphEdge {
   side?: SidewalkSide;
   highway?: string;
   surface?: string;
+  /** OSM `smoothness=*` — read by the scoot cost model (E4); ignored by walk/bike. */
+  smoothness?: string;
   cycleway?: string;
   bicycle?: string;
   foot?: string;
@@ -67,6 +69,13 @@ export interface RouteResult {
   turnCount: number;
   /** Where `shadowCoverage` came from. Set by the caller that sampled; see `shadowProvenance.ts`. */
   shadowSource?: ShadowProvenance;
+  /**
+   * Physical metres per raw `surface=*` tag value along the chosen path
+   * (untagged edges accumulate under `"unknown"`). Mode-independent data —
+   * the card decides which values are rough for the active mode (E4). Set by
+   * `dijkstra` and `paretoRoutes` from the exact traversed edges.
+   */
+  surfaceMetresM: Record<string, number>;
 }
 
 export interface TransitLeg {
@@ -121,6 +130,12 @@ export interface RouteOption {
   partial?: PartialRouteInfo; // present when only completed legs are shown
   /** Where `shadowCoverage` came from. Absent on sketch and transit routes. */
   shadowSource?: ShadowProvenance;
+  /**
+   * Physical metres per `surface=*` value (see `RouteResult.surfaceMetresM`).
+   * Absent on sketch and transit routes, which don't reconstruct edges;
+   * present on partial routes for the completed legs only.
+   */
+  surfaceMetresM?: Record<string, number>;
 }
 
 export interface DijkstraOptions {
@@ -407,9 +422,10 @@ export function snapToEdge(
  * flip is testable, which it is not when spelled inline at the call site.
  *
  * Both outputs are the source edge with only `shadowFactor` and `side` replaced, so
- * every OSM access tag it carries (`highway`, `foot`, `bicycle`, …) survives the
- * split. Rebuilding the edge from scratch instead dropped them silently: the edge
- * still looked well-formed, so any access predicate read it as "no restriction".
+ * every OSM access tag it carries (`highway`, `surface`, `smoothness`, `foot`,
+ * `bicycle`, …) survives the split. Rebuilding the edge from scratch instead
+ * dropped them silently: the edge still looked well-formed, so any access
+ * predicate read it as "no restriction".
  */
 export function parallelSidewalkEdges(
   fromId: number,
@@ -509,6 +525,7 @@ export function dijkstra(
   let longestContinuousSunM = 0, currentSunStreakM = 0;
   let prevShadowed: boolean | null = null;
   let turnCount = 0, prevBearing: number | null = null;
+  const surfaceMetresM: Record<string, number> = {};
 
   for (let i = 0; i < nodeIds.length - 1; i++) {
     // Use prevEdge (the exact edge Dijkstra chose) so parallel sidewalk edges
@@ -518,6 +535,8 @@ export function dijkstra(
     sides.push(edge.side ?? null);
     totalDist += edge.distanceM;
     shadowedDist += edge.distanceM * edge.shadowFactor;
+    surfaceMetresM[edge.surface ?? "unknown"] =
+      (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
 
     // Shadow continuity tracking
     const isShadowed = edge.shadowFactor > SHADOW_THRESH;
@@ -557,6 +576,7 @@ export function dijkstra(
     shadowTransitions,
     detourRatio,
     turnCount,
+    surfaceMetresM,
   };
 }
 
@@ -852,11 +872,14 @@ export function paretoRoutes(
     let longestContinuousSunM = 0, currentSunStreakM = 0;
     let prevShadowed: boolean | null = null;
     let turnCount = 0, prevBearing: number | null = null;
+    const surfaceMetresM: Record<string, number> = {};
 
     for (let i = 0; i < edgePath.length; i++) {
       const edge = edgePath[i];
       totalDist  += edge.distanceM;
       shadowedDist += edge.distanceM * edge.shadowFactor;
+      surfaceMetresM[edge.surface ?? "unknown"] =
+        (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
       const isShadowed = edge.shadowFactor > SHADOW_THRESH;
       if (isShadowed) {
         currentStreakM += edge.distanceM;
@@ -894,6 +917,7 @@ export function paretoRoutes(
       shadowTransitions,
       detourRatio: straightLineDistM > 0 ? totalDist / straightLineDistM : 1.0,
       turnCount,
+      surfaceMetresM,
     };
   };
 

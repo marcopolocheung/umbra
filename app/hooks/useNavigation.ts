@@ -1628,6 +1628,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             shadowSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
             travelMode,
             totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
+            surfaceMetresM: result.surfaceMetresM,
           }));
         } else {
           const nodeChain = snappedStops.ids;
@@ -1652,6 +1653,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             // whole route — so the node ids have to outlive the leg that produced them.
             const allNodeIds: number[] = [];
             const legs: RouteLeg[] = [];
+            const surfaceMetresM: Record<string, number> = {};
             let failed = false;
             let failedLeg: number | null = null;
 
@@ -1695,6 +1697,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
               });
               totalDist += segResult.distanceM;
               totalShadowDist += segResult.distanceM * segResult.shadowCoverage;
+              for (const [surface, metres] of Object.entries(segResult.surfaceMetresM)) {
+                surfaceMetresM[surface] = (surfaceMetresM[surface] ?? 0) + metres;
+              }
               if (si === 0) updatePreview(allCoords);
             }
 
@@ -1719,6 +1724,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
                   travelMode,
                   totalTimeSec: travelTimeSeconds(totalDist, travelMode),
+                  surfaceMetresM: { ...surfaceMetresM },
                   partial: {
                     completedLegs: failedLeg - 1,
                     failedLeg,
@@ -1755,6 +1761,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
               shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
               travelMode,
               totalTimeSec: travelTimeSeconds(totalDist, travelMode),
+              surfaceMetresM: { ...surfaceMetresM },
               partial: forcedPartial ?? undefined,
             });
           }

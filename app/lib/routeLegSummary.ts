@@ -48,8 +48,8 @@ export function routeLegSummary(
   ].filter(Boolean);
 
   // `type` stays "walk" for active-travel legs (E6 generalizes it); the label
-  // follows the route's mode so bike legs don't read as walking.
-  const modeLabel = travelMode === "bike" ? "Bike" : "Walk";
+  // follows the route's mode policy so new modes never read as walking.
+  const modeLabel = getTravelModePolicy(travelMode).label;
   if (parts.length > 0) {
     return {
       title: `Leg ${index + 1}: ${modeLabel}`,

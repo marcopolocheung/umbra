@@ -3,6 +3,7 @@ import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
 import { routeLegSummary } from "../lib/routeLegSummary";
 import { routeExposureLine } from "../lib/routeTradeoff";
+import { roughSurfaceLine } from "../lib/travelMode";
 
 function formatDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
@@ -24,6 +25,11 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
   const shadowPct = Math.round(r.shadowCoverage * 100);
   // Absent on sketch and transit routes, whose shadow was not sampled per sidewalk.
   const shadowSource = r.shadowSource ? describeShadowProvenance(r.shadowSource) : null;
+  // Names the avoided surfaces the chosen route still crosses in scoot/bike
+  // mode (E4) — raw surface tags, so a smoothness=good sett section is still
+  // named, and silence is absence of data, not proof of smooth. Absent on
+  // walk, sketch and transit routes.
+  const roughLine = roughSurfaceLine(r.surfaceMetresM, r.travelMode ?? "walk");
   const isPartial = !!r.partial;
 
   return (
@@ -100,6 +106,12 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
           {routeExposureLine(r)}
         </div>
+
+        {roughLine && (
+          <div className="mt-1 text-[10px] font-medium" style={{ color: "#a16207" }}>
+            {roughLine}
+          </div>
+        )}
 
         {shadowSource && (
           <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>

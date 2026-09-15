@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  buildRoutingGraphFromElements,
   fetchBuildingFootprintsAround,
   fetchCanopyAround,
   fetchRoutingGraph,
@@ -288,8 +289,42 @@ describe("fetchRoutingGraph — out body geom inline geometry", () => {
   });
 });
 
-// ── Graph cache isolation ────────────────────────────────────────────────────
+// ── smoothness ingestion (E4) ────────────────────────────────────────────────
 
+describe("buildRoutingGraphFromElements — smoothness", () => {
+  it("carries smoothness=* onto edges; absent tags stay undefined", () => {
+    const graph = buildRoutingGraphFromElements([
+      {
+        type: "way",
+        id: 2001,
+        nodes: [20, 21],
+        tags: { highway: "pedestrian", surface: "sett", smoothness: "good" },
+        geometry: [
+          { lat: 40.4151, lon: -3.7023 },
+          { lat: 40.4152, lon: -3.7023 },
+        ],
+      },
+      {
+        type: "way",
+        id: 2002,
+        nodes: [21, 22],
+        tags: { highway: "footway" },
+        geometry: [
+          { lat: 40.4152, lon: -3.7023 },
+          { lat: 40.4153, lon: -3.7023 },
+        ],
+      },
+    ]);
+
+    expect(graph.adj.get(20)!.find((e) => e.toId === 21)).toMatchObject({
+      surface: "sett",
+      smoothness: "good",
+    });
+    expect(graph.adj.get(21)!.find((e) => e.toId === 22)?.smoothness).toBeUndefined();
+  });
+});
+
+// ── Graph cache isolation ────────────────────────────────────────────────────
 describe("fetchRoutingGraph — cache isolation", () => {
   it("returns a fresh graph clone from cache so route mutations do not leak", async () => {
     const way = {

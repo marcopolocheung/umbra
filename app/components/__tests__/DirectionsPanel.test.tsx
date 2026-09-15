@@ -9,7 +9,7 @@ import DirectionsPanel from "../DirectionsPanel";
 afterEach(cleanup);
 
 function renderPanel(
-  props: { travelMode?: "walk" | "bike"; routeMode?: "walk" | "transit" } = {},
+  props: { travelMode?: "walk" | "bike" | "scoot"; routeMode?: "walk" | "transit" } = {},
 ) {
   const onTravelModeChange = vi.fn();
   render(
@@ -65,6 +65,21 @@ describe("DirectionsPanel — travel mode selector (E1)", () => {
     expect(travelButtons().getByRole("button", { name: "Walk" }).getAttribute("aria-pressed")).toBe(
       "false",
     );
+  });
+
+  it("offers Scoot alongside Walk/Bike and reports a Scoot click", () => {
+    const { onTravelModeChange } = renderPanel({ travelMode: "walk" });
+
+    // The Scoot button carries a fuller aria-label (kick vs electric), so
+    // match it loosely — the same way a substring-matching assistive query
+    // would. "Bike" must still resolve to exactly the Bike button (E1).
+    const scoot = travelButtons().getByRole("button", { name: /scoot/i });
+    expect(travelButtons().getByRole("button", { name: "Bike" })).toBeTruthy();
+    expect(scoot.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(scoot);
+    expect(onTravelModeChange).toHaveBeenCalledTimes(1);
+    expect(onTravelModeChange).toHaveBeenCalledWith("scoot");
   });
 
   it("hides the selector on the transit tab", () => {
