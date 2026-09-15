@@ -1,22 +1,44 @@
 // app/lib/exportRoute.ts
 import type { RouteOption } from "./routing";
+import type { Trip } from "./trip/types";
 
-export function routeToGeoJSON(route: RouteOption): string {
-  const fc: GeoJSON.FeatureCollection = {
-    type: "FeatureCollection",
-    features: [route.geojson],
-  };
+export function routeToGeoJSON(route: RouteOption, trip?: Trip): string {
+  const features: GeoJSON.Feature[] = [route.geojson];
+  if (trip) {
+    for (const [i, stop] of trip.stops.entries()) {
+      features.push({
+        type: "Feature",
+        properties: {
+          name: stop.label ?? `Stop ${i + 1}`,
+          ...(stop.dwellMinutes ? { dwellMinutes: stop.dwellMinutes } : {}),
+        },
+        geometry: { type: "Point", coordinates: [...stop.coord] },
+      });
+    }
+  }
+  const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
   return JSON.stringify(fc, null, 2);
 }
 
-export function routeToGPX(route: RouteOption, name: string): string {
+export function routeToGPX(route: RouteOption, name: string, trip?: Trip): string {
   const coords = route.geojson.geometry.coordinates as [number, number][];
   const trkpts = coords
     .map(([lon, lat]) => `    <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"/>`)
     .join("\n");
+  const waypoints = (trip?.stops ?? [])
+    .map((stop, i) => {
+      const [lon, lat] = stop.coord;
+      const stopName = escapeXml(stop.label ?? `Stop ${i + 1}`);
+      const dwell = stop.dwellMinutes ? `\n      <desc>${stop.dwellMinutes} min stop</desc>` : "";
+      return `  <wpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">\n    <name>${stopName}</name>${dwell}\n  </wpt>`;
+    })
+    .join("\n");
+  // GPX 1.1's `gpxType` fixes the order `metadata?, wpt*, rte*, trk*`, so the
+  // stops go BEFORE the track. A schema-validating reader drops or rejects them
+  // the other way round.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Umbra" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
+${waypoints ? `${waypoints}\n` : ""}  <trk>
     <name>${escapeXml(name)}</name>
     <trkseg>
 ${trkpts}

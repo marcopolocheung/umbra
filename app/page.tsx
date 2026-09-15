@@ -234,6 +234,7 @@ export default function Home() {
     navMode,
     waypointA,
     waypointB,
+    dwellMinutes,
     navRoutes,
     selectedRouteIndex,
     isCalculating,
@@ -512,10 +513,21 @@ export default function Home() {
       );
 
       if (shared.date) setDate(shared.date);
-      if (shared.waypointA) handleSetWaypointA(shared.waypointA, "Shared start");
-      if (shared.waypointB) handleSetWaypointB(shared.waypointB, "Shared destination");
+      // Order matters: A, then B, then via. Each handler commits one trip
+      // update and React batches them, so B must land while the trip is still
+      // short enough to append (not replace the last stop), with via last.
+      const dwellAt = (i: number) => shared.dwell[i] ?? 0;
+      if (shared.waypointA)
+        handleSetWaypointA(shared.waypointA, "Shared start", { dwellMinutes: dwellAt(0) });
+      if (shared.waypointB)
+        handleSetWaypointB(shared.waypointB, "Shared destination", {
+          dwellMinutes: dwellAt(shared.additionalWaypoints.length + 1),
+        });
       if (shared.additionalWaypoints.length > 0) {
-        handleSetAdditionalWaypoints(shared.additionalWaypoints);
+        handleSetAdditionalWaypoints(
+          shared.additionalWaypoints,
+          shared.additionalWaypoints.map((_, i) => dwellAt(i + 1)),
+        );
       }
       if (shared.travelMode !== "walk") handleTravelModeChange(shared.travelMode);
       if (shared.center || shared.zoom != null) {
@@ -550,10 +562,11 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      dwellMinutes,
       travelMode,
     });
     window.history.replaceState(null, "", url);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleShareLink = useCallback(async () => {
     const url = shareUrlFromState({
@@ -564,6 +577,7 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      dwellMinutes,
       travelMode,
     });
     try {
@@ -573,7 +587,7 @@ export default function Home() {
       setShareStatus("error");
     }
     window.setTimeout(() => setShareStatus("idle"), 1800);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleDismissShadowLegend = useCallback(() => {
     setShadowLegendDismissed(true);

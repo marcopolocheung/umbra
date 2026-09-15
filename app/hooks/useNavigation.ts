@@ -43,6 +43,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   // first: routing reads trip state, while trip handlers read routing back
   // lazily through the seam.
   const {
+    trip,
+    dwellSignature,
+    dwellMinutes,
+    replaceAllStops,
+    clearTrip,
+    relabelWaypoint,
     waypointA,
     waypointB,
     waypointALabel,
@@ -57,13 +63,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     waypointARef,
     waypointBRef,
     pendingSlotRef,
-    setWaypointA,
-    setWaypointB,
-    setWaypointALabel,
-    setWaypointBLabel,
     setPendingSlot,
     setSaveModalRouteIndex,
-    setAdditionalWaypoints,
     handleOpenSaveModal,
     handleConfirmSave,
     handleLoadRoute,
@@ -86,6 +87,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     mapRef,
     dateRef,
     setDate,
+    travelMode,
     seam: seamRef,
   });
 
@@ -134,11 +136,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     additionalWaypoints,
     waypointARef,
     waypointBRef,
-    setWaypointA,
-    setWaypointB,
-    setWaypointALabel,
-    setWaypointBLabel,
-    setAdditionalWaypoints,
+    dwellSignature,
+    replaceAllStops,
     seam: seamRef,
   });
 
@@ -198,10 +197,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     (coord: { lng: number; lat: number }, originalEvent?: MouseEvent) => {
       if (originalEvent?.altKey && waypointARef.current && waypointBRef.current) {
         const lngLat: [number, number] = [coord.lng, coord.lat];
-        cancelInFlightCalculation();
-        setAdditionalWaypoints((prev) => [...prev, lngLat]);
-        setNavRoutes([]);
-        setSelectedRouteIndex(0);
+        handleAddAdditionalWaypoint(lngLat);
         return;
       }
       const slot = pendingSlotRef.current;
@@ -209,49 +205,38 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       setNavError(null);
       const lngLat: [number, number] = [coord.lng, coord.lat];
       const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
-      cancelInFlightCalculation();
       if (slot === "A") {
-        setWaypointA(lngLat);
-        setWaypointALabel(coordLabel);
+        // A map tap places the pin silently: no camera jump (the user is
+        // already looking at the point) and the relabel must not clear routes.
+        handleSetWaypointA(lngLat, coordLabel, { jump: false });
         geocodeReverse(coord.lat, coord.lng).then((lbl) => {
-          if (lbl) setWaypointALabel(lbl);
+          if (lbl) relabelWaypoint("A", lbl);
         });
         setPendingSlot(waypointBRef.current ? null : "B");
       } else {
-        setWaypointB(lngLat);
-        setWaypointBLabel(coordLabel);
+        handleSetWaypointB(lngLat, coordLabel, { jump: false });
         geocodeReverse(coord.lat, coord.lng).then((lbl) => {
-          if (lbl) setWaypointBLabel(lbl);
+          if (lbl) relabelWaypoint("B", lbl);
         });
         setPendingSlot(null);
       }
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
     },
     [
-      cancelInFlightCalculation,
       waypointARef,
       waypointBRef,
       pendingSlotRef,
-      setWaypointA,
-      setWaypointALabel,
-      setWaypointB,
-      setWaypointBLabel,
+      handleSetWaypointA,
+      handleSetWaypointB,
+      relabelWaypoint,
+      handleAddAdditionalWaypoint,
       setPendingSlot,
-      setAdditionalWaypoints,
       setNavError,
-      setNavRoutes,
-      setSelectedRouteIndex,
     ],
   );
 
   const handleClear = useCallback(() => {
     cancelInFlightCalculation();
-    setWaypointA(null);
-    setWaypointB(null);
-    setWaypointALabel(null);
-    setWaypointBLabel(null);
-    setAdditionalWaypoints([]);
+    clearTrip();
     setNavRoutes([]);
     setSelectedRouteIndex(0);
     setNavError(null);
@@ -267,11 +252,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setTravelMode("walk");
   }, [
     cancelInFlightCalculation,
-    setWaypointA,
-    setWaypointB,
-    setWaypointALabel,
-    setWaypointBLabel,
-    setAdditionalWaypoints,
+    clearTrip,
     setPendingSlot,
     setDrawMode,
     setSketchPoints,
@@ -294,12 +275,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       }
       const name = route.label;
       if (format === "gpx") {
-        downloadBlob(routeToGPX(route, name), `${name}.gpx`, "application/gpx+xml");
+        downloadBlob(routeToGPX(route, name, trip), `${name}.gpx`, "application/gpx+xml");
       } else {
-        downloadBlob(routeToGeoJSON(route), `${name}.geojson`, "application/geo+json");
+        downloadBlob(routeToGeoJSON(route, trip), `${name}.geojson`, "application/geo+json");
       }
     },
-    [navRoutes, setNavWarning],
+    [navRoutes, setNavWarning, trip],
   );
 
   const handleToggleNavMode = useCallback(() => {
@@ -308,11 +289,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       return;
     }
     cancelInFlightCalculation();
-    setWaypointA(null);
-    setWaypointB(null);
-    setWaypointALabel(null);
-    setWaypointBLabel(null);
-    setAdditionalWaypoints([]);
+    clearTrip();
     setNavRoutes([]);
     setSelectedRouteIndex(0);
     setNavError(null);
@@ -328,11 +305,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   }, [
     cancelInFlightCalculation,
     navMode,
-    setWaypointA,
-    setWaypointB,
-    setWaypointALabel,
-    setWaypointBLabel,
-    setAdditionalWaypoints,
+    clearTrip,
     setPendingSlot,
     setDrawMode,
     setSketchPoints,
@@ -415,6 +388,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     navMode,
     waypointA,
     waypointB,
+    dwellMinutes,
     navRoutes,
     selectedRouteIndex,
     isCalculating,

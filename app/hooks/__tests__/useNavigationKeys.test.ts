@@ -44,6 +44,7 @@ describe("useNavigation return contract", () => {
         "cancelRoutePlan",
         "createRoutePlanRequest",
         "drawMode",
+        "dwellMinutes",
         "filteredRoutes",
         "getCurrentPlanRevision",
         "getRouteReceiptMapObjects",

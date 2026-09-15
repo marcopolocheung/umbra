@@ -84,4 +84,51 @@ describe("shareState", () => {
     expect(parsed.waypointB).toBeNull();
     expect(parsed.additionalWaypoints).toEqual([[-74, 40.7]]);
   });
+
+  it("round-trips a 4-stop trip with dwell times", () => {
+    const input = {
+      mapCenter: [40.71278, -74.00597] as [number, number],
+      mapZoom: 15,
+      utcOffsetMin: -300,
+      date: fromMapLocal(new Date("2026-07-05T12:00:00.000Z"), -300, 9, 30),
+      waypointA: [-74.01, 40.71] as [number, number],
+      waypointB: [-73.99, 40.72] as [number, number],
+      additionalWaypoints: [[-74.0, 40.715], [-73.995, 40.718]] as [number, number][],
+      dwellMinutes: [0, 30, 0, 45],
+      travelMode: "walk" as const,
+    };
+    const parsed = parseShareState(serializeShareState(input), -300);
+
+    expect(parsed.waypointA).toEqual([-74.01, 40.71]);
+    expect(parsed.waypointB).toEqual([-73.99, 40.72]);
+    expect(parsed.additionalWaypoints).toEqual(input.additionalWaypoints);
+    expect(parsed.dwell).toEqual([0, 30, 0, 45]);
+  });
+
+  it("parses old links without dwell as all-zero", () => {
+    const parsed = parseShareState(
+      "?a=-74.01%2C40.71&b=-73.99%2C40.72&via=-74%2C40.715",
+      0
+    );
+    expect(parsed.dwell).toEqual([]);
+  });
+
+  it("omits the dwell parameter when no stop has dwell", () => {
+    const search = serializeShareState({
+      mapCenter: null,
+      mapZoom: 15,
+      utcOffsetMin: 0,
+      date: new Date("2026-07-05T12:00:00.000Z"),
+      waypointA: [-74.01, 40.71],
+      waypointB: [-73.99, 40.72],
+      additionalWaypoints: [],
+      dwellMinutes: [0, 0],
+      travelMode: "walk",
+    });
+    expect(search).not.toContain("dwell");
+  });
+
+  it("sanitizes garbage dwell values to zero", () => {
+    expect(parseShareState("?dwell=30,-5,abc,,12.9", 0).dwell).toEqual([30, 0, 0, 12]);
+  });
 });
