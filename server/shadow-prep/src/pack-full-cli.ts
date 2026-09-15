@@ -58,7 +58,7 @@ async function sourceAndIndexStore(): Promise<{ source: S3Store; indexStore: S3S
 async function buildIndex(): Promise<void> {
   const { source, indexStore } = await sourceAndIndexStore();
   const prefix = `normalized/${NORMALIZATION_ID}/tiles/`;
-  const descriptorPattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}18/(\\d+)/(\\d+)/descriptor\\.json$`);
+  const descriptorPattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}18-(\\d+)-(\\d+)/descriptor\\.json$`);
   // S3 lists descriptor-last candidate records; filtering before parsing means
   // the one-time scan does not download 279 GB of raw planes.
   const keys = await source.listKeys(prefix);
