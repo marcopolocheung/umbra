@@ -6,7 +6,7 @@ import test from "node:test";
 import { decodeBrowserTileBundle } from "../../../app/lib/shadowField/v2/bundle";
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
 import { writeCandidate } from "../src/candidates";
-import { benchmarkCandidatePack, browserPackIdentity, packCandidateDescriptor, reconcileBrowserPack } from "../src/pack";
+import { benchmarkCandidatePack, browserPackIdentity, candidateTileIndex, contiguousShard, packCandidateDescriptor, reconcileBrowserPack } from "../src/pack";
 import { FilesystemStore } from "../src/storage";
 
 const cells = STORED_SIZE * STORED_SIZE;
@@ -41,4 +41,13 @@ test("candidate browser pack validates planes and round-trips all three componen
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("full-pack tile index is frozen, numeric, and partitions contiguous work without overlap", () => {
+  const tiles = ["18/2/10", "18/1/99", "18/1/2", "18/3/1"];
+  const index = candidateTileIndex("0123456789abcdef0123456789abcdef", tiles, 4);
+  assert.deepEqual(index.tiles, ["18/1/2", "18/1/99", "18/2/10", "18/3/1"]);
+  assert.equal(candidateTileIndex(index.normalizationId, [...tiles].reverse(), 4).sha256, index.sha256);
+  assert.deepEqual([0, 1, 2].flatMap((shard) => contiguousShard(index.tiles, shard, 3)), index.tiles);
+  assert.throws(() => candidateTileIndex(index.normalizationId, [...tiles, tiles[0]], 5), /duplicate/);
 });

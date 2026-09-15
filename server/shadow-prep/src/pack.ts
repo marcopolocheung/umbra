@@ -44,14 +44,33 @@ export interface PackReconciliation {
   manifestKey: string;
   manifestSha256: string;
 }
+export interface CandidateTileIndex {
+  version: 1;
+  normalizationId: string;
+  expectedTiles: number;
+  tiles: string[];
+  sha256: string;
+}
+export interface PackShardReceipt {
+  version: 1;
+  generation: string;
+  identity: BrowserPackIdentity;
+  shardIndex: number;
+  shardCount: number;
+  tiles: PackedBrowserTile[];
+  sha256: string;
+}
+
+export const NYC_FIVE_BOROUGH_TILE_COUNT = 61_442;
 
 const gzip = async (plain: Uint8Array) => new Uint8Array(gzipSync(plain, { level: 6 }));
 const hash = (value: string) => sha256(new TextEncoder().encode(value));
 
-export function browserPackIdentity(normalizationId: string): BrowserPackIdentity {
+export function browserPackIdentity(normalizationId: string, generationSuffix = ""): BrowserPackIdentity {
   if (!/^[a-f0-9]{32}$/.test(normalizationId)) throw new Error("normalization id must be a 32-character hex value");
+  if (generationSuffix && !/^[a-z0-9-]{1,48}$/.test(generationSuffix)) throw new Error("generation suffix must be lowercase letters, digits, and hyphens");
   return {
-    generation: `nyc-${normalizationId}`,
+    generation: `nyc-${normalizationId}${generationSuffix ? `-${generationSuffix}` : ""}`,
     recipeHash: hash(BROWSER_PACK_VERSION),
     // This is the exact transform policy that created the candidate planes.
     datumHash: hash("EGM2008-to-EGM96/us_nga_egm08_25.tif/us_nga_egm96_15.tif"),
@@ -123,7 +142,7 @@ export async function packCandidateDescriptor(
   descriptor: CandidateDescriptor,
   identity = browserPackIdentity(descriptor.normalizationId),
 ): Promise<{ bytes: Uint8Array; packed: PackedBrowserTile }> {
-  if (descriptor.schemaVersion !== 1 || descriptor.gutter !== 1 || descriptor.byteOrder !== "little-endian-u32" || identity.generation !== `nyc-${descriptor.normalizationId}`)
+  if (descriptor.schemaVersion !== 1 || descriptor.gutter !== 1 || descriptor.byteOrder !== "little-endian-u32" || !identity.generation.startsWith(`nyc-${descriptor.normalizationId}`))
     throw new Error("unsupported candidate descriptor");
   const components = await Promise.all((["terrain", "buildings", "canopy"] as const).map(async (kind) => {
     const value = component(kind, descriptor, identity, await readPlanes(store, descriptor.components[kind]));
@@ -147,6 +166,32 @@ export async function packCandidateDescriptor(
   };
 }
 
+/** Frozen, numeric z18 tile ordering used for immutable index and array work. */
+export function compareTiles(left: string, right: string): number {
+  const parse = (tile: string) => {
+    const match = /^18\/(\d+)\/(\d+)$/.exec(tile);
+    if (!match) throw new Error(`invalid z18 tile ${tile}`);
+    return [Number(match[1]), Number(match[2])];
+  };
+  const [leftX, leftY] = parse(left); const [rightX, rightY] = parse(right);
+  return leftX - rightX || leftY - rightY;
+}
+
+export function candidateTileIndex(normalizationId: string, tiles: string[], expectedTiles = NYC_FIVE_BOROUGH_TILE_COUNT): CandidateTileIndex {
+  if (!/^[a-f0-9]{32}$/.test(normalizationId)) throw new Error("normalization id must be a 32-character hex value");
+  const ordered = [...new Set(tiles)].sort(compareTiles);
+  if (ordered.length !== tiles.length) throw new Error("candidate index contains duplicate tiles");
+  if (ordered.length !== expectedTiles) throw new Error(`candidate index expected ${expectedTiles} tiles, found ${ordered.length}`);
+  const body = { version: 1 as const, normalizationId, expectedTiles, tiles: ordered };
+  return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
+}
+
+export function contiguousShard<T>(values: readonly T[], shardIndex: number, shardCount: number): T[] {
+  if (!Number.isInteger(shardCount) || shardCount < 1 || shardCount > values.length) throw new Error("shard count must be between 1 and the tile count");
+  if (!Number.isInteger(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) throw new Error("shard index is outside the array range");
+  return values.slice(Math.floor(values.length * shardIndex / shardCount), Math.floor(values.length * (shardIndex + 1) / shardCount));
+}
+
 /** Deterministic, low-risk benchmark. It writes nothing unless an output store is supplied. */
 export async function benchmarkCandidatePack(
   store: ObjectStore,
@@ -154,6 +199,7 @@ export async function benchmarkCandidatePack(
   output?: ObjectStore,
   concurrency = 1,
   onPacked?: (entry: PackedBrowserTile) => void,
+  identity = browserPackIdentity(descriptors[0]?.normalizationId ?? ""),
 ): Promise<PackBenchmark> {
   if (!descriptors.length) throw new Error("benchmark requires at least one descriptor");
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32)
@@ -166,7 +212,7 @@ export async function benchmarkCandidatePack(
     while (true) {
       const index = next++;
       if (index >= ordered.length) return;
-      const result = await packCandidateDescriptor(store, ordered[index]);
+      const result = await packCandidateDescriptor(store, ordered[index], identity);
       if (output) {
         const prior = await output.head(result.packed.key);
         if (!prior) await output.write(result.packed.key, result.bytes, "application/octet-stream");
@@ -183,7 +229,7 @@ export async function benchmarkCandidatePack(
   return {
     version: 1,
     normalizationId: descriptors[0].normalizationId,
-    generation: browserPackIdentity(descriptors[0].normalizationId).generation,
+    generation: identity.generation,
     requestedTiles: descriptors.length,
     packedTiles: descriptors.length,
     rawBytesRead,
@@ -203,6 +249,71 @@ export function browserPackManifest(entries: PackedBrowserTile[], identity: Brow
   return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
 }
 
+export function browserPackShardReceipt(entries: PackedBrowserTile[], identity: BrowserPackIdentity, shardIndex: number, shardCount: number): PackShardReceipt {
+  if (!entries.length) throw new Error("cannot write an empty shard receipt");
+  const tiles = [...entries].sort((a, b) => compareTiles(a.tile, b.tile));
+  const body = { version: 1 as const, generation: identity.generation, identity, shardIndex, shardCount, tiles };
+  return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
+}
+
+function receiptKey(identity: BrowserPackIdentity, shardIndex: number, shardCount: number): string {
+  return `generations/${identity.generation}/shards/${String(shardIndex).padStart(3, "0")}-of-${String(shardCount).padStart(3, "0")}.json`;
+}
+
+async function writeImmutableJson(output: ObjectStore, key: string, value: unknown): Promise<{ bytes: Uint8Array; sha256: string }> {
+  const bytes = new TextEncoder().encode(`${JSON.stringify(value)}\n`);
+  const digest = sha256(bytes);
+  const prior = await output.head(key);
+  if (!prior) await output.write(key, bytes, "application/json");
+  else if (prior.bytes !== bytes.byteLength || prior.sha256 !== digest) throw new Error(`immutable packed-object collision: ${key}`);
+  const readback = await output.read(key);
+  if (sha256(readback) !== digest) throw new Error(`packed object readback mismatch: ${key}`);
+  return { bytes, sha256: digest };
+}
+
+/** Each array child proves only its immutable, disjoint range. */
+export async function reconcileBrowserPackShard(output: ObjectStore, entries: PackedBrowserTile[], identity: BrowserPackIdentity, shardIndex: number, shardCount: number): Promise<PackReconciliation> {
+  await verifyPackedEntries(output, entries, identity, true);
+  const receipt = browserPackShardReceipt(entries, identity, shardIndex, shardCount);
+  const key = receiptKey(identity, shardIndex, shardCount);
+  const written = await writeImmutableJson(output, key, receipt);
+  return { version: 1, generation: identity.generation, expectedTiles: entries.length, verifiedTiles: entries.length, manifestKey: key, manifestSha256: written.sha256 };
+}
+
+async function verifyPackedEntries(output: ObjectStore, entries: PackedBrowserTile[], identity: BrowserPackIdentity, decode: boolean): Promise<void> {
+  if (!entries.length) throw new Error("cannot reconcile an empty browser pack");
+  for (const entry of [...entries].sort((a, b) => compareTiles(a.tile, b.tile))) {
+    const metadata = await output.head(entry.key);
+    if (!metadata || metadata.bytes !== entry.bytes || metadata.sha256 !== entry.sha256) throw new Error(`packed object metadata mismatch: ${entry.key}`);
+    if (!decode) continue;
+    const bytes = await output.read(entry.key);
+    if (sha256(bytes) !== entry.sha256) throw new Error(`packed object readback mismatch: ${entry.key}`);
+    const components = await decodeBrowserTileBundle(bytes);
+    if (components.length !== 3 || components.some((component) => component.identity.generation !== identity.generation || component.identity.tile !== entry.tile)) throw new Error(`packed object decode mismatch: ${entry.key}`);
+  }
+}
+
+/** Gate final manifest creation on all array receipts plus a fresh R2 metadata scan. */
+export async function aggregateBrowserPack(output: ObjectStore, index: CandidateTileIndex, identity: BrowserPackIdentity, shardCount: number): Promise<PackReconciliation> {
+  const entries: PackedBrowserTile[] = [];
+  for (let shardIndex = 0; shardIndex < shardCount; shardIndex++) {
+    const key = receiptKey(identity, shardIndex, shardCount);
+    const receipt = JSON.parse(new TextDecoder().decode(await output.read(key))) as PackShardReceipt;
+    const body = { version: receipt.version, generation: receipt.generation, identity: receipt.identity, shardIndex: receipt.shardIndex, shardCount: receipt.shardCount, tiles: receipt.tiles };
+    if (receipt.sha256 !== createHash("sha256").update(JSON.stringify(body)).digest("hex") || receipt.version !== 1 || receipt.generation !== identity.generation || JSON.stringify(receipt.identity) !== JSON.stringify(identity) || receipt.shardIndex !== shardIndex || receipt.shardCount !== shardCount)
+      throw new Error(`invalid shard receipt: ${key}`);
+    const expected = contiguousShard(index.tiles, shardIndex, shardCount);
+    if (receipt.tiles.length !== expected.length || receipt.tiles.some((entry, i) => entry.tile !== expected[i])) throw new Error(`shard receipt tile range mismatch: ${key}`);
+    entries.push(...receipt.tiles);
+  }
+  if (entries.length !== index.expectedTiles || entries.some((entry, i) => entry.tile !== index.tiles[i])) throw new Error("shard receipts do not cover the frozen candidate index exactly");
+  await verifyPackedEntries(output, entries, identity, false);
+  const manifest = browserPackManifest(entries, identity);
+  const manifestKey = `generations/${identity.generation}/manifest.json`;
+  const written = await writeImmutableJson(output, manifestKey, manifest);
+  return { version: 1, generation: identity.generation, expectedTiles: index.expectedTiles, verifiedTiles: entries.length, manifestKey, manifestSha256: written.sha256 };
+}
+
 /**
  * Re-read every uploaded object before publishing the immutable manifest. This
  * is intentionally separate from `current.json`: only a complete NYC run may
@@ -214,24 +325,9 @@ export async function reconcileBrowserPack(
   identity: BrowserPackIdentity,
 ): Promise<PackReconciliation> {
   if (!entries.length) throw new Error("cannot reconcile an empty browser pack");
-  for (const entry of [...entries].sort((a, b) => a.tile.localeCompare(b.tile))) {
-    const metadata = await output.head(entry.key);
-    if (!metadata || metadata.bytes !== entry.bytes || metadata.sha256 !== entry.sha256)
-      throw new Error(`packed object metadata mismatch: ${entry.key}`);
-    const bytes = await output.read(entry.key);
-    if (sha256(bytes) !== entry.sha256) throw new Error(`packed object readback mismatch: ${entry.key}`);
-    const components = await decodeBrowserTileBundle(bytes);
-    if (components.length !== 3 || components.some((component) => component.identity.generation !== identity.generation || component.identity.tile !== entry.tile))
-      throw new Error(`packed object decode mismatch: ${entry.key}`);
-  }
+  await verifyPackedEntries(output, entries, identity, true);
   const manifest = browserPackManifest(entries, identity);
   const manifestKey = `generations/${identity.generation}/manifest.json`;
-  const body = new TextEncoder().encode(`${JSON.stringify(manifest)}\n`);
-  const prior = await output.head(manifestKey);
-  if (!prior) await output.write(manifestKey, body, "application/json");
-  else if (prior.bytes !== body.byteLength || prior.sha256 !== sha256(body))
-    throw new Error(`immutable packed-manifest collision: ${manifestKey}`);
-  const readback = await output.read(manifestKey);
-  if (sha256(readback) !== sha256(body)) throw new Error(`packed manifest readback mismatch: ${manifestKey}`);
-  return { version: 1, generation: identity.generation, expectedTiles: entries.length, verifiedTiles: entries.length, manifestKey, manifestSha256: sha256(body) };
+  const written = await writeImmutableJson(output, manifestKey, manifest);
+  return { version: 1, generation: identity.generation, expectedTiles: entries.length, verifiedTiles: entries.length, manifestKey, manifestSha256: written.sha256 };
 }

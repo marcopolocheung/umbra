@@ -1,4 +1,7 @@
-const immutableAsset = /^generations\/nyc-[a-f0-9]{32}\/(?:tiles\/18-\d+-\d+\.smb|manifest\.json)$/;
+// A generation suffix distinguishes a verified city-wide pack from a small
+// smoke pack that used the same source normalization.  The allow-list stays
+// narrow: only tiled bundles and the final immutable manifest are public.
+const immutableAsset = /^generations\/nyc-[a-f0-9]{32}(?:-[a-z0-9-]{1,48})?\/(?:tiles\/18-\d+-\d+\.smb|manifest\.json)$/;
 const currentPointer = "current.json";
 
 function cors(request: Request, env: Env): Headers {

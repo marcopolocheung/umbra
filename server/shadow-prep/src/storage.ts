@@ -3,7 +3,7 @@ import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/prom
 import { dirname, join, normalize, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 /** A deliberately small object-store contract.  Candidate publication depends on
  * the descriptor being written last; it never depends on directory rename
@@ -78,6 +78,23 @@ export class S3Store implements ObjectStore {
       if (code === "NotFound" || (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return undefined;
       throw error;
     }
+  }
+  /** List complete bucket keys below a logical prefix.  This is intentionally
+   * only exposed on S3: the full-run index is built once, before the array
+   * workers begin, so they never each enumerate the 1.1m candidate objects. */
+  async listKeys(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.client.send(new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: this.key(prefix),
+        ContinuationToken: continuationToken,
+      }));
+      for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key);
+      continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return keys;
   }
 }
 

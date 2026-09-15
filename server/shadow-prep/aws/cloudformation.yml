@@ -32,6 +32,12 @@ Parameters:
     AllowedPattern: '^arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
     NoEcho: true
     Description: Exact AWS secret ARN holding JSON keys access_key_id and secret_access_key for the scoped R2 uploader credential.
+  RegionalMaxVcpus:
+    Type: Number
+    Default: 128
+    MinValue: 1
+    MaxValue: 256
+    Description: Approved private browser-pack capacity. Jobs remain queued until the EC2 On-Demand vCPU quota permits it.
 Conditions:
   HasGitHubImmutableSubjectPrefix: !Not [!Equals [!Ref GitHubImmutableSubjectPrefix, '']]
 Resources:
@@ -112,7 +118,7 @@ Resources:
         Type: EC2
         AllocationStrategy: BEST_FIT_PROGRESSIVE
         MinvCpus: 0
-        MaxvCpus: 4
+        MaxvCpus: !Ref RegionalMaxVcpus
         DesiredvCpus: 0
         InstanceRole: !GetAtt BatchInstanceProfile.Arn
         InstanceTypes: ['optimal']
@@ -216,6 +222,75 @@ Resources:
           - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
           - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
         LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-smoke } }
+  BrowserPackIndexJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # One metadata-only listing pass over the candidate prefix. It does not
+      # read candidate planes or write R2 objects.
+      Timeout: { AttemptDurationSeconds: 3600 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--build-index']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-index } }
+  BrowserPackArrayJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # Each one-vCPU child owns a deterministic contiguous ~480-tile range.
+      Timeout: { AttemptDurationSeconds: 3600 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--pack-shard', '--array-shards', '128']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          - { Name: SHADE_PACK_R2_BUCKET, Value: shademap-nyc-shadow-staging }
+          - { Name: SHADE_PACK_R2_ENDPOINT, Value: https://056c5ee24d776cdb856a8a8dea30ed34.r2.cloudflarestorage.com }
+        Secrets:
+          - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
+          - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-array } }
+  BrowserPackAggregateJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # Reads 128 receipts and re-heads every immutable R2 object before it
+      # writes the sole final manifest. It never advances current.json.
+      Timeout: { AttemptDurationSeconds: 7200 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--aggregate', '--array-shards', '128']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          - { Name: SHADE_PACK_R2_BUCKET, Value: shademap-nyc-shadow-staging }
+          - { Name: SHADE_PACK_R2_ENDPOINT, Value: https://056c5ee24d776cdb856a8a8dea30ed34.r2.cloudflarestorage.com }
+        Secrets:
+          - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
+          - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-aggregate } }
   BatchLogs:
     Type: AWS::Logs::LogGroup
     Properties: { RetentionInDays: 30 }
@@ -263,4 +338,7 @@ Outputs:
   BatchQueue: { Value: !Ref BatchQueue }
   BatchJobDefinition: { Value: !Ref BatchJobDefinition }
   BrowserPackSmokeJobDefinition: { Value: !Ref BrowserPackSmokeJobDefinition }
+  BrowserPackIndexJobDefinition: { Value: !Ref BrowserPackIndexJobDefinition }
+  BrowserPackArrayJobDefinition: { Value: !Ref BrowserPackArrayJobDefinition }
+  BrowserPackAggregateJobDefinition: { Value: !Ref BrowserPackAggregateJobDefinition }
   GitHubPublisherRoleArn: { Value: !GetAtt GitHubPublisherRole.Arn }
