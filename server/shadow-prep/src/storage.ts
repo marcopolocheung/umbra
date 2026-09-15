@@ -85,3 +85,15 @@ export function candidateStore(root: string): ObjectStore {
   if ((process.env.SHADE_PREP_STORAGE ?? "filesystem") === "s3") return new S3Store(process.env.SHADE_PREP_S3_BUCKET ?? "", process.env.SHADE_PREP_S3_PREFIX ?? "");
   return new FilesystemStore(root);
 }
+
+/** R2 exposes the S3 API. Credentials come only from the runtime environment
+ * (normally an AWS Secrets Manager injection), never from source or a Batch
+ * command line. The R2 endpoint requires the AWS SDK's `auto` region. */
+export function r2StoreFromEnvironment(): S3Store {
+  const bucket = process.env.SHADE_PACK_R2_BUCKET;
+  const endpoint = process.env.SHADE_PACK_R2_ENDPOINT;
+  if (!bucket || !endpoint) throw new Error("SHADE_PACK_R2_BUCKET and SHADE_PACK_R2_ENDPOINT are required for R2 output");
+  if (!/^https:\/\/[a-f0-9]{32}(?:\.[a-z]+)?\.r2\.cloudflarestorage\.com$/.test(endpoint))
+    throw new Error("SHADE_PACK_R2_ENDPOINT must be an account-scoped HTTPS R2 endpoint");
+  return new S3Store(bucket, "", new S3Client({ region: "auto", endpoint, forcePathStyle: true }));
+}

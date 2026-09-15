@@ -36,6 +36,14 @@ export interface PackBenchmark {
   packedBytesPerTile: number;
   compressionRatio: number;
 }
+export interface PackReconciliation {
+  version: 1;
+  generation: string;
+  expectedTiles: number;
+  verifiedTiles: number;
+  manifestKey: string;
+  manifestSha256: string;
+}
 
 const gzip = async (plain: Uint8Array) => new Uint8Array(gzipSync(plain, { level: 6 }));
 const hash = (value: string) => sha256(new TextEncoder().encode(value));
@@ -145,6 +153,7 @@ export async function benchmarkCandidatePack(
   descriptors: CandidateDescriptor[],
   output?: ObjectStore,
   concurrency = 1,
+  onPacked?: (entry: PackedBrowserTile) => void,
 ): Promise<PackBenchmark> {
   if (!descriptors.length) throw new Error("benchmark requires at least one descriptor");
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32)
@@ -164,6 +173,7 @@ export async function benchmarkCandidatePack(
         else if (prior.bytes !== result.bytes.byteLength || prior.sha256 !== result.packed.sha256)
           throw new Error(`immutable packed-object collision: ${result.packed.key}`);
       }
+      onPacked?.(result.packed);
       results[index] = result;
     }
   }));
@@ -191,4 +201,37 @@ export function browserPackManifest(entries: PackedBrowserTile[], identity: Brow
   const tiles = [...entries].sort((a, b) => a.tile.localeCompare(b.tile));
   const body = { version: 1 as const, generation: identity.generation, identity, tiles };
   return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
+}
+
+/**
+ * Re-read every uploaded object before publishing the immutable manifest. This
+ * is intentionally separate from `current.json`: only a complete NYC run may
+ * later promote that pointer.
+ */
+export async function reconcileBrowserPack(
+  output: ObjectStore,
+  entries: PackedBrowserTile[],
+  identity: BrowserPackIdentity,
+): Promise<PackReconciliation> {
+  if (!entries.length) throw new Error("cannot reconcile an empty browser pack");
+  for (const entry of [...entries].sort((a, b) => a.tile.localeCompare(b.tile))) {
+    const metadata = await output.head(entry.key);
+    if (!metadata || metadata.bytes !== entry.bytes || metadata.sha256 !== entry.sha256)
+      throw new Error(`packed object metadata mismatch: ${entry.key}`);
+    const bytes = await output.read(entry.key);
+    if (sha256(bytes) !== entry.sha256) throw new Error(`packed object readback mismatch: ${entry.key}`);
+    const components = await decodeBrowserTileBundle(bytes);
+    if (components.length !== 3 || components.some((component) => component.identity.generation !== identity.generation || component.identity.tile !== entry.tile))
+      throw new Error(`packed object decode mismatch: ${entry.key}`);
+  }
+  const manifest = browserPackManifest(entries, identity);
+  const manifestKey = `generations/${identity.generation}/manifest.json`;
+  const body = new TextEncoder().encode(`${JSON.stringify(manifest)}\n`);
+  const prior = await output.head(manifestKey);
+  if (!prior) await output.write(manifestKey, body, "application/json");
+  else if (prior.bytes !== body.byteLength || prior.sha256 !== sha256(body))
+    throw new Error(`immutable packed-manifest collision: ${manifestKey}`);
+  const readback = await output.read(manifestKey);
+  if (sha256(readback) !== sha256(body)) throw new Error(`packed manifest readback mismatch: ${manifestKey}`);
+  return { version: 1, generation: identity.generation, expectedTiles: entries.length, verifiedTiles: entries.length, manifestKey, manifestSha256: sha256(body) };
 }

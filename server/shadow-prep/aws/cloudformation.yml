@@ -152,7 +152,7 @@ Resources:
         Memory: 15360
         JobRoleArn: !GetAtt BatchJobRole.Arn
         ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
-        Command: ['normalize', '--smoke']
+        Command: ['server/shadow-prep/src/cli.ts', 'normalize', '--smoke']
         Environment:
           - { Name: SHADE_PREP_ROOT, Value: /scratch }
           - { Name: SHADE_PREP_RAW_BUCKET, Value: !Ref RawBucket }
@@ -164,6 +164,32 @@ Resources:
           - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
           - { Name: SHADE_PREP_EVIDENCE_PREFIX, Value: evidence }
         LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: prep } }
+  BrowserPackSmokeJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # The benchmark reads 36 representative tiles but writes nothing. The
+      # timeout includes provisioning jitter without authorizing a runaway job.
+      Timeout: { AttemptDurationSeconds: 1800 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command:
+          - server/shadow-prep/src/pack-cli.ts
+          - --normalization-id
+          - 70e3507f16d472adf5475b614a60cb16
+          - --tiles
+          - 18/77196/98516,18/77196/98517,18/77196/98518,18/77197/98516,18/77197/98517,18/77197/98518,18/77198/98516,18/77198/98517,18/77198/98518,18/77335/98545,18/77335/98546,18/77335/98547,18/77336/98545,18/77336/98546,18/77336/98547,18/77337/98545,18/77337/98546,18/77337/98547,18/77280/98428,18/77280/98429,18/77280/98430,18/77281/98428,18/77281/98429,18/77281/98430,18/77282/98428,18/77282/98429,18/77282/98430,18/77076/98687,18/77076/98688,18/77076/98689,18/77077/98687,18/77077/98688,18/77077/98689,18/77078/98687,18/77078/98688,18/77078/98689
+          - --concurrency
+          - '1'
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-smoke } }
   BatchLogs:
     Type: AWS::Logs::LogGroup
     Properties: { RetentionInDays: 30 }
@@ -210,4 +236,5 @@ Outputs:
   EcrRepositoryUri: { Value: !GetAtt EcrRepository.RepositoryUri }
   BatchQueue: { Value: !Ref BatchQueue }
   BatchJobDefinition: { Value: !Ref BatchJobDefinition }
+  BrowserPackSmokeJobDefinition: { Value: !Ref BrowserPackSmokeJobDefinition }
   GitHubPublisherRoleArn: { Value: !GetAtt GitHubPublisherRole.Arn }

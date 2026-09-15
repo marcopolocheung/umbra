@@ -6,7 +6,7 @@ import test from "node:test";
 import { decodeBrowserTileBundle } from "../../../app/lib/shadowField/v2/bundle";
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
 import { writeCandidate } from "../src/candidates";
-import { benchmarkCandidatePack, browserPackIdentity, packCandidateDescriptor } from "../src/pack";
+import { benchmarkCandidatePack, browserPackIdentity, packCandidateDescriptor, reconcileBrowserPack } from "../src/pack";
 import { FilesystemStore } from "../src/storage";
 
 const cells = STORED_SIZE * STORED_SIZE;
@@ -30,10 +30,14 @@ test("candidate browser pack validates planes and round-trips all three componen
     const components = await decodeBrowserTileBundle(packed.bytes);
     assert.deepEqual(components.map((item) => item.kind).sort(), ["buildings", "canopy", "terrain"]);
     assert.equal(components.find((item) => item.kind === "terrain")?.planes[0].words[0], 64);
-    const benchmark = await benchmarkCandidatePack(store, [descriptor]);
+    const entries: Awaited<ReturnType<typeof packCandidateDescriptor>>["packed"][] = [];
+    const benchmark = await benchmarkCandidatePack(store, [descriptor], store, 1, (entry) => entries.push(entry));
     assert.equal(benchmark.packedTiles, 1);
     assert.ok(benchmark.packedBytes > 0);
     assert.ok(benchmark.compressionRatio > 0);
+    const reconciliation = await reconcileBrowserPack(store, entries, browserPackIdentity(descriptor.normalizationId));
+    assert.equal(reconciliation.verifiedTiles, 1);
+    assert.equal((await store.head(reconciliation.manifestKey))?.sha256, reconciliation.manifestSha256);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

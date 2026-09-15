@@ -1,19 +1,4 @@
-interface R2ObjectBody {
-  body: ReadableStream<Uint8Array>;
-  httpEtag: string;
-}
-
-interface R2Bucket {
-  get(key: string): Promise<R2ObjectBody | null>;
-}
-
-interface Env {
-  SHADOW_TILES: R2Bucket;
-  /** Exact HTTPS origin for the staging web app, without a trailing slash. */
-  ALLOWED_ORIGIN: string;
-}
-
-const immutableTile = /^generations\/nyc-[a-f0-9]{32}\/tiles\/18-\d+-\d+\.smb$/;
+const immutableAsset = /^generations\/nyc-[a-f0-9]{32}\/(?:tiles\/18-\d+-\d+\.smb|manifest\.json)$/;
 const currentPointer = "current.json";
 
 function cors(request: Request, env: Env): Headers {
@@ -29,7 +14,7 @@ function requestedKey(url: URL): string | undefined {
   // The bucket is private.  This is an allow-list rather than an R2 proxy: it
   // never permits list, arbitrary prefixes, or raw candidate objects.
   const path = url.pathname.replace(/^\/_shadow\//, "");
-  if (path === currentPointer || immutableTile.test(path)) return path;
+  if (path === currentPointer || immutableAsset.test(path)) return path;
   return undefined;
 }
 

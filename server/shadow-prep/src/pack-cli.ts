@@ -1,8 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { candidateDescriptorKey, type CandidateDescriptor } from "./candidates";
-import { benchmarkCandidatePack } from "./pack";
-import { FilesystemStore, S3Store } from "./storage";
+import { benchmarkCandidatePack, browserPackIdentity, reconcileBrowserPack, type PackedBrowserTile } from "./pack";
+import { FilesystemStore, r2StoreFromEnvironment, S3Store } from "./storage";
 
 function value(flag: string): string {
   const index = process.argv.indexOf(flag);
@@ -21,6 +21,8 @@ async function main(): Promise<void> {
   const source = new S3Store(bucket, process.env.SHADE_PREP_S3_PREFIX ?? "");
   const outputArgument = process.argv.indexOf("--write-dir");
   const output = outputArgument < 0 ? undefined : new FilesystemStore(resolve(value("--write-dir")));
+  const writeR2 = process.argv.includes("--write-r2");
+  if (writeR2 && output) throw new Error("choose either --write-dir or --write-r2");
   const concurrencyArgument = process.argv.indexOf("--concurrency");
   const concurrency = concurrencyArgument < 0 ? 1 : Number(value("--concurrency"));
   const descriptors = await Promise.all(tiles.sort().map(async (tile) => {
@@ -32,8 +34,14 @@ async function main(): Promise<void> {
       throw new Error(`candidate descriptor identity mismatch: ${tile}`);
     return descriptor;
   }));
-  const result = await benchmarkCandidatePack(source, descriptors, output, concurrency);
-  const report = JSON.stringify(result, null, 2);
+  const r2 = writeR2 ? r2StoreFromEnvironment() : undefined;
+  const destination = output ?? r2;
+  const entries: PackedBrowserTile[] = [];
+  const result = await benchmarkCandidatePack(source, descriptors, destination, concurrency, (entry) => entries.push(entry));
+  const reconciliation = r2
+    ? await reconcileBrowserPack(r2, entries, browserPackIdentity(normalizationId))
+    : undefined;
+  const report = JSON.stringify({ ...result, reconciliation }, null, 2);
   if (process.argv.includes("--report")) await writeFile(resolve(value("--report")), `${report}\n`);
   process.stdout.write(`${report}\n`);
 }

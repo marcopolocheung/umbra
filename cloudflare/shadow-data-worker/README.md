@@ -21,6 +21,7 @@ The Worker endpoints are:
 
 ```text
 /_shadow/current.json
+/_shadow/generations/nyc-<normalization-id>/manifest.json
 /_shadow/generations/nyc-<normalization-id>/tiles/18-<x>-<y>.smb
 ```
 
@@ -28,3 +29,11 @@ The Worker endpoints are:
 immutable and cacheable for one year. Upload a complete immutable generation
 first; update `current.json` only after its manifest and every tile have been
 verified.
+
+## Batch uploader credentials
+
+The uploader uses R2's S3-compatible API, not the public Worker endpoint.
+Create a dedicated **R2 Object Read & Write** token scoped only to this bucket,
+put its access-key id and secret in AWS Secrets Manager, and inject them into
+the Batch job as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Never put
+either credential in this repository, a Batch command override, or a report.
