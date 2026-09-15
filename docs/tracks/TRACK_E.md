@@ -55,6 +55,14 @@ want the same missing object: a `Trip`.
   0.25 surface), station entrances, transfers.
 - `savedRoutes.ts` + `SavedRoutesSection.tsx` — saving exists; it just doesn't save *journeys*.
 - `dijkstraMultiLeg()` (`routing.ts:1129`) and `snapRouteStopsToReachableEdges()` (`:928`).
+- **The calculation is single-time by construction, and E5/E6/H5 all need to know it.**
+  `useRouting.ts` makes ONE `field.sampleEdges(edgeRefs, dateRef.current)` call for the whole
+  graph, bakes that one `edgeShadowCache` into edge *cost* when it builds `routingAdj` via
+  `parallelSidewalkEdges`, and every leg's `dijkstra` runs over that single `routingGraph` —
+  the two-stop case uses `paretoRoutes`, which has no leg boundary at all. So routing a leg at
+  its own departure hour is N caches and N graphs plus per-leg provenance and confidence, not a
+  parameter, and the canvas fallback (`readBuildingShadowMask`) reads the map as rendered and
+  cannot answer for another hour in any case. This cost E5 an hour to rediscover; see #365.
 
 ## Hard invariants that bite this track
 
