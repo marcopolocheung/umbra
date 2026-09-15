@@ -1,42 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
-import type { RouteOption } from "../lib/routing";
 import { createRoute, getRoutes, getFolders, updateRoute, deleteRoute } from "../lib/savedRoutes";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
+import type { NavSeam } from "./useRouting";
 
 /**
  * Trip state, extracted from `useNavigation` (G6a): waypoints A/B with labels,
  * via stops, the pending map-click slot, the user location, saved routes and
  * the save-modal slot, plus their handlers.
  *
- * The seam with `useRouting` arrives as explicit args wired by the
- * `useNavigation` facade: trip edits cancel in-flight calculations and clear
- * calculated routes (`cancelInFlightCalculation` + route setters), and the save
- * handlers read the current route list (`navRoutes` value, not a getter, so the
- * callbacks refresh exactly as they did when the state lived together).
+ * The seam with `useRouting` arrives as a stable ref wired by the
+ * `useNavigation` facade: trip is constructed before routing (routing reads
+ * trip state), so trip handlers read routing's cancel/clear setters and the
+ * current route list lazily through `seam.current` at event time. All seam
+ * reads are event-time; the callbacks list only `seam` itself.
  */
 export interface UseTripArgs {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
   dateRef: React.MutableRefObject<Date>;
   setDate: React.Dispatch<React.SetStateAction<Date>>;
-  navRoutes: RouteOption[];
-  cancelInFlightCalculation: () => void;
-  setNavRoutes: React.Dispatch<React.SetStateAction<RouteOption[]>>;
-  setSelectedRouteIndex: React.Dispatch<React.SetStateAction<number>>;
-  setNavError: React.Dispatch<React.SetStateAction<string | null>>;
+  seam: React.MutableRefObject<NavSeam>;
 }
 
-export function useTrip({
-  mapRef,
-  dateRef,
-  setDate,
-  navRoutes,
-  cancelInFlightCalculation,
-  setNavRoutes,
-  setSelectedRouteIndex,
-  setNavError,
-}: UseTripArgs) {
+export function useTrip({ mapRef, dateRef, setDate, seam }: UseTripArgs) {
   const [waypointA, setWaypointA] = useState<[number, number] | null>(null);
   const [waypointB, setWaypointB] = useState<[number, number] | null>(null);
   const [waypointALabel, setWaypointALabel] = useState<string | null>(null);
@@ -79,16 +66,16 @@ export function useTrip({
 
   const handleOpenSaveModal = useCallback(
     (routeIndex: number) => {
-      if (navRoutes[routeIndex]?.partial) return;
+      if (seam.current.navRoutes[routeIndex]?.partial) return;
       setSaveModalRouteIndex(routeIndex);
     },
-    [navRoutes],
+    [seam],
   );
 
   const handleConfirmSave = useCallback(
     (name: string, folderId: string | null) => {
       if (saveModalRouteIndex === null) return;
-      const route = navRoutes[saveModalRouteIndex];
+      const route = seam.current.navRoutes[saveModalRouteIndex];
       if (!route || !waypointA || !waypointB) return;
       const d = dateRef.current;
       const dateIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -110,7 +97,7 @@ export function useTrip({
     },
     [
       saveModalRouteIndex,
-      navRoutes,
+      seam,
       waypointA,
       waypointB,
       waypointALabel,
@@ -122,49 +109,49 @@ export function useTrip({
 
   const handleLoadRoute = useCallback(
     (saved: SavedRoute) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setWaypointA(saved.waypointA);
       setWaypointB(saved.waypointB);
       setWaypointALabel(saved.waypointALabel);
       setWaypointBLabel(saved.waypointBLabel);
       setAdditionalWaypoints(saved.additionalWaypoints ?? []);
-      setNavRoutes([saved.routeOption]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([saved.routeOption]);
+      seam.current.setSelectedRouteIndex(0);
       const d = new Date(saved.dateIso + "T00:00:00");
       d.setHours(Math.floor(saved.timeOfDayMinutes / 60), saved.timeOfDayMinutes % 60, 0, 0);
       setDate(d);
     },
-    [cancelInFlightCalculation, setDate, setNavRoutes, setSelectedRouteIndex],
+    [seam, setDate],
   );
 
   const handleRemoveAdditionalWaypoint = useCallback(
     (index: number) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setAdditionalWaypoints((prev) => prev.filter((_, i) => i !== index));
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
     },
-    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+    [seam],
   );
 
   const handleSetAdditionalWaypoints = useCallback(
     (waypoints: [number, number][]) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setAdditionalWaypoints(waypoints);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
     },
-    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+    [seam],
   );
 
   const handleAddAdditionalWaypoint = useCallback(
     (coord: [number, number]) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setAdditionalWaypoints((prev) => [...prev, coord]);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
     },
-    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+    [seam],
   );
 
   const handleDeleteSavedRoute = useCallback((id: string) => {
@@ -179,7 +166,7 @@ export function useTrip({
 
   const handleLocateMe = useCallback(() => {
     if (!navigator.geolocation) {
-      setNavError("Geolocation is not supported by your browser.");
+      seam.current.setNavError("Geolocation is not supported by your browser.");
       return;
     }
     setIsLocating(true);
@@ -191,37 +178,37 @@ export function useTrip({
         mapRef.current?.jumpTo({ center: coords, zoom: 15 });
       },
       () => {
-        setNavError("Unable to get your location. Check browser permissions.");
+        seam.current.setNavError("Unable to get your location. Check browser permissions.");
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 },
     );
-  }, [mapRef, setNavError]);
+  }, [mapRef, seam]);
 
   const handleSetWaypointA = useCallback(
     (coord: [number, number], label: string) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setWaypointA(coord);
       setWaypointALabel(label);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
       const map = mapRef.current;
       if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
     },
-    [cancelInFlightCalculation, mapRef, setNavRoutes, setSelectedRouteIndex],
+    [seam, mapRef],
   );
 
   const handleSetWaypointB = useCallback(
     (coord: [number, number], label: string) => {
-      cancelInFlightCalculation();
+      seam.current.cancelInFlightCalculation();
       setWaypointB(coord);
       setWaypointBLabel(label);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
       const map = mapRef.current;
       if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
     },
-    [cancelInFlightCalculation, mapRef, setNavRoutes, setSelectedRouteIndex],
+    [seam, mapRef],
   );
 
   const handleUseLocationAsA = useCallback(
@@ -243,38 +230,38 @@ export function useTrip({
     const b = waypointBRef.current;
     const aLabel = waypointALabelRef.current;
     const bLabel = waypointBLabelRef.current;
-    cancelInFlightCalculation();
+    seam.current.cancelInFlightCalculation();
     setWaypointA(b);
     setWaypointB(a);
     setWaypointALabel(bLabel);
     setWaypointBLabel(aLabel);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex]);
+    seam.current.setNavRoutes([]);
+    seam.current.setSelectedRouteIndex(0);
+  }, [seam]);
 
   const handleClearWaypointA = useCallback(() => {
-    cancelInFlightCalculation();
+    seam.current.cancelInFlightCalculation();
     setWaypointA(null);
     setWaypointALabel(null);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex]);
+    seam.current.setNavRoutes([]);
+    seam.current.setSelectedRouteIndex(0);
+  }, [seam]);
 
   const handleClearWaypointB = useCallback(() => {
-    cancelInFlightCalculation();
+    seam.current.cancelInFlightCalculation();
     setWaypointB(null);
     setWaypointBLabel(null);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex]);
+    seam.current.setNavRoutes([]);
+    seam.current.setSelectedRouteIndex(0);
+  }, [seam]);
 
   const handleMarkerDragEnd = useCallback(
     (slot: "A" | "B", coord: { lng: number; lat: number }) => {
       const lngLat: [number, number] = [coord.lng, coord.lat];
       const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
-      cancelInFlightCalculation();
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
+      seam.current.cancelInFlightCalculation();
+      seam.current.setNavRoutes([]);
+      seam.current.setSelectedRouteIndex(0);
       if (slot === "A") {
         setWaypointA(lngLat);
         setWaypointALabel(coordLabel);
@@ -289,7 +276,7 @@ export function useTrip({
         });
       }
     },
-    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+    [seam],
   );
 
   const handlePinDragStart = useCallback(
