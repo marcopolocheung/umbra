@@ -7,6 +7,10 @@ export interface TravelModePolicy {
   stepsPenaltyM: number;
   roughSurfacePenaltyM: number;
   cyclewayPreferenceM: number;
+  /** "walk" / "ride" — the noun user-facing sentences use for the trip. */
+  journeyNoun: string;
+  /** "walking" / "cycling" — the gerund those sentences use for the traveller. */
+  gerund: string;
 }
 
 export const TRAVEL_MODE_POLICIES: Record<TravelModeId, TravelModePolicy> = {
@@ -17,6 +21,8 @@ export const TRAVEL_MODE_POLICIES: Record<TravelModeId, TravelModePolicy> = {
     stepsPenaltyM: 0,
     roughSurfacePenaltyM: 0,
     cyclewayPreferenceM: 0,
+    journeyNoun: "walk",
+    gerund: "walking",
   },
   bike: {
     id: "bike",
@@ -25,6 +31,8 @@ export const TRAVEL_MODE_POLICIES: Record<TravelModeId, TravelModePolicy> = {
     stepsPenaltyM: 500,
     roughSurfacePenaltyM: 75,
     cyclewayPreferenceM: -40,
+    journeyNoun: "ride",
+    gerund: "cycling",
   },
 };
 
@@ -34,6 +42,18 @@ export function getTravelModePolicy(mode: TravelModeId): TravelModePolicy {
 
 export function travelTimeSeconds(distanceM: number, mode: TravelModeId): number {
   return distanceM / getTravelModePolicy(mode).speedMps;
+}
+
+/**
+ * Mode speed relative to walking. Metre-denominated routing constants (the
+ * Pareto flat allowance, the crossing penalty) are calibrated as walk-metres —
+ * a time allowance expressed in metres at 1.4 m/s — so `routing.ts` scales them
+ * by this ratio to keep the same *time* value per mode. Walk's ratio is exactly
+ * 1, which is what keeps walk behavior byte-identical. See
+ * `docs/notes/mode-shadow-weight.md`.
+ */
+export function speedRatioVsWalk(mode: TravelModeId): number {
+  return getTravelModePolicy(mode).speedMps / TRAVEL_MODE_POLICIES.walk.speedMps;
 }
 
 /** Parse a `mode` share-URL value. Unknown or missing values fall back to walk. */

@@ -38,4 +38,18 @@ describe("routeLegSummary", () => {
       detail: "11 min - 2 stops - underground",
     });
   });
+
+  it("labels unsampled legs in the route's mode, with a grammatical fallback", () => {
+    const bare: RouteLeg = { type: "walk", geojson: line };
+
+    expect(routeLegSummary(bare, 0)).toEqual({
+      title: "Leg 1: Walk",
+      detail: "Walking segment",
+    });
+    // "Bike" + "ing" would read "Bikeing" — the gerund exists for this.
+    expect(routeLegSummary(bare, 0, "bike")).toEqual({
+      title: "Leg 1: Bike",
+      detail: "Cycling segment",
+    });
+  });
 });

@@ -3,6 +3,7 @@ import { heatBand, heatScore } from "../lib/heat/score";
 import type { WeatherHour } from "../lib/heat/types";
 import { routeExposureMinutes } from "../lib/routeTradeoff";
 import type { RouteOption } from "../lib/routing";
+import { getTravelModePolicy } from "../lib/travelMode";
 
 const METHOD_URL =
   "https://github.com/marcopolocheung/shademapnav/blob/main/docs/notes/heat-model.md";
@@ -28,7 +29,7 @@ interface RouteConditionsLineProps {
 }
 
 /**
- * What the weather does to this walk: how hard it feels, and how much sun it costs.
+ * What the weather does to this trip: how hard it feels, and how much sun it costs.
  *
  * These are **two different questions** — an intensity and a dose — and they were
  * briefly two separate cards, which read as the app contradicting itself: "strong heat
@@ -61,8 +62,17 @@ export default function RouteConditionsLine({
 
   const scored = selected.mode === "felt-temperature";
   const feltC = Math.round(selected.feltC ?? 0);
+  const policy = getTravelModePolicy(route.travelMode ?? "walk");
 
-  const headline = scored ? heatBand(selected.score) : `${selected.score}% of this walk is in sun`;
+  const headline = scored ? heatBand(selected.score) : `${selected.score}% of this ${policy.journeyNoun} is in sun`;
+
+  // The heat model estimates felt temperature while walking (heat/score.ts) —
+  // cycling airflow is unmodeled (#349) — so a bike route must not label the
+  // number a cycling estimate. It states its basis instead.
+  const feelsLike =
+    policy.id === "walk"
+      ? `feels about ${feltC} °C walking this`
+      : `feels about ${feltC} °C on this ${policy.journeyNoun} (walking-pace estimate)`;
 
   // Three rungs, three sentences. The middle one exists because a dry-bulb estimate
   // and an apparent-temperature one otherwise render identically, and the difference
@@ -70,7 +80,7 @@ export default function RouteConditionsLine({
   const detail = !scored
     ? "no weather forecast — heat not scored"
     : selected.inputs.ambientIsApparent
-      ? `feels about ${feltC} °C walking this`
+      ? feelsLike
       : `about ${feltC} °C — air temperature only`;
 
   const secondary = scored

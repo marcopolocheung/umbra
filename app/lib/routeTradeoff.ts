@@ -15,7 +15,7 @@ function directSunMeters(route: RouteOption): number {
 }
 
 /**
- * The trip split into sunlit and shadowed minutes at walking pace.
+ * The trip split into sunlit and shadowed minutes at the route's own mode speed.
  *
  * Shadowed minutes are not idle time for a UV model — see `app/lib/heat/dose.ts` —
  * so both halves are reported rather than only the exposed one.
@@ -78,10 +78,10 @@ function formatSunMinutes(meters: number, speedMps: number): string {
  *
  * A percentage hides the comparison it is meant to serve: 70% shadow over 30 minutes
  * leaves 9 minutes in the sun, 60% over 20 minutes leaves 8. Minutes are the unit the
- * choice is actually made in, and the longest stretch is what a walker feels — one
+ * choice is actually made in, and the longest stretch is what a traveller feels — one
  * unbroken crossing is worse than the same total split across six short gaps.
  *
- * Both figures are walking-speed conversions of sampled distance, so the stretch
+ * Both figures are mode-speed conversions of sampled distance, so the stretch
  * clause is omitted for sketch and transit routes, whose shadow was never sampled
  * per edge and whose `longestContinuousSunM` is a placeholder rather than a zero.
  */

@@ -2,7 +2,7 @@
 import type { PartialRouteInfo } from "./partialRoute";
 import type { TrainDrawData } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
-import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge } from "./travelMode";
+import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 
 export interface OsmNode {
@@ -124,11 +124,14 @@ export interface RouteOption {
 }
 
 export interface DijkstraOptions {
-  crossingPenaltyM?: number;  // default 0; extra meters cost per intersection traversal
+  crossingPenaltyM?: number;  // default 0; extra cost per intersection traversal, in
+                              // walk-metres — scaled internally by the mode's speed
+                              // ratio so a crossing costs the same *time* in every
+                              // mode (E2; walk's ratio is 1, so walk is unchanged)
   solarIntensity?: number;    // 0–1; scales MAX_SHADOW_SAVING; default 1.0
   straightLineDistM?: number; // for detourRatio; defaults to 0 → ratio = 1.0
   maxDetourFactor?: number;   // paretoRoutes only: search budget = shortest distance
-                              // × this factor + 250 m flat; default 2.0
+                              // × this factor + the mode-scaled flat below; default 2.0
   travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
 }
 
@@ -431,7 +434,7 @@ const MAX_SHADOW_SAVING = 0.7;
  * Dijkstra's shortest path.
  * Edge cost = modeAdjustedDistanceM(edge, travelMode)
  *               * (1 - shadowStrength * shadowFactor * MAX_SHADOW_SAVING * solarIntensity)
- *           + crossingPenaltyM (when toNode is an intersection, except destination)
+ *           + effectiveCrossingPenaltyM (when toNode is an intersection, except destination)
  * shadowStrength=1 → maximally prefers shadowed paths; 0 → shortest distance.
  *
  * Reported `distanceM` stays physical meters — only the search cost sees the
@@ -446,6 +449,7 @@ export function dijkstra(
 ): RouteResult | null {
   const { crossingPenaltyM = 0, solarIntensity = 1.0, straightLineDistM = 0, travelMode = "walk" } = options;
   const effectiveMaxShadowSaving = MAX_SHADOW_SAVING * solarIntensity;
+  const effectiveCrossingM = crossingPenaltyM * speedRatioVsWalk(travelMode);
 
   const dist = new Map<number, number>();
   const prev = new Map<number, number>();
@@ -469,8 +473,8 @@ export function dijkstra(
       if (isProhibitedEdge(edge, travelMode)) continue;
       const toNode = graph.nodes.get(edge.toId);
       const crossing =
-        crossingPenaltyM > 0 && toNode?.isIntersection && edge.toId !== endId
-          ? crossingPenaltyM
+        effectiveCrossingM > 0 && toNode?.isIntersection && edge.toId !== endId
+          ? effectiveCrossingM
           : 0;
       const edgeCost =
         modeAdjustedDistanceM(edge, travelMode) * (1 - shadowStrength * edge.shadowFactor * effectiveMaxShadowSaving)
@@ -576,7 +580,7 @@ const DETOUR_FLAT_M = 250;
  * shadowed edge, so an unbounded search both explodes and returns degenerate
  * "routes". Three guards keep it sane:
  *   1. Detour budget: labels whose optimistic total length exceeds
- *      shortestDist × maxDetourFactor + DETOUR_FLAT_M are pruned (a plain
+ *      shortestDist × maxDetourFactor + mode-scaled DETOUR_FLAT_M are pruned (a plain
  *      distance Dijkstra runs first; also gives a fast unreachable exit).
  *   2. No U-turns: an edge straight back to the node we just came from can
  *      never extend a simple path — it only ever pumps shadow.
@@ -647,7 +651,11 @@ export function paretoRoutes(
   const shortestCostM = pathModeCostM(
     graph, shortestRun.nodeIds, shortestRun.sides, travelMode, 0, endId,
   );
-  const budgetM = shortestCostM * maxDetourFactor + DETOUR_FLAT_M;
+  // The flat allowance is walk-metres (see `speedRatioVsWalk`): scaling it keeps
+  // the same *time* allowance per mode. Walk's ratio is 1, so walk's budget is
+  // byte-for-byte the old one.
+  const budgetM = shortestCostM * maxDetourFactor + DETOUR_FLAT_M * speedRatioVsWalk(travelMode);
+  const effectiveCrossingM = crossingPenaltyM * speedRatioVsWalk(travelMode);
   // Admissible remaining-cost heuristic: every remaining physical meter costs at
   // least `costRatio` mode meters.
   const costRatio = minCostRatio(travelMode);
@@ -789,8 +797,8 @@ export function paretoRoutes(
 
       const toNode = graph.nodes.get(edge.toId);
       const crossing =
-        crossingPenaltyM > 0 && toNode?.isIntersection && edge.toId !== endId
-          ? crossingPenaltyM : 0;
+        effectiveCrossingM > 0 && toNode?.isIntersection && edge.toId !== endId
+          ? effectiveCrossingM : 0;
 
       const newDistM  = label.distM  + modeAdjustedDistanceM(edge, travelMode) + crossing;
       const newShadowM = label.shadowM + edge.distanceM * edge.shadowFactor;

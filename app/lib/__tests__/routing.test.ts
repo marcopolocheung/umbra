@@ -1575,3 +1575,90 @@ describe("paretoRoutes — walk budget ignores crossing penalties", () => {
     expect(routes[0].distanceM).toBeCloseTo(300, 5);
   });
 });
+
+// ── E2: time-normalized metre constants ──────────────────────────────────────
+// Behavior: the 15 m crossing penalty and the 250 m Pareto flat are walk-metres
+// (a time allowance in disguise), so routing scales them by v_mode / v_walk.
+// Walk's ratio is exactly 1 — walk arithmetic is untouched, and the tests below
+// lock that in alongside the bike behavior the scaling justifies. See
+// docs/notes/mode-shadow-weight.md for why shadowStrength itself does NOT scale.
+
+/**
+ * Crossing shortcut: 1→2→3 is 200 m with one intersection (node 2) vs 1→4→3
+ * at 230 m with no crossings. At shadowStrength 0 only distance + crossings
+ * decide: 15 m is worth stopping for on foot (215 < 230) but not at 4.5 m/s,
+ * where the same ~11 s stop costs ~48 bike-metres (248 > 230).
+ */
+function makeCrossingShortcutGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.001, isIntersection: true }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+    [4, { id: 4, lat: 0.001, lon: 0.001 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 4, distanceM: 115, shadowFactor: 0 },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0 },
+      { toId: 3, distanceM: 100, shadowFactor: 0 },
+    ]],
+    [3, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 4, distanceM: 115, shadowFactor: 0 },
+    ]],
+    [4, [
+      { toId: 1, distanceM: 115, shadowFactor: 0 },
+      { toId: 3, distanceM: 115, shadowFactor: 0 },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — time-normalized crossing penalty (E2)", () => {
+  it("walk takes the crossing shortcut; bike rides around it", () => {
+    const walk = dijkstra(makeCrossingShortcutGraph(), 1, 3, 0, { crossingPenaltyM: 15 })!;
+    expect(walk.nodeIds).toEqual([1, 2, 3]);
+    expect(walk.distanceM).toBeCloseTo(200, 5);
+
+    const bike = dijkstra(makeCrossingShortcutGraph(), 1, 3, 0, {
+      crossingPenaltyM: 15,
+      travelMode: "bike",
+    })!;
+    expect(bike.nodeIds).toEqual([1, 4, 3]);
+    expect(bike.distanceM).toBeCloseTo(230, 5);
+  });
+
+  it("walk with no penalty configured is unaffected by the scaling", () => {
+    // Ratio is exactly 1, so 0 stays 0 and plain walk costs never change shape.
+    expect(dijkstra(makeCrossingShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 2, 3]);
+  });
+
+  it("the destination never pays the crossing penalty, in either mode", () => {
+    // Node 3 as an intersection: arriving there must cost the same as when it
+    // is not one — the exclusion branch guards the scaled penalty too.
+    const dest = makeCrossingShortcutGraph();
+    dest.nodes.get(3)!.isIntersection = true;
+    for (const travelMode of [undefined, "bike"] as const) {
+      const expected = travelMode === "bike" ? [1, 4, 3] : [1, 2, 3];
+      expect(
+        dijkstra(dest, 1, 3, 0, { crossingPenaltyM: 15, travelMode })!.nodeIds,
+      ).toEqual(expected);
+    }
+  });
+});
+
+describe("paretoRoutes — time-normalized detour flat (E2)", () => {
+  it("bike's scaled flat admits the 870 m detour walk rejects", () => {
+    // Walk budget 300×2+250 = 850 < 870 (see the test above); bike budget
+    // 300×2+250×(4.5/1.4) ≈ 1404 — the same ~179 s allowance, not a looser one.
+    const routes = paretoRoutes(makeCrossingBudgetGraph(), 1, 4, {
+      crossingPenaltyM: 15,
+      travelMode: "bike",
+    });
+    expect(routes).toHaveLength(2);
+    expect(routes.some((r) => r.nodeIds.join(",") === "1,5,6,4")).toBe(true);
+  });
+});

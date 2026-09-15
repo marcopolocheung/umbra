@@ -11,13 +11,13 @@
 
 ## Current state
 
-- **Active checkpoint:** E1 (in review — bike cost model + selector)
-- **Done:** nothing merged — E1 implements the cost model, UI, and share-URL mode
-- **Open PRs:** #346 (E1 — `feat/e1-mode-cost-model`)
-- **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; Pareto budget excludes crossing penalties so walk matches main exactly; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations, dose/heat weighting deferred to E2/Track D
+- **Active checkpoint:** E2 (in review — mode-aware output, #348)
+- **Done:** E1 (merged #346: bike cost model, selector, share-URL mode)
+- **Open PRs:** #350 (E2 — `feat/e2-mode-aware-output`)
+- **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; Pareto budget excludes crossing penalties so walk matches main exactly; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations. E2: `shadowStrength` does NOT scale with speed — the 1/v time normalization cancels (derived in `docs/notes/mode-shadow-weight.md`); the 250 m Pareto flat and 15 m crossing penalty are walk-metres time-normalized by `v_mode/v_walk` (walk ratio exactly 1, walk byte-identical); heat/dose definitions untouched — Track D owns them, convective cooling filed as #349; acceptance deviation: no weighting added to force route divergence beyond what the derivation supports
 - **Blocked on:** nothing
-- **Next action:** get E1 reviewed; then E5 (`Trip`)
-- **Last verified:** 2026-09-15, 862 tests green in worktree (jsdom-file workers fail to start on this machine — pre-existing, same on untouched checkout), e2e smoke 4/4
+- **Next action:** get E2 reviewed; then E4 (scoot/skate) or wait for G6 — not E5
+- **Last verified:** 2026-09-15, 887 tests green on the branch (59 files; jsdom-component suites can't start workers on this machine — pre-existing, identical on clean main; the 2 new RouteConditionsLine wording tests run in CI), `bench:route` 2-point before/after: no measurable change on walk-only scenarios
 
 ---
 
