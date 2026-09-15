@@ -356,6 +356,13 @@ Medium (was sized when the burn-down was still open).
 | `app/page.tsx` | 932 | stays a composition root; each track contributes one hook + one panel |
 
 Pure refactor, no behavior change, one file per PR, tests green at every step.
+**G6(a) recorded choice:** mode settings (`navMode`, `routeMode`, `travelMode`,
+`shadowPreference`), `handleMapClick`/`handleClear`/`handleExportRoute`/
+`handleCalculateRoute` and `canTransit` stay in the facade — each spans trip,
+sketch and routing, and the facade IS that seam. `filteredRoutes` and the
+selected-route derives live in `useRouting` (`routeMode` arrives as a value).
+Trip↔routing construct in opposite orders, so trip reads routing back lazily
+through `NavSeam` (event-time only); render-time values travel as explicit args.
 **Acceptance.** No behavior change (the routing tests and `useNavigation.test.tsx` pass
 unmodified); each track's future edits land in a file it owns; `MapView` still only imported via
 `React.lazy`; the compatibility matrix in `docs/tracks/README.md` is updated to drop the ⚠️s
