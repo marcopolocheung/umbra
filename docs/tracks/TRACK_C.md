@@ -12,16 +12,25 @@ run in parallel with any other.
 
 ## Current state
 
-- **Active checkpoint:** C4 — the terminal plan job contract. C3 may proceed independently when
-  its ShadowField inputs are ready; C5 follows C4's result shape.
+- **Active checkpoint:** C4 — terminal plan job contract, PR #341 open. C3 may proceed
+  independently when its ShadowField inputs are ready; C5 follows C4's result shape.
 - **Done in the inspected Track C/public head:** C1, C2, C6, walking-radius place search, and the
   empty-search reformulation fix. The scenario index contains 34 cases. Do not reopen the old
   one-empty-search closeout; exact-call deduplication plus the four-search budget is the current
   policy.
-- **The route now gets requested and drawn**, including ordered `via` stops. That does not close
-  C4: #59 observation 1 was confirmed in `npm run dev` on 2026-09-11, but the tool still reports
-  “started” rather than observing a terminal calculation result, and the 10-stop route remains
-  flaky (#303).
+- **The route now gets requested and drawn**, including ordered `via` stops. #59 observation 1
+  was confirmed in `npm run dev` on 2026-09-11; the 10-stop route remains flaky (#303).
+- **C4 implementation (2026-09-14, pending review):** `plan_shadowed_route` now delegates a
+  versioned request (`requestId`, `inputVersion`, idempotency key) to `useNavigation` and awaits a
+  terminal `completed | partial | no_plan_found | cancelled | error` result. The routing hook owns
+  mutations and calculation; tools do not wait for React state or duplicate routing logic. A
+  partial keeps the connected prefix and its unroutable leg metadata. Focused C4 coverage passed
+  90 tests, the full suite passed 873 tests, and the fixture-browser smoke route passed.
+- **C4 verification limitation (2026-09-14):** Node 24 typecheck reaches only unrelated missing
+  `server/shadow-prep` dependencies (`@duckdb/node-api` and `@aws-sdk/client-s3`); C4 app files
+  typecheck through that point. The current UI has no terminal-job status surface (C15 owns that
+  interaction), so browser smoke verifies a completed drawn route while deterministic hook tests
+  verify failed/cancelled terminal results. This checkpoint did not modify `server/shadow-prep/**`.
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
   `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.

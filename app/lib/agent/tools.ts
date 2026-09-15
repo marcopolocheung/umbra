@@ -18,6 +18,7 @@ import { computeSolarIntensity } from "../shadowSampling";
 import { queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
 import { parseTime } from "../../hooks/useShadowTime";
+import type { RoutePlan, RoutePlanRequest, RoutePlanTerminalResult } from "../routePlanJob";
 import type { LlmFunctionDeclaration } from "./llmClient";
 
 export interface AssistantPin {
@@ -38,7 +39,10 @@ export interface AgentContext {
   setWaypointA: (coord: [number, number], label: string) => void;
   setWaypointB: (coord: [number, number], label: string) => void;
   setAdditionalWaypoints: (coords: [number, number][]) => void;
-  calculateRoute: () => void;
+  /** The navigation owner allocates versioned requests and awaits its terminal state. */
+  createRoutePlanRequest: (plan: RoutePlan) => RoutePlanRequest;
+  submitRoutePlan: (request: RoutePlanRequest) => Promise<RoutePlanTerminalResult>;
+  cancelRoutePlan: (requestId: string) => boolean;
   /** Replace the assistant's itinerary pins on the map. */
   setPins: (pins: AssistantPin[]) => void;
 }
@@ -78,8 +82,6 @@ function waitForIdle(map: maplibregl.Map, timeoutMs = 4000): Promise<void> {
     setTimeout(finish, timeoutMs);
   });
 }
-
-const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // search_places box half-widths, in degrees: walking distance (~1.7 km) first,
 // then one wider look for sparse areas. Nominatim ranks inside the box by
@@ -513,19 +515,17 @@ export async function executeTool(
           via.push([lng, lat]);
         }
       }
-      ctx.setAdditionalWaypoints(via);
-      ctx.setWaypointA([fromLng, fromLat], str(args.fromLabel) ?? "Start");
-      ctx.setWaypointB([toLng, toLat], str(args.toLabel) ?? "Destination");
-      // Let the waypoint state settle before kicking off the pipeline.
-      await delay(50);
-      ctx.calculateRoute();
-      return {
-        ok: true,
-        viaStops: via.length,
-        note:
-          "Route calculation started and will draw on the map. It produces " +
-          "shortest, balanced, and most-shadowed options for the current time.",
+      // The navigation hook owns mutations and routing. This wrapper only validates
+      // tool arguments, asks it to allocate a versioned request, and awaits the
+      // pipeline's terminal result.
+      const plan: RoutePlan = {
+        from: [fromLng, fromLat],
+        to: [toLng, toLat],
+        via,
+        fromLabel: str(args.fromLabel) ?? "Start",
+        toLabel: str(args.toLabel) ?? "Destination",
       };
+      return ctx.submitRoutePlan(ctx.createRoutePlanRequest(plan));
     }
 
     default:

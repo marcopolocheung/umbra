@@ -3,6 +3,7 @@ import type maplibregl from "maplibre-gl";
 import type { LlmContent } from "../lib/agent/llmClient";
 import type { AgentContext, AssistantPin } from "../lib/agent/tools";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
+import type { RoutePlan, RoutePlanRequest, RoutePlanTerminalResult } from "../lib/routePlanJob";
 
 export interface ChatMessage {
   id: string;
@@ -21,7 +22,9 @@ interface UseAgentArgs {
   setWaypointA: (coord: [number, number], label: string) => void;
   setWaypointB: (coord: [number, number], label: string) => void;
   setAdditionalWaypoints: (coords: [number, number][]) => void;
-  calculateRoute: () => void;
+  createRoutePlanRequest: (plan: RoutePlan) => RoutePlanRequest;
+  submitRoutePlan: (request: RoutePlanRequest) => Promise<RoutePlanTerminalResult>;
+  cancelRoutePlan: (requestId: string) => boolean;
   setPins: (pins: AssistantPin[]) => void;
 }
 
@@ -66,7 +69,9 @@ export function useAgent(args: UseAgentArgs) {
     setWaypointA: args.setWaypointA,
     setWaypointB: args.setWaypointB,
     setAdditionalWaypoints: args.setAdditionalWaypoints,
-    calculateRoute: args.calculateRoute,
+    createRoutePlanRequest: args.createRoutePlanRequest,
+    submitRoutePlan: args.submitRoutePlan,
+    cancelRoutePlan: args.cancelRoutePlan,
     setPins: args.setPins,
   });
   // Refresh callback identities (cheap; keeps closures current).
@@ -74,7 +79,9 @@ export function useAgent(args: UseAgentArgs) {
   ctxRef.current.setWaypointA = args.setWaypointA;
   ctxRef.current.setWaypointB = args.setWaypointB;
   ctxRef.current.setAdditionalWaypoints = args.setAdditionalWaypoints;
-  ctxRef.current.calculateRoute = args.calculateRoute;
+  ctxRef.current.createRoutePlanRequest = args.createRoutePlanRequest;
+  ctxRef.current.submitRoutePlan = args.submitRoutePlan;
+  ctxRef.current.cancelRoutePlan = args.cancelRoutePlan;
   ctxRef.current.setPins = (pins) => {
     pinsRef.current = pins;
     args.setPins(pins);

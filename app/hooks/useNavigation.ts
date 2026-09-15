@@ -34,9 +34,16 @@ import {
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
-import { partialRouteNotice } from "../lib/partialRoute";
+import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
 import { routeBounds } from "../lib/routeBounds";
+import {
+  RoutePlanJobCoordinator,
+  type RoutePlan,
+  type RoutePlanOutcome,
+  type RoutePlanRequest,
+  type RoutePlanTerminalResult,
+} from "../lib/routePlanJob";
 
 /**
  * How much to trust the pixel sampler when it answers instead of the field.
@@ -171,6 +178,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const waypointBRef = useRef(waypointB);
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
+  const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
+  const routePlanVersionRef = useRef(0);
+  const routePlanRequestSeqRef = useRef(0);
+  const routePlanRequestsByKeyRef = useRef(new Map<string, RoutePlanRequest>());
   const waypointALabelRef = useRef(waypointALabel);
   const waypointBLabelRef = useRef(waypointBLabel);
   const drawModeRef = useRef(drawMode);
@@ -1049,12 +1060,30 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     window.addEventListener('pointerup', onUp);
   }, [handleMarkerDragEnd, mapRef]);
 
-  const calculateRoute = useCallback(async () => {
-    const rawA = waypointARef.current;
-    const rawB = waypointBRef.current;
-    if (!rawA || !rawB) return;
+  const calculateRoute = useCallback(async (
+    plan?: RoutePlan,
+    externalSignal?: AbortSignal,
+  ): Promise<RoutePlanOutcome> => {
+    const rawA = plan?.from ?? waypointARef.current;
+    const rawB = plan?.to ?? waypointBRef.current;
+    if (!rawA || !rawB) {
+      return { status: "no_plan_found", message: "Choose a start and destination first." };
+    }
     const map = mapRef.current;
-    if (!map) { setNavError("Map not ready"); return; }
+    if (!map) {
+      setNavError("Map not ready");
+      return { status: "error", message: "Map not ready" };
+    }
+
+    // Agent jobs pass their complete input directly. State updates keep the UI in
+    // sync, but calculation no longer waits for React to commit them.
+    if (plan) {
+      setAdditionalWaypoints(plan.via);
+      setWaypointA(plan.from);
+      setWaypointB(plan.to);
+      setWaypointALabel(plan.fromLabel);
+      setWaypointBLabel(plan.toLabel);
+    }
 
     const a = snapOutsideBuilding(rawA, map as unknown as MapBuildingQuery);
     const b = snapOutsideBuilding(rawB, map as unknown as MapBuildingQuery);
@@ -1067,8 +1096,15 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
     const myGen = ++calcGenRef.current;
     calcAbortRef.current?.abort();
-    calcAbortRef.current = new AbortController();
-    const calcSignal = calcAbortRef.current.signal;
+    const calculationController = new AbortController();
+    calcAbortRef.current = calculationController;
+    const calcSignal = calculationController.signal;
+    const cancelFromOutside = () => calculationController.abort();
+    externalSignal?.addEventListener("abort", cancelFromOutside, { once: true });
+    const cancelled = (): RoutePlanOutcome => ({
+      status: "cancelled",
+      reason: externalSignal?.aborted ? "cancelled" : "superseded",
+    });
     const updateProgress = (progress: RouteCalculationProgress) => {
       if (calcGenRef.current === myGen && !calcSignal.aborted) {
         setRouteProgress(progress);
@@ -1103,9 +1139,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const straightLineDistM = haversineMeters(a, b);
       const basePadding = Math.max(0.005, Math.min(0.008, straightLineDistM / 111000 * 0.3));
       const padding = basePadding;
-      const routeStops: [number, number][] = [
+      let routeStops: [number, number][] = [
         a,
-        ...additionalWaypoints.map((wp) => snapOutsideBuilding(wp, map as unknown as MapBuildingQuery)),
+        ...(plan?.via ?? additionalWaypoints).map((wp) => snapOutsideBuilding(wp, map as unknown as MapBuildingQuery)),
         b,
       ];
       const allLats = routeStops.map((w) => w[1]);
@@ -1157,7 +1193,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
       ]);
       graphFetchMs = performance.now() - tFetch;
-      if (myGen !== calcGenRef.current || calcSignal.aborted) return;
+      if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
       // Does the field cover this route? Asking before touching the camera is the
       // whole point of A4b: when geometry can answer, the mid-calculation `fitBounds`
@@ -1187,7 +1223,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           );
         }
         if (!bboxInView || flattened) await waitForMapIdle(map);
-        if (myGen !== calcGenRef.current) return;
+        if (myGen !== calcGenRef.current) return cancelled();
 
         const tCanvas = performance.now();
         updateProgress({ message: "Reading shadow layer" });
@@ -1206,9 +1242,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
       clearVirtualNodes(graph);
 
-      if (myGen !== calcGenRef.current) return;
+      if (myGen !== calcGenRef.current) return cancelled();
       await yieldToBrowser();
-      if (myGen !== calcGenRef.current) return;
+      if (myGen !== calcGenRef.current) return cancelled();
 
       const tShadow = performance.now();
       const edgeShadowCache = new Map<
@@ -1228,7 +1264,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         total: edgeRefs.length,
       });
       const fieldShadow = edgeRefs.length > 0 ? field.sampleEdges(edgeRefs, dateRef.current) : [];
-      if (myGen !== calcGenRef.current) return;
+      if (myGen !== calcGenRef.current) return cancelled();
 
       // Per edge: trust the geometry, or fall back to pixels for that edge alone.
       // When the canvas was never read — the field covered the route — a weak edge
@@ -1277,7 +1313,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             total: edgeRefs.length,
           });
           await yieldToBrowser();
-          if (myGen !== calcGenRef.current) return;
+          if (myGen !== calcGenRef.current) return cancelled();
         }
       }
       shadowSampleMs = performance.now() - tShadow;
@@ -1324,7 +1360,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
       updateProgress({ message: "Snapping stops to walkable streets" });
       const MAX_SNAP_DIST_M = 100;
-      const snappedStops = snapRouteStopsToReachableEdges(routeStops, routingGraph, {
+      const snapStops = (stops: [number, number][]) => snapRouteStopsToReachableEdges(stops, routingGraph, {
         maxSnapDistanceM: MAX_SNAP_DIST_M,
         describeStop: (index, total) => {
           if (index === 0) return "the start point";
@@ -1332,6 +1368,32 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           return `stop ${index + 1}`;
         },
       });
+      let snappedStops: ReturnType<typeof snapRouteStopsToReachableEdges>;
+      let forcedPartial: PartialRouteInfo | null = null;
+      try {
+        snappedStops = snapStops(routeStops);
+      } catch (fullRouteError) {
+        // Keep a connected prefix when a later multi-stop leg cannot be reached.
+        const originalStops = routeStops;
+        let prefixResult: ReturnType<typeof snapRouteStopsToReachableEdges> | null = null;
+        for (let prefixLength = originalStops.length - 1; prefixLength >= 2; prefixLength--) {
+          clearVirtualNodes(routingGraph);
+          try {
+            prefixResult = snapStops(originalStops.slice(0, prefixLength));
+            routeStops = originalStops.slice(0, prefixLength);
+            forcedPartial = {
+              completedLegs: prefixLength - 1,
+              failedLeg: prefixLength,
+              totalLegs: originalStops.length - 1,
+            };
+            break;
+          } catch {
+            // Try a shorter prefix; its completed legs are still valuable.
+          }
+        }
+        if (!prefixResult) throw fullRouteError;
+        snappedStops = prefixResult;
+      }
       const effectiveStartId = snappedStops.ids[0];
       const effectiveEndId = snappedStops.ids[snappedStops.ids.length - 1];
       if (process.env.NODE_ENV !== "production") {
@@ -1353,7 +1415,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
       let options: RouteOption[];
 
-      if (additionalWaypoints.length === 0) {
+      if ((plan?.via ?? additionalWaypoints).length === 0) {
         updateProgress({ message: "Finding route choices" });
         const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
         dijkstraMs = performance.now() - tDijkstra;
@@ -1413,7 +1475,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
               total: totalRouteLegs,
             });
             await yieldToBrowser();
-            if (myGen !== calcGenRef.current) return;
+            if (myGen !== calcGenRef.current) return cancelled();
             if (!segResult) {
               failed = true;
               failedLeg = seg + 1;
@@ -1473,7 +1535,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
           const shadowCov = totalDist > 0 ? totalShadowDist / totalDist : 0;
           options.push({
-            label: MULTI_LABELS[si] ?? "Route",
+            label: forcedPartial
+              ? `${MULTI_LABELS[si] ?? "Route"} (partial)`
+              : MULTI_LABELS[si] ?? "Route",
             geojson: connectRouteEndpoints(
               {
                 type: "Feature",
@@ -1481,7 +1545,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                 geometry: { type: "LineString", coordinates: allCoords },
               },
               a,
-              b,
+              routeStops[routeStops.length - 1],
             ),
             distanceM: totalDist,
             shadowCoverage: shadowCov,
@@ -1492,6 +1556,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             turnCount: 0,
             legs,
             shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+            partial: forcedPartial ?? undefined,
           });
         }
 
@@ -1511,7 +1576,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       if (straightLineDistM <= 500) {
         if (import.meta.env.DEV) console.log("[transit] Skipped: straight-line distance", straightLineDistM.toFixed(0), "m <= 500 m");
       }
-      if (straightLineDistM > 500) {
+      if (!forcedPartial && straightLineDistM > 500) {
         try {
           updateProgress({ message: "Checking transit option" });
           const trainPadding = Math.max(padding, 0.015);
@@ -1708,7 +1773,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         pathLengthDeltaPct,
       });
 
-      if (calcGenRef.current !== myGen) return;
+      if (calcGenRef.current !== myGen) return cancelled();
       updateProgress({ message: "Finalizing route options" });
       const partialWarning = options.find((o) => o.partial)?.partial;
       setNavRoutes(options);
@@ -1719,12 +1784,38 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       setNavWarning(partialWarning ? partialRouteNotice(partialWarning) : null);
       setSimplifiedWaypoints(null);
       fitMapToRoute(options[0]);
+      const metrics = options.map((option) => ({
+        label: option.label,
+        distanceM: option.distanceM,
+        shadowCoverage: option.shadowCoverage,
+        totalTimeSec: option.totalTimeSec,
+      }));
+      const unroutableLegs = options.flatMap((option) => option.partial ? [option.partial] : []);
+      if (unroutableLegs.length > 0) {
+        return {
+          status: "partial",
+          metrics,
+          shadowProvenance: options[0]?.shadowSource ?? null,
+          unroutableLegs,
+        };
+      }
+      return {
+        status: "completed",
+        metrics,
+        shadowProvenance: options[0]?.shadowSource ?? null,
+      };
     } catch (e) {
       readinessAbort?.abort();
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      if (calcSignal.aborted) return;
-      setNavError(e instanceof Error ? e.message : "Routing failed");
+      if (e instanceof DOMException && e.name === "AbortError") return cancelled();
+      if (calcSignal.aborted) return cancelled();
+      const message = e instanceof Error ? e.message : "Routing failed";
+      setNavError(message);
+      if (/No walkable path found|connected walkable street/.test(message)) {
+        return { status: "no_plan_found", message };
+      }
+      return { status: "error", message };
     } finally {
+      externalSignal?.removeEventListener("abort", cancelFromOutside);
       if (calcGenRef.current === myGen) {
         // A superseded calculation leaves the camera flat on purpose — the one
         // that replaced it owns the restore, and still holds the original pitch.
@@ -1738,6 +1829,32 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     additionalWaypoints, mapRef, shadowLayerRef, dateRef, fitMapToRoute,
     flattenForShadowReadback, restorePitchAfterShadowReadback,
   ]);
+
+  const createRoutePlanRequest = useCallback((plan: RoutePlan): RoutePlanRequest => {
+    // The key is intent-derived, so an LLM retry of the same plan resolves the
+    // original job rather than starting another set of mutations.
+    const coordinates = [plan.from, ...plan.via, plan.to]
+      .map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
+      .join(";");
+    const idempotencyKey = `agent-route:${dateRef.current.getTime()}:${coordinates}`;
+    const duplicate = routePlanRequestsByKeyRef.current.get(idempotencyKey);
+    if (duplicate) return duplicate;
+    const request: RoutePlanRequest = {
+      requestId: `agent-route-${++routePlanRequestSeqRef.current}`,
+      inputVersion: ++routePlanVersionRef.current,
+      idempotencyKey,
+      plan,
+    };
+    routePlanRequestsByKeyRef.current.set(idempotencyKey, request);
+    return request;
+  }, [dateRef]);
+
+  const submitRoutePlan = useCallback((request: RoutePlanRequest): Promise<RoutePlanTerminalResult> =>
+    agentRouteJobsRef.current.submit(request, (job, signal) => calculateRoute(job.plan, signal)),
+  [calculateRoute]);
+
+  const cancelRoutePlan = useCallback((requestId: string) =>
+    agentRouteJobsRef.current.cancel(requestId), []);
 
   const handleCalculateRoute = useCallback(() => {
     const useSketch = drawModeRef.current && sketchPointsRef.current.length >= 2;
@@ -1802,7 +1919,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     handleSwapWaypoints,
     handleClearWaypointA, handleClearWaypointB,
     handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute,
+    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan,
 
     // Derived
     selectedNavRoute, navTrainDrawData, navMrtEntrances,

@@ -16,6 +16,7 @@
  */
 import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClient";
 import type { AgentContext, AssistantPin } from "../tools";
+import type { RoutePlan } from "../../routePlanJob";
 
 // ---------------------------------------------------------------------------
 // Scenario shape
@@ -206,6 +207,7 @@ const DEFAULT_CONTEXT = {
 /** A context of inert handles — every scenario stubs `executeTool` anyway. */
 export function makeScenarioContext(): AgentContext {
   const noop = () => {};
+  let version = 0;
   return {
     mapRef: { current: null },
     shadowLayerRef: { current: null },
@@ -216,7 +218,21 @@ export function makeScenarioContext(): AgentContext {
     setWaypointA: noop,
     setWaypointB: noop,
     setAdditionalWaypoints: noop,
-    calculateRoute: noop,
+    createRoutePlanRequest: (plan: RoutePlan) => ({
+      requestId: `scenario-route-${version + 1}`,
+      inputVersion: ++version,
+      idempotencyKey: `scenario:${version}`,
+      plan,
+    }),
+    submitRoutePlan: async () => ({
+      requestId: "scenario-route",
+      inputVersion: 1,
+      idempotencyKey: "scenario",
+      status: "completed" as const,
+      metrics: [],
+      shadowProvenance: null,
+    }),
+    cancelRoutePlan: () => false,
     setPins: noop,
   };
 }

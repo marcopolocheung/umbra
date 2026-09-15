@@ -4,6 +4,7 @@ import { callModel, rolesShareConfig } from "../agent/llmClient";
 import { executeTool } from "../agent/tools";
 import type { AgentContext } from "../agent/tools";
 import type { LlmPart, LlmResponse } from "../agent/llmClient";
+import type { RoutePlan } from "../routePlanJob";
 
 vi.mock("../agent/llmClient", () => ({
   callModel: vi.fn(),
@@ -25,6 +26,7 @@ function modelResponse(parts: LlmPart[]): LlmResponse {
 }
 
 function makeCtx(): AgentContext {
+  let version = 0;
   return {
     mapRef: { current: null },
     shadowLayerRef: { current: null },
@@ -35,7 +37,14 @@ function makeCtx(): AgentContext {
     setWaypointA: vi.fn(),
     setWaypointB: vi.fn(),
     setAdditionalWaypoints: vi.fn(),
-    calculateRoute: vi.fn(),
+    createRoutePlanRequest: (plan: RoutePlan) => ({
+      requestId: `test-${version + 1}`,
+      inputVersion: ++version,
+      idempotencyKey: `test:${version}`,
+      plan,
+    }),
+    submitRoutePlan: vi.fn(),
+    cancelRoutePlan: vi.fn(() => false),
     setPins: vi.fn(),
   };
 }
@@ -138,5 +147,45 @@ describe("runAgent fallback plotting", () => {
       expect.any(Object)
     );
     expect(mockCallModel).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("terminal route results", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRolesShareConfig.mockReturnValue(false);
+    mockExecuteTool.mockImplementation(async (name) => {
+      if (name === "get_current_context") {
+        return { center: { lat: 40.7, lng: -74 }, zoom: 14, locationKnown: true };
+      }
+      if (name === "plan_shadowed_route") {
+        return {
+          requestId: "route-1", inputVersion: 1, idempotencyKey: "route:intent",
+          status: "cancelled", reason: "cancelled",
+        };
+      }
+      return { ok: true };
+    });
+  });
+
+  it("returns a cancelled route terminal state to model history and never writes a success narration", async () => {
+    mockCallModel
+      .mockResolvedValueOnce(modelResponse([{
+        functionCall: {
+          name: "plan_shadowed_route",
+          args: { fromLat: 40.7, fromLng: -74, toLat: 40.73, toLng: -73.98 },
+        },
+      }]))
+      .mockResolvedValueOnce(modelResponse([{ text: "The route is ready." }]));
+
+    const result = await runAgent({ history: [], userText: "Route me", ctx: makeCtx() });
+
+    expect(result.text).toContain("cancelled");
+    expect(result.text).not.toMatch(/route (is )?(completed|ready)|calculation started/i);
+    expect(mockCallModel).toHaveBeenCalledTimes(2);
+    const terminal = result.history
+      .flatMap((content) => content.parts)
+      .find((part) => part.functionResponse?.name === "plan_shadowed_route");
+    expect(terminal?.functionResponse?.response).toMatchObject({ status: "cancelled" });
   });
 });

@@ -256,6 +256,74 @@ describe("useNavigation", () => {
   });
 });
 
+describe("terminal agent route jobs", () => {
+  beforeEach(() => resetShadowStub());
+
+  it("awaits a completed multi-stop pipeline result with metrics and provenance", async () => {
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(threeNodeGraph() as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    const request = result.current.createRoutePlanRequest({
+      from: [103.8, 1.3], to: [103.801, 1.301], via: [[103.8005, 1.3005]], fromLabel: "Start", toLabel: "End",
+    });
+    let terminal: Awaited<ReturnType<typeof result.current.submitRoutePlan>>;
+    await act(async () => { terminal = await result.current.submitRoutePlan(request); });
+
+    expect(terminal!).toMatchObject({
+      status: "completed", requestId: request.requestId, inputVersion: request.inputVersion,
+      metrics: [expect.objectContaining({ distanceM: expect.any(Number) })],
+    });
+    expect(result.current.additionalWaypoints).toEqual([[103.8005, 1.3005]]);
+    expect(result.current.navRoutes).not.toEqual([]);
+  });
+
+  it("reports an unroutable leg as partial instead of dropping it", async () => {
+    const disconnected = threeNodeGraph();
+    disconnected.nodes.set(4, { id: 4, lat: 1.31, lon: 103.81 });
+    disconnected.nodes.set(5, { id: 5, lat: 1.3105, lon: 103.8105 });
+    disconnected.adj.set(4, [{ toId: 5, distanceM: 75 }]);
+    disconnected.adj.set(5, [{ toId: 4, distanceM: 75 }]);
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(disconnected as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    const request = result.current.createRoutePlanRequest({
+      from: [103.8, 1.3], to: [103.81, 1.31], via: [[103.8005, 1.3005]], fromLabel: "Start", toLabel: "End",
+    });
+    let terminal: Awaited<ReturnType<typeof result.current.submitRoutePlan>>;
+    await act(async () => { terminal = await result.current.submitRoutePlan(request); });
+
+    expect(terminal!).toMatchObject({
+      status: "partial",
+      unroutableLegs: [expect.objectContaining({ failedLeg: 2, totalLegs: 2 })],
+    });
+    expect(result.current.navRoutes[0]?.partial).toMatchObject({ failedLeg: 2, totalLegs: 2 });
+  });
+
+  it("returns no_plan_found when no connected route exists", async () => {
+    const disconnected = threeNodeGraph();
+    disconnected.nodes.set(4, { id: 4, lat: 1.31, lon: 103.81 });
+    disconnected.nodes.set(5, { id: 5, lat: 1.3105, lon: 103.8105 });
+    disconnected.adj.set(4, [{ toId: 5, distanceM: 75 }]);
+    disconnected.adj.set(5, [{ toId: 4, distanceM: 75 }]);
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(disconnected as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    const request = result.current.createRoutePlanRequest({
+      from: [103.8, 1.3], to: [103.81, 1.31], via: [], fromLabel: "Start", toLabel: "End",
+    });
+    let terminal: Awaited<ReturnType<typeof result.current.submitRoutePlan>>;
+    await act(async () => { terminal = await result.current.submitRoutePlan(request); });
+
+    expect(terminal!).toMatchObject({ status: "no_plan_found" });
+  });
+});
+
 // ─── Flat shadow readback (#154) ───────────────────────────────────────────────
 
 /**
