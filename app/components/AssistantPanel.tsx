@@ -243,7 +243,7 @@ export default function AssistantPanel({
               color: "var(--md-on-surface)",
               maxHeight: 96,
             }}
-      />
+          />
           <button
             type="button"
             onClick={submit}

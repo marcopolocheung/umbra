@@ -381,8 +381,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   ): ToolResultEnvelope => {
     const enriched =
       name === "check_shadow" && !Array.isArray(payload.results)
-      ? { ...payload, lat: payload.lat ?? args.lat, lng: payload.lng ?? args.lng }
-      : payload;
+        ? { ...payload, lat: payload.lat ?? args.lat, lng: payload.lng ?? args.lng }
+        : payload;
     const terminal =
       name === "plan_shadowed_route" ? validateRoutePlanTerminalResult(enriched) : null;
     const sequence = ++resultSequence;
@@ -493,8 +493,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         .map((block) => {
           if (block.kind === "unknown") return unknownLabel(block.claimKind);
           if (block.kind === "notice") return noticeLabel(block);
-      const receipt = answer.receipts.find((candidate) => candidate.claimId === block.claimId);
-      return receipt ? receiptLabel(receipt) : "";
+          const receipt = answer.receipts.find((candidate) => candidate.claimId === block.claimId);
+          return receipt ? receiptLabel(receipt) : "";
         })
         .filter(Boolean)
         .join("\n") || modelText;
@@ -515,7 +515,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       code,
       detail,
     };
-    const answer: VerifiedAnswer = { blocks: [notice], receipts: [], rejectedProseCount: 0 };
+    const answer: VerifiedAnswer = {
+      blocks: [notice],
+      receipts: [],
+      rejectedProseCount: 0,
+      danglingClaimBlocks: 0,
+      duplicateClaimProposals: 0,
+    };
     const mapObjects = ctx.getMapObjects();
     return {
       text: noticeLabel(notice),

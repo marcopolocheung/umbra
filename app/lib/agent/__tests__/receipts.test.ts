@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   claimSupportMetrics,
   unsupportedProseReasons,
+  validateToolResultEnvelope,
   verifyAnswer,
   type MapObject,
   type ToolResultEnvelope,
@@ -367,6 +368,80 @@ describe("C5 deterministic claim verification", () => {
       opts([oldTime, newTime]),
     );
     expect(result.receipts[0].rejectionReason).toBe("stale_evidence");
+  });
+
+  it("uses evidence execution order when a later time moves the simulation backward", () => {
+    const fourPm = envelope(
+      "set_time",
+      { ok: true, newLocalTime: "4:00 PM" },
+      "four",
+      "2026-08-08T16:00:00.000Z",
+    );
+    const threePm = envelope(
+      "set_time",
+      { ok: true, newLocalTime: "3:00 PM" },
+      "three",
+      "2026-08-08T15:00:00.000Z",
+    );
+    const result = verifyAnswer(
+      answer({
+        kind: "time",
+        subject: "simulation time",
+        value: { localTime: "4:00 PM" },
+        supportingResultIds: ["four"],
+      }),
+      opts([fourPm, threePm]),
+    );
+    expect(result.receipts[0].rejectionReason).toBe("stale_evidence");
+  });
+
+  it("deduplicates equivalent canonical claims and accounts for dangling blocks", () => {
+    const proposal = {
+      blocks: [{ kind: "claim", claimId: "missing-receipt" }],
+      receipts: [
+        {
+          claimId: "one",
+          kind: "place",
+          subject: "Bryant Park",
+          value: { lat: 40.7536, lng: -73.9832 },
+          supportingResultIds: ["place"],
+        },
+        {
+          claimId: "two",
+          kind: "place",
+          subject: "Bryant Park",
+          value: { lat: 40.7536, lng: -73.9832 },
+          supportingResultIds: ["place"],
+        },
+      ],
+    };
+    const result = verifyAnswer(
+      proposal,
+      opts([
+        envelope(
+          "search_places",
+          { results: [{ name: "Bryant Park", lat: 40.7536, lng: -73.9832 }] },
+          "place",
+        ),
+      ]),
+    );
+    expect(result.receipts).toHaveLength(1);
+    expect(result.duplicateClaimProposals).toBe(1);
+    expect(result.danglingClaimBlocks).toBe(1);
+    expect(claimSupportMetrics(result, opts([], [pin]))).toMatchObject({
+      danglingClaimProposals: 1,
+      duplicateClaimProposals: 1,
+      place: { proposed: 1 },
+    });
+  });
+
+  it("rejects a route envelope whose redundant C4 identity contradicts its terminal payload", () => {
+    expect(
+      validateToolResultEnvelope({
+        ...envelope("plan_shadowed_route", route, "route"),
+        requestId: "wrong-request",
+      }),
+    ).toBe(false);
   });
 
   it("requires application-owned shadow and route objects before enabling focus", () => {

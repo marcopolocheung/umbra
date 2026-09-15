@@ -30,6 +30,8 @@ const routeEvidence: ToolResultEnvelope = {
 const routeAnswer: VerifiedAnswer = {
   blocks: [{ kind: "claim", claimId: "route-claim" }],
   rejectedProseCount: 0,
+  danglingClaimBlocks: 0,
+  duplicateClaimProposals: 0,
   receipts: [
     {
       claimId: "route-claim",

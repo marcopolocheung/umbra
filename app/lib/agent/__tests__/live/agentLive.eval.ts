@@ -84,13 +84,18 @@ vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
   const startedAt = Date.now();
   const res = await realFetch(
     `https://generativelanguage.googleapis.com${url.slice("/__gemini".length)}`,
-    init
+    init,
   );
   latencyMs.set(requested, [...(latencyMs.get(requested) ?? []), Date.now() - startedAt]);
 
   usage.requests++;
   if (!res.ok) {
-    const detail = (await res.clone().text().catch(() => "")).slice(0, 300);
+    const detail = (
+      await res
+        .clone()
+        .text()
+        .catch(() => "")
+    ).slice(0, 300);
     providerErrors.push(`HTTP ${res.status} for ${requested}: ${detail}`);
   }
   const data = (await res
@@ -203,6 +208,7 @@ interface Row {
   narratedToolSyntax: boolean;
   pins: string[];
   answer: string;
+  claimMetrics?: Trace["metrics"];
   error?: string;
 }
 
@@ -211,7 +217,8 @@ const rows: Row[] = [];
 /** Whether any call produced a place the loop could pin — the live condition for requiring a plot. */
 function gatheredAPlace(trace: Trace): boolean {
   return trace.toolCalls.some((c) => {
-    if (c.name === "check_shadow") return typeof c.args.lat === "number" || Array.isArray(c.args.points);
+    if (c.name === "check_shadow")
+      return typeof c.args.lat === "number" || Array.isArray(c.args.points);
     if (c.name === "plan_shadowed_route") return typeof c.args.fromLat === "number";
     return Array.isArray(c.result.results) && c.result.results.length > 0;
   });
@@ -248,6 +255,7 @@ function summarize(scenario: Scenario, trace: Trace | undefined, error?: string)
     narratedToolSyntax: /<\/?function|<tool_call>|"name"\s*:|functionCall/.test(answer),
     pins: trace?.plottedPins.map((p) => p.label ?? "·") ?? [],
     answer,
+    claimMetrics: trace?.metrics,
     error,
   };
 }
@@ -266,8 +274,8 @@ describe("live agent eval — gemini", () => {
     // One line per scenario as it lands — vitest itself prints nothing until the end.
     process.stdout.write(
       `[${rows.length}/${liveScenarios.length}] ${scenario.id}: ` +
-        `${row.error ? "error" : row.violations.length ? "VIOLATION" : "grounded"}, ` +
-        `${row.llmCalls} LLM calls, ${usage.requests} requests so far\n`
+        `${row.error ? "error" : row.violations.length ? "VIOLATION" : "verified-state"}, ` +
+        `${row.llmCalls} LLM calls, ${usage.requests} requests so far\n`,
     );
     expect(row.error, "the turn threw").toBeUndefined();
     expect(row.violations).toEqual([]);
@@ -280,8 +288,8 @@ afterAll(() => {
   const lines = [
     `## Live agent eval — gemini: ${[...requestedModels].join(", ")}`,
     "",
-    "| scenario | grounded | followed script | LLM calls / budget | tools / budget | default-world calls | plots model/loop | pins | answer |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| scenario | verified state | support P/S/T/R/A | escapes/dangling | followed script | LLM calls / budget | tools / budget | default-world calls | plots model/loop | pins | answer |",
+    "|---|---|---|---|---|---|---|---|---|---|---|",
     ...rows
       .map((r) =>
         [
@@ -291,6 +299,20 @@ afterAll(() => {
             : r.violations.length
               ? r.violations.join("; ")
               : "yes",
+          r.claimMetrics
+            ? [
+                r.claimMetrics.place,
+                r.claimMetrics.shadow,
+                r.claimMetrics.time,
+                r.claimMetrics.route,
+                r.claimMetrics.accessibility,
+              ]
+                .map((m) => `${m.supported}/${m.proposed}`)
+                .join("/")
+            : "—",
+          r.claimMetrics
+            ? `${r.claimMetrics.unsupportedClaimEscapes}/${r.claimMetrics.danglingClaimProposals}`
+            : "—",
           r.followedScript ? "yes" : `no: ${r.actualTools.join(" → ") || "(none)"}`,
           `${r.llmCalls} / ${r.llmBudget}`,
           `${r.toolCalls} / ${r.toolBudget}`,
@@ -302,7 +324,7 @@ afterAll(() => {
       )
       .map((l) => `| ${l} |`),
     "",
-    `Grounded: ${count((r) => !r.error && r.violations.length === 0)}/${n} · ` +
+    `Verified state: ${count((r) => !r.error && r.violations.length === 0)}/${n} · ` +
       `errors: ${count((r) => !!r.error)} · followed script: ${count((r) => r.followedScript)}/${n} · ` +
       `over LLM budget: ${count((r) => r.llmCalls > r.llmBudget)} · ` +
       `tool markup in answer: ${count((r) => r.narratedToolSyntax)} · ` +
@@ -312,8 +334,11 @@ afterAll(() => {
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
   lines.push(
     `Latency (median / max per request): ${[...latencyMs]
-      .map(([model, xs]) => `${model} ${(median(xs) / 1000).toFixed(1)} s / ${(Math.max(...xs) / 1000).toFixed(1)} s over ${xs.length}`)
-      .join(" · ")}`
+      .map(
+        ([model, xs]) =>
+          `${model} ${(median(xs) / 1000).toFixed(1)} s / ${(Math.max(...xs) / 1000).toFixed(1)} s over ${xs.length}`,
+      )
+      .join(" · ")}`,
   );
   if (providerErrors.length) {
     lines.push(

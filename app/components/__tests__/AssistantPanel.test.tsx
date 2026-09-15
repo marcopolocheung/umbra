@@ -20,8 +20,10 @@ describe("AssistantPanel C5 receipts", () => {
             role: "assistant",
             text: "ignored",
             answer: {
-        blocks: [{ kind: "claim", claimId: "place-1" }],
+              blocks: [{ kind: "claim", claimId: "place-1" }],
               rejectedProseCount: 0,
+              danglingClaimBlocks: 0,
+              duplicateClaimProposals: 0,
               receipts: [
                 {
                   claimId: "place-1",
@@ -33,7 +35,7 @@ describe("AssistantPanel C5 receipts", () => {
                   observedAt: "2026-08-08T18:00:00.000Z",
                   confidence: "unknown",
                   verification: "verified",
-      },
+                },
               ],
             },
           },
@@ -65,6 +67,8 @@ describe("AssistantPanel C5 receipts", () => {
             answer: {
               blocks: [{ kind: "claim", claimId: "route-claim" }],
               rejectedProseCount: 0,
+              danglingClaimBlocks: 0,
+              duplicateClaimProposals: 0,
               receipts: [
                 {
                   claimId: "route-claim",

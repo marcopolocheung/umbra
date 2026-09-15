@@ -141,49 +141,49 @@ export function useAgent(args: UseAgentArgs) {
 
   const sendMessage = useCallback(
     async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || isThinking) return;
+      const trimmed = text.trim();
+      if (!trimmed || isThinking) return;
 
       setMessages((prev) => [...prev, { id: nextId(), role: "user", text: trimmed }]);
-    setIsThinking(true);
+      setIsThinking(true);
 
-    try {
-      const { runAgent } = await import("../lib/agent/agentLoop");
-      const result = await runAgent({
-        history: historyRef.current,
-        pins: pinsRef.current,
-        userText: trimmed,
-        ctx: ctxRef.current,
-        cache: toolCacheRef.current,
-        evidence: evidenceRef.current,
+      try {
+        const { runAgent } = await import("../lib/agent/agentLoop");
+        const result = await runAgent({
+          history: historyRef.current,
+          pins: pinsRef.current,
+          userText: trimmed,
+          ctx: ctxRef.current,
+          cache: toolCacheRef.current,
+          evidence: evidenceRef.current,
           resultIdFactory: ({ toolName }) =>
             `agent-result-${++resultIdSequenceRef.current}-${toolName}`,
-        onToolEvent: (e) => {
-          const label = TOOL_LABELS[e.name] ?? e.name;
+          onToolEvent: (e) => {
+            const label = TOOL_LABELS[e.name] ?? e.name;
             setMessages((prev) => [...prev, { id: nextId(), role: "tool", text: label }]);
-        },
-      });
-      historyRef.current = result.history;
-      evidenceRef.current = result.evidence;
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: "assistant", text: result.text, answer: result.answer },
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: "assistant",
-          text:
-            err instanceof Error
-              ? `Sorry — ${err.message}`
-              : "Sorry, something went wrong talking to the assistant.",
-        },
-      ]);
-    } finally {
-      setIsThinking(false);
-    }
+          },
+        });
+        historyRef.current = result.history;
+        evidenceRef.current = result.evidence;
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: "assistant", text: result.text, answer: result.answer },
+        ]);
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "assistant",
+            text:
+              err instanceof Error
+                ? `Sorry — ${err.message}`
+                : "Sorry, something went wrong talking to the assistant.",
+          },
+        ]);
+      } finally {
+        setIsThinking(false);
+      }
     },
     [isThinking],
   );

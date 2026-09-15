@@ -31,7 +31,7 @@ run in parallel with any other.
   typecheck through that point. The current UI has no terminal-job status surface (C15 owns that
   interaction), so browser smoke verifies a completed drawn route while deterministic hook tests
   verify failed/cancelled terminal results. This checkpoint did not modify `server/shadow-prep/**`.
-- **C5 observed verification (2026-09-14):** 907 deterministic tests in 69 files, including
+- **C5 observed verification (2026-09-14):** 910 deterministic tests in 69 files, including
   focused receipt, agent-loop, tool, route-job, navigation-hook, `useAgent`, and panel coverage,
   pass under Node 24. The deterministic suite reports separate proposed/supported/rejected/unknown
   counts and support rates by claim kind, with zero rendered unsupported-claim escapes. The declared typecheck reaches only the
@@ -40,7 +40,7 @@ run in parallel with any other.
   passes. A local browser smoke
   opened the assistant panel, but its no-`.env` environment cannot produce a live Gemini claim;
   the receipt render/focus interaction is covered deterministically. The complete deterministic
-  suite passed 907 tests under Node 24; a credentialed live-claim browser smoke remains unrecorded.
+  suite passed 910 tests under Node 24; a credentialed live-claim browser smoke remains unrecorded.
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
   `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.

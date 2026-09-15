@@ -25,10 +25,11 @@ evidence id, and rejection reason, and sends opaque map-object ids back to the a
 owner for focusing; the verifier has no map mutation authority.
 
 The deterministic suite reports proposed, supported, rejected, and unknown counts plus a support
-rate separately for place, shadow, time, route, and accessibility claims. `unsupportedClaimEscapes`
-is zero by construction only because model prose is never rendered; discarded prose is separately
-counted as `rejectedUnsupportedProse`. These are development-suite measures, not C13 held-out or
-production-grounding claims.
+rate separately for place, shadow, time, route, and accessibility claims. It also reports dangling
+model claim blocks and deduplicated equivalent proposals. `unsupportedClaimEscapes` is zero by
+construction only because model prose is never rendered; discarded prose is separately counted as
+`rejectedUnsupportedProse`. Receipt detail includes observation time and deterministic evidence age.
+These are development-suite measures, not C13 held-out or production-grounding claims.
 
 The current tools cannot verify accessibility, venue hours, live crowding, temporary closures,
 or physical conditions outside their sampled shadow and route data. Accessibility is therefore
