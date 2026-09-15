@@ -5,7 +5,8 @@ export const STORED_SIZE = 258;
 export const GUTTER_CELLS = 1;
 export const QUANTIZATION = 64;
 export const MAX_HEIGHT_METRES = 100_000;
-export const MAX_DECODED_BYTES = STORED_SIZE * STORED_SIZE * 4 * 8;
+/** The largest source-separated candidate component is canopy (nine planes). */
+export const MAX_DECODED_BYTES = STORED_SIZE * STORED_SIZE * 4 * 9;
 
 export type ComponentKind = "terrain" | "buildings" | "canopy";
 /** Component planes stay source-relative; the six canonical planes exist only after composition. */

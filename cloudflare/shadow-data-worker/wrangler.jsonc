@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shademap-nyc-shadow-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-15",
+  "r2_buckets": [
+    {
+      "binding": "SHADOW_TILES",
+      "bucket_name": "shademap-nyc-shadow-staging"
+    }
+  ],
+  "vars": {
+    "ALLOWED_ORIGIN": "https://shademapnav.vercel.app"
+  }
+}

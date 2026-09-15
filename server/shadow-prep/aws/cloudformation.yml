@@ -43,8 +43,22 @@ Resources:
       BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
       VersioningConfiguration: { Status: Enabled }
-      # Candidate expiry is intentionally absent. Item 7 may later add a
-      # lifecycle rule only after verified-generation handoff.
+      # Candidate planes are private intermediate artifacts. Keep them long
+      # enough for browser-pack verification, then clean them up automatically.
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-private-candidates-after-30-days
+            Status: Enabled
+            Prefix: normalized/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration: { NoncurrentDays: 30 }
+          # The Overture lookup index is reproducible from raw sources and is
+          # not part of the browser handoff, so retain its short disposal window.
+          - Id: expire-reproducible-vector-index-after-7-days
+            Status: Enabled
+            Prefix: vector-index/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration: { NoncurrentDays: 7 }
   EvidenceBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
