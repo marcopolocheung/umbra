@@ -46,6 +46,18 @@ describe("routeTradeoffLine", () => {
     expect(routeTradeoffLine(shadowed, shortest)).toBe("+3 min, -40% sun exposure");
   });
 
+  it("prices the same detour in fewer minutes at cycling speed", () => {
+    // The same 260 extra metres: ~3 min on foot, ~1 min at 4.5 m/s. Sun metres
+    // are geometry, so the exposure half is identical.
+    const shortest = route("Shortest", 1000, 0.2);
+    const shadowed = route("Most shadowed", 1260, 0.62);
+    const bikeShortest = { ...shortest, travelMode: "bike" as const };
+    const bikeShadowed = { ...shadowed, travelMode: "bike" as const };
+
+    expect(routeTradeoffLine(shadowed, shortest)).toBe("+3 min, -40% sun exposure");
+    expect(routeTradeoffLine(bikeShadowed, bikeShortest)).toBe("+1 min, -40% sun exposure");
+  });
+
   it("uses total travel time when a route has transit timing", () => {
     const walk = route("Walk", 1400, 0.5, 1000);
     const transit = route("Transit", 900, 0.16, 1120);

@@ -5,6 +5,7 @@ import {
   minCostRatio,
   modeAdjustedDistanceM,
   parseTravelMode,
+  speedRatioVsWalk,
   travelTimeSeconds,
 } from "../travelMode";
 
@@ -112,5 +113,26 @@ describe("parseTravelMode / minCostRatio", () => {
   it("bounds the cheapest possible cost ratio for the Pareto heuristic", () => {
     expect(minCostRatio("walk")).toBe(1);
     expect(minCostRatio("bike")).toBe(0.5);
+  });
+});
+
+describe("speedRatioVsWalk (E2)", () => {
+  it("is exactly 1 for walk, which is what keeps walk routing byte-identical", () => {
+    // Strict equality, not closeness: routing multiplies metre constants by
+    // this, and anything but exactly 1 would perturb walk costs.
+    expect(speedRatioVsWalk("walk")).toBe(1);
+  });
+
+  it("scales metre constants into the same time allowance for bikes", () => {
+    // 4.5 / 1.4: a 15 m crossing reads as ~48 bike-metres ≈ the same ~11 s.
+    expect(speedRatioVsWalk("bike")).toBeCloseTo(4.5 / 1.4, 10);
+    expect(15 * speedRatioVsWalk("bike")).toBeCloseTo(48.21, 2);
+  });
+
+  it("names the trip for user-facing sentences", () => {
+    expect(getTravelModePolicy("walk").journeyNoun).toBe("walk");
+    expect(getTravelModePolicy("walk").gerund).toBe("walking");
+    expect(getTravelModePolicy("bike").journeyNoun).toBe("ride");
+    expect(getTravelModePolicy("bike").gerund).toBe("cycling");
   });
 });

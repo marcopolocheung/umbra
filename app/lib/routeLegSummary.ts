@@ -1,4 +1,5 @@
 import type { RouteLeg } from "./routing";
+import { getTravelModePolicy } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 
 function formatDist(m: number): string {
@@ -49,8 +50,18 @@ export function routeLegSummary(
   // `type` stays "walk" for active-travel legs (E6 generalizes it); the label
   // follows the route's mode so bike legs don't read as walking.
   const modeLabel = travelMode === "bike" ? "Bike" : "Walk";
+  if (parts.length > 0) {
+    return {
+      title: `Leg ${index + 1}: ${modeLabel}`,
+      detail: parts.join(" - "),
+    };
+  }
+  // No distance or shadow to report (e.g. an unsampled connector): fall back to
+  // the mode's gerund — "Bike" + "ing" would read "Bikeing".
+  const gerund = getTravelModePolicy(travelMode).gerund;
+  const segment = `${gerund.charAt(0).toUpperCase()}${gerund.slice(1)} segment`;
   return {
     title: `Leg ${index + 1}: ${modeLabel}`,
-    detail: parts.length > 0 ? parts.join(" - ") : `${modeLabel}ing segment`,
+    detail: segment,
   };
 }

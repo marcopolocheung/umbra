@@ -21,6 +21,10 @@ function route(distanceM: number, shadowCoverage: number): RouteOption {
   };
 }
 
+function bikeRoute(distanceM: number, shadowCoverage: number): RouteOption {
+  return { ...route(distanceM, shadowCoverage), travelMode: "bike" };
+}
+
 const HOT: WeatherHour = {
   time: new Date(Date.UTC(2026, 5, 21, 13)),
   tempC: 31,
@@ -64,6 +68,20 @@ describe("RouteConditionsLine", () => {
     expect(screen.getByText(/of this walk is in sun/)).toBeTruthy();
     expect(screen.getByText(/heat not scored/)).toBeTruthy();
     expect(screen.queryByText(/of full sun/)).toBeNull();
+  });
+
+  it("speaks of the ride, not the walk, on a bike route", () => {
+    render(<RouteConditionsLine route={bikeRoute(1200, 0.4)} weather={null} />);
+
+    expect(screen.getByText(/of this ride is in sun/)).toBeTruthy();
+    expect(screen.queryByText(/of this walk is in sun/)).toBeNull();
+  });
+
+  it("says cycling, not walking, on a scored bike route", () => {
+    render(<RouteConditionsLine route={bikeRoute(1200, 0.4)} weather={HOT} />);
+
+    expect(screen.getByText(/cycling this/)).toBeTruthy();
+    expect(screen.queryByText(/walking this/)).toBeNull();
   });
 
   it("names no person: a burn share needs a phototype this app does not have", () => {
