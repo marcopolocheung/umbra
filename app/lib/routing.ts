@@ -637,11 +637,15 @@ export function paretoRoutes(
   const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, travelMode = "walk" } = options;
 
   // Distance-only Dijkstra: budget baseline + fast exit when unreachable.
-  // Runs in the same mode so the baseline prices the same penalties.
-  const shortestRun = dijkstra(graph, startId, endId, 0, options);
+  // Runs in the same mode so the baseline prices the same mode penalties, but
+  // with NO other options: crossing penalties must not enter the budget. Labels
+  // carry crossings while the budget comes from pure mode meters, which only
+  // makes the prune marginally tighter, never looser — and for walk the budget
+  // equals the old physical shortest distance exactly.
+  const shortestRun = dijkstra(graph, startId, endId, 0, { travelMode });
   if (!shortestRun) return [];
   const shortestCostM = pathModeCostM(
-    graph, shortestRun.nodeIds, shortestRun.sides, travelMode, crossingPenaltyM, endId,
+    graph, shortestRun.nodeIds, shortestRun.sides, travelMode, 0, endId,
   );
   const budgetM = shortestCostM * maxDetourFactor + DETOUR_FLAT_M;
   // Admissible remaining-cost heuristic: every remaining physical meter costs at

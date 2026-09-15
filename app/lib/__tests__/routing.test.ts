@@ -1522,3 +1522,56 @@ describe("mode-aware snapping and reachability (E1 follow-up 2)", () => {
     expect(result!.distanceM).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Walk budget regression: a 300 m main path with two crossings vs a fully
+ * shaded 870 m detour. The detour budget is 300×2+250 = 850 m of pure
+ * distance — crossing penalties must not loosen it (they would admit the
+ * 870 m detour and change plain walking behavior).
+ */
+function makeCrossingBudgetGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.001, isIntersection: true }],
+    [3, { id: 3, lat: 0.0, lon: 0.002, isIntersection: true }],
+    [4, { id: 4, lat: 0.0, lon: 0.003 }],
+    [5, { id: 5, lat: 0.001, lon: 0.001 }],
+    [6, { id: 6, lat: 0.001, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 5, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0 },
+      { toId: 3, distanceM: 100, shadowFactor: 0 },
+    ]],
+    [3, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 4, distanceM: 100, shadowFactor: 0 },
+    ]],
+    [4, [
+      { toId: 3, distanceM: 100, shadowFactor: 0 },
+      { toId: 6, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [5, [
+      { toId: 1, distanceM: 290, shadowFactor: 1 },
+      { toId: 6, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [6, [
+      { toId: 5, distanceM: 290, shadowFactor: 1 },
+      { toId: 4, distanceM: 290, shadowFactor: 1 },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("paretoRoutes — walk budget ignores crossing penalties", () => {
+  it("a 300 m two-crossing walk admits no 870 m detour", () => {
+    const routes = paretoRoutes(makeCrossingBudgetGraph(), 1, 4, { crossingPenaltyM: 15 });
+    expect(routes).toHaveLength(1);
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
+    expect(routes[0].distanceM).toBeCloseTo(300, 5);
+  });
+});
