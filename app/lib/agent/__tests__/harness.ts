@@ -204,6 +204,19 @@ const DEFAULT_CONTEXT = {
   userLocation: null,
 };
 
+/** The successful terminal contract used by scenarios that do not exercise routing itself. */
+export const COMPLETED_ROUTE_TERMINAL = {
+  requestId: "scenario-route",
+  inputVersion: 1,
+  planRevision: 1,
+  actionId: "scenario-action",
+  retry: 0,
+  idempotencyKey: "scenario:0",
+  status: "completed" as const,
+  metrics: [{ label: "Shortest", distanceM: 100, shadowCoverage: 0.5 }],
+  shadowProvenance: null,
+};
+
 /** A context of inert handles — every scenario stubs `executeTool` anyway. */
 export function makeScenarioContext(): AgentContext {
   const noop = () => {};
@@ -227,17 +240,7 @@ export function makeScenarioContext(): AgentContext {
       idempotencyKey: `scenario:${version}`,
       plan,
     }),
-    submitRoutePlan: async () => ({
-      requestId: "scenario-route",
-      inputVersion: 1,
-      planRevision: 1,
-      actionId: "scenario-action",
-      retry: 0,
-      idempotencyKey: "scenario",
-      status: "completed" as const,
-      metrics: [{ label: "Shortest", distanceM: 100, shadowCoverage: 0.5 }],
-      shadowProvenance: null,
-    }),
+    submitRoutePlan: async () => COMPLETED_ROUTE_TERMINAL,
     cancelRoutePlan: () => false,
     setPins: noop,
   };

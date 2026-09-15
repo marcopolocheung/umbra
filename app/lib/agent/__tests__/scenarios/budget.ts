@@ -3,7 +3,7 @@
  * LLM round-trips a turn spends is a product constraint, not a detail — and the
  * step cap must never strand the loop before the pins reach the map.
  */
-import type { Scenario } from "../harness";
+import { COMPLETED_ROUTE_TERMINAL, type Scenario } from "../harness";
 
 const BRYANT = { name: "Bryant Park", lat: 40.7536, lng: -73.9832 };
 
@@ -108,7 +108,7 @@ export const askedRouteIsCalculated: Scenario = {
   tools: {
     search_places: { results: [BRYANT, GRACE, PALEY] },
     plot_points: { ok: true, plotted: 3 },
-    plan_shadowed_route: { ok: true },
+    plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
   },
   script: [
     { calls: [{ name: "search_places", args: { query: "plazas", lat: 40.75, lng: -73.98 } }] },
@@ -255,7 +255,7 @@ export const candidatesOverflowCapAtEightPins: Scenario = {
   userText: "Check four corners then route me through three legs",
   tools: {
     check_shadow: { shadowFraction: 0.4, status: "partial sun" },
-    plan_shadowed_route: { ok: true },
+    plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 8 },
   },
   script: [

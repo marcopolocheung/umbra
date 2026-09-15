@@ -2,7 +2,7 @@
  * The paths a working shadow-planning turn takes. Each one pins down the tool
  * sequence and the plot-before-answer guarantee, not the wording.
  */
-import { gazetteer, type Scenario } from "../harness";
+import { COMPLETED_ROUTE_TERMINAL, gazetteer, type Scenario } from "../harness";
 
 const BRYANT = { name: "Bryant Park", lat: 40.7536, lng: -73.9832 };
 const GRACE = { name: "Grace Plaza", lat: 40.752, lng: -73.985 };
@@ -165,7 +165,7 @@ export const routePlanningPlotsEndpoints: Scenario = {
   userText: "Walk me from Bryant Park to Madison Square Park in the shadow",
   tools: {
     geocode_place: gazetteer([BRYANT, MADISON]),
-    plan_shadowed_route: { ok: true, note: "Calculating a shadow-aware route." },
+    plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 2 },
   },
   script: [

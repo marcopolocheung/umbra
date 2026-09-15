@@ -4,7 +4,7 @@
  * the tools genuinely produced (`grounded`) and, where relevant, a name no tool
  * ever returned (`decoys`) that must never reach the answer.
  */
-import { gazetteer, type Scenario } from "../harness";
+import { COMPLETED_ROUTE_TERMINAL, gazetteer, type Scenario } from "../harness";
 
 const MADISON = { name: "Madison Square Park", lat: 40.7414, lng: -73.9882 };
 
@@ -176,7 +176,7 @@ export const viaStopsBecomePins: Scenario = {
   userText: "Walk me from Bryant Park to Madison Square Park via Grace Plaza, in the shadow",
   tools: {
     geocode_place: gazetteer([BRYANT, GRACE, MADISON]),
-    plan_shadowed_route: { ok: true, viaStops: 1 },
+    plan_shadowed_route: COMPLETED_ROUTE_TERMINAL,
     plot_points: { ok: true, plotted: 3 },
   },
   script: [
