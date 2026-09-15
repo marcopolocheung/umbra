@@ -3,36 +3,21 @@ import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { fetchRoutingGraph, fetchStationEntrances } from "../lib/overpass";
 import {
-  snapToEdge,
   dijkstra,
   snapToGraph,
   paretoRoutes,
   graphToGeoJSON,
   haversineMeters,
-  bfsReachable,
-  snapToReachableEdge,
   SpatialGrid,
-  simplifyPolyline,
-  sketchBoundingBox,
-  findSketchGaps,
   connectRouteEndpoints,
   clearVirtualNodes,
   snapRouteStopsToReachableEdges,
   parallelSidewalkEdges,
 } from "../lib/routing";
-import type {
-  GraphEdge,
-  RoutingGraph,
-  RouteLeg,
-  LatLng,
-  SketchPoint,
-  RouteOption,
-} from "../lib/routing";
+import type { GraphEdge, RoutingGraph, RouteLeg, RouteOption } from "../lib/routing";
 import { recordRoutingRun, computeDerivedKpis } from "../lib/metrics";
-import { buildingCentroidAt, snapOutsideBuilding } from "../lib/building-snap";
+import { snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
-import { createRoute, getRoutes, getFolders, updateRoute, deleteRoute } from "../lib/savedRoutes";
-import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
 import { routeToGPX, routeToGeoJSON, downloadBlob } from "../lib/exportRoute";
 import {
   fetchTrainGraph,
@@ -54,7 +39,7 @@ import {
   createGeometryShadowField,
   edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
-import type { EdgeRef, ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
+import type { ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
 import {
   createOverpassCanopyProvider,
   createOverpassPrismProvider,
@@ -84,6 +69,7 @@ import {
   waitForMapIdle,
 } from "../lib/navigationHelpers";
 import { useSketch } from "./useSketch";
+import { useTrip } from "./useTrip";
 
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
@@ -104,8 +90,6 @@ interface UseNavigationArgs {
 export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseNavigationArgs) {
   // Navigation state
   const [navMode, setNavMode] = useState(false);
-  const [waypointA, setWaypointA] = useState<[number, number] | null>(null);
-  const [waypointB, setWaypointB] = useState<[number, number] | null>(null);
   const [navRoutes, setNavRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -115,19 +99,6 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   );
   const [navError, setNavError] = useState<string | null>(null);
   const [routeSolarIntensity, setRouteSolarIntensity] = useState<number | null>(null);
-  const [waypointALabel, setWaypointALabel] = useState<string | null>(null);
-  const [waypointBLabel, setWaypointBLabel] = useState<string | null>(null);
-  const [pendingSlot, setPendingSlot] = useState<"A" | "B" | null>(null);
-  const pendingSlotRef = useRef<"A" | "B" | null>(null);
-  pendingSlotRef.current = pendingSlot;
-
-  const [saveModalRouteIndex, setSaveModalRouteIndex] = useState<number | null>(null);
-  const [additionalWaypoints, setAdditionalWaypoints] = useState<[number, number][]>([]);
-  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>(() => getRoutes());
-  const [savedFolders, setSavedFolders] = useState<SavedFolder[]>(() => getFolders());
-
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [isLocating, setIsLocating] = useState(false);
 
   // Route mode and shadow preference
   const [routeMode, setRouteMode] = useState<"walk" | "transit">("walk");
@@ -140,8 +111,6 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   travelModeRef.current = travelMode;
 
   // Refs for stale-closure avoidance
-  const waypointARef = useRef(waypointA);
-  const waypointBRef = useRef(waypointB);
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
   const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
@@ -150,12 +119,6 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const routePlanActionSeqRef = useRef(0);
   const routeReceiptObjectRef = useRef<RouteReceiptMapObject | null>(null);
   const pendingAgentPlanFingerprintRef = useRef<string | null>(null);
-  const waypointALabelRef = useRef(waypointALabel);
-  const waypointBLabelRef = useRef(waypointBLabel);
-  const dragSlotRef = useRef<"A" | "B" | null>(null);
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-  const dragActiveRef = useRef(false);
-  const ghostElRef = useRef<HTMLDivElement | null>(null);
   /** The pitch to hand back to the user once a flat shadow readback is done. */
   const pitchRestoreRef = useRef<number | null>(null);
 
@@ -183,10 +146,6 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     );
   }
 
-  waypointARef.current = waypointA;
-  waypointBRef.current = waypointB;
-  waypointALabelRef.current = waypointALabel;
-  waypointBLabelRef.current = waypointBLabel;
   const routePlanTime = dateRef.current.getTime();
   const advanceRoutePlanRevision = useCallback(() => {
     // A different plan may draw different geometry. Its predecessor must no
@@ -198,24 +157,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   }, []);
 
   // Any real route-defining edit, including the selected shadow time,
-  // invalidates a job based on the older plan.
-  useEffect(() => {
-    const fingerprint = routePlanFingerprint(waypointA, waypointB, additionalWaypoints);
-    if (pendingAgentPlanFingerprintRef.current === fingerprint) {
-      pendingAgentPlanFingerprintRef.current = null;
-      return;
-    }
-    advanceRoutePlanRevision();
-  }, [waypointA, waypointB, additionalWaypoints, routePlanTime, advanceRoutePlanRevision]);
-
-  // Escape to cancel pending slot
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPendingSlot(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // invalidates a job based on the older plan. Positioned after useTrip: the
+  // effect reads trip state, and effects run post-render in any position.
 
   /**
    * Flatten the camera before a shadow readback. Returns whether it moved, because a
@@ -260,6 +203,71 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setRouteProgress(null);
     setRoutePreview(null);
   }, [mapRef, restorePitchAfterShadowReadback]);
+
+  // Trip state (waypoints, via stops, location, saved routes). Trip edits
+  // cancel in-flight calculations and clear calculated routes through the
+  // seam below; the save handlers read the current route list value.
+  const {
+    waypointA,
+    waypointB,
+    waypointALabel,
+    waypointBLabel,
+    pendingSlot,
+    saveModalRouteIndex,
+    additionalWaypoints,
+    savedRoutes,
+    savedFolders,
+    userLocation,
+    isLocating,
+    waypointARef,
+    waypointBRef,
+    pendingSlotRef,
+    setWaypointA,
+    setWaypointB,
+    setWaypointALabel,
+    setWaypointBLabel,
+    setPendingSlot,
+    setSaveModalRouteIndex,
+    setAdditionalWaypoints,
+    handleOpenSaveModal,
+    handleConfirmSave,
+    handleLoadRoute,
+    handleRemoveAdditionalWaypoint,
+    handleSetAdditionalWaypoints,
+    handleAddAdditionalWaypoint,
+    handleDeleteSavedRoute,
+    handleRenameSavedRoute,
+    handleLocateMe,
+    handleSetWaypointA,
+    handleSetWaypointB,
+    handleUseLocationAsA,
+    handleUseLocationAsB,
+    handleSwapWaypoints,
+    handleClearWaypointA,
+    handleClearWaypointB,
+    handleMarkerDragEnd,
+    handlePinDragStart,
+  } = useTrip({
+    mapRef,
+    dateRef,
+    setDate,
+    navRoutes,
+    cancelInFlightCalculation,
+    setNavRoutes,
+    setSelectedRouteIndex,
+    setNavError,
+  });
+
+  // Any real route-defining edit, including the selected shadow time,
+  // invalidates a job based on the older plan.
+  useEffect(() => {
+    const fingerprint = routePlanFingerprint(waypointA, waypointB, additionalWaypoints);
+    if (pendingAgentPlanFingerprintRef.current === fingerprint) {
+      pendingAgentPlanFingerprintRef.current = null;
+      return;
+    }
+    advanceRoutePlanRevision();
+  }, [waypointA, waypointB, additionalWaypoints, routePlanTime, advanceRoutePlanRevision]);
 
   const fitMapToRoute = useCallback(
     (route: RouteOption) => {
@@ -345,7 +353,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       setNavRoutes([]);
       setSelectedRouteIndex(0);
     },
-    [cancelInFlightCalculation],
+    [
+      cancelInFlightCalculation,
+      waypointARef,
+      waypointBRef,
+      pendingSlotRef,
+      setWaypointA,
+      setWaypointALabel,
+      setWaypointB,
+      setWaypointBLabel,
+      setPendingSlot,
+      setAdditionalWaypoints,
+    ],
   );
 
   const handleClear = useCallback(() => {
@@ -368,67 +387,19 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setRouteMode("walk");
     setShadowPreference(0.5);
     setTravelMode("walk");
-  }, [cancelInFlightCalculation]);
-
-  const handleOpenSaveModal = useCallback(
-    (routeIndex: number) => {
-      if (navRoutes[routeIndex]?.partial) return;
-      setSaveModalRouteIndex(routeIndex);
-    },
-    [navRoutes],
-  );
-
-  const handleConfirmSave = useCallback(
-    (name: string, folderId: string | null) => {
-      if (saveModalRouteIndex === null) return;
-      const route = navRoutes[saveModalRouteIndex];
-      if (!route || !waypointA || !waypointB) return;
-      const d = dateRef.current;
-      const dateIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      createRoute({
-        name,
-        folderId,
-        routeOption: route,
-        waypointA,
-        waypointB,
-        waypointALabel: waypointALabel ?? null,
-        waypointBLabel: waypointBLabel ?? null,
-        additionalWaypoints: additionalWaypoints,
-        timeOfDayMinutes: Math.floor(d.getHours() * 60 + d.getMinutes()),
-        dateIso,
-      });
-      setSavedRoutes(getRoutes());
-      setSavedFolders(getFolders());
-      setSaveModalRouteIndex(null);
-    },
-    [
-      saveModalRouteIndex,
-      navRoutes,
-      waypointA,
-      waypointB,
-      waypointALabel,
-      waypointBLabel,
-      additionalWaypoints,
-      dateRef,
-    ],
-  );
-
-  const handleLoadRoute = useCallback(
-    (saved: SavedRoute) => {
-      cancelInFlightCalculation();
-      setWaypointA(saved.waypointA);
-      setWaypointB(saved.waypointB);
-      setWaypointALabel(saved.waypointALabel);
-      setWaypointBLabel(saved.waypointBLabel);
-      setAdditionalWaypoints(saved.additionalWaypoints ?? []);
-      setNavRoutes([saved.routeOption]);
-      setSelectedRouteIndex(0);
-      const d = new Date(saved.dateIso + "T00:00:00");
-      d.setHours(Math.floor(saved.timeOfDayMinutes / 60), saved.timeOfDayMinutes % 60, 0, 0);
-      setDate(d);
-    },
-    [cancelInFlightCalculation, setDate],
-  );
+  }, [
+    cancelInFlightCalculation,
+    setWaypointA,
+    setWaypointB,
+    setWaypointALabel,
+    setWaypointBLabel,
+    setAdditionalWaypoints,
+    setPendingSlot,
+    setDrawMode,
+    setSketchPoints,
+    setNavWarning,
+    setSimplifiedWaypoints,
+  ]);
 
   const handleExportRoute = useCallback(
     (routeIndex: number, format: "gpx" | "geojson") => {
@@ -445,69 +416,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         downloadBlob(routeToGeoJSON(route), `${name}.geojson`, "application/geo+json");
       }
     },
-    [navRoutes],
+    [navRoutes, setNavWarning],
   );
-
-  const handleRemoveAdditionalWaypoint = useCallback(
-    (index: number) => {
-      cancelInFlightCalculation();
-      setAdditionalWaypoints((prev) => prev.filter((_, i) => i !== index));
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-    },
-    [cancelInFlightCalculation],
-  );
-
-  const handleSetAdditionalWaypoints = useCallback(
-    (waypoints: [number, number][]) => {
-      cancelInFlightCalculation();
-      setAdditionalWaypoints(waypoints);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-    },
-    [cancelInFlightCalculation],
-  );
-
-  const handleAddAdditionalWaypoint = useCallback(
-    (coord: [number, number]) => {
-      cancelInFlightCalculation();
-      setAdditionalWaypoints((prev) => [...prev, coord]);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-    },
-    [cancelInFlightCalculation],
-  );
-
-  const handleDeleteSavedRoute = useCallback((id: string) => {
-    deleteRoute(id);
-    setSavedRoutes(getRoutes());
-  }, []);
-
-  const handleRenameSavedRoute = useCallback((id: string, name: string) => {
-    updateRoute(id, { name });
-    setSavedRoutes(getRoutes());
-  }, []);
-
-  const handleLocateMe = useCallback(() => {
-    if (!navigator.geolocation) {
-      setNavError("Geolocation is not supported by your browser.");
-      return;
-    }
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude];
-        setUserLocation(coords);
-        setIsLocating(false);
-        mapRef.current?.jumpTo({ center: coords, zoom: 15 });
-      },
-      () => {
-        setNavError("Unable to get your location. Check browser permissions.");
-        setIsLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-  }, [mapRef]);
 
   const handleToggleNavMode = useCallback(() => {
     if (!navMode) {
@@ -532,7 +442,20 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setRouteMode("walk");
     setShadowPreference(0.5);
     setNavMode(false);
-  }, [cancelInFlightCalculation, navMode]);
+  }, [
+    cancelInFlightCalculation,
+    navMode,
+    setWaypointA,
+    setWaypointB,
+    setWaypointALabel,
+    setWaypointBLabel,
+    setAdditionalWaypoints,
+    setPendingSlot,
+    setDrawMode,
+    setSketchPoints,
+    setNavWarning,
+    setSimplifiedWaypoints,
+  ]);
 
   const handleRouteModeChange = useCallback(
     (mode: "walk" | "transit") => {
@@ -571,181 +494,6 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       return routes;
     });
   }, []);
-
-  const handleSetWaypointA = useCallback(
-    (coord: [number, number], label: string) => {
-      cancelInFlightCalculation();
-      setWaypointA(coord);
-      setWaypointALabel(label);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-      const map = mapRef.current;
-      if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
-    },
-    [cancelInFlightCalculation, mapRef],
-  );
-
-  const handleSetWaypointB = useCallback(
-    (coord: [number, number], label: string) => {
-      cancelInFlightCalculation();
-      setWaypointB(coord);
-      setWaypointBLabel(label);
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-      const map = mapRef.current;
-      if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
-    },
-    [cancelInFlightCalculation, mapRef],
-  );
-
-  const handleUseLocationAsA = useCallback(
-    (coord: [number, number]) => {
-      handleSetWaypointA(coord, "Your location");
-    },
-    [handleSetWaypointA],
-  );
-
-  const handleUseLocationAsB = useCallback(
-    (coord: [number, number]) => {
-      handleSetWaypointB(coord, "Your location");
-    },
-    [handleSetWaypointB],
-  );
-
-  const handleSwapWaypoints = useCallback(() => {
-    const a = waypointARef.current;
-    const b = waypointBRef.current;
-    const aLabel = waypointALabelRef.current;
-    const bLabel = waypointBLabelRef.current;
-    cancelInFlightCalculation();
-    setWaypointA(b);
-    setWaypointB(a);
-    setWaypointALabel(bLabel);
-    setWaypointBLabel(aLabel);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
-
-  const handleClearWaypointA = useCallback(() => {
-    cancelInFlightCalculation();
-    setWaypointA(null);
-    setWaypointALabel(null);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
-
-  const handleClearWaypointB = useCallback(() => {
-    cancelInFlightCalculation();
-    setWaypointB(null);
-    setWaypointBLabel(null);
-    setNavRoutes([]);
-    setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
-
-  const handleMarkerDragEnd = useCallback(
-    (slot: "A" | "B", coord: { lng: number; lat: number }) => {
-      const lngLat: [number, number] = [coord.lng, coord.lat];
-      const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
-      cancelInFlightCalculation();
-      setNavRoutes([]);
-      setSelectedRouteIndex(0);
-      if (slot === "A") {
-        setWaypointA(lngLat);
-        setWaypointALabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
-          if (lbl) setWaypointALabel(lbl);
-        });
-      } else {
-        setWaypointB(lngLat);
-        setWaypointBLabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
-          if (lbl) setWaypointBLabel(lbl);
-        });
-      }
-    },
-    [cancelInFlightCalculation],
-  );
-
-  const handlePinDragStart = useCallback(
-    (slot: "A" | "B") => {
-      dragSlotRef.current = slot;
-      dragActiveRef.current = false;
-      dragStartPos.current = null;
-
-      const color = slot === "A" ? "#22c55e" : "#ef4444";
-
-      function onMove(e: PointerEvent) {
-        const { clientX: x, clientY: y } = e;
-
-        if (!dragStartPos.current) {
-          dragStartPos.current = { x, y };
-          return;
-        }
-
-        const dx = x - dragStartPos.current.x;
-        const dy = y - dragStartPos.current.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (!dragActiveRef.current && dist > 6) {
-          dragActiveRef.current = true;
-          document.body.style.userSelect = "none";
-
-          const ghost = document.createElement("div");
-          ghost.style.cssText = [
-            "position:fixed",
-            "pointer-events:none",
-            "z-index:9999",
-            "transform:translate(-50%, -100%)",
-            "transition:none",
-          ].join(";");
-          ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
-          ghost.style.left = x + "px";
-          ghost.style.top = y + "px";
-          document.body.appendChild(ghost);
-          ghostElRef.current = ghost;
-        }
-
-        if (dragActiveRef.current && ghostElRef.current) {
-          ghostElRef.current.style.left = x + "px";
-          ghostElRef.current.style.top = y + "px";
-        }
-      }
-
-      function onUp(e: PointerEvent) {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.userSelect = "";
-
-        if (ghostElRef.current) {
-          ghostElRef.current.remove();
-          ghostElRef.current = null;
-        }
-
-        if (!dragActiveRef.current) return;
-        dragActiveRef.current = false;
-
-        const currentSlot = dragSlotRef.current;
-        if (!currentSlot) return;
-
-        const map = mapRef.current;
-        if (!map) return;
-
-        const mapEl = map.getContainer();
-        const rect = mapEl.getBoundingClientRect();
-        const relX = e.clientX - rect.left;
-        const relY = e.clientY - rect.top;
-
-        if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) return;
-
-        const lngLat = map.unproject([relX, relY]);
-        handleMarkerDragEnd(currentSlot, { lng: lngLat.lng, lat: lngLat.lat });
-      }
-
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [handleMarkerDragEnd, mapRef],
-  );
 
   const calculateRoute = useCallback(
     async (plan?: RoutePlan, externalSignal?: AbortSignal): Promise<RoutePlanOutcome> => {
@@ -1629,9 +1377,19 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       mapRef,
       shadowLayerRef,
       dateRef,
+      waypointARef,
+      waypointBRef,
       fitMapToRoute,
       flattenForShadowReadback,
       restorePitchAfterShadowReadback,
+      setAdditionalWaypoints,
+      setWaypointA,
+      setWaypointB,
+      setWaypointALabel,
+      setWaypointBLabel,
+      setSketchPoints,
+      setNavWarning,
+      setSimplifiedWaypoints,
     ],
   );
 
@@ -1657,7 +1415,14 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       };
       return request;
     },
-    [advanceRoutePlanRevision],
+    [
+      advanceRoutePlanRevision,
+      setAdditionalWaypoints,
+      setWaypointA,
+      setWaypointB,
+      setWaypointALabel,
+      setWaypointBLabel,
+    ],
   );
 
   const submitRoutePlan = useCallback(
@@ -1709,7 +1474,14 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     } else {
       calculateRoute();
     }
-  }, [calculateRoute, calculateSketchRoute, advanceRoutePlanRevision]);
+  }, [
+    calculateRoute,
+    calculateSketchRoute,
+    advanceRoutePlanRevision,
+    drawModeRef,
+    sketchPointsRef,
+    setDrawMode,
+  ]);
 
   // Derived values
   const selectedRoute = navRoutes[selectedRouteIndex];
