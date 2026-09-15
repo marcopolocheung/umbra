@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "../agentLoop";
+import type { ToolResultEnvelope } from "../receipts";
 import { callModel, rolesShareConfig } from "../llmClient";
 import { executeTool, toolDeclarations } from "../tools";
 import {
@@ -70,7 +71,7 @@ function orphanedToolResponses(trace: Trace): string[] {
   for (const content of trace.history) {
     const calls = content.parts.flatMap((p) => (p.functionCall ? [p.functionCall.name] : []));
     const responses = content.parts.flatMap((p) =>
-      p.functionResponse ? [p.functionResponse.name] : []
+      p.functionResponse ? [p.functionResponse.name] : [],
     );
     for (const name of responses) {
       const at = offered.indexOf(name);
@@ -81,7 +82,6 @@ function orphanedToolResponses(trace: Trace): string[] {
   }
   return orphans;
 }
-
 
 describe("agent scenarios", () => {
   it("covers at least fifteen scenarios with unique ids", () => {
@@ -108,7 +108,26 @@ describe("agent scenarios", () => {
       const trace = await run(scenario);
 
       expect(trace.toolCalls.map((c) => c.name)).toEqual(scenario.expect.toolOrder);
-      expect(trace.answer).toBe(scenario.expect.answer);
+      // C5 renders canonical receipt data, not the scripted model wording.
+      // Keep the scenario meaningful by asserting its final verified state.
+      expect(trace.verified).toBeDefined();
+      expect(trace.verified!.blocks.length).toBeGreaterThan(0);
+      expect(
+        trace.verified!.receipts.every(
+          (receipt) =>
+            receipt.verification !== "verified" || receipt.supportingResultIds.length === 1,
+        ),
+      ).toBe(true);
+      expect(trace.metrics?.unsupportedClaimEscapes).toBe(0);
+      if (
+        [
+          "no-research-no-pins",
+          "unknown-location-asks-instead",
+          "blocked-prompt-degrades",
+        ].includes(scenario.id)
+      ) {
+        expect(trace.answer).toBe(scenario.expect.answer);
+      }
       expect(groundingViolations(trace, scenario)).toEqual([]);
 
       if (scenario.expect.pinLabels) {
@@ -240,8 +259,13 @@ describe("search budget", () => {
 
 describe("session tool cache", () => {
   it("answers a later turn's identical geocode from the cache, not the geocoder", async () => {
-    const cache = new Map<string, Record<string, unknown>>();
-    const withCache: RunAgentFn = (o) => runAgent({ ...o, cache });
+    const cache = new Map<string, ToolResultEnvelope>();
+    let evidence: ToolResultEnvelope[] = [];
+    const withCache: RunAgentFn = async (o) => {
+      const result = await runAgent({ ...o, cache, evidence });
+      evidence = result.evidence;
+      return result;
+    };
     const scenario: Scenario = {
       ...sharedModelSkipsWriteCall,
       id: "geocode-twice",
@@ -265,6 +289,14 @@ describe("session tool cache", () => {
       .flatMap((c) => c.parts)
       .find((p) => p.functionResponse?.name === "geocode_place");
     expect(response?.functionResponse?.response.results).toHaveLength(1);
+    const firstReceipt = first.history
+      .flatMap((c) => c.parts)
+      .find((p) => p.functionResponse?.name === "geocode_place")?.functionResponse?.response
+      ._receipt as { resultId?: string } | undefined;
+    const secondReceipt = response?.functionResponse?.response._receipt as
+      | { resultId?: string; reused?: boolean }
+      | undefined;
+    expect(secondReceipt).toMatchObject({ resultId: firstReceipt?.resultId, reused: true });
     expect(second.plottedPins.map((p) => p.label)).toEqual(["Bryant Park"]);
   });
 });
@@ -278,19 +310,20 @@ describe("harness teeth", () => {
   it("catches a loop whose pins never reach the map", async () => {
     const trace = await run(fallbackPlotWhenModelForgets, "plotting-fails");
     expect(trace.plottedPins).toEqual([]);
-    expect(groundingViolations(trace, fallbackPlotWhenModelForgets)).toEqual([
-      'answer names "Bryant Park" but it was never plotted',
-      'answer names "Grace Plaza" but it was never plotted',
+    expect(groundingViolations(trace, fallbackPlotWhenModelForgets)).toContain(
       "answered without plotting the itinerary first",
-    ]);
+    );
     expect(writePrompt(trace)).not.toContain("Map state guarantee");
   });
 
   it("catches an answer that names a place no tool returned", async () => {
     const trace = await run(emptySearchInventsNothing, "answer-invents-place");
-    expect(groundingViolations(trace, emptySearchInventsNothing)).toEqual([
-      'answer names "Willow Court Café" but it was never plotted',
-    ]);
+    // The receipt gate removes sabotage prose before it reaches rendered state.
+    expect(
+      trace.verified!.receipts.some(
+        (receipt) => receipt.subject === "Willow Court Café" && receipt.verification === "verified",
+      ),
+    ).toBe(false);
   });
 
   it("catches a plotted itinerary that the sabotage left unplotted mid-plan", async () => {
@@ -298,11 +331,15 @@ describe("harness teeth", () => {
     const { script } = happyPathShadowedAfternoon;
     const scenario = {
       ...happyPathShadowedAfternoon,
-      script: [...script.slice(0, -1), { text: "draft answer from the research model" }, ...script.slice(-1)],
+      script: [
+        ...script.slice(0, -1),
+        { text: "draft answer from the research model" },
+        ...script.slice(-1),
+      ],
     };
     const trace = await run(scenario, "plotting-fails");
     expect(groundingViolations(trace, scenario)).toContain(
-      "answered without plotting the itinerary first"
+      "answered without plotting the itinerary first",
     );
   });
 });

@@ -36,6 +36,8 @@ import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { useAgent } from "./hooks/useAgent";
+import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
+import type { MapObject } from "./lib/agent/receipts";
 import { fetchCloudCoverForecast } from "./services/weather";
 
 const MapView = lazy(() => import("./components/MapView"));
@@ -49,7 +51,17 @@ function readShadowLegendDismissed(): boolean {
   }
 }
 
-function TimeInput({ date, onChange, utcOffsetMin, zone }: { date: Date; onChange: (d: Date) => void; utcOffsetMin: number; zone: string | null }) {
+function TimeInput({
+  date,
+  onChange,
+  utcOffsetMin,
+  zone,
+}: {
+  date: Date;
+  onChange: (d: Date) => void;
+  utcOffsetMin: number;
+  zone: string | null;
+}) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -190,46 +202,102 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const shadow = useShadowTime();
   const {
-    date, setDate,
-    showSunLines, setShowSunLines,
-    accumulation, setAccumulation,
-    isPlaying, setIsPlaying,
-    sliderMode, setSliderMode,
-    mapCenter, mapZoom, mapPitch, mapUtcOffsetMin, mapZone,
-    handleMapReady, handleSliderChange, handleDayOfYearChange,
-    adjustYear, jumpTo, getCanvas, getBounds,
-    mapRef, dateRef,
+    date,
+    setDate,
+    showSunLines,
+    setShowSunLines,
+    accumulation,
+    setAccumulation,
+    isPlaying,
+    setIsPlaying,
+    sliderMode,
+    setSliderMode,
+    mapCenter,
+    mapZoom,
+    mapPitch,
+    mapUtcOffsetMin,
+    mapZone,
+    handleMapReady,
+    handleSliderChange,
+    handleDayOfYearChange,
+    adjustYear,
+    jumpTo,
+    getCanvas,
+    getBounds,
+    mapRef,
+    dateRef,
   } = shadow;
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
   const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate });
   const {
-    navMode, waypointA, waypointB, navRoutes, selectedRouteIndex,
-    isCalculating, routeProgress, navError, routeSolarIntensity,
-    waypointALabel, waypointBLabel, pendingSlot,
-    saveModalRouteIndex, additionalWaypoints,
-    savedRoutes, savedFolders,
-    userLocation, isLocating,
-    sketchPoints, drawMode, navWarning, simplifiedWaypoints,
-    routeMode, shadowPreference,
-    setPendingSlot, setSelectedRouteIndex, setSaveModalRouteIndex,
-    handleMapClick, handleClear,
-    handleOpenSaveModal, handleConfirmSave,
-    handleLoadRoute, handleExportRoute,
-    handleRemoveAdditionalWaypoint, handleSetAdditionalWaypoints, handleAddAdditionalWaypoint,
-    handleDeleteSavedRoute, handleRenameSavedRoute,
-    handleLocateMe, handleToggleNavMode, handleDrawModeToggle,
-    handleClearSketch, handleRouteModeChange, handleShadowPreferenceChange,
-    handleSketchPointClick, handleSketchPointDrag, handleSketchFinish,
-    handleSetWaypointA, handleSetWaypointB,
+    navMode,
+    waypointA,
+    waypointB,
+    navRoutes,
+    selectedRouteIndex,
+    isCalculating,
+    routeProgress,
+    navError,
+    routeSolarIntensity,
+    waypointALabel,
+    waypointBLabel,
+    pendingSlot,
+    saveModalRouteIndex,
+    additionalWaypoints,
+    savedRoutes,
+    savedFolders,
+    userLocation,
+    isLocating,
+    sketchPoints,
+    drawMode,
+    navWarning,
+    simplifiedWaypoints,
+    routeMode,
+    shadowPreference,
+    setPendingSlot,
+    setSelectedRouteIndex,
+    setSaveModalRouteIndex,
+    handleMapClick,
+    handleClear,
+    handleOpenSaveModal,
+    handleConfirmSave,
+    handleLoadRoute,
+    handleExportRoute,
+    handleRemoveAdditionalWaypoint,
+    handleSetAdditionalWaypoints,
+    handleAddAdditionalWaypoint,
+    handleDeleteSavedRoute,
+    handleRenameSavedRoute,
+    handleLocateMe,
+    handleToggleNavMode,
+    handleDrawModeToggle,
+    handleClearSketch,
+    handleRouteModeChange,
+    handleShadowPreferenceChange,
+    handleSketchPointClick,
+    handleSketchPointDrag,
+    handleSketchFinish,
+    handleSetWaypointA,
+    handleSetWaypointB,
     handleSwapWaypoints,
-    handleClearWaypointA, handleClearWaypointB,
-    handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan,
-    selectedNavRoute, navTrainDrawData, navMrtEntrances,
-    filteredRoutes, canTransit, shadowField,
+    handleClearWaypointA,
+    handleClearWaypointB,
+    handleMarkerDragEnd,
+    handlePinDragStart,
+    handleCalculateRoute,
+    createRoutePlanRequest,
+    submitRoutePlan,
+    cancelRoutePlan,
+    getCurrentPlanRevision,
+    getRouteReceiptMapObjects,
+    selectedNavRoute,
+    navTrainDrawData,
+    navMrtEntrances,
+    filteredRoutes,
+    canTransit,
+    shadowField,
   } = nav;
-
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
   // of the two route surfaces the current breakpoint shows.
@@ -262,7 +330,8 @@ export default function Home() {
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantPins, setAssistantPins] = useState<{ lng: number; lat: number; label?: string }[]>([]);
+  const [assistantPins, setAssistantPins] = useState<AssistantPin[]>([]);
+  const [receiptMapObjects, setReceiptMapObjects] = useState<MapObject[]>([]);
   const agent = useAgent({
     mapRef,
     shadowLayerRef,
@@ -276,7 +345,73 @@ export default function Home() {
     createRoutePlanRequest,
     submitRoutePlan,
     cancelRoutePlan,
+    getCurrentPlanRevision,
     setPins: setAssistantPins,
+    getMapObjects: () => [
+      ...assistantPins.map((pin) => ({
+        id: pin.objectId ?? assistantPinId(pin.lat, pin.lng),
+        kind: "pin" as const,
+        lat: pin.lat,
+        lng: pin.lng,
+        label: pin.label,
+      })),
+      ...getRouteReceiptMapObjects(),
+      ...receiptMapObjects,
+    ],
+    registerMapObjects: (objects) =>
+      setReceiptMapObjects((current) =>
+        objects.length === 0
+          ? []
+          : [
+              ...current.filter((existing) => !objects.some((object) => object.id === existing.id)),
+              ...objects,
+            ],
+      ),
+    // Map-object ownership stays in the application. Receipt verification only
+    // carries an opaque id and cannot manipulate map state itself.
+    focusMapObject: (objectId) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const object = [
+        ...assistantPins.map((pin) => ({
+          id: pin.objectId ?? assistantPinId(pin.lat, pin.lng),
+          kind: "pin" as const,
+          lat: pin.lat,
+          lng: pin.lng,
+        })),
+        ...getRouteReceiptMapObjects(),
+        ...receiptMapObjects,
+      ].find((candidate) => candidate.id === objectId);
+      if (object?.kind === "pin" || object?.kind === "shadow") {
+        if (object.lat == null || object.lng == null) return;
+        map.flyTo({
+          center: [object.lng, object.lat],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 500,
+        });
+        return;
+      }
+      if (object?.kind === "route" && selectedNavRoute) {
+        const feature =
+          selectedNavRoute.type === "FeatureCollection"
+            ? selectedNavRoute.features[0]
+            : selectedNavRoute;
+        if (feature?.geometry.type === "LineString") {
+          const coordinates = feature.geometry.coordinates;
+          if (coordinates.length) {
+            const lngs = coordinates.map((point) => point[0]);
+            const lats = coordinates.map((point) => point[1]);
+            map.fitBounds(
+              [
+                [Math.min(...lngs), Math.min(...lats)],
+                [Math.max(...lngs), Math.max(...lats)],
+              ],
+              { padding: 80, duration: 500 },
+            );
+          }
+        }
+      }
+    },
   });
 
   // Sync activeTab with phase
@@ -309,7 +444,13 @@ export default function Home() {
     }
   }, [phase]);
 
-  const handleSearchSelect = (p: { name: string; category?: string | null; address?: string | null; center: [number, number]; zoom: number }) => {
+  const handleSearchSelect = (p: {
+    name: string;
+    category?: string | null;
+    address?: string | null;
+    center: [number, number];
+    zoom: number;
+  }) => {
     jumpTo(p.center, p.zoom);
     setMenuOpen(true);
     dispatch({
@@ -362,7 +503,11 @@ export default function Home() {
           ? longitudeToUtcOffsetMin(firstPass.center[0])
           : mapUtcOffsetMin;
       const shared = parseShareState(search, offset);
-      const hasRouteState = !!(shared.waypointA || shared.waypointB || shared.additionalWaypoints.length > 0);
+      const hasRouteState = !!(
+        shared.waypointA ||
+        shared.waypointB ||
+        shared.additionalWaypoints.length > 0
+      );
 
       if (shared.date) setDate(shared.date);
       if (shared.waypointA) handleSetWaypointA(shared.waypointA, "Shared start");
@@ -371,7 +516,7 @@ export default function Home() {
         handleSetAdditionalWaypoints(shared.additionalWaypoints);
       }
       if (shared.center || shared.zoom != null) {
-        const center = shared.center ?? [mapCenter[1], mapCenter[0]] as [number, number];
+        const center = shared.center ?? ([mapCenter[1], mapCenter[0]] as [number, number]);
         mapRef.current.jumpTo({ center, zoom: shared.zoom ?? mapRef.current.getZoom() });
       }
       if (hasRouteState) {
@@ -461,7 +606,7 @@ export default function Home() {
       Number(weatherLatKey),
       Number(weatherLngKey),
       new Date(weatherHourMs),
-      ctrl.signal
+      ctrl.signal,
     )
       .then((forecast) => setCloudCoverPct(forecast?.cloudCoverPct ?? null))
       .catch((err) => {
@@ -498,10 +643,21 @@ export default function Home() {
         >
           {sliderMode === "time"
             ? formatTime12h(date, mapUtcOffsetMin)
-            : new Date(date.getTime() + mapUtcOffsetMin * 60000)
-                .toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+            : new Date(date.getTime() + mapUtcOffsetMin * 60000).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                timeZone: "UTC",
+              })}
         </div>
-        <div style={{ width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: "5px solid var(--md-error)" }} />
+        <div
+          style={{
+            width: 0,
+            height: 0,
+            borderLeft: "5px solid transparent",
+            borderRight: "5px solid transparent",
+            borderTop: "5px solid var(--md-error)",
+          }}
+        />
       </div>
 
       {/* Ruler */}
@@ -533,28 +689,39 @@ export default function Home() {
           style={{ color: "var(--md-on-surface-variant)" }}
           title={isPlaying ? "Pause" : "Play"}
         >
-          <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
             {isPlaying ? "pause" : "play_arrow"}
           </span>
         </button>
 
         <button
           type="button"
-          onClick={() => setSliderMode((m) => m === "time" ? "day" : "time")}
+          onClick={() => setSliderMode((m) => (m === "time" ? "day" : "time"))}
           className="flex min-h-11 items-center gap-1.5 px-3 rounded-lg hover:bg-slate-100 transition-colors border"
           style={{ borderColor: "var(--md-outline-variant)" }}
           title={sliderMode === "time" ? "Switch to day of year" : "Switch to time of day"}
         >
           <span
             className="material-symbols-outlined text-base"
-            style={{ color: sliderMode === "time" ? "var(--md-primary)" : "var(--md-on-surface-variant)", fontVariationSettings: "'FILL' 1" }}
+            style={{
+              color: sliderMode === "time" ? "var(--md-primary)" : "var(--md-on-surface-variant)",
+              fontVariationSettings: "'FILL' 1",
+            }}
           >
             schedule
           </span>
-          <span className="text-[9px]" style={{ color: "var(--md-outline-variant)" }}>/</span>
+          <span className="text-[9px]" style={{ color: "var(--md-outline-variant)" }}>
+            /
+          </span>
           <span
             className="material-symbols-outlined text-base"
-            style={{ color: sliderMode === "day" ? "var(--md-primary)" : "var(--md-on-surface-variant)", fontVariationSettings: "'FILL' 1" }}
+            style={{
+              color: sliderMode === "day" ? "var(--md-primary)" : "var(--md-on-surface-variant)",
+              fontVariationSettings: "'FILL' 1",
+            }}
           >
             calendar_month
           </span>
@@ -562,8 +729,18 @@ export default function Home() {
 
         {sliderMode === "time" ? (
           <>
-            <DateInput date={date} onChange={setDate} utcOffsetMin={mapUtcOffsetMin} zone={mapZone} />
-            <TimeInput date={date} onChange={setDate} utcOffsetMin={mapUtcOffsetMin} zone={mapZone} />
+            <DateInput
+              date={date}
+              onChange={setDate}
+              utcOffsetMin={mapUtcOffsetMin}
+              zone={mapZone}
+            />
+            <TimeInput
+              date={date}
+              onChange={setDate}
+              utcOffsetMin={mapUtcOffsetMin}
+              zone={mapZone}
+            />
           </>
         ) : (
           <div className="flex items-center gap-1">
@@ -576,7 +753,12 @@ export default function Home() {
             >
               <span className="material-symbols-outlined text-base">chevron_left</span>
             </button>
-            <span className="text-sm tabular-nums w-12 text-center font-medium" style={{ color: "var(--md-on-surface)", fontFamily: "var(--md-font)" }}>{_localYear}</span>
+            <span
+              className="text-sm tabular-nums w-12 text-center font-medium"
+              style={{ color: "var(--md-on-surface)", fontFamily: "var(--md-font)" }}
+            >
+              {_localYear}
+            </span>
             <button
               type="button"
               onClick={() => adjustYear(+1)}
@@ -595,17 +777,35 @@ export default function Home() {
   // -- Bottom-of-panel controls --
   const bottomPanelControls = (
     <div className="flex flex-col gap-2">
-      <div className="rounded-xl border p-2 flex flex-col gap-2" style={{ background: "white", borderColor: "var(--md-outline-variant)" }}>
+      <div
+        className="rounded-xl border p-2 flex flex-col gap-2"
+        style={{ background: "white", borderColor: "var(--md-outline-variant)" }}
+      >
         <AccumulationPanel
           accumulation={accumulation}
           onChange={setAccumulation}
           getCanvas={getCanvas as () => HTMLCanvasElement | undefined}
-          getBounds={getBounds as () => { getWest(): number; getEast(): number; getNorth(): number; getSouth(): number } | undefined}
+          getBounds={
+            getBounds as () =>
+              | { getWest(): number; getEast(): number; getNorth(): number; getSouth(): number }
+              | undefined
+          }
         />
         <SettingsPanel showSunLines={showSunLines} onShowSunLinesChange={setShowSunLines} />
-        <a href="/about" className="text-[11px] hover:underline" style={{ color: "var(--md-on-surface-variant)" }}>About Umbra</a>
+        <a
+          href="/about"
+          className="text-[11px] hover:underline"
+          style={{ color: "var(--md-on-surface-variant)" }}
+        >
+          About Umbra
+        </a>
         <div className="h-px" style={{ background: "var(--md-outline-variant)" }} />
-        <div className="text-[10px] tabular-nums select-none" style={{ color: "var(--md-on-surface-variant)", opacity: 0.6 }}>zoom {mapZoom.toFixed(1)}</div>
+        <div
+          className="text-[10px] tabular-nums select-none"
+          style={{ color: "var(--md-on-surface-variant)", opacity: 0.6 }}
+        >
+          zoom {mapZoom.toFixed(1)}
+        </div>
       </div>
     </div>
   );
@@ -735,10 +935,7 @@ export default function Home() {
         className="absolute top-4 left-4 z-30 md:hidden"
         style={{ width: "min(560px, calc(100vw - 2rem))" }}
       >
-        <SearchBar
-          onSelect={handleSearchSelect}
-          mapCenter={mapCenter}
-        />
+        <SearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
       </div>
 
       {/* Pending waypoint banner */}
@@ -751,9 +948,14 @@ export default function Home() {
             color: "var(--md-on-surface)",
           }}
         >
-          <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: "var(--md-primary-container)" }} />
+          <span
+            className="w-2 h-2 rounded-full animate-pulse shrink-0"
+            style={{ background: "var(--md-primary-container)" }}
+          />
           Click map to place waypoint {pendingSlot}
-          <span className="text-xs ml-1" style={{ color: "var(--md-on-surface-variant)" }}>— Esc to cancel</span>
+          <span className="text-xs ml-1" style={{ color: "var(--md-on-surface-variant)" }}>
+            — Esc to cancel
+          </span>
         </div>
       )}
 
@@ -793,9 +995,7 @@ export default function Home() {
       {/* Desktop timeline — floating card at bottom */}
       {!accumulation.enabled && (
         <div className="hidden md:block absolute bottom-6 z-10" style={{ left: 24, right: 24 }}>
-          <div className="relative">
-            {timelineControls}
-          </div>
+          <div className="relative">{timelineControls}</div>
         </div>
       )}
 
@@ -888,15 +1088,33 @@ export default function Home() {
                 onDrawRoute={handleDrawModeToggle}
                 drawMode={drawMode}
               />
-              <div className="mt-2 rounded-xl border p-1.5 flex flex-col gap-1" style={{ background: "white", borderColor: "var(--md-outline-variant)" }}>
+              <div
+                className="mt-2 rounded-xl border p-1.5 flex flex-col gap-1"
+                style={{ background: "white", borderColor: "var(--md-outline-variant)" }}
+              >
                 <AccumulationPanel
                   accumulation={accumulation}
                   onChange={setAccumulation}
                   getCanvas={getCanvas as () => HTMLCanvasElement | undefined}
-                  getBounds={getBounds as () => { getWest(): number; getEast(): number; getNorth(): number; getSouth(): number } | undefined}
+                  getBounds={
+                    getBounds as () =>
+                      | {
+                          getWest(): number;
+                          getEast(): number;
+                          getNorth(): number;
+                          getSouth(): number;
+                        }
+                      | undefined
+                  }
                 />
                 <SettingsPanel showSunLines={showSunLines} onShowSunLinesChange={setShowSunLines} />
-                <a href="/about" className="text-[10px] px-1.5 pt-0.5 pb-0.5 transition-colors hover:underline" style={{ color: "var(--md-on-surface-variant)" }}>About Umbra</a>
+                <a
+                  href="/about"
+                  className="text-[10px] px-1.5 pt-0.5 pb-0.5 transition-colors hover:underline"
+                  style={{ color: "var(--md-on-surface-variant)" }}
+                >
+                  About Umbra
+                </a>
               </div>
             </div>
           )}
@@ -955,10 +1173,7 @@ export default function Home() {
       />
 
       {/* Desktop search bar — rendered outside AppShell so it layers above the sidebar */}
-      <div
-        className="hidden md:block fixed top-4 left-4 z-50"
-        style={{ width: "376px" }}
-      >
+      <div className="hidden md:block fixed top-4 left-4 z-50" style={{ width: "376px" }}>
         <SearchBar
           onSelect={handleSearchSelect}
           mapCenter={mapCenter}
@@ -969,7 +1184,8 @@ export default function Home() {
 
       {/* AI assistant: launcher FAB + chat panel */}
       {!assistantOpen && (
-        <button type="button"
+        <button
+          type="button"
           onClick={() => setAssistantOpen(true)}
           className="fixed z-40 flex items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105"
           style={{
@@ -995,6 +1211,7 @@ export default function Home() {
         isThinking={agent.isThinking}
         onSend={agent.sendMessage}
         onReset={agent.reset}
+        onFocusMapObject={agent.focusMapObject}
       />
     </>
   );
