@@ -16,6 +16,7 @@
  */
 import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClient";
 import type { AgentContext, AssistantPin } from "../tools";
+import type { RoutePlan } from "../../routePlanJob";
 
 // ---------------------------------------------------------------------------
 // Scenario shape
@@ -203,9 +204,23 @@ const DEFAULT_CONTEXT = {
   userLocation: null,
 };
 
+/** The successful terminal contract used by scenarios that do not exercise routing itself. */
+export const COMPLETED_ROUTE_TERMINAL = {
+  requestId: "scenario-route",
+  inputVersion: 1,
+  planRevision: 1,
+  actionId: "scenario-action",
+  retry: 0,
+  idempotencyKey: "scenario:0",
+  status: "completed" as const,
+  metrics: [{ label: "Shortest", distanceM: 100, shadowCoverage: 0.5 }],
+  shadowProvenance: null,
+};
+
 /** A context of inert handles — every scenario stubs `executeTool` anyway. */
 export function makeScenarioContext(): AgentContext {
   const noop = () => {};
+  let version = 0;
   return {
     mapRef: { current: null },
     shadowLayerRef: { current: null },
@@ -216,7 +231,17 @@ export function makeScenarioContext(): AgentContext {
     setWaypointA: noop,
     setWaypointB: noop,
     setAdditionalWaypoints: noop,
-    calculateRoute: noop,
+    createRoutePlanRequest: (plan: RoutePlan) => ({
+      requestId: `scenario-route-${version + 1}`,
+      inputVersion: ++version,
+      planRevision: version,
+      actionId: `scenario-action-${version}`,
+      retry: 0,
+      idempotencyKey: `scenario:${version}`,
+      plan,
+    }),
+    submitRoutePlan: async () => COMPLETED_ROUTE_TERMINAL,
+    cancelRoutePlan: () => false,
     setPins: noop,
   };
 }

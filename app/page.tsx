@@ -225,7 +225,7 @@ export default function Home() {
     handleSwapWaypoints,
     handleClearWaypointA, handleClearWaypointB,
     handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute,
+    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan,
     selectedNavRoute, navTrainDrawData, navMrtEntrances,
     filteredRoutes, canTransit, shadowField,
   } = nav;
@@ -273,7 +273,9 @@ export default function Home() {
     setWaypointA: handleSetWaypointA,
     setWaypointB: handleSetWaypointB,
     setAdditionalWaypoints: handleSetAdditionalWaypoints,
-    calculateRoute: handleCalculateRoute,
+    createRoutePlanRequest,
+    submitRoutePlan,
+    cancelRoutePlan,
     setPins: setAssistantPins,
   });
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeTool, toolDeclarations } from "../agent/tools";
 import type { AgentContext } from "../agent/tools";
 import { geocodeNear } from "../nominatim";
+import type { RoutePlan, RoutePlanRequest } from "../routePlanJob";
 
 vi.mock("../nominatim", () => ({ geocodeForward: vi.fn(), geocodeNear: vi.fn() }));
 
@@ -10,6 +11,7 @@ afterEach(() => {
 });
 
 function makeCtx(): AgentContext {
+  let version = 0;
   return {
     mapRef: { current: null },
     shadowLayerRef: { current: null },
@@ -20,7 +22,27 @@ function makeCtx(): AgentContext {
     setWaypointA: vi.fn(),
     setWaypointB: vi.fn(),
     setAdditionalWaypoints: vi.fn(),
-    calculateRoute: vi.fn(),
+    createRoutePlanRequest: (plan: RoutePlan) => ({
+      requestId: `test-${version + 1}`,
+      inputVersion: ++version,
+      planRevision: version,
+      actionId: `test-action-${version}`,
+      retry: 0,
+      idempotencyKey: `test:${version}`,
+      plan,
+    }),
+    submitRoutePlan: vi.fn(async (request: RoutePlanRequest) => ({
+      requestId: request.requestId,
+      inputVersion: request.inputVersion,
+      planRevision: request.planRevision,
+      actionId: request.actionId,
+      retry: request.retry,
+      idempotencyKey: request.idempotencyKey,
+      status: "completed" as const,
+      metrics: [{ label: "Shortest", distanceM: 100, shadowCoverage: 0.5 }],
+      shadowProvenance: null,
+    })),
+    cancelRoutePlan: vi.fn(() => false),
     setPins: vi.fn(),
   };
 }
@@ -31,7 +53,7 @@ describe("agent route tools", () => {
     expect(routeTool?.parameters.properties).toHaveProperty("via");
   });
 
-  it("sets additional waypoints before starting a multi-stop shadowed route", async () => {
+  it("awaits a terminal multi-stop route result", async () => {
     const ctx = makeCtx();
 
     const result = await executeTool(
@@ -52,14 +74,20 @@ describe("agent route tools", () => {
       ctx
     );
 
-    expect(result).toMatchObject({ ok: true, viaStops: 2 });
-    expect(ctx.setAdditionalWaypoints).toHaveBeenCalledWith([
-      [-73.99, 40.71],
-      [-73.985, 40.72],
-    ]);
-    expect(ctx.setWaypointA).toHaveBeenCalledWith([-74.0, 40.7], "Start cafe");
-    expect(ctx.setWaypointB).toHaveBeenCalledWith([-73.98, 40.73], "Dinner");
-    expect(ctx.calculateRoute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ status: "completed", inputVersion: 1 });
+    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "test-1",
+      inputVersion: 1,
+      planRevision: 1,
+      actionId: "test-action-1",
+      retry: 0,
+      idempotencyKey: "test:1",
+      plan: expect.objectContaining({
+        from: [-74.0, 40.7],
+        to: [-73.98, 40.73],
+        via: [[-73.99, 40.71], [-73.985, 40.72]],
+      }),
+    }));
   });
 
   it("clears stale additional waypoints for a two-stop shadowed route", async () => {
@@ -71,7 +99,19 @@ describe("agent route tools", () => {
       ctx
     );
 
-    expect(ctx.setAdditionalWaypoints).toHaveBeenCalledWith([]);
+    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
+      plan: expect.objectContaining({ via: [] }),
+    }));
+  });
+
+  it("fails closed when a context returns a mismatched terminal result", async () => {
+    const ctx = makeCtx();
+    vi.mocked(ctx.submitRoutePlan).mockResolvedValue({
+      requestId: "other", inputVersion: 1, planRevision: 1, actionId: "other", retry: 0, idempotencyKey: "other",
+      status: "completed", metrics: [{ label: "Claimed", distanceM: 100, shadowCoverage: 0.5 }], shadowProvenance: null,
+    });
+    const result = await executeTool("plan_shadowed_route", { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 }, ctx);
+    expect(result).toMatchObject({ status: "error", requestId: "test-1", message: expect.stringContaining("invalid terminal result") });
   });
 
   it("uses shadow-layer point queries for check_shadow without moving the camera", async () => {

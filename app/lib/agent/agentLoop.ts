@@ -21,6 +21,7 @@ import {
   type AgentContext,
   type AssistantPin,
 } from "./tools";
+import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 
 const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around shadow and sun comfort: shadowed walks, where to sit or eat out of the sun at a given hour, and shadow-aware routes. If asked anything else, reply in one sentence that you only help plan around shadow, and stop. Do not answer off-topic questions.
 
@@ -154,6 +155,42 @@ function primaryName(label: string | undefined): string {
   return label?.split(",")[0].trim() ?? "";
 }
 
+function asRouteTerminalResult(result: Record<string, unknown>): RoutePlanTerminalResult | null {
+  return validateRoutePlanTerminalResult(result);
+}
+
+function malformedRouteTerminalResult(result: Record<string, unknown>): RoutePlanTerminalResult {
+  return {
+    requestId: typeof result.requestId === "string" ? result.requestId : "invalid-route-result",
+    inputVersion: typeof result.inputVersion === "number" && Number.isSafeInteger(result.inputVersion) ? result.inputVersion : 0,
+    planRevision: typeof result.planRevision === "number" && Number.isSafeInteger(result.planRevision) ? result.planRevision : 0,
+    actionId: typeof result.actionId === "string" && result.actionId ? result.actionId : "invalid-action",
+    retry: typeof result.retry === "number" && Number.isSafeInteger(result.retry) ? result.retry : 0,
+    idempotencyKey: typeof result.idempotencyKey === "string" && result.idempotencyKey ? result.idempotencyKey : "invalid-idempotency-key",
+    status: "error",
+    message: "The route pipeline returned an invalid terminal result.",
+  };
+}
+
+function routeTerminalText(result: RoutePlanTerminalResult): string {
+  switch (result.status) {
+    case "partial": {
+      const legs = result.unroutableLegs
+        .map((leg) => `leg ${leg.failedLeg} of ${leg.totalLegs}`)
+        .join(", ");
+      return `I could only make a partial route: ${legs} could not be routed. The completed legs remain visible on the map.`;
+    }
+    case "no_plan_found":
+      return `I couldn't find a walkable route for those stops. ${result.message}`;
+    case "cancelled":
+      return "The route calculation was cancelled, so there is no completed route to describe.";
+    case "error":
+      return `I couldn't complete the route calculation: ${result.message}`;
+    case "completed":
+      return "";
+  }
+}
+
 /** Whether the answer names this place as a whole name, so "Park 1" is not found in "Park 12". */
 function namesPlace(answer: string, label: string | undefined): boolean {
   const name = primaryName(label).toLowerCase();
@@ -237,6 +274,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // A user who asked for a route gets one: live, the model spent its steps
   // searching and never routed (#59), so the loop routes through the pins itself.
   let routedThisTurn = false;
+  let terminalRouteResult: RoutePlanTerminalResult | null = null;
   const routeFallback = async (): Promise<void> => {
     if (routedThisTurn || mapPins.length < 2 || !/\b(route|walk)/i.test(opts.userText)) return;
     const from = mapPins[0];
@@ -252,9 +290,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     };
     onToolEvent?.({ name: "plan_shadowed_route", args });
     try {
-      routedThisTurn = !(await executeTool("plan_shadowed_route", args, ctx)).error;
+      const result = await executeTool("plan_shadowed_route", args, ctx);
+      terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
+      routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
     } catch {
-      /* the write call is told only about a route that started */
+      terminalRouteResult = malformedRouteTerminalResult({});
     }
   };
 
@@ -314,6 +354,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       // Done researching.
       await plotFallbackPoints();
       await routeFallback();
+      if (terminalRouteResult && terminalRouteResult.status !== "completed") {
+        return { text: routeTerminalText(terminalRouteResult), history: contents };
+      }
       // Same config for both roles → research model's answer IS the answer, and
       // returning it saves a full-context write call (TPD savings). So does a
       // turn that called no tool at all — a refusal, or a question back to the
@@ -390,7 +433,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         mapPins = parsePins(args.points);
         plottedThisTurn = true;
       }
-      if (fc.name === "plan_shadowed_route" && !result.error) routedThisTurn = true;
+      if (fc.name === "plan_shadowed_route") {
+        terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
+        routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
+      }
       collectPointCandidates(fc.name, args, result, pointCandidates);
       responseParts.push({ functionResponse: { name: fc.name, response: result } });
     }
@@ -403,11 +449,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   await plotFallbackPoints();
   await routeFallback();
 
+  // The terminal result is already in the function-response history. Avoid a
+  // write-model paraphrase for non-success outcomes: no provider prose can turn
+  // cancellation, failure, or an unroutable leg into a claimed completed route.
+  if (terminalRouteResult && terminalRouteResult.status !== "completed") {
+    return { text: routeTerminalText(terminalRouteResult), history: contents };
+  }
+
   // Always state what the map shows — including pins the model placed itself,
   // which is the list the write prompt tells it to stay inside.
   const pinnedLine = mapPins.length
     ? `\n\nMap state guarantee: these pins are on the map, and they are the only places you may name: ${plottedPointSummary(mapPins)}.${
-        routedThisTurn ? " A shadow-aware walking route through them is being calculated on the map." : ""
+        routedThisTurn ? " A shadow-aware walking route through them completed on the map." : ""
       }`
     : "\n\nNothing is pinned on the map, so name no specific place.";
 
