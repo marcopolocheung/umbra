@@ -22,9 +22,12 @@ array_definition="$(output_value BrowserPackArrayJobDefinition)"
 aggregate_definition="$(output_value BrowserPackAggregateJobDefinition)"
 
 quota="$(aws service-quotas get-service-quota --region "$region" --service-code ec2 --quota-code L-1216C47A --query 'Quota.Value' --output text)"
-if [[ "${quota%.*}" -lt "$array_size" ]]; then
-  echo "Refusing to submit: EC2 standard On-Demand vCPU quota is $quota; need $array_size." >&2
+if [[ "${quota%.*}" -lt 1 ]]; then
+  echo "Refusing to submit: EC2 standard On-Demand vCPU quota is $quota; need at least one." >&2
   exit 1
+fi
+if [[ "${quota%.*}" -lt "$array_size" ]]; then
+  echo "Using the currently approved $quota vCPUs: the $array_size-child array will run in waves until the pending quota increase arrives."
 fi
 
 submit_and_wait() {
