@@ -1184,3 +1184,394 @@ describe("parallelSidewalkEdges", () => {
     }
   });
 });
+
+// ── E1: travel-mode cost model ───────────────────────────────────────────────
+// Behavior: given this graph and this mode, this path wins. Shadow strength is
+// 0 throughout so only the mode policy decides.
+
+/**
+ * Stairs shortcut: 1→3 direct over steps (100 m) vs 1→2→3 on footways (200 m).
+ */
+function makeStairsShortcutGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "steps" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "steps" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Rough shortcut: 1→3 direct on cobblestones (100 m) vs 1→2→3 on asphalt (160 m).
+ */
+function makeRoughShortcutGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, surface: "cobblestone" },
+      { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      { toId: 3, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, surface: "cobblestone" },
+      { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Cycleway detour: 1→3 direct with no cycleway (200 m) vs 1→2→3 on
+ * cycleway lanes (220 m). Walk takes the shortcut; bike takes the lanes.
+ */
+function makeCyclewayGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 200, shadowFactor: 0 },
+      { toId: 2, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+      { toId: 3, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 200, shadowFactor: 0 },
+      { toId: 2, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — travel mode cost (E1)", () => {
+  it("walk takes the stairs shortcut; bike walks around it", () => {
+    expect(dijkstra(makeStairsShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the cobbled shortcut; bike takes smooth asphalt", () => {
+    expect(dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the shorter road; bike prefers the cycleway detour", () => {
+    expect(dijkstra(makeCyclewayGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeCyclewayGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("reported distance stays physical meters, not cost meters", () => {
+    const result = dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!;
+    expect(result.nodeIds).toEqual([1, 2, 3]);
+    expect(result.distanceM).toBeCloseTo(200, 5);
+  });
+});
+
+describe("paretoRoutes — travel mode cost (E1)", () => {
+  it("bike mode keeps the untagged front intact (shortest first, detour last)", () => {
+    const routes = paretoRoutes(makeTwoPathGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    expect(routes[0].nodeIds).toEqual([1, 3]);
+    expect(routes[routes.length - 1].nodeIds).toEqual([1, 2, 3]);
+    const keys = new Set(routes.map((r) => r.nodeIds.join(",")));
+    expect(keys.size).toBe(routes.length);
+  });
+
+  it("bike mode prices the stairs shortcut out of the front", () => {
+    const routes = paretoRoutes(makeStairsShortcutGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThan(0);
+    // Every returned route avoids steps: the 600 m-cost shortcut never wins a
+    // representative against the 200 m footway path.
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+    }
+  });
+});
+
+/**
+ * Dedicated-cycleway detour: 1→3 direct on an ordinary road (200 m) vs
+ * 1→2→3 on highway=cycleway (220 m). Walk takes the shortcut.
+ */
+function makeDedicatedCyclewayGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 200, shadowFactor: 0, highway: "residential" },
+      { toId: 2, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+      { toId: 3, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 200, shadowFactor: 0, highway: "residential" },
+      { toId: 2, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Prohibited shortcut: 1→3 direct bans bikes (100 m, bicycle=no) vs 1→2→3
+ * ordinary footways (200 m). Walk takes the shortcut.
+ */
+function makeBicycleNoGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "residential", bicycle: "no" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "residential", bicycle: "no" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — bike infrastructure and access tags (E1 follow-up)", () => {
+  it("walk takes the ordinary road; bike takes the dedicated-cycleway detour", () => {
+    expect(dijkstra(makeDedicatedCyclewayGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeDedicatedCyclewayGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the bicycle=no shortcut; bike routes around it", () => {
+    expect(dijkstra(makeBicycleNoGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeBicycleNoGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("bike reports unreachable when only a prohibited edge connects", () => {
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    ]);
+    const prohibited: RoutingGraph = {
+      nodes,
+      adj: new Map<number, GraphEdge[]>([
+        [1, [{ toId: 2, distanceM: 100, shadowFactor: 0, bicycle: "no" }]],
+        [2, [{ toId: 1, distanceM: 100, shadowFactor: 0, bicycle: "no" }]],
+      ]),
+    };
+    expect(dijkstra(prohibited, 1, 2, 0)!).not.toBeNull();
+    expect(dijkstra(prohibited, 1, 2, 0, { travelMode: "bike" })).toBeNull();
+    expect(paretoRoutes(prohibited, 1, 2, { travelMode: "bike" })).toEqual([]);
+  });
+});
+
+describe("paretoRoutes — prohibited edges (E1 follow-up)", () => {
+  it("no bike representative uses a bicycle=no edge", () => {
+    const routes = paretoRoutes(makeBicycleNoGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThan(0);
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+    }
+  });
+});
+
+/**
+ * Access-hierarchy override: 1→3 direct is access=no but explicitly
+ * bicycle=yes (100 m) vs 1→2→3 ordinary ways (200 m). The specific tag wins,
+ * so bike takes the direct edge instead of rejecting a legal way.
+ */
+function makeAccessOverrideGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "residential", access: "no", bicycle: "yes" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "residential", access: "no", bicycle: "yes" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Mode-aware snap fixture: a prohibited segment 1→2 (bicycle=no) runs along
+ * lat 0, and a legal residential segment 3→4 runs ~56 m north of it. The two
+ * segments are disconnected from each other.
+ */
+function makeSnapFixtureGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0005, lon: 0.0 }],
+    [4, { id: 4, lat: 0.0005, lon: 0.001 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [{ toId: 2, distanceM: 111, shadowFactor: 0, highway: "residential", bicycle: "no" }]],
+    [2, [{ toId: 1, distanceM: 111, shadowFactor: 0, highway: "residential", bicycle: "no" }]],
+    [3, [{ toId: 4, distanceM: 111, shadowFactor: 0, highway: "residential" }]],
+    [4, [{ toId: 3, distanceM: 111, shadowFactor: 0, highway: "residential" }]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — access hierarchy (E1 follow-up 2)", () => {
+  it("bike uses an access=no edge explicitly re-allowed for bicycles", () => {
+    expect(dijkstra(makeAccessOverrideGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds).toEqual([
+      1, 3,
+    ]);
+  });
+
+  it("bike still avoids a bare access=no edge", () => {
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    ]);
+    const graph: RoutingGraph = {
+      nodes,
+      adj: new Map<number, GraphEdge[]>([
+        [1, [{ toId: 2, distanceM: 100, shadowFactor: 0, access: "no" }]],
+        [2, [{ toId: 1, distanceM: 100, shadowFactor: 0, access: "no" }]],
+      ]),
+    };
+    expect(dijkstra(graph, 1, 2, 0, { travelMode: "bike" })).toBeNull();
+    expect(dijkstra(graph, 1, 2, 0)!).not.toBeNull();
+  });
+});
+
+describe("mode-aware snapping and reachability (E1 follow-up 2)", () => {
+  it("bfsReachable agrees with bike routability", () => {
+    const graph = makeSnapFixtureGraph();
+    // On foot the prohibited segment is traversable; by bike node 1 is alone.
+    expect(bfsReachable(graph, 1)).toEqual(new Set([1, 2]));
+    expect(bfsReachable(graph, 1, "bike")).toEqual(new Set([1]));
+    expect(bfsReachable(graph, 3, "bike")).toEqual(new Set([3, 4]));
+  });
+
+  it("bike snaps past a prohibited edge to the legal one ~56 m away", () => {
+    // ~6 m north of the prohibited segment, ~50 m south of the legal one.
+    const nearProhibited: [number, number] = [0.0005, 0.00005];
+
+    const walkGraph = makeSnapFixtureGraph();
+    const walkId = snapToEdge(nearProhibited, walkGraph, -1);
+    expect(walkGraph.nodes.get(walkId)!.lat).toBeCloseTo(0, 5);
+
+    const bikeGraph = makeSnapFixtureGraph();
+    const bikeId = snapToEdge(nearProhibited, bikeGraph, -1, "bike");
+    expect(bikeGraph.nodes.get(bikeId)!.lat).toBeCloseTo(0.0005, 5);
+  });
+
+  it("a bike stop near a prohibited edge still routes end to end", () => {
+    const graph = makeSnapFixtureGraph();
+    const stops: [number, number][] = [
+      [0.0005, 0.00005], // ~6 m from the prohibited segment
+      [0.0005, 0.0005], // on the legal segment
+    ];
+    const { ids } = snapRouteStopsToReachableEdges(stops, graph, { travelMode: "bike" });
+    const result = dijkstra(graph, ids[0], ids[1], 0, { travelMode: "bike" });
+    expect(result).not.toBeNull();
+    expect(result!.distanceM).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Walk budget regression: a 300 m main path with two crossings vs a fully
+ * shaded 870 m detour. The detour budget is 300×2+250 = 850 m of pure
+ * distance — crossing penalties must not loosen it (they would admit the
+ * 870 m detour and change plain walking behavior).
+ */
+function makeCrossingBudgetGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.001, isIntersection: true }],
+    [3, { id: 3, lat: 0.0, lon: 0.002, isIntersection: true }],
+    [4, { id: 4, lat: 0.0, lon: 0.003 }],
+    [5, { id: 5, lat: 0.001, lon: 0.001 }],
+    [6, { id: 6, lat: 0.001, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 5, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0 },
+      { toId: 3, distanceM: 100, shadowFactor: 0 },
+    ]],
+    [3, [
+      { toId: 2, distanceM: 100, shadowFactor: 0 },
+      { toId: 4, distanceM: 100, shadowFactor: 0 },
+    ]],
+    [4, [
+      { toId: 3, distanceM: 100, shadowFactor: 0 },
+      { toId: 6, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [5, [
+      { toId: 1, distanceM: 290, shadowFactor: 1 },
+      { toId: 6, distanceM: 290, shadowFactor: 1 },
+    ]],
+    [6, [
+      { toId: 5, distanceM: 290, shadowFactor: 1 },
+      { toId: 4, distanceM: 290, shadowFactor: 1 },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("paretoRoutes — walk budget ignores crossing penalties", () => {
+  it("a 300 m two-crossing walk admits no 870 m detour", () => {
+    const routes = paretoRoutes(makeCrossingBudgetGraph(), 1, 4, { crossingPenaltyM: 15 });
+    expect(routes).toHaveLength(1);
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
+    expect(routes[0].distanceM).toBeCloseTo(300, 5);
+  });
+});

@@ -84,6 +84,14 @@ describe("routeExposureLine", () => {
   it("does not round a short exposure down to zero", () => {
     expect(routeExposureLine(route("Most shadowed", 1000, 0.98))).toBe("under a minute in sun");
   });
+
+  it("reports bike-route durations at cycling speed", () => {
+    // Same 200 sun-meters: ~2 min walking, under a minute at 4.5 m/s.
+    const walk = route("Shortest", 1000, 0.8);
+    const bike = { ...walk, travelMode: "bike" as const };
+    expect(routeExposureLine(walk)).toBe("2 min in sun");
+    expect(routeExposureLine(bike)).toBe("under a minute in sun");
+  });
 });
 
 describe("routeExposureMinutes", () => {

@@ -255,6 +255,7 @@ export default function Home() {
     simplifiedWaypoints,
     routeMode,
     shadowPreference,
+    travelMode,
     setPendingSlot,
     setSelectedRouteIndex,
     setSaveModalRouteIndex,
@@ -274,6 +275,7 @@ export default function Home() {
     handleDrawModeToggle,
     handleClearSketch,
     handleRouteModeChange,
+    handleTravelModeChange,
     handleShadowPreferenceChange,
     handleSketchPointClick,
     handleSketchPointDrag,
@@ -515,6 +517,7 @@ export default function Home() {
       if (shared.additionalWaypoints.length > 0) {
         handleSetAdditionalWaypoints(shared.additionalWaypoints);
       }
+      if (shared.travelMode !== "walk") handleTravelModeChange(shared.travelMode);
       if (shared.center || shared.zoom != null) {
         const center = shared.center ?? ([mapCenter[1], mapCenter[0]] as [number, number]);
         mapRef.current.jumpTo({ center, zoom: shared.zoom ?? mapRef.current.getZoom() });
@@ -530,6 +533,7 @@ export default function Home() {
     handleSetAdditionalWaypoints,
     handleSetWaypointA,
     handleSetWaypointB,
+    handleTravelModeChange,
     mapCenter,
     mapRef,
     mapUtcOffsetMin,
@@ -546,9 +550,10 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      travelMode,
     });
     window.history.replaceState(null, "", url);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, waypointA, waypointB]);
+  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleShareLink = useCallback(async () => {
     const url = shareUrlFromState({
@@ -559,6 +564,7 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      travelMode,
     });
     try {
       await navigator.clipboard.writeText(url);
@@ -567,7 +573,7 @@ export default function Home() {
       setShareStatus("error");
     }
     window.setTimeout(() => setShareStatus("idle"), 1800);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, waypointA, waypointB]);
+  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleDismissShadowLegend = useCallback(() => {
     setShadowLegendDismissed(true);
@@ -874,6 +880,8 @@ export default function Home() {
             routeMode={routeMode}
             onRouteModeChange={handleRouteModeChange}
             canTransit={canTransit}
+            travelMode={travelMode}
+            onTravelModeChange={handleTravelModeChange}
             shadowPreference={shadowPreference}
             onShadowPreferenceChange={handleShadowPreferenceChange}
           />
@@ -1059,6 +1067,8 @@ export default function Home() {
               routeMode={routeMode}
               onRouteModeChange={handleRouteModeChange}
               canTransit={canTransit}
+              travelMode={travelMode}
+              onTravelModeChange={handleTravelModeChange}
               shadowPreference={shadowPreference}
               onShadowPreferenceChange={handleShadowPreferenceChange}
             />

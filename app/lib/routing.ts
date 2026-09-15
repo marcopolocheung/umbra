@@ -2,6 +2,8 @@
 import type { PartialRouteInfo } from "./partialRoute";
 import type { TrainDrawData } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
+import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge } from "./travelMode";
+import type { TravelModeId } from "./travelMode";
 
 export interface OsmNode {
   id: number;
@@ -28,6 +30,7 @@ export interface GraphEdge {
   cycleway?: string;
   bicycle?: string;
   foot?: string;
+  access?: string;
 }
 
 export interface RoutingGraph {
@@ -111,6 +114,8 @@ export interface RouteOption {
   transitLeg?: TransitLeg; // undefined for all pure-walk routes
   legs?: RouteLeg[];       // multi-leg routes (MRT transit)
   totalTimeSec?: number;   // sum of walk time + transit travel time
+  /** Travel mode this route was costed for. Absent on sketch and transit routes. */
+  travelMode?: TravelModeId;
   mrtEntrances?: [[number, number], [number, number]]; // [boardEntrance, alightEntrance] in [lng, lat]
   trainDrawData?: TrainDrawData; // multi-colored polylines, stops, transfers for MapView
   partial?: PartialRouteInfo; // present when only completed legs are shown
@@ -124,6 +129,7 @@ export interface DijkstraOptions {
   straightLineDistM?: number; // for detourRatio; defaults to 0 → ratio = 1.0
   maxDetourFactor?: number;   // paretoRoutes only: search budget = shortest distance
                               // × this factor + 250 m flat; default 2.0
+  travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
 }
 
 /** Haversine distance in meters. a/b are [lng, lat]. */
@@ -291,11 +297,17 @@ export function snapToGraph(
  * Falls back to snapToGraph if the graph has no edges.
  * Returns the nearest endpoint id directly if the projection lands on one,
  * avoiding a zero-length virtual edge.
+ *
+ * `travelMode` filters the candidates: in bike mode prohibited edges
+ * (bicycle=no, access=no without a bicycle override) are invisible to the
+ * scan, so a stop never snaps onto an edge the search cannot leave. Walk
+ * prohibits nothing, so walk snapping is unchanged.
  */
 export function snapToEdge(
   coord: [number, number],
   graph: RoutingGraph,
-  virtualId: number
+  virtualId: number,
+  travelMode: TravelModeId = "walk"
 ): number {
   let bestDist: number = Infinity;
   let bestT = 0;
@@ -311,6 +323,7 @@ export function snapToEdge(
 
     for (const edge of edges) {
       if (edge.toId < 0) continue; // skip virtual edges
+      if (isProhibitedEdge(edge, travelMode)) continue; // unroutable in this mode
       const toNode = graph.nodes.get(edge.toId);
       if (!toNode) continue;
 
@@ -416,9 +429,13 @@ const MAX_SHADOW_SAVING = 0.7;
 
 /**
  * Dijkstra's shortest path.
- * Edge cost = distanceM * (1 - shadowStrength * shadowFactor * MAX_SHADOW_SAVING * solarIntensity)
+ * Edge cost = modeAdjustedDistanceM(edge, travelMode)
+ *               * (1 - shadowStrength * shadowFactor * MAX_SHADOW_SAVING * solarIntensity)
  *           + crossingPenaltyM (when toNode is an intersection, except destination)
  * shadowStrength=1 → maximally prefers shadowed paths; 0 → shortest distance.
+ *
+ * Reported `distanceM` stays physical meters — only the search cost sees the
+ * mode adjustment.
  */
 export function dijkstra(
   graph: RoutingGraph,
@@ -427,7 +444,7 @@ export function dijkstra(
   shadowStrength: number,
   options: DijkstraOptions = {}
 ): RouteResult | null {
-  const { crossingPenaltyM = 0, solarIntensity = 1.0, straightLineDistM = 0 } = options;
+  const { crossingPenaltyM = 0, solarIntensity = 1.0, straightLineDistM = 0, travelMode = "walk" } = options;
   const effectiveMaxShadowSaving = MAX_SHADOW_SAVING * solarIntensity;
 
   const dist = new Map<number, number>();
@@ -447,13 +464,16 @@ export function dijkstra(
 
     const edges = graph.adj.get(id) ?? [];
     for (const edge of edges) {
+      // Explicitly prohibited edges (e.g. bicycle=no in bike mode) are not
+      // routable at any cost. Walk never prohibits, so walk search is unchanged.
+      if (isProhibitedEdge(edge, travelMode)) continue;
       const toNode = graph.nodes.get(edge.toId);
       const crossing =
         crossingPenaltyM > 0 && toNode?.isIntersection && edge.toId !== endId
           ? crossingPenaltyM
           : 0;
       const edgeCost =
-        edge.distanceM * (1 - shadowStrength * edge.shadowFactor * effectiveMaxShadowSaving)
+        modeAdjustedDistanceM(edge, travelMode) * (1 - shadowStrength * edge.shadowFactor * effectiveMaxShadowSaving)
         + crossing;
       const newCost = cost + edgeCost;
       if (newCost < (dist.get(edge.toId) ?? Infinity)) {
@@ -566,19 +586,71 @@ const DETOUR_FLAT_M = 250;
  *
  * Labels use integer back-pointer IDs (not embedded path arrays) so memory is
  * O(nodes × MAX_LABELS_PER_NODE) rather than O(nodes × labels × pathLength).
+ *
+ * `distM` on a label is *mode-cost* meters (see `modeAdjustedDistanceM`), not
+ * physical meters: a bike label that paid a stairs penalty carries it. The
+ * budget baseline is the same mode's cost-shortest path, and the
+ * remaining-distance heuristic is scaled by `minCostRatio(mode)` so it stays a
+ * lower bound on remaining mode cost. Walk's ratio is 1, so walk behavior is
+ * byte-for-byte the old behavior.
  */
+
+/**
+ * Mode-cost length of a node path: the sum `dijkstra` would have charged for it
+ * at `shadowStrength = 0`. Used to baseline the Pareto detour budget in the same
+ * cost space the labels accumulate. `sides` disambiguates parallel sidewalk
+ * edges; a null side takes the first matching edge.
+ */
+function pathModeCostM(
+  graph: RoutingGraph,
+  nodeIds: number[],
+  sides: Array<SidewalkSide | null> | undefined,
+  mode: TravelModeId,
+  crossingPenaltyM: number,
+  endId: number,
+): number {
+  let cost = 0;
+  for (let i = 0; i < nodeIds.length - 1; i++) {
+    const from = nodeIds[i];
+    const to = nodeIds[i + 1];
+    const edges = graph.adj.get(from) ?? [];
+    const side = sides?.[i];
+    const edge =
+      edges.find((e) => e.toId === to && (side == null || e.side === side)) ??
+      edges.find((e) => e.toId === to);
+    if (!edge) continue;
+    cost += modeAdjustedDistanceM(edge, mode);
+    const toNode = graph.nodes.get(to);
+    if (crossingPenaltyM > 0 && toNode?.isIntersection && to !== endId) {
+      cost += crossingPenaltyM;
+    }
+  }
+  return cost;
+}
+
 export function paretoRoutes(
   graph: RoutingGraph,
   startId: number,
   endId: number,
   options: DijkstraOptions = {}
 ): RouteResult[] {
-  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0 } = options;
+  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, travelMode = "walk" } = options;
 
   // Distance-only Dijkstra: budget baseline + fast exit when unreachable.
-  const shortestRun = dijkstra(graph, startId, endId, 0);
+  // Runs in the same mode so the baseline prices the same mode penalties, but
+  // with NO other options: crossing penalties must not enter the budget. Labels
+  // carry crossings while the budget comes from pure mode meters, which only
+  // makes the prune marginally tighter, never looser — and for walk the budget
+  // equals the old physical shortest distance exactly.
+  const shortestRun = dijkstra(graph, startId, endId, 0, { travelMode });
   if (!shortestRun) return [];
-  const budgetM = shortestRun.distanceM * maxDetourFactor + DETOUR_FLAT_M;
+  const shortestCostM = pathModeCostM(
+    graph, shortestRun.nodeIds, shortestRun.sides, travelMode, 0, endId,
+  );
+  const budgetM = shortestCostM * maxDetourFactor + DETOUR_FLAT_M;
+  // Admissible remaining-cost heuristic: every remaining physical meter costs at
+  // least `costRatio` mode meters.
+  const costRatio = minCostRatio(travelMode);
 
   // Each label is stored by index in allLabels; back-pointer is parent index (-1 = start).
   interface PLabel {
@@ -650,9 +722,9 @@ export function paretoRoutes(
   // Admissible lower bound on remaining walking distance to the destination,
   // cached per node — each node is touched once per surviving label (up to the
   // cap), and haversine is trig-heavy. Used both for A* ordering and for the
-  // detour-budget prune. Note label distM includes crossing penalties while
-  // the budget comes from pure meters — that only makes the prune marginally
-  // tighter, never looser.
+  // detour-budget prune. Label distM and the budget both live in mode-cost
+  // meters (mode-adjusted edges plus crossing penalties), so the prune compares
+  // like with like; see `hCostRemaining` for the heuristic side.
   const destNode = graph.nodes.get(endId);
   const hCache = new Map<number, number>();
   const hRemaining = (nodeId: number): number => {
@@ -666,12 +738,16 @@ export function paretoRoutes(
     }
     return h;
   };
+  // Remaining-distance heuristic in mode-cost meters. Physical meters scaled by
+  // the mode's minimum cost ratio is a lower bound on remaining mode cost, so
+  // the budget prune and A* ordering stay admissible for bike discounts.
+  const hCostRemaining = (nodeId: number): number => hRemaining(nodeId) * costRatio;
 
   const startLabel = mkLabel(0, 0, startId, -1, null);
   insertPareto(startLabel);
 
   const heap = new MinHeap<{ labelId: number; f: number }>((a, b) => a.f - b.f);
-  heap.push({ labelId: startLabel.id, f: hRemaining(startId) });
+  heap.push({ labelId: startLabel.id, f: hCostRemaining(startId) });
 
   while (heap.size > 0) {
     const { labelId } = heap.pop()!;
@@ -688,11 +764,13 @@ export function paretoRoutes(
     // Destination-front pruning: the best this label can still become is
     // (distM + straight-line remainder, shadowM + whole remaining budget walked
     // fully shadowed). If an already-found destination label dominates even that
-    // optimistic completion, the label can't contribute to the front.
+    // optimistic completion, the label can't contribute to the front. The shadow
+    // optimism is divided by the mode's minimum cost ratio: discounted cost
+    // meters buy more than one physical meter each.
     const destSet = paretoSets.get(endId);
     if (destSet && destSet.length > 0 && label.nodeId !== endId) {
-      const optDistM  = label.distM + hRemaining(label.nodeId);
-      const optShadowM = label.shadowM + (budgetM - label.distM);
+      const optDistM  = label.distM + hCostRemaining(label.nodeId);
+      const optShadowM = label.shadowM + (budgetM - label.distM) / costRatio;
       let prunedByDest = false;
       for (const id of destSet) {
         const d = allLabels[id];
@@ -706,17 +784,19 @@ export function paretoRoutes(
     for (const edge of graph.adj.get(label.nodeId) ?? []) {
       // U-turns never extend a simple path; they only pump shadow meters.
       if (edge.toId === cameFromId) continue;
+      // Prohibited edges are not routable at any cost (see dijkstra).
+      if (isProhibitedEdge(edge, travelMode)) continue;
 
       const toNode = graph.nodes.get(edge.toId);
       const crossing =
         crossingPenaltyM > 0 && toNode?.isIntersection && edge.toId !== endId
           ? crossingPenaltyM : 0;
 
-      const newDistM  = label.distM  + edge.distanceM + crossing;
+      const newDistM  = label.distM  + modeAdjustedDistanceM(edge, travelMode) + crossing;
       const newShadowM = label.shadowM + edge.distanceM * edge.shadowFactor;
 
       // Detour budget: prune anything that can no longer finish within budget
-      const hTo = hRemaining(edge.toId);
+      const hTo = hCostRemaining(edge.toId);
       if (newDistM + hTo > budgetM) continue;
 
       // Pre-check dominance before allocating a label object
@@ -859,10 +939,15 @@ export function paretoRoutes(
 /**
  * BFS from startId — returns the set of all node IDs reachable from startId
  * in the graph (including startId itself).
+ *
+ * `travelMode` filters traversal the same way the search does, so reachability
+ * agrees with routability: a component connected only through bicycle=no edges
+ * is one component on foot and two by bike.
  */
 export function bfsReachable(
   graph: RoutingGraph,
-  startId: number
+  startId: number,
+  travelMode: TravelModeId = "walk"
 ): Set<number> {
   const visited = new Set<number>();
   const queue: number[] = [startId];
@@ -871,6 +956,7 @@ export function bfsReachable(
   while (head < queue.length) {
     const id = queue[head++];
     for (const edge of graph.adj.get(id) ?? []) {
+      if (isProhibitedEdge(edge, travelMode)) continue;
       if (!visited.has(edge.toId)) {
         visited.add(edge.toId);
         queue.push(edge.toId);
@@ -885,12 +971,16 @@ export function bfsReachable(
  * reachableIds. Returns { id, distM } where id is the snapped node ID
  * (virtual or endpoint) and distM is the distance from coord to the snap
  * point. Returns null if no reachable edge exists in the graph.
+ *
+ * `travelMode` filters candidates like snapToEdge, so the fallback snap lands
+ * on an edge the search can actually use.
  */
 export function snapToReachableEdge(
   coord: [number, number],
   graph: RoutingGraph,
   reachableIds: Set<number>,
-  virtualId: number
+  virtualId: number,
+  travelMode: TravelModeId = "walk"
 ): { id: number; distM: number } | null {
   let bestDist: number = Infinity;
   let bestT = 0;
@@ -908,6 +998,7 @@ export function snapToReachableEdge(
     for (const edge of edges) {
       if (edge.toId < 0) continue;
       if (!reachableIds.has(edge.toId)) continue;
+      if (isProhibitedEdge(edge, travelMode)) continue;
       const toNode = graph.nodes.get(edge.toId);
       if (!toNode) continue;
 
@@ -1011,6 +1102,8 @@ export interface SnapRouteStopsOptions {
   maxSnapDistanceM?: number;
   virtualIdStart?: number;
   describeStop?: (index: number, total: number) => string;
+  /** Mode the snapped stops will be routed in. Defaults to walk (no filtering). */
+  travelMode?: TravelModeId;
 }
 
 export interface SnapRouteStopsResult {
@@ -1025,12 +1118,14 @@ function defaultStopLabel(index: number, total: number): string {
 }
 
 /**
- * Snaps an ordered route's stops to one connected walkable component.
+ * Snaps an ordered route's stops to one connected component routable in the
+ * requested travel mode.
  *
  * We anchor on the destination and repair each previous stop backwards. This
  * matches the route UX: a slightly-off start/via point should snap onto the
  * component that can actually reach the requested destination, not strand the
- * route on a closer disconnected service road or path fragment.
+ * route on a closer disconnected service road or path fragment — or, by bike,
+ * on a closer edge bikes may not use.
  */
 export function snapRouteStopsToReachableEdges(
   coords: [number, number][],
@@ -1045,20 +1140,21 @@ export function snapRouteStopsToReachableEdges(
     maxSnapDistanceM = 100,
     virtualIdStart = -1,
     describeStop = defaultStopLabel,
+    travelMode = "walk",
   } = options;
   if (virtualIdStart >= 0) {
     throw new Error("virtualIdStart must be negative.");
   }
 
   const virtualIdFor = (index: number) => virtualIdStart - index;
-  const ids = coords.map((coord, index) => snapToEdge(coord, graph, virtualIdFor(index)));
+  const ids = coords.map((coord, index) => snapToEdge(coord, graph, virtualIdFor(index), travelMode));
   const snapDistancesM = ids.map((id, index) => {
     const n = graph.nodes.get(id);
     return n ? haversineMeters(coords[index], [n.lon, n.lat]) : Infinity;
   });
 
   for (let i = coords.length - 2; i >= 0; i--) {
-    const reachableToDestination = bfsReachable(graph, ids[i + 1]);
+    const reachableToDestination = bfsReachable(graph, ids[i + 1], travelMode);
     if (reachableToDestination.has(ids[i])) continue;
 
     if (ids[i] < 0) removeVirtualNode(graph, ids[i]);
@@ -1066,7 +1162,8 @@ export function snapRouteStopsToReachableEdges(
       coords[i],
       graph,
       reachableToDestination,
-      virtualIdFor(i)
+      virtualIdFor(i),
+      travelMode
     );
     const label = describeStop(i, coords.length);
     if (!fallback) {

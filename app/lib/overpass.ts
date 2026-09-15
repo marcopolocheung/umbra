@@ -223,6 +223,7 @@ out body geom;
         cycleway: way.tags?.cycleway,
         bicycle: way.tags?.bicycle,
         foot: way.tags?.foot,
+        access: way.tags?.access,
       };
 
       adj.get(fromId)!.push({ toId, distanceM, shadowFactor: 0, ...edgeTags });

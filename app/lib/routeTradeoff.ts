@@ -1,9 +1,13 @@
 import type { RouteOption } from "./routing";
+import { getTravelModePolicy } from "./travelMode";
 
-const WALK_SPEED_MPS = 1.4;
+/** Speed a route's durations are reported at — its own mode, else walking. */
+function speedOf(route: RouteOption): number {
+  return getTravelModePolicy(route.travelMode ?? "walk").speedMps;
+}
 
 function travelSeconds(route: RouteOption): number {
-  return route.totalTimeSec ?? route.distanceM / WALK_SPEED_MPS;
+  return route.totalTimeSec ?? route.distanceM / speedOf(route);
 }
 
 function directSunMeters(route: RouteOption): number {
@@ -20,10 +24,11 @@ export function routeExposureMinutes(route: RouteOption): {
   sunMinutes: number;
   shadowMinutes: number;
 } {
+  const speedMps = speedOf(route);
   const sunM = directSunMeters(route);
   return {
-    sunMinutes: sunM / WALK_SPEED_MPS / 60,
-    shadowMinutes: Math.max(0, route.distanceM - sunM) / WALK_SPEED_MPS / 60,
+    sunMinutes: sunM / speedMps / 60,
+    shadowMinutes: Math.max(0, route.distanceM - sunM) / speedMps / 60,
   };
 }
 
@@ -62,8 +67,8 @@ export function shortestRoute(routes: RouteOption[]): RouteOption | null {
   );
 }
 
-function formatSunMinutes(meters: number): string {
-  const minutes = meters / WALK_SPEED_MPS / 60;
+function formatSunMinutes(meters: number, speedMps: number): string {
+  const minutes = meters / speedMps / 60;
   if (minutes < 1) return "under a minute";
   return `${Math.round(minutes)} min`;
 }
@@ -81,7 +86,8 @@ function formatSunMinutes(meters: number): string {
  * per edge and whose `longestContinuousSunM` is a placeholder rather than a zero.
  */
 export function routeExposureLine(route: RouteOption): string {
-  const total = `${formatSunMinutes(directSunMeters(route))} in sun`;
+  const speedMps = speedOf(route);
+  const total = `${formatSunMinutes(directSunMeters(route), speedMps)} in sun`;
   if (route.longestContinuousSunM <= 0) return total;
-  return `${total} · longest stretch ${formatSunMinutes(route.longestContinuousSunM)}`;
+  return `${total} · longest stretch ${formatSunMinutes(route.longestContinuousSunM, speedMps)}`;
 }
