@@ -157,6 +157,27 @@ out body geom;
     );
   }
 
+  const graph = buildRoutingGraphFromElements(rawWays);
+  return cacheFetchedGraph(south, west, north, east, graph);
+}
+/**
+ * One Overpass `way` element with inline geometry (`out body geom`), as far
+ * as the routing graph cares. Structural so fixtures can hand-trimmed JSON.
+ */
+export interface OverpassWayElement {
+  type?: string;
+  id?: number;
+  nodes?: number[];
+  geometry?: Array<{ lat: number; lon: number }>;
+  tags?: Record<string, string | undefined>;
+}
+
+/**
+ * Pure Overpass-ways → routing-graph builder (no fetch, no cache). Split out
+ * of `fetchRoutingGraph` so hermetic tests can load a committed Madrid-centre
+ * fixture through the exact production code path (E4).
+ */
+export function buildRoutingGraphFromElements(rawWays: OverpassWayElement[]): RoutingGraph {
   // Count distinct ways each node appears in — marks intersections
   const nodeWayCount = new Map<number, number>();
   for (const way of rawWays) {
@@ -179,7 +200,6 @@ out body geom;
 
   for (const way of rawWays) {
     const nodeRefs: number[] = way.nodes ?? [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const geom: Array<{ lat: number; lon: number }> = way.geometry ?? [];
 
     // Skip closed highway=pedestrian ways — these are plaza/square area polygons,
@@ -220,6 +240,7 @@ out body geom;
       const edgeTags = {
         highway: way.tags?.highway,
         surface: way.tags?.surface,
+        smoothness: way.tags?.smoothness,
         cycleway: way.tags?.cycleway,
         bicycle: way.tags?.bicycle,
         foot: way.tags?.foot,
@@ -231,8 +252,16 @@ out body geom;
     }
   }
 
-  const graph: RoutingGraph = { nodes, adj };
+  return { nodes, adj };
+}
 
+function cacheFetchedGraph(
+  south: number,
+  west: number,
+  north: number,
+  east: number,
+  graph: RoutingGraph,
+): RoutingGraph {
   // Cache newest-first; evict oldest when full
   graphCache.unshift({ south, west, north, east, graph });
   if (graphCache.length > GRAPH_CACHE_MAX) graphCache.pop();

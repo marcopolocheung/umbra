@@ -1173,6 +1173,7 @@ describe("parallelSidewalkEdges", () => {
     const tags = {
       highway: "footway",
       surface: "asphalt",
+      smoothness: "good",
       cycleway: "lane",
       bicycle: "designated",
       foot: "no",
@@ -1315,6 +1316,142 @@ describe("paretoRoutes — travel mode cost (E1)", () => {
     for (const r of routes) {
       expect(r.nodeIds).toEqual([1, 2, 3]);
     }
+  });
+});
+
+// ── E4: scoot/skate profile ─────────────────────────────────────────────────
+// Behavior: surface-dominant costing. Shadow strength is 0 throughout so only
+// the mode policy decides.
+
+describe("dijkstra — scoot mode cost (E4)", () => {
+  it("walk takes the cobbled shortcut; scoot takes smooth asphalt", () => {
+    expect(dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("scoot avoids the stairs shortcut entirely (excluded, not priced)", () => {
+    expect(
+      dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("smoothness=excellent lets scoot ride the cobbles", () => {
+    const graph = makeRoughShortcutGraph();
+    for (const edges of graph.adj.values()) {
+      for (const edge of edges) {
+        if (edge.surface === "cobblestone") edge.smoothness = "excellent";
+      }
+    }
+    expect(
+      dijkstra(graph, 1, 3, 0, { travelMode: "scoot" })!.nodeIds,
+    ).toEqual([1, 3]);
+  });
+
+  it("smoothness=bad prices a smooth-looking edge out", () => {
+    // Direct 1→3 is asphalt — but tagged bad, so it costs 100 + 1000 against
+    // the 160 m smooth detour. Walk still takes it (smoothness is scoot-only).
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.001, lon: 0.001 }],
+      [3, { id: 3, lat: 0.0, lon: 0.002 }],
+    ]);
+    const adj = new Map<number, GraphEdge[]>([
+      [1, [
+        { toId: 3, distanceM: 100, shadowFactor: 0, surface: "asphalt", smoothness: "bad" },
+        { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+      [2, [
+        { toId: 1, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+        { toId: 3, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+      [3, [
+        { toId: 1, distanceM: 100, shadowFactor: 0, surface: "asphalt", smoothness: "bad" },
+        { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      ]],
+    ]);
+    const graph: RoutingGraph = { nodes, adj };
+    expect(dijkstra(graph, 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(dijkstra(graph, 1, 3, 0, { travelMode: "scoot" })!.nodeIds).toEqual([1, 2, 3]);
+  });
+
+  it("reports physical metres per surface on the chosen path", () => {
+    const walk = dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!;
+    expect(walk.surfaceMetresM).toEqual({ cobblestone: 100 });
+    const scoot = dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "scoot" })!;
+    expect(scoot.surfaceMetresM).toEqual({ asphalt: 160 });
+    // Untagged edges report under "unknown" rather than vanishing.
+    const plain = dijkstra(makeCyclewayGraph(), 1, 3, 0)!;
+    expect(plain.surfaceMetresM).toEqual({ unknown: 200 });
+  });
+});
+
+describe("paretoRoutes — scoot mode cost (E4)", () => {
+  it("prices the cobbled shortcut out of every representative", () => {
+    const routes = paretoRoutes(makeRoughShortcutGraph(), 1, 3, { travelMode: "scoot" });
+    expect(routes.length).toBeGreaterThan(0);
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+      expect(r.surfaceMetresM).toEqual({ asphalt: 160 });
+    }
+  });
+
+  it("walk results carry surface metres too (same search, new field)", () => {
+    const routes = paretoRoutes(makeRoughShortcutGraph(), 1, 3);
+    expect(routes[0].surfaceMetresM).toEqual({ cobblestone: 100 });
+  });
+});
+
+/**
+ * Unavoidable sett corridor with two shaded loops. Direct 1→2→3→4 is 500 m
+ * physical with one 10 m sett edge (scoot cost 1500); the moderate loop
+ * 1→6→4 is 1800 m smooth; the huge loop 1→5→4 is 3000 m smooth. Edge lengths
+ * match their haversine distances so the remaining-distance heuristic stays
+ * admissible. The old budget (1500×2 + flat) admitted the 6× loop; pricing
+ * the allowance in physical metres rejects it while keeping the moderate one.
+ */
+function makeSettCorridorGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.0022 }],
+    [3, { id: 3, lat: 0.0, lon: 0.00229 }],
+    [4, { id: 4, lat: 0.0, lon: 0.00449 }],
+    [5, { id: 5, lat: 0.013285, lon: 0.00225 }],
+    [6, { id: 6, lat: 0.007764, lon: 0.00225 }],
+  ]);
+  const link = (toId: number, distanceM: number, shadowFactor: number, surface = "asphalt"): GraphEdge =>
+    ({ toId, distanceM, shadowFactor, surface });
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [link(2, 245, 0), link(5, 1500, 1), link(6, 900, 1)]],
+    [2, [link(1, 245, 0), { ...link(3, 10, 0), surface: "sett" }]],
+    [3, [{ ...link(2, 10, 0), surface: "sett" }, link(4, 245, 0)]],
+    [4, [link(3, 245, 0), link(5, 1500, 1), link(6, 900, 1)]],
+    [5, [link(1, 1500, 1), link(4, 1500, 1)]],
+    [6, [link(1, 900, 1), link(4, 900, 1)]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("paretoRoutes — penalty-free detour allowance (E4 review)", () => {
+  it("rejects the 6× shaded loop but keeps the moderate one in scoot mode", () => {
+    const routes = paretoRoutes(makeSettCorridorGraph(), 1, 4, { travelMode: "scoot" });
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    // Shortest is the sett corridor itself.
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
+    // The moderate shaded loop survives: the allowance is alive, not zeroed.
+    expect(routes[routes.length - 1].nodeIds).toEqual([1, 6, 4]);
+    // The huge loop's 3000 m cost exceeds the 2535 m budget — under the old
+    // penalty-doubling budget (3535 m) it was admitted.
+    for (const r of routes) {
+      expect(r.nodeIds).not.toContain(5);
+    }
+  });
+
+  it("leaves the walk front on the same graph exactly where it was", () => {
+    const routes = paretoRoutes(makeSettCorridorGraph(), 1, 4);
+    expect(routes.length).toBe(1);
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
   });
 });
 

@@ -36,6 +36,22 @@ describe("shareState", () => {
     expect(parseShareState(search, -300).travelMode).toBe("bike");
   });
 
+  it("round-trips scoot mode through the share URL", () => {
+    const search = serializeShareState({
+      mapCenter: [40.71278, -74.00597],
+      mapZoom: 15.437,
+      utcOffsetMin: -300,
+      date: fromMapLocal(new Date("2026-07-05T12:00:00.000Z"), -300, 17, 45),
+      waypointA: [-74.01, 40.71],
+      waypointB: [-73.99, 40.72],
+      additionalWaypoints: [],
+      travelMode: "scoot",
+    });
+
+    expect(search).toContain("mode=scoot");
+    expect(parseShareState(search, -300).travelMode).toBe("scoot");
+  });
+
   it("defaults a missing or invalid mode to walk", () => {
     expect(parseShareState("?a=-74.01%2C40.71", 0).travelMode).toBe("walk");
     expect(parseShareState("?a=-74.01%2C40.71&mode=car", 0).travelMode).toBe("walk");

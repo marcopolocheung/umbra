@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
 import type { TravelModeId } from "../lib/travelMode";
+import { TRAVEL_MODE_POLICIES } from "../lib/travelMode";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { routeProgressCount, routeProgressPercent } from "../lib/routeProgress";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
@@ -176,27 +177,28 @@ export default function DirectionsPanel({
         </div>
       </div>
 
-      {/* Walk / Bike selector (E1) — only for walk routing; transit legs stay pedestrian */}
+      {/* Active-travel selector (E1/E4) — only for walk routing; transit legs stay pedestrian */}
       {routeMode === 'walk' && onTravelModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
           style={{ borderColor: "var(--md-outline-variant)" }}
           data-testid="travel-mode-selector"
         >
-          {(['walk', 'bike'] as const).map((mode) => (
+          {(Object.keys(TRAVEL_MODE_POLICIES) as TravelModeId[]).map((mode) => (
             <button type="button"
               key={mode}
               onClick={() => onTravelModeChange(mode)}
               aria-pressed={travelMode === mode}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
+              className={`px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
                   ? 'text-amber-900 bg-amber-50'
                   : 'hover:bg-slate-50'
               }`}
               style={travelMode !== mode ? { color: "var(--md-on-surface-variant)" } : undefined}
-              title={mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : undefined}
+              title={mode === 'walk' ? undefined : mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : 'Avoids steps and rough surfaces — for scooters and skateboards'}
             >
-              {mode === 'walk' ? 'Walk' : 'Bike'}
+              {TRAVEL_MODE_POLICIES[mode].label}
             </button>
           ))}
         </div>
