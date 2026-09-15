@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getTravelModePolicy,
+  isProhibitedEdge,
   minCostRatio,
   modeAdjustedDistanceM,
   parseTravelMode,
@@ -57,6 +58,32 @@ describe("modeAdjustedDistanceM", () => {
 
   it("floors adjusted cost at a positive meter", () => {
     expect(modeAdjustedDistanceM({ distanceM: 1, cycleway: "lane" }, "bike")).toBe(1);
+  });
+
+  it("discounts dedicated cycleways and designated bike routes", () => {
+    expect(modeAdjustedDistanceM({ distanceM: 200, highway: "cycleway" }, "bike")).toBe(160);
+    expect(modeAdjustedDistanceM({ distanceM: 200, bicycle: "designated" }, "bike")).toBe(160);
+    // Permissive but undedicated ways get no discount.
+    expect(modeAdjustedDistanceM({ distanceM: 200, bicycle: "yes" }, "bike")).toBe(200);
+    expect(modeAdjustedDistanceM({ distanceM: 200, highway: "residential" }, "bike")).toBe(200);
+  });
+});
+
+describe("isProhibitedEdge", () => {
+  it("never prohibits in walk mode", () => {
+    expect(isProhibitedEdge({ distanceM: 100, bicycle: "no" }, "walk")).toBe(false);
+    expect(isProhibitedEdge({ distanceM: 100, access: "no" }, "walk")).toBe(false);
+  });
+
+  it("prohibits bicycle=no and access=no in bike mode", () => {
+    expect(isProhibitedEdge({ distanceM: 100, bicycle: "no" }, "bike")).toBe(true);
+    expect(isProhibitedEdge({ distanceM: 100, access: "no" }, "bike")).toBe(true);
+  });
+
+  it("allows ordinary and dedicated ways in bike mode", () => {
+    expect(isProhibitedEdge({ distanceM: 100, highway: "residential" }, "bike")).toBe(false);
+    expect(isProhibitedEdge({ distanceM: 100, bicycle: "designated" }, "bike")).toBe(false);
+    expect(isProhibitedEdge({ distanceM: 100, bicycle: "yes" }, "bike")).toBe(false);
   });
 });
 

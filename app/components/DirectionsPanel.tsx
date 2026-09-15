@@ -181,6 +181,7 @@ export default function DirectionsPanel({
         <div
           className="flex rounded-lg overflow-hidden border self-start"
           style={{ borderColor: "var(--md-outline-variant)" }}
+          data-testid="travel-mode-selector"
         >
           {(['walk', 'bike'] as const).map((mode) => (
             <button type="button"

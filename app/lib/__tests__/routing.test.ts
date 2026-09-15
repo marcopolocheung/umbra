@@ -1317,3 +1317,100 @@ describe("paretoRoutes — travel mode cost (E1)", () => {
     }
   });
 });
+
+/**
+ * Dedicated-cycleway detour: 1→3 direct on an ordinary road (200 m) vs
+ * 1→2→3 on highway=cycleway (220 m). Walk takes the shortcut.
+ */
+function makeDedicatedCyclewayGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 200, shadowFactor: 0, highway: "residential" },
+      { toId: 2, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+      { toId: 3, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 200, shadowFactor: 0, highway: "residential" },
+      { toId: 2, distanceM: 110, shadowFactor: 0, highway: "cycleway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Prohibited shortcut: 1→3 direct bans bikes (100 m, bicycle=no) vs 1→2→3
+ * ordinary footways (200 m). Walk takes the shortcut.
+ */
+function makeBicycleNoGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "residential", bicycle: "no" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "residential", bicycle: "no" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — bike infrastructure and access tags (E1 follow-up)", () => {
+  it("walk takes the ordinary road; bike takes the dedicated-cycleway detour", () => {
+    expect(dijkstra(makeDedicatedCyclewayGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeDedicatedCyclewayGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the bicycle=no shortcut; bike routes around it", () => {
+    expect(dijkstra(makeBicycleNoGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeBicycleNoGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("bike reports unreachable when only a prohibited edge connects", () => {
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    ]);
+    const prohibited: RoutingGraph = {
+      nodes,
+      adj: new Map<number, GraphEdge[]>([
+        [1, [{ toId: 2, distanceM: 100, shadowFactor: 0, bicycle: "no" }]],
+        [2, [{ toId: 1, distanceM: 100, shadowFactor: 0, bicycle: "no" }]],
+      ]),
+    };
+    expect(dijkstra(prohibited, 1, 2, 0)!).not.toBeNull();
+    expect(dijkstra(prohibited, 1, 2, 0, { travelMode: "bike" })).toBeNull();
+    expect(paretoRoutes(prohibited, 1, 2, { travelMode: "bike" })).toEqual([]);
+  });
+});
+
+describe("paretoRoutes — prohibited edges (E1 follow-up)", () => {
+  it("no bike representative uses a bicycle=no edge", () => {
+    const routes = paretoRoutes(makeBicycleNoGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThan(0);
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+    }
+  });
+});

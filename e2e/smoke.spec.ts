@@ -126,4 +126,28 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
       message: "the route line never appeared on the map canvas",
     })
     .toBeGreaterThan(routeLinePixelsBefore + 200);
+
+  // 4. The Walk/Bike travel selector (E1) syncs to the share URL. The desktop
+  //    and mobile layouts each mount a directions panel; only one is displayed
+  //    at this viewport.
+  const travelSelector = page.getByTestId("travel-mode-selector").filter({ visible: true });
+  await expect(travelSelector.getByRole("button", { name: "Bike" })).toBeVisible();
+  await travelSelector.getByRole("button", { name: "Bike" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("mode"), {
+      timeout: 10_000,
+      message: "picking Bike did not persist mode=bike to the share URL",
+    })
+    .toBe("bike");
+  await expect(travelSelector.getByRole("button", { name: "Bike" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await travelSelector.getByRole("button", { name: "Walk" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("mode"), {
+      timeout: 10_000,
+      message: "picking Walk did not clear mode from the share URL",
+    })
+    .toBeNull();
 });

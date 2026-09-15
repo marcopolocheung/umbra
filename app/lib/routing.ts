@@ -2,7 +2,7 @@
 import type { PartialRouteInfo } from "./partialRoute";
 import type { TrainDrawData } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
-import { modeAdjustedDistanceM, minCostRatio } from "./travelMode";
+import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 
 export interface OsmNode {
@@ -30,6 +30,7 @@ export interface GraphEdge {
   cycleway?: string;
   bicycle?: string;
   foot?: string;
+  access?: string;
 }
 
 export interface RoutingGraph {
@@ -456,6 +457,9 @@ export function dijkstra(
 
     const edges = graph.adj.get(id) ?? [];
     for (const edge of edges) {
+      // Explicitly prohibited edges (e.g. bicycle=no in bike mode) are not
+      // routable at any cost. Walk never prohibits, so walk search is unchanged.
+      if (isProhibitedEdge(edge, travelMode)) continue;
       const toNode = graph.nodes.get(edge.toId);
       const crossing =
         crossingPenaltyM > 0 && toNode?.isIntersection && edge.toId !== endId
@@ -769,6 +773,8 @@ export function paretoRoutes(
     for (const edge of graph.adj.get(label.nodeId) ?? []) {
       // U-turns never extend a simple path; they only pump shadow meters.
       if (edge.toId === cameFromId) continue;
+      // Prohibited edges are not routable at any cost (see dijkstra).
+      if (isProhibitedEdge(edge, travelMode)) continue;
 
       const toNode = graph.nodes.get(edge.toId);
       const crossing =

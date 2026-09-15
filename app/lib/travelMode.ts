@@ -63,6 +63,26 @@ export interface ModeEdgeTags {
   highway?: string;
   surface?: string;
   cycleway?: string;
+  bicycle?: string;
+  access?: string;
+}
+
+/**
+ * True when bikes may not use this edge at all: an explicit `bicycle=no`, or a
+ * general `access=no` (which bans everything not explicitly re-allowed — and a
+ * bare `access=no` way re-allows nothing a cyclist can use). Walk behavior is
+ * untouched: this predicate is only consulted for non-walk modes.
+ */
+export function isProhibitedEdge(edge: ModeEdgeTags, mode: TravelModeId): boolean {
+  if (mode === "walk") return false;
+  return edge.bicycle === "no" || edge.access === "no";
+}
+
+/** True when the edge is dedicated cycling infrastructure in bike mode. */
+function isCycleInfrastructure(edge: ModeEdgeTags): boolean {
+  if (edge.highway === "cycleway") return true;
+  if (edge.bicycle === "designated") return true;
+  return edge.cycleway != null && edge.cycleway !== "" && edge.cycleway !== "no";
 }
 
 /**
@@ -80,7 +100,7 @@ export function modeAdjustedDistanceM(edge: ModeEdgeTags, mode: TravelModeId): n
   if (edge.surface != null && ROUGH_SURFACES.has(edge.surface)) {
     cost += policy.roughSurfacePenaltyM;
   }
-  if (edge.cycleway != null && edge.cycleway !== "" && edge.cycleway !== "no") {
+  if (isCycleInfrastructure(edge)) {
     cost -= Math.min(CYCLEWAY_DISCOUNT_MAX_M, edge.distanceM * CYCLEWAY_DISCOUNT_MAX_SHARE);
   }
   return Math.max(MIN_EDGE_COST_M, cost);

@@ -1623,6 +1623,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             turnCount: result.turnCount,
             shadowSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
             travelMode,
+            totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
           }));
         } else {
           const nodeChain = snappedStops.ids;
@@ -1713,6 +1714,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   legs,
                   shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
                   travelMode,
+                  totalTimeSec: travelTimeSeconds(totalDist, travelMode),
                   partial: {
                     completedLegs: failedLeg - 1,
                     failedLeg,
@@ -1748,6 +1750,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
               legs,
               shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
               travelMode,
+              totalTimeSec: travelTimeSeconds(totalDist, travelMode),
               partial: forcedPartial ?? undefined,
             });
           }
