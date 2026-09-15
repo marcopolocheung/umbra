@@ -461,7 +461,7 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 - [ ] **B2** · [ ] **B3** · [ ] **B4** · [ ] **B5** · [ ] **B6** *(the reason B exists)* · [ ] **B7** *(unparks F)*
 - [ ] **C1** *(PR #191)* · [ ] **C2** · [ ] **C3** · [ ] **C4** *(terminal plan job contract)* · [ ] **C5** *(typed claim receipts)* · [ ] **C7** *(honest degradation/cancellation)* · [ ] **C10** *(tool authority — gates C12)* · [ ] **C11** *(repair — the Living Itinerary)*
 - [ ] **D3** *(PR #189)* · [ ] **D4** *(PR #196)* · [ ] #197 mobile strip
-- [ ] **E1** mode cost model · [ ] **E5** `Trip`
+- [x] **E1** mode cost model *(#346; E2 #350 and E4 #355 also merged)* · [ ] **E5** `Trip` *(after G6)* · [ ] **E7** elevation *(rescoped to v2 NYC terrain; public grade blocked on #356)*
 
 **Wave 2 — Track H** *(gated on A6 + G2)*
 - [ ] **H1** · [ ] **H2** · [ ] **H3** · [ ] **H4** · [ ] **H5** · [ ] **H6** · [ ] **H7** *(integer/LP reference and bounds)*
