@@ -328,8 +328,14 @@ no warning list left to group. What Biome cannot see is what remains: contrast i
 order, live-region announcements, and whether a control is reachable one-handed. That is the axe
 run plus the judgement `docs/notes/touch-target-audit.md` and the `interface-reviewer` agent
 already apply by hand.
+For the assistant, the baseline must cover panel open/close, labelled composer, progress and
+error announcements, cancellation, receipt traversal, plan completion, and focus return—not only
+the page at rest. C15 owns fixes and the manual screen-reader/keyboard workflow; G5 owns the shared
+axe/browser machinery and prevents regressions after C15 lands.
 **Acceptance.** Score recorded in `docs/notes/`; CI reports it; the findings axe raises that Biome
-structurally cannot are filed. **Size.** Medium (was sized when the burn-down was still open).
+structurally cannot are filed. After C15, the full agent journey has zero serious/critical axe
+violations, and a deliberate missing label/live-region relationship makes CI fail. **Size.**
+Medium (was sized when the burn-down was still open).
 
 ### G6 — Seam work ← **the unblocker; run it alone**
 **Goal.** Stop six tracks from queueing on three files.
@@ -391,6 +397,12 @@ service keys carry no origin restriction at all, so that key moved server-side i
 **Done — the dependency-bump policy**, below. It is the rule set Dependabot's backlog is
 triaged against, so a re-raised PR is closed against a written decision instead of a fresh
 argument.
+
+**Agent gateway follow-through belongs to C14, not a reopened G8.** G8's provider-policy and
+dependency baseline does not prove production agent controls. C14 must replace client-selected
+upstream payloads with a server-owned release/policy, add a privacy-minimized durable quota across
+instances, capability and generation bounds, cancellation, versioned promotion, monitoring, and
+rollback rehearsal. G verifies those controls in CI/security tests; C owns their semantics.
 
 #### Dependency-bump policy
 

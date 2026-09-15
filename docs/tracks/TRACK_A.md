@@ -620,6 +620,61 @@ Export the ingredients of a radiant load, not just a fraction: sky view factor p
 altitude, surface class. This is what turns Track D's heat score from a heuristic into
 something comparable with the SOLWEIG/UTCI literature.
 
+### A10 — Reality Check: observed-shadow ML lifecycle *(agent-capstone prerequisite)*
+**Goal.** Learn where the geometry/canopy field is systematically wrong, prove whether a learned
+component improves route decisions on unseen places and dates, and operate that component as a
+versioned, reversible dependency of the agent. This is the ML-system evidence C12 cannot earn by
+calling a hosted vision model.
+
+**Data contract.** Build an owned or explicitly licensed corpus with timestamp, coordinate and
+reported accuracy, IANA zone, observation method, local conditions, source/license, geometry and
+canopy data versions, and label confidence. Maintain two linked but distinct datasets:
+
+- field observations of sun/shadow for physical calibration;
+- geotagged images with reviewed regions/masks when testing a visual segmentation component.
+
+Split by geography and capture date before model development; nearby frames from one walk must
+not cross splits. Reserve an untouched final test set. Publish dataset and model cards, consent,
+retention/deletion rules, known seasonal/coverage bias, and label-disagreement statistics. A
+crowd tap and a model-produced pseudo-label are evidence sources, not unquestioned truth.
+
+**Model ladder.** Start with a constant and the uncorrected `ShadowField`, then logistic
+regression and a small gradient-boosted model over geometry confidence, solar altitude, street
+orientation, canopy/vintage, morphology, and observation conditions. Add or fine-tune a compact
+sky/building/canopy/shadow segmenter only if masks and held-out results justify it. Compare every
+rung at equal data and publish ablations; architecture complexity earns no credit without a
+decision-level win.
+
+**Evaluation.** Report classification error, calibration/reliability, abstention/coverage,
+per-city and per-season slices, worst groups, and route-level consequences: changed route share,
+constraint violations, exposure error, and whether the selected plan improved over the untouched
+geometry baseline. Fit calibration outside the final test set. Include uncertainty in the
+published artifact and preserve `unknown` rather than forcing a label.
+
+**Release lifecycle.** Training is reproducible from a pinned environment and versioned data
+manifest. Export a small signed/versioned artifact plus feature schema for deterministic app-side
+or build-time inference. Validate training/serving feature parity, run it in shadow mode, promote
+behind a version flag only after thresholds, monitor input/coverage/calibration drift, and keep
+one-operation rollback to the geometry-only baseline. Never make model availability a prerequisite
+for basic routing.
+
+**Agent boundary.** A10 owns acquisition, labels, training, inference, and confidence. Track C
+receives only typed observations through a thin tool with model/data version, evidence ids,
+validity time, confidence, and explicit unknowns. C5 may cite those observations and C12 may compare
+them with Gemini image inspection; neither may rename model output “ground truth.”
+
+**Acceptance.** A clean checkout reproduces the chosen model and final evaluation; geography/date
+holdouts and leakage checks pass; the chosen model beats both constant and geometry-only baselines
+on at least one predeclared route-decision metric without breaching calibration/worst-slice gates;
+otherwise the negative result ships and geometry remains default. A deliberately incompatible
+feature schema is rejected, a drift simulation alerts, and a bad candidate artifact is rolled
+back. The public report links raw aggregate results, cards, artifact/data versions, and the exact
+commit.
+**Files.** `server/shadow-ml/**` or `scripts/shadow-ml/**`, versioned permitted data manifests,
+exported artifacts, `app/lib/shadowField/` adapter, eval/report notes. **Size.** Very large; split
+into (a) data/label contract, (b) baselines and leakage-safe evaluation, (c) optional segmentation,
+(d) export/shadow deployment/monitoring/rollback. **Depends on A7/A8 residual measurement.**
+
 ---
 
 ## Subagent plan
@@ -628,6 +683,8 @@ something comparable with the SOLWEIG/UTCI literature.
 - **A3 fixtures are swarm-able**: three cities, three independent fixture sets, disjoint files, worktree isolation.
 - **A7 is swarm-able in three slices** (fetch+model / field integration / UI) *only after* the interfaces between them are written down.
 - **A1, A2, A4, A5, A6 are solo.** Each is the next one's input, and A4 edits a contested file.
+- **A10 is sequential at its boundaries.** Freeze the data contract and splits before parallel
+  baseline/segmentation experiments; no experiment may edit the held-out labels or final grader.
 - **Verifier on every checkpoint.** This track's failure mode is a field that looks right and is quietly wrong; a cold reviewer with the acceptance criteria catches more than another self-review.
 
 ## Risks
@@ -636,10 +693,14 @@ something comparable with the SOLWEIG/UTCI literature.
 2. **Overpass rate limits** on tree queries in dense cities. Mitigation: reuse the routing-graph bbox and cache; never issue a tree query the graph fetch didn't already cover.
 3. **Sparse tagging** makes canopy confidence low in exactly the cities that need it. Mitigation: A8's raster; and say so in the UI rather than overclaiming.
 4. **Scope drift into a microclimate simulator.** Out of scope — see AUTONOMOUS_GOAL §7. Approximate honestly, hand the physics to Track D.
+5. **A10 leakage masquerading as accuracy.** Adjacent frames and repeated visits are highly
+   correlated. Geography/date groups are established before feature or model work and the final
+   test set is write-protected by convention and checksums.
 
 ## Out of scope / hand-offs
 
 - Heat units, UV, UTCI → **Track D** (consumes A9).
 - Cost-model weighting of shadow → **Track E** (A supplies the numbers; E decides what they're worth).
-- Agent probes → **Track C** (already calls `queryPointShadow`; will call `ShadowField` at C3).
+- Agent probes and visual inspection → **Track C** (already calls `queryPointShadow`; will call
+  `ShadowField` at C3 and consumes A10's typed observations at C12).
 - Benchmarks, fixtures infrastructure, CI budgets → **Track G**.
