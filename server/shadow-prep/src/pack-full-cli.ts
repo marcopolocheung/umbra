@@ -13,6 +13,7 @@ import {
   type PackedBrowserTile,
 } from "./pack";
 import { r2StoreFromEnvironment, S3Store } from "./storage";
+import { sha256 } from "./util";
 
 const NORMALIZATION_ID = "70e3507f16d472adf5475b614a60cb16";
 const GENERATION_SUFFIX = "five-borough-v1";
@@ -69,7 +70,7 @@ async function buildIndex(): Promise<void> {
   const body = new TextEncoder().encode(`${JSON.stringify(index)}\n`);
   const prior = await indexStore.head(INDEX_KEY);
   if (!prior) await indexStore.write(INDEX_KEY, body, "application/json");
-  else if (prior.bytes !== body.byteLength || prior.sha256 !== index.sha256)
+  else if (prior.bytes !== body.byteLength || prior.sha256 !== sha256(body))
     throw new Error(`immutable candidate-index collision: ${INDEX_KEY}`);
   const readback = await indexStore.read(INDEX_KEY);
   if (new TextDecoder().decode(readback) !== new TextDecoder().decode(body)) throw new Error("candidate-index readback mismatch");

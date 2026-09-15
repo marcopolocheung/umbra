@@ -199,9 +199,10 @@ export async function benchmarkCandidatePack(
   output?: ObjectStore,
   concurrency = 1,
   onPacked?: (entry: PackedBrowserTile) => void,
-  identity = browserPackIdentity(descriptors[0]?.normalizationId ?? ""),
+  suppliedIdentity?: BrowserPackIdentity,
 ): Promise<PackBenchmark> {
   if (!descriptors.length) throw new Error("benchmark requires at least one descriptor");
+  const identity = suppliedIdentity ?? browserPackIdentity(descriptors[0].normalizationId);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32)
     throw new Error("pack concurrency must be an integer from 1 through 32");
   const start = performance.now();
