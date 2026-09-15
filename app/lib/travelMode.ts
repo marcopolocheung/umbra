@@ -68,14 +68,25 @@ export interface ModeEdgeTags {
 }
 
 /**
- * True when bikes may not use this edge at all: an explicit `bicycle=no`, or a
- * general `access=no` (which bans everything not explicitly re-allowed — and a
- * bare `access=no` way re-allows nothing a cyclist can use). Walk behavior is
- * untouched: this predicate is only consulted for non-walk modes.
+ * `bicycle=*` values that re-allow cycling where the general `access=*` tag
+ * bans it. OSM's access hierarchy resolves most-specific-first: a
+ * `bicycle=yes|designated|permissive` on an `access=no` way is a legal bike
+ * edge, not a prohibited one. Any other value (including absent) falls back to
+ * the general tag.
+ */
+const BICYCLE_ACCESS_OVERRIDES = new Set(["yes", "designated", "permissive"]);
+
+/**
+ * True when bikes may not use this edge at all. A mode-specific `bicycle=no`
+ * always prohibits; a general `access=no` prohibits unless a more-specific
+ * bicycle tag re-allows it. Walk behavior is untouched: this predicate is only
+ * consulted for non-walk modes.
  */
 export function isProhibitedEdge(edge: ModeEdgeTags, mode: TravelModeId): boolean {
   if (mode === "walk") return false;
-  return edge.bicycle === "no" || edge.access === "no";
+  if (edge.bicycle === "no") return true;
+  if (edge.access === "no" && !BICYCLE_ACCESS_OVERRIDES.has(edge.bicycle ?? "")) return true;
+  return false;
 }
 
 /** True when the edge is dedicated cycling infrastructure in bike mode. */

@@ -80,6 +80,21 @@ describe("isProhibitedEdge", () => {
     expect(isProhibitedEdge({ distanceM: 100, access: "no" }, "bike")).toBe(true);
   });
 
+  it("lets a specific bicycle tag override a general access=no", () => {
+    for (const bicycle of ["yes", "designated", "permissive"]) {
+      expect(isProhibitedEdge({ distanceM: 100, access: "no", bicycle }, "bike")).toBe(false);
+    }
+    // …but a non-allowing value falls back to the general tag.
+    expect(isProhibitedEdge({ distanceM: 100, access: "no", bicycle: "private" }, "bike")).toBe(
+      true,
+    );
+    expect(isProhibitedEdge({ distanceM: 100, access: "no" }, "bike")).toBe(true);
+  });
+
+  it("keeps bicycle=no prohibiting even when general access allows", () => {
+    expect(isProhibitedEdge({ distanceM: 100, access: "yes", bicycle: "no" }, "bike")).toBe(true);
+  });
+
   it("allows ordinary and dedicated ways in bike mode", () => {
     expect(isProhibitedEdge({ distanceM: 100, highway: "residential" }, "bike")).toBe(false);
     expect(isProhibitedEdge({ distanceM: 100, bicycle: "designated" }, "bike")).toBe(false);

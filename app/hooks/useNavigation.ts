@@ -1542,6 +1542,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         const snapStops = (stops: [number, number][]) =>
           snapRouteStopsToReachableEdges(stops, routingGraph, {
             maxSnapDistanceM: MAX_SNAP_DIST_M,
+            // Snap onto edges the selected mode can actually leave: a bike stop
+            // snapped to a bicycle=no edge strands the search on a virtual node
+            // with no legal exit.
+            travelMode: travelModeRef.current,
             describeStop: (index, total) => {
               if (index === 0) return "the start point";
               if (index === total - 1) return "the destination";

@@ -297,11 +297,17 @@ export function snapToGraph(
  * Falls back to snapToGraph if the graph has no edges.
  * Returns the nearest endpoint id directly if the projection lands on one,
  * avoiding a zero-length virtual edge.
+ *
+ * `travelMode` filters the candidates: in bike mode prohibited edges
+ * (bicycle=no, access=no without a bicycle override) are invisible to the
+ * scan, so a stop never snaps onto an edge the search cannot leave. Walk
+ * prohibits nothing, so walk snapping is unchanged.
  */
 export function snapToEdge(
   coord: [number, number],
   graph: RoutingGraph,
-  virtualId: number
+  virtualId: number,
+  travelMode: TravelModeId = "walk"
 ): number {
   let bestDist: number = Infinity;
   let bestT = 0;
@@ -317,6 +323,7 @@ export function snapToEdge(
 
     for (const edge of edges) {
       if (edge.toId < 0) continue; // skip virtual edges
+      if (isProhibitedEdge(edge, travelMode)) continue; // unroutable in this mode
       const toNode = graph.nodes.get(edge.toId);
       if (!toNode) continue;
 
@@ -928,10 +935,15 @@ export function paretoRoutes(
 /**
  * BFS from startId — returns the set of all node IDs reachable from startId
  * in the graph (including startId itself).
+ *
+ * `travelMode` filters traversal the same way the search does, so reachability
+ * agrees with routability: a component connected only through bicycle=no edges
+ * is one component on foot and two by bike.
  */
 export function bfsReachable(
   graph: RoutingGraph,
-  startId: number
+  startId: number,
+  travelMode: TravelModeId = "walk"
 ): Set<number> {
   const visited = new Set<number>();
   const queue: number[] = [startId];
@@ -940,6 +952,7 @@ export function bfsReachable(
   while (head < queue.length) {
     const id = queue[head++];
     for (const edge of graph.adj.get(id) ?? []) {
+      if (isProhibitedEdge(edge, travelMode)) continue;
       if (!visited.has(edge.toId)) {
         visited.add(edge.toId);
         queue.push(edge.toId);
@@ -954,12 +967,16 @@ export function bfsReachable(
  * reachableIds. Returns { id, distM } where id is the snapped node ID
  * (virtual or endpoint) and distM is the distance from coord to the snap
  * point. Returns null if no reachable edge exists in the graph.
+ *
+ * `travelMode` filters candidates like snapToEdge, so the fallback snap lands
+ * on an edge the search can actually use.
  */
 export function snapToReachableEdge(
   coord: [number, number],
   graph: RoutingGraph,
   reachableIds: Set<number>,
-  virtualId: number
+  virtualId: number,
+  travelMode: TravelModeId = "walk"
 ): { id: number; distM: number } | null {
   let bestDist: number = Infinity;
   let bestT = 0;
@@ -977,6 +994,7 @@ export function snapToReachableEdge(
     for (const edge of edges) {
       if (edge.toId < 0) continue;
       if (!reachableIds.has(edge.toId)) continue;
+      if (isProhibitedEdge(edge, travelMode)) continue;
       const toNode = graph.nodes.get(edge.toId);
       if (!toNode) continue;
 
@@ -1080,6 +1098,8 @@ export interface SnapRouteStopsOptions {
   maxSnapDistanceM?: number;
   virtualIdStart?: number;
   describeStop?: (index: number, total: number) => string;
+  /** Mode the snapped stops will be routed in. Defaults to walk (no filtering). */
+  travelMode?: TravelModeId;
 }
 
 export interface SnapRouteStopsResult {
@@ -1094,12 +1114,14 @@ function defaultStopLabel(index: number, total: number): string {
 }
 
 /**
- * Snaps an ordered route's stops to one connected walkable component.
+ * Snaps an ordered route's stops to one connected component routable in the
+ * requested travel mode.
  *
  * We anchor on the destination and repair each previous stop backwards. This
  * matches the route UX: a slightly-off start/via point should snap onto the
  * component that can actually reach the requested destination, not strand the
- * route on a closer disconnected service road or path fragment.
+ * route on a closer disconnected service road or path fragment — or, by bike,
+ * on a closer edge bikes may not use.
  */
 export function snapRouteStopsToReachableEdges(
   coords: [number, number][],
@@ -1114,20 +1136,21 @@ export function snapRouteStopsToReachableEdges(
     maxSnapDistanceM = 100,
     virtualIdStart = -1,
     describeStop = defaultStopLabel,
+    travelMode = "walk",
   } = options;
   if (virtualIdStart >= 0) {
     throw new Error("virtualIdStart must be negative.");
   }
 
   const virtualIdFor = (index: number) => virtualIdStart - index;
-  const ids = coords.map((coord, index) => snapToEdge(coord, graph, virtualIdFor(index)));
+  const ids = coords.map((coord, index) => snapToEdge(coord, graph, virtualIdFor(index), travelMode));
   const snapDistancesM = ids.map((id, index) => {
     const n = graph.nodes.get(id);
     return n ? haversineMeters(coords[index], [n.lon, n.lat]) : Infinity;
   });
 
   for (let i = coords.length - 2; i >= 0; i--) {
-    const reachableToDestination = bfsReachable(graph, ids[i + 1]);
+    const reachableToDestination = bfsReachable(graph, ids[i + 1], travelMode);
     if (reachableToDestination.has(ids[i])) continue;
 
     if (ids[i] < 0) removeVirtualNode(graph, ids[i]);
@@ -1135,7 +1158,8 @@ export function snapRouteStopsToReachableEdges(
       coords[i],
       graph,
       reachableToDestination,
-      virtualIdFor(i)
+      virtualIdFor(i),
+      travelMode
     );
     const label = describeStop(i, coords.length);
     if (!fallback) {

@@ -1414,3 +1414,111 @@ describe("paretoRoutes — prohibited edges (E1 follow-up)", () => {
     }
   });
 });
+
+/**
+ * Access-hierarchy override: 1→3 direct is access=no but explicitly
+ * bicycle=yes (100 m) vs 1→2→3 ordinary ways (200 m). The specific tag wins,
+ * so bike takes the direct edge instead of rejecting a legal way.
+ */
+function makeAccessOverrideGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "residential", access: "no", bicycle: "yes" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "residential", access: "no", bicycle: "yes" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Mode-aware snap fixture: a prohibited segment 1→2 (bicycle=no) runs along
+ * lat 0, and a legal residential segment 3→4 runs ~56 m north of it. The two
+ * segments are disconnected from each other.
+ */
+function makeSnapFixtureGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0005, lon: 0.0 }],
+    [4, { id: 4, lat: 0.0005, lon: 0.001 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [{ toId: 2, distanceM: 111, shadowFactor: 0, highway: "residential", bicycle: "no" }]],
+    [2, [{ toId: 1, distanceM: 111, shadowFactor: 0, highway: "residential", bicycle: "no" }]],
+    [3, [{ toId: 4, distanceM: 111, shadowFactor: 0, highway: "residential" }]],
+    [4, [{ toId: 3, distanceM: 111, shadowFactor: 0, highway: "residential" }]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — access hierarchy (E1 follow-up 2)", () => {
+  it("bike uses an access=no edge explicitly re-allowed for bicycles", () => {
+    expect(dijkstra(makeAccessOverrideGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds).toEqual([
+      1, 3,
+    ]);
+  });
+
+  it("bike still avoids a bare access=no edge", () => {
+    const nodes = new Map<number, OsmNode>([
+      [1, { id: 1, lat: 0.0, lon: 0.0 }],
+      [2, { id: 2, lat: 0.0, lon: 0.001 }],
+    ]);
+    const graph: RoutingGraph = {
+      nodes,
+      adj: new Map<number, GraphEdge[]>([
+        [1, [{ toId: 2, distanceM: 100, shadowFactor: 0, access: "no" }]],
+        [2, [{ toId: 1, distanceM: 100, shadowFactor: 0, access: "no" }]],
+      ]),
+    };
+    expect(dijkstra(graph, 1, 2, 0, { travelMode: "bike" })).toBeNull();
+    expect(dijkstra(graph, 1, 2, 0)!).not.toBeNull();
+  });
+});
+
+describe("mode-aware snapping and reachability (E1 follow-up 2)", () => {
+  it("bfsReachable agrees with bike routability", () => {
+    const graph = makeSnapFixtureGraph();
+    // On foot the prohibited segment is traversable; by bike node 1 is alone.
+    expect(bfsReachable(graph, 1)).toEqual(new Set([1, 2]));
+    expect(bfsReachable(graph, 1, "bike")).toEqual(new Set([1]));
+    expect(bfsReachable(graph, 3, "bike")).toEqual(new Set([3, 4]));
+  });
+
+  it("bike snaps past a prohibited edge to the legal one ~56 m away", () => {
+    // ~6 m north of the prohibited segment, ~50 m south of the legal one.
+    const nearProhibited: [number, number] = [0.0005, 0.00005];
+
+    const walkGraph = makeSnapFixtureGraph();
+    const walkId = snapToEdge(nearProhibited, walkGraph, -1);
+    expect(walkGraph.nodes.get(walkId)!.lat).toBeCloseTo(0, 5);
+
+    const bikeGraph = makeSnapFixtureGraph();
+    const bikeId = snapToEdge(nearProhibited, bikeGraph, -1, "bike");
+    expect(bikeGraph.nodes.get(bikeId)!.lat).toBeCloseTo(0.0005, 5);
+  });
+
+  it("a bike stop near a prohibited edge still routes end to end", () => {
+    const graph = makeSnapFixtureGraph();
+    const stops: [number, number][] = [
+      [0.0005, 0.00005], // ~6 m from the prohibited segment
+      [0.0005, 0.0005], // on the legal segment
+    ];
+    const { ids } = snapRouteStopsToReachableEdges(stops, graph, { travelMode: "bike" });
+    const result = dijkstra(graph, ids[0], ids[1], 0, { travelMode: "bike" });
+    expect(result).not.toBeNull();
+    expect(result!.distanceM).toBeGreaterThan(0);
+  });
+});
