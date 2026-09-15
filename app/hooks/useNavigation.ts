@@ -3,19 +3,44 @@ import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { fetchRoutingGraph, fetchStationEntrances } from "../lib/overpass";
 import {
-  snapToEdge, dijkstra, snapToGraph, paretoRoutes, graphToGeoJSON,
-  haversineMeters, bfsReachable, snapToReachableEdge, SpatialGrid,
-  simplifyPolyline, sketchBoundingBox, findSketchGaps, connectRouteEndpoints,
-  clearVirtualNodes, snapRouteStopsToReachableEdges, parallelSidewalkEdges,
+  snapToEdge,
+  dijkstra,
+  snapToGraph,
+  paretoRoutes,
+  graphToGeoJSON,
+  haversineMeters,
+  bfsReachable,
+  snapToReachableEdge,
+  SpatialGrid,
+  simplifyPolyline,
+  sketchBoundingBox,
+  findSketchGaps,
+  connectRouteEndpoints,
+  clearVirtualNodes,
+  snapRouteStopsToReachableEdges,
+  parallelSidewalkEdges,
 } from "../lib/routing";
-import type { GraphEdge, RoutingGraph, RouteLeg, LatLng, SketchPoint, RouteOption } from "../lib/routing";
+import type {
+  GraphEdge,
+  RoutingGraph,
+  RouteLeg,
+  LatLng,
+  SketchPoint,
+  RouteOption,
+} from "../lib/routing";
 import { recordRoutingRun, computeDerivedKpis } from "../lib/metrics";
 import { buildingCentroidAt, snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import { createRoute, getRoutes, getFolders, updateRoute, deleteRoute } from "../lib/savedRoutes";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
 import { routeToGPX, routeToGeoJSON, downloadBlob } from "../lib/exportRoute";
-import { fetchTrainGraph, findBestTrainRoute, matchEntranceToTrainStation, TRAIN_SUN_EXPOSURE, buildTrainDrawData } from "../lib/trainGraph";
+import {
+  fetchTrainGraph,
+  findBestTrainRoute,
+  matchEntranceToTrainStation,
+  TRAIN_SUN_EXPOSURE,
+  buildTrainDrawData,
+} from "../lib/trainGraph";
 import {
   sampleBuildingMaskBothSidewalks,
   computeSolarIntensity,
@@ -23,7 +48,11 @@ import {
 } from "../lib/shadowSampling";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import {
-  LOW_CONFIDENCE, QUERY_PAD_M, bboxAroundEdges, createGeometryShadowField, edgeSampleCount,
+  LOW_CONFIDENCE,
+  QUERY_PAD_M,
+  bboxAroundEdges,
+  createGeometryShadowField,
+  edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
 import type { EdgeRef, ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
 import {
@@ -44,6 +73,15 @@ import {
   type RoutePlanRequest,
   type RoutePlanTerminalResult,
 } from "../lib/routePlanJob";
+
+/** An opaque map-owned route identity for a C4 terminal result. */
+export interface RouteReceiptMapObject {
+  id: string;
+  kind: "route";
+  requestId: string;
+  actionId: string;
+  planRevision: number;
+}
 
 /**
  * How much to trust the pixel sampler when it answers instead of the field.
@@ -154,13 +192,15 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isCalculating, setIsCalculating] = useState(false);
   const [routeProgress, setRouteProgress] = useState<RouteCalculationProgress | null>(null);
-  const [routePreview, setRoutePreview] = useState<GeoJSON.Feature<GeoJSON.LineString> | null>(null);
+  const [routePreview, setRoutePreview] = useState<GeoJSON.Feature<GeoJSON.LineString> | null>(
+    null,
+  );
   const [navError, setNavError] = useState<string | null>(null);
   const [routeSolarIntensity, setRouteSolarIntensity] = useState<number | null>(null);
   const [waypointALabel, setWaypointALabel] = useState<string | null>(null);
   const [waypointBLabel, setWaypointBLabel] = useState<string | null>(null);
-  const [pendingSlot, setPendingSlot] = useState<'A' | 'B' | null>(null);
-  const pendingSlotRef = useRef<'A' | 'B' | null>(null);
+  const [pendingSlot, setPendingSlot] = useState<"A" | "B" | null>(null);
+  const pendingSlotRef = useRef<"A" | "B" | null>(null);
   pendingSlotRef.current = pendingSlot;
 
   const [saveModalRouteIndex, setSaveModalRouteIndex] = useState<number | null>(null);
@@ -178,7 +218,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const [simplifiedWaypoints, setSimplifiedWaypoints] = useState<LatLng[] | null>(null);
 
   // Route mode and shadow preference
-  const [routeMode, setRouteMode] = useState<'walk' | 'transit'>('walk');
+  const [routeMode, setRouteMode] = useState<"walk" | "transit">("walk");
   const [shadowPreference, setShadowPreference] = useState(0.5);
 
   // Refs for stale-closure avoidance
@@ -190,12 +230,13 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const routePlanInputVersionRef = useRef(0);
   const routePlanRevisionRef = useRef(0);
   const routePlanActionSeqRef = useRef(0);
+  const routeReceiptObjectRef = useRef<RouteReceiptMapObject | null>(null);
   const pendingAgentPlanFingerprintRef = useRef<string | null>(null);
   const waypointALabelRef = useRef(waypointALabel);
   const waypointBLabelRef = useRef(waypointBLabel);
   const drawModeRef = useRef(drawMode);
   const sketchPointsRef = useRef(sketchPoints);
-  const dragSlotRef = useRef<'A' | 'B' | null>(null);
+  const dragSlotRef = useRef<"A" | "B" | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
   const dragActiveRef = useRef(false);
   const ghostElRef = useRef<HTMLDivElement | null>(null);
@@ -222,7 +263,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     shadowFieldRef.current = createGeometryShadowField(
       [createTilePrismProvider(() => mapRef.current), createOverpassPrismProvider()],
       [createOverpassCanopyProvider()],
-      [createRasterCanopyProvider()]
+      [createRasterCanopyProvider()],
     );
   }
 
@@ -234,6 +275,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   sketchPointsRef.current = sketchPoints;
   const routePlanTime = dateRef.current.getTime();
   const advanceRoutePlanRevision = useCallback(() => {
+    // A different plan may draw different geometry. Its predecessor must no
+    // longer be focusable or presentable as the current route.
+    routeReceiptObjectRef.current = null;
     const revision = ++routePlanRevisionRef.current;
     agentRouteJobsRef.current.advancePlanRevision(revision);
     return revision;
@@ -253,10 +297,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   // Escape to cancel pending slot
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPendingSlot(null);
+      if (e.key === "Escape") setPendingSlot(null);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   /**
@@ -303,13 +347,16 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setRoutePreview(null);
   }, [mapRef, restorePitchAfterShadowReadback]);
 
-  const fitMapToRoute = useCallback((route: RouteOption) => {
+  const fitMapToRoute = useCallback(
+    (route: RouteOption) => {
     const map = mapRef.current;
     const bounds = routeBounds(route);
     if (!map || !bounds) return;
 
     map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 800 });
-  }, [mapRef]);
+    },
+    [mapRef],
+  );
 
   // Keyboard shortcuts for draw mode
   useEffect(() => {
@@ -347,7 +394,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       if (originalEvent?.altKey && waypointARef.current && waypointBRef.current) {
         const lngLat: [number, number] = [coord.lng, coord.lat];
         cancelInFlightCalculation();
-        setAdditionalWaypoints(prev => [...prev, lngLat]);
+        setAdditionalWaypoints((prev) => [...prev, lngLat]);
         setNavRoutes([]);
         setSelectedRouteIndex(0);
         return;
@@ -358,21 +405,25 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const lngLat: [number, number] = [coord.lng, coord.lat];
       const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
       cancelInFlightCalculation();
-      if (slot === 'A') {
+      if (slot === "A") {
         setWaypointA(lngLat);
         setWaypointALabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => { if (lbl) setWaypointALabel(lbl); });
-        setPendingSlot(waypointBRef.current ? null : 'B');
+        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
+          if (lbl) setWaypointALabel(lbl);
+        });
+        setPendingSlot(waypointBRef.current ? null : "B");
       } else {
         setWaypointB(lngLat);
         setWaypointBLabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => { if (lbl) setWaypointBLabel(lbl); });
+        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
+          if (lbl) setWaypointBLabel(lbl);
+        });
         setPendingSlot(null);
       }
       setNavRoutes([]);
       setSelectedRouteIndex(0);
     },
-    [cancelInFlightCalculation]
+    [cancelInFlightCalculation],
   );
 
   const handleClear = useCallback(() => {
@@ -392,21 +443,25 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSketchPoints([]);
     setNavWarning(null);
     setSimplifiedWaypoints(null);
-    setRouteMode('walk');
+    setRouteMode("walk");
     setShadowPreference(0.5);
   }, [cancelInFlightCalculation]);
 
-  const handleOpenSaveModal = useCallback((routeIndex: number) => {
+  const handleOpenSaveModal = useCallback(
+    (routeIndex: number) => {
     if (navRoutes[routeIndex]?.partial) return;
     setSaveModalRouteIndex(routeIndex);
-  }, [navRoutes]);
+    },
+    [navRoutes],
+  );
 
-  const handleConfirmSave = useCallback((name: string, folderId: string | null) => {
+  const handleConfirmSave = useCallback(
+    (name: string, folderId: string | null) => {
     if (saveModalRouteIndex === null) return;
     const route = navRoutes[saveModalRouteIndex];
     if (!route || !waypointA || !waypointB) return;
     const d = dateRef.current;
-    const dateIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const dateIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     createRoute({
       name,
       folderId,
@@ -422,9 +477,21 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSavedRoutes(getRoutes());
     setSavedFolders(getFolders());
     setSaveModalRouteIndex(null);
-  }, [saveModalRouteIndex, navRoutes, waypointA, waypointB, waypointALabel, waypointBLabel, additionalWaypoints, dateRef]);
+    },
+    [
+      saveModalRouteIndex,
+      navRoutes,
+      waypointA,
+      waypointB,
+      waypointALabel,
+      waypointBLabel,
+      additionalWaypoints,
+      dateRef,
+    ],
+  );
 
-  const handleLoadRoute = useCallback((saved: SavedRoute) => {
+  const handleLoadRoute = useCallback(
+    (saved: SavedRoute) => {
     cancelInFlightCalculation();
     setWaypointA(saved.waypointA);
     setWaypointB(saved.waypointB);
@@ -436,9 +503,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     const d = new Date(saved.dateIso + "T00:00:00");
     d.setHours(Math.floor(saved.timeOfDayMinutes / 60), saved.timeOfDayMinutes % 60, 0, 0);
     setDate(d);
-  }, [cancelInFlightCalculation, setDate]);
+    },
+    [cancelInFlightCalculation, setDate],
+  );
 
-  const handleExportRoute = useCallback((routeIndex: number, format: "gpx" | "geojson") => {
+  const handleExportRoute = useCallback(
+    (routeIndex: number, format: "gpx" | "geojson") => {
     const route = navRoutes[routeIndex];
     if (!route) return;
     if (route.partial) {
@@ -451,28 +521,39 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     } else {
       downloadBlob(routeToGeoJSON(route), `${name}.geojson`, "application/geo+json");
     }
-  }, [navRoutes]);
+    },
+    [navRoutes],
+  );
 
-  const handleRemoveAdditionalWaypoint = useCallback((index: number) => {
+  const handleRemoveAdditionalWaypoint = useCallback(
+    (index: number) => {
     cancelInFlightCalculation();
-    setAdditionalWaypoints(prev => prev.filter((_, i) => i !== index));
+      setAdditionalWaypoints((prev) => prev.filter((_, i) => i !== index));
     setNavRoutes([]);
     setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
+    },
+    [cancelInFlightCalculation],
+  );
 
-  const handleSetAdditionalWaypoints = useCallback((waypoints: [number, number][]) => {
+  const handleSetAdditionalWaypoints = useCallback(
+    (waypoints: [number, number][]) => {
     cancelInFlightCalculation();
     setAdditionalWaypoints(waypoints);
     setNavRoutes([]);
     setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
+    },
+    [cancelInFlightCalculation],
+  );
 
-  const handleAddAdditionalWaypoint = useCallback((coord: [number, number]) => {
+  const handleAddAdditionalWaypoint = useCallback(
+    (coord: [number, number]) => {
     cancelInFlightCalculation();
-    setAdditionalWaypoints(prev => [...prev, coord]);
+      setAdditionalWaypoints((prev) => [...prev, coord]);
     setNavRoutes([]);
     setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
+    },
+    [cancelInFlightCalculation],
+  );
 
   const handleDeleteSavedRoute = useCallback((id: string) => {
     deleteRoute(id);
@@ -501,7 +582,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         setNavError("Unable to get your location. Check browser permissions.");
         setIsLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [mapRef]);
 
@@ -525,7 +606,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSketchPoints([]);
     setNavWarning(null);
     setSimplifiedWaypoints(null);
-    setRouteMode('walk');
+    setRouteMode("walk");
     setShadowPreference(0.5);
     setNavMode(false);
   }, [cancelInFlightCalculation, navMode]);
@@ -545,12 +626,15 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSimplifiedWaypoints(null);
   }, []);
 
-  const handleRouteModeChange = useCallback((mode: 'walk' | 'transit') => {
+  const handleRouteModeChange = useCallback(
+    (mode: "walk" | "transit") => {
     cancelInFlightCalculation();
     setRouteMode(mode);
     setNavRoutes([]);
     setSelectedRouteIndex(0);
-  }, [cancelInFlightCalculation]);
+    },
+    [cancelInFlightCalculation],
+  );
 
   const handleShadowPreferenceChange = useCallback((v: number) => {
     setShadowPreference(v);
@@ -560,14 +644,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       let bestDiff = Infinity;
       for (let i = 0; i < routes.length; i++) {
         const diff = Math.abs(routes[i].shadowCoverage - v);
-        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = i;
+        }
       }
       setSelectedRouteIndex(bestIdx);
       return routes;
     });
   }, []);
 
-  const handleSketchPointClick = useCallback((coord: LatLng) => {
+  const handleSketchPointClick = useCallback(
+    (coord: LatLng) => {
     setSketchPoints((prev) => [...prev, { coord, address: null }]);
 
     const map = mapRef.current;
@@ -581,11 +669,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         const next = [...prev];
         for (let i = next.length - 1; i >= 0; i--) {
           const p = next[i];
-          if (
-            p.address == null &&
-            p.coord[0] === coord[0] &&
-            p.coord[1] === coord[1]
-          ) {
+            if (p.address == null && p.coord[0] === coord[0] && p.coord[1] === coord[1]) {
             next[i] = { coord: p.coord, address: label };
             break;
           }
@@ -593,9 +677,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         return next;
       });
     });
-  }, [mapRef]);
+    },
+    [mapRef],
+  );
 
-  const handleSketchPointDrag = useCallback((index: number, coord: LatLng) => {
+  const handleSketchPointDrag = useCallback(
+    (index: number, coord: LatLng) => {
     setSketchPoints((prev) => {
       const next = [...prev];
       if (index < 0 || index >= next.length) return prev;
@@ -619,7 +706,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         return next;
       });
     });
-  }, [mapRef]);
+    },
+    [mapRef],
+  );
 
   // -------------------------------------------------------------------------
   // Sketch routing helpers
@@ -629,7 +718,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     const nodes = new Map(graph.nodes);
     const adj = new Map<number, GraphEdge[]>();
     for (const [id, edges] of graph.adj) {
-      adj.set(id, edges.map((e) => ({ toId: e.toId, distanceM: e.distanceM, shadowFactor: e.shadowFactor })));
+      adj.set(
+        id,
+        edges.map((e) => ({ toId: e.toId, distanceM: e.distanceM, shadowFactor: e.shadowFactor })),
+      );
     }
     return { nodes, adj };
   }, []);
@@ -650,12 +742,15 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     graph.adj.delete(vid);
   }, []);
 
-  const snapSketchWaypoints = useCallback((
+  const snapSketchWaypoints = useCallback(
+    (
     waypoints: LatLng[],
     graph: RoutingGraph,
-    map: maplibregl.Map
+      map: maplibregl.Map,
   ): { snappedIds: number[]; snappedCoords: LatLng[] } => {
-    const coords = waypoints.map((wp) => snapOutsideBuilding(wp, map as unknown as MapBuildingQuery));
+      const coords = waypoints.map((wp) =>
+        snapOutsideBuilding(wp, map as unknown as MapBuildingQuery),
+      );
 
     const snappedIds: number[] = [];
     const MAX_RESNAP_DIST_M = 250;
@@ -676,12 +771,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         const fallback = snapToReachableEdge(coords[i], graph, preferredComponent, fallbackVid);
         if (!fallback) {
           throw new Error(
-            `No walkable streets connected to your sketch near point ${i + 1}. Try drawing closer to streets.`
+              `No walkable streets connected to your sketch near point ${i + 1}. Try drawing closer to streets.`,
           );
         }
         if (fallback.distM > MAX_RESNAP_DIST_M) {
           throw new Error(
-            `Point ${i + 1} is about ${Math.round(fallback.distM)} m from the nearest connected street. Try drawing closer to streets.`
+              `Point ${i + 1} is about ${Math.round(fallback.distM)} m from the nearest connected street. Try drawing closer to streets.`,
           );
         }
         id = fallback.id;
@@ -691,13 +786,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     }
 
     return { snappedIds, snappedCoords: coords };
-  }, [removeVirtualNode]);
+    },
+    [removeVirtualNode],
+  );
 
   const calculateSketchRoute = useCallback(async () => {
     const coords = sketchPoints.map((p) => p.coord);
     if (coords.length < 2) return;
     const map = mapRef.current;
-    if (!map) { setNavError("Map not ready"); return; }
+    if (!map) {
+      setNavError("Map not ready");
+      return;
+    }
 
     const myGen = ++calcGenRef.current;
     calcAbortRef.current?.abort();
@@ -732,10 +832,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const field = shadowFieldRef.current!;
 
       readinessAbort = new AbortController();
-      const readinessSignal = AbortSignal.any([
-        calcSignal,
-        readinessAbort.signal,
-      ]);
+      const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
       const readyOptions = {
         signal: readinessSignal,
         deadlineAt: Date.now() + ROUTE_READINESS_BUDGET_MS,
@@ -744,13 +841,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
       let graph: RoutingGraph;
       try {
-        graph = await fetchRoutingGraph(
-          bbox.south,
-          bbox.west,
-          bbox.north,
-          bbox.east,
-          calcSignal,
-        );
+        graph = await fetchRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal);
       } catch (error) {
         readinessAbort.abort();
         throw error;
@@ -786,8 +877,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       ]);
       if (calcGenRef.current !== myGen || calcSignal.aborted) return;
 
-      const coverage = field.coverageEdges?.(sketchRefs, dateRef.current)
-        ?? field.coverage(shadowBbox, dateRef.current);
+      const coverage =
+        field.coverageEdges?.(sketchRefs, dateRef.current) ??
+        field.coverage(shadowBbox, dateRef.current);
       const needsCanvas = coverage.confidence < LOW_CONFIDENCE;
 
       if (needsCanvas) {
@@ -803,8 +895,11 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
         if (!bboxInView) {
           map.fitBounds(
-            [[bbox.west, bbox.south], [bbox.east, bbox.north]] as [[number, number], [number, number]],
-            { padding: 50, duration: 0 }
+            [
+              [bbox.west, bbox.south],
+              [bbox.east, bbox.north],
+            ] as [[number, number], [number, number]],
+            { padding: 50, duration: 0 },
           );
         }
         if (!bboxInView || flattened) await waitForMapIdle(map);
@@ -815,7 +910,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       if (gaps.length > 0) {
         const pointNums = gaps.map((i) => i + 1).join(", ");
         setNavWarning(
-          `Your sketch crosses an area with no walkable roads near point ${pointNums} — the route may deviate there.`
+          `Your sketch crosses an area with no walkable roads near point ${pointNums} — the route may deviate there.`,
         );
       }
 
@@ -836,13 +931,16 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       // `shadowFactor` — so there is no provenance to surface here. The source still
       // has to be the same one `calculateRoute` uses: two definitions of shadow in one
       // app is worse than a sketch card without a label.
-      const sketchShadow = sketchRefs.length > 0 ? field.sampleEdges(sketchRefs, dateRef.current) : [];
+      const sketchShadow =
+        sketchRefs.length > 0 ? field.sampleEdges(sketchRefs, dateRef.current) : [];
       for (let i = 0; i < sketchRefs.length; i++) {
         let { left, right } = sketchShadow[i];
         if (sketchShadow[i].confidence < LOW_CONFIDENCE && buildingMask) {
           ({ left, right } = sampleBuildingMaskBothSidewalks(
-            projectToScreen, buildingMask,
-            sketchRefs[i].from, sketchRefs[i].to,
+            projectToScreen,
+            buildingMask,
+            sketchRefs[i].from,
+            sketchRefs[i].to,
             edgeSampleCount(sketchDistances[i]),
           ));
         }
@@ -870,7 +968,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
         for (let i = 0; i < snappedIds.length - 1; i++) {
           const leg = dijkstra(sketchGraph, snappedIds[i], snappedIds[i + 1], v.shadowStrength);
-          if (!leg) { failed = true; break; }
+          if (!leg) {
+            failed = true;
+            break;
+          }
           if (i === 0) fullPath.push(...leg.nodeIds);
           else fullPath.push(...leg.nodeIds.slice(1));
           totalDist += leg.distanceM;
@@ -921,8 +1022,15 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       }
     }
   }, [
-    sketchPoints, mapRef, shadowLayerRef, dateRef, cloneRoutingGraph, snapSketchWaypoints, fitMapToRoute,
-    flattenForShadowReadback, restorePitchAfterShadowReadback,
+    sketchPoints,
+    mapRef,
+    shadowLayerRef,
+    dateRef,
+    cloneRoutingGraph,
+    snapSketchWaypoints,
+    fitMapToRoute,
+    flattenForShadowReadback,
+    restorePitchAfterShadowReadback,
   ]);
 
   const handleSketchFinish = useCallback(() => {
@@ -931,7 +1039,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     calculateSketchRoute();
   }, [calculateSketchRoute, advanceRoutePlanRevision]);
 
-  const handleSetWaypointA = useCallback((coord: [number, number], label: string) => {
+  const handleSetWaypointA = useCallback(
+    (coord: [number, number], label: string) => {
     cancelInFlightCalculation();
     setWaypointA(coord);
     setWaypointALabel(label);
@@ -939,9 +1048,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSelectedRouteIndex(0);
     const map = mapRef.current;
     if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
-  }, [cancelInFlightCalculation, mapRef]);
+    },
+    [cancelInFlightCalculation, mapRef],
+  );
 
-  const handleSetWaypointB = useCallback((coord: [number, number], label: string) => {
+  const handleSetWaypointB = useCallback(
+    (coord: [number, number], label: string) => {
     cancelInFlightCalculation();
     setWaypointB(coord);
     setWaypointBLabel(label);
@@ -949,15 +1061,23 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSelectedRouteIndex(0);
     const map = mapRef.current;
     if (map) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
-  }, [cancelInFlightCalculation, mapRef]);
+    },
+    [cancelInFlightCalculation, mapRef],
+  );
 
-  const handleUseLocationAsA = useCallback((coord: [number, number]) => {
+  const handleUseLocationAsA = useCallback(
+    (coord: [number, number]) => {
     handleSetWaypointA(coord, "Your location");
-  }, [handleSetWaypointA]);
+    },
+    [handleSetWaypointA],
+  );
 
-  const handleUseLocationAsB = useCallback((coord: [number, number]) => {
+  const handleUseLocationAsB = useCallback(
+    (coord: [number, number]) => {
     handleSetWaypointB(coord, "Your location");
-  }, [handleSetWaypointB]);
+    },
+    [handleSetWaypointB],
+  );
 
   const handleSwapWaypoints = useCallback(() => {
     const a = waypointARef.current;
@@ -990,31 +1110,36 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   }, [cancelInFlightCalculation]);
 
   const handleMarkerDragEnd = useCallback(
-    (slot: 'A' | 'B', coord: { lng: number; lat: number }) => {
+    (slot: "A" | "B", coord: { lng: number; lat: number }) => {
       const lngLat: [number, number] = [coord.lng, coord.lat];
       const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
       cancelInFlightCalculation();
       setNavRoutes([]);
       setSelectedRouteIndex(0);
-      if (slot === 'A') {
+      if (slot === "A") {
         setWaypointA(lngLat);
         setWaypointALabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => { if (lbl) setWaypointALabel(lbl); });
+        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
+          if (lbl) setWaypointALabel(lbl);
+        });
       } else {
         setWaypointB(lngLat);
         setWaypointBLabel(coordLabel);
-        geocodeReverse(coord.lat, coord.lng).then((lbl) => { if (lbl) setWaypointBLabel(lbl); });
+        geocodeReverse(coord.lat, coord.lng).then((lbl) => {
+          if (lbl) setWaypointBLabel(lbl);
+        });
       }
     },
-    [cancelInFlightCalculation]
+    [cancelInFlightCalculation],
   );
 
-  const handlePinDragStart = useCallback((slot: 'A' | 'B') => {
+  const handlePinDragStart = useCallback(
+    (slot: "A" | "B") => {
     dragSlotRef.current = slot;
     dragActiveRef.current = false;
     dragStartPos.current = null;
 
-    const color = slot === 'A' ? '#22c55e' : '#ef4444';
+      const color = slot === "A" ? "#22c55e" : "#ef4444";
 
     function onMove(e: PointerEvent) {
       const { clientX: x, clientY: y } = e;
@@ -1030,33 +1155,33 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
       if (!dragActiveRef.current && dist > 6) {
         dragActiveRef.current = true;
-        document.body.style.userSelect = 'none';
+          document.body.style.userSelect = "none";
 
-        const ghost = document.createElement('div');
+          const ghost = document.createElement("div");
         ghost.style.cssText = [
-          'position:fixed',
-          'pointer-events:none',
-          'z-index:9999',
-          'transform:translate(-50%, -100%)',
-          'transition:none',
-        ].join(';');
+            "position:fixed",
+            "pointer-events:none",
+            "z-index:9999",
+            "transform:translate(-50%, -100%)",
+            "transition:none",
+          ].join(";");
         ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
-        ghost.style.left = x + 'px';
-        ghost.style.top = y + 'px';
+          ghost.style.left = x + "px";
+          ghost.style.top = y + "px";
         document.body.appendChild(ghost);
         ghostElRef.current = ghost;
       }
 
       if (dragActiveRef.current && ghostElRef.current) {
-        ghostElRef.current.style.left = x + 'px';
-        ghostElRef.current.style.top = y + 'px';
+          ghostElRef.current.style.left = x + "px";
+          ghostElRef.current.style.top = y + "px";
       }
     }
 
     function onUp(e: PointerEvent) {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      document.body.style.userSelect = '';
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.userSelect = "";
 
       if (ghostElRef.current) {
         ghostElRef.current.remove();
@@ -1083,14 +1208,14 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       handleMarkerDragEnd(currentSlot, { lng: lngLat.lng, lat: lngLat.lat });
     }
 
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  }, [handleMarkerDragEnd, mapRef]);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [handleMarkerDragEnd, mapRef],
+  );
 
-  const calculateRoute = useCallback(async (
-    plan?: RoutePlan,
-    externalSignal?: AbortSignal,
-  ): Promise<RoutePlanOutcome> => {
+  const calculateRoute = useCallback(
+    async (plan?: RoutePlan, externalSignal?: AbortSignal): Promise<RoutePlanOutcome> => {
     const rawA = plan?.from ?? waypointARef.current;
     const rawB = plan?.to ?? waypointBRef.current;
     if (!rawA || !rawB) {
@@ -1164,11 +1289,13 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
     try {
       const straightLineDistM = haversineMeters(a, b);
-      const basePadding = Math.max(0.005, Math.min(0.008, straightLineDistM / 111000 * 0.3));
+        const basePadding = Math.max(0.005, Math.min(0.008, (straightLineDistM / 111000) * 0.3));
       const padding = basePadding;
       let routeStops: [number, number][] = [
         a,
-        ...(plan?.via ?? additionalWaypoints).map((wp) => snapOutsideBuilding(wp, map as unknown as MapBuildingQuery)),
+          ...(plan?.via ?? additionalWaypoints).map((wp) =>
+            snapOutsideBuilding(wp, map as unknown as MapBuildingQuery),
+          ),
         b,
       ];
       const allLats = routeStops.map((w) => w[1]);
@@ -1191,10 +1318,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const field = shadowFieldRef.current!;
 
       readinessAbort = new AbortController();
-      const readinessSignal = AbortSignal.any([
-        calcSignal,
-        readinessAbort.signal,
-      ]);
+        const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
       const readyOptions = {
         signal: readinessSignal,
         deadlineAt: Date.now() + ROUTE_READINESS_BUDGET_MS,
@@ -1226,8 +1350,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       // whole point of A4b: when geometry can answer, the mid-calculation `fitBounds`
       // jump and the full-canvas readback are both pure cost. The camera work stays
       // exactly as PR #160 left it on the path that still needs pixels.
-      const coverage = field.coverageEdges?.(edgeRefs, dateRef.current)
-        ?? field.coverage(shadowBbox, dateRef.current);
+        const coverage =
+          field.coverageEdges?.(edgeRefs, dateRef.current) ??
+          field.coverage(shadowBbox, dateRef.current);
       const needsCanvas = coverage.confidence < LOW_CONFIDENCE;
 
       let buildingMask: ReturnType<IShadowLayer["readBuildingShadowMask"]> = null;
@@ -1245,8 +1370,11 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
         if (!bboxInView) {
           map.fitBounds(
-            [[west, south], [east, north]] as [[number, number], [number, number]],
-            { padding: 50, duration: 0 }
+              [
+                [west, south],
+                [east, north],
+              ] as [[number, number], [number, number]],
+              { padding: 50, duration: 0 },
           );
         }
         if (!bboxInView || flattened) await waitForMapIdle(map);
@@ -1315,12 +1443,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           canopyProviders.push(
             osmCanopy && rasterCanopy
               ? "both"
-              : osmCanopy ? "osm" : rasterCanopy ? "raster" : "none",
+                : osmCanopy
+                  ? "osm"
+                  : rasterCanopy
+                    ? "raster"
+                    : "none",
           );
         } else {
           const pixels = sampleBuildingMaskBothSidewalks(
-            projectToScreen, buildingMask,
-            edgeRefs[i].from, edgeRefs[i].to,
+              projectToScreen,
+              buildingMask,
+              edgeRefs[i].from,
+              edgeRefs[i].to,
             edgeSampleCount(edgeDistances[i]),
           );
           edgeShadowCache.set(edgeKeys[i], {
@@ -1345,7 +1479,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       }
       shadowSampleMs = performance.now() - tShadow;
 
-      const shareOf = <T,>(values: T[], value: T) =>
+        const shareOf = <T>(values: T[], value: T) =>
         edgeRefs.length === 0
           ? 0
           : values.filter((entry) => entry === value).length / edgeRefs.length;
@@ -1353,7 +1487,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       const tDijkstra = performance.now();
       updateProgress({ message: "Building shadow-aware graph" });
       const routingAdj = new Map<number, GraphEdge[]>();
-      const ensureRA = (id: number) => { if (!routingAdj.has(id)) routingAdj.set(id, []); };
+        const ensureRA = (id: number) => {
+          if (!routingAdj.has(id)) routingAdj.set(id, []);
+        };
 
       for (const [fromId, edges] of graph.adj) {
         if (fromId < 0) continue;
@@ -1364,9 +1500,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           const lo = Math.min(fromId, edge.toId);
           const hi = Math.max(fromId, edge.toId);
           const { left, right } = edgeShadowCache.get(`${lo},${hi}`) ?? { left: 0, right: 0 };
-          routingAdj.get(fromId)!.push(
-            ...parallelSidewalkEdges(fromId, edge, left, right)
-          );
+            routingAdj.get(fromId)!.push(...parallelSidewalkEdges(fromId, edge, left, right));
         }
       }
       const routingGraph: RoutingGraph = { nodes: graph.nodes, adj: routingAdj };
@@ -1387,7 +1521,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
       updateProgress({ message: "Snapping stops to walkable streets" });
       const MAX_SNAP_DIST_M = 100;
-      const snapStops = (stops: [number, number][]) => snapRouteStopsToReachableEdges(stops, routingGraph, {
+        const snapStops = (stops: [number, number][]) =>
+          snapRouteStopsToReachableEdges(stops, routingGraph, {
         maxSnapDistanceM: MAX_SNAP_DIST_M,
         describeStop: (index, total) => {
           if (index === 0) return "the start point";
@@ -1429,7 +1564,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           if (!sn) return;
           console.log(
             `[routing] stop ${i + 1} [${routeStops[i]}] snapped to connected road at ` +
-            `[${sn.lon},${sn.lat}] (${haversineMeters(routeStops[i], [sn.lon, sn.lat]).toFixed(1)} m)`
+                `[${sn.lon},${sn.lat}] (${haversineMeters(routeStops[i], [sn.lon, sn.lat]).toFixed(1)} m)`,
           );
         });
       }
@@ -1494,7 +1629,13 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           let failedLeg: number | null = null;
 
           for (let seg = 0; seg < nodeChain.length - 1; seg++) {
-            const segResult = dijkstra(routingGraph, nodeChain[seg], nodeChain[seg + 1], strength, opts);
+              const segResult = dijkstra(
+                routingGraph,
+                nodeChain[seg],
+                nodeChain[seg + 1],
+                strength,
+                opts,
+              );
             completedRouteLegs++;
             updateProgress({
               message: "Calculating route legs",
@@ -1564,7 +1705,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           options.push({
             label: forcedPartial
               ? `${MULTI_LABELS[si] ?? "Route"} (partial)`
-              : MULTI_LABELS[si] ?? "Route",
+                : (MULTI_LABELS[si] ?? "Route"),
             geojson: connectRouteEndpoints(
               {
                 type: "Feature",
@@ -1589,19 +1730,24 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
         dijkstraMs = performance.now() - tDijkstra;
 
-        options = options.filter((o, i, arr) =>
-          arr.findIndex(x => Math.abs(x.distanceM - o.distanceM) < 1) === i
+          options = options.filter(
+            (o, i, arr) => arr.findIndex((x) => Math.abs(x.distanceM - o.distanceM) < 1) === i,
         );
       }
 
       if (options.length === 0)
         throw new Error(
-          "No walkable path found between the selected points. Try points on connected streets."
+            "No walkable path found between the selected points. Try points on connected streets.",
         );
 
       // Train transit routing
       if (straightLineDistM <= 500) {
-        if (import.meta.env.DEV) console.log("[transit] Skipped: straight-line distance", straightLineDistM.toFixed(0), "m <= 500 m");
+          if (import.meta.env.DEV)
+            console.log(
+              "[transit] Skipped: straight-line distance",
+              straightLineDistM.toFixed(0),
+              "m <= 500 m",
+            );
       }
       if (!forcedPartial && straightLineDistM > 500) {
         try {
@@ -1612,57 +1758,123 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           const trainWest = Math.min(a[0], b[0]) - trainPadding;
           const trainEast = Math.max(a[0], b[0]) + trainPadding;
 
-          if (import.meta.env.DEV) console.log("[transit] Fetching train graph for bbox:", { trainSouth, trainWest, trainNorth, trainEast });
+            if (import.meta.env.DEV)
+              console.log("[transit] Fetching train graph for bbox:", {
+                trainSouth,
+                trainWest,
+                trainNorth,
+                trainEast,
+              });
           const [trainGraph, entrances] = await Promise.all([
             fetchTrainGraph(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
             fetchStationEntrances(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
           ]);
-          if (import.meta.env.DEV) console.log("[transit] trainGraph:", trainGraph ? `${trainGraph.stations.size} stations, ${trainGraph.lineColors.size} lines` : "null");
+            if (import.meta.env.DEV)
+              console.log(
+                "[transit] trainGraph:",
+                trainGraph
+                  ? `${trainGraph.stations.size} stations, ${trainGraph.lineColors.size} lines`
+                  : "null",
+              );
           if (import.meta.env.DEV) console.log("[transit] entrances:", entrances.length);
 
           if (trainGraph && trainGraph.stations.size >= 2) {
-            const stationEntrances = new Map<number, { lat: number; lon: number; kind?: "entrance" | "station" }[]>();
+              const stationEntrances = new Map<
+                number,
+                { lat: number; lon: number; kind?: "entrance" | "station" }[]
+              >();
             for (const entrance of entrances) {
               const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
               if (stationId != null) {
                 if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
-                stationEntrances.get(stationId)!.push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
+                  stationEntrances
+                    .get(stationId)!
+                    .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
               }
             }
             for (const [id, station] of trainGraph.stations) {
               if (!stationEntrances.has(id)) {
-                stationEntrances.set(id, [{ lat: station.lat, lon: station.lon, kind: "station" }]);
+                  stationEntrances.set(id, [
+                    { lat: station.lat, lon: station.lon, kind: "station" },
+                  ]);
               }
             }
 
             const bestTrain = findBestTrainRoute(a, b, trainGraph);
-            if (import.meta.env.DEV) console.log("[transit] bestTrain:", bestTrain ? `entry=${bestTrain.entryStation.name}, exit=${bestTrain.exitStation.name}, ${bestTrain.path.stationIds.length} stations, ${bestTrain.path.segments.length} segments` : "null");
+              if (import.meta.env.DEV)
+                console.log(
+                  "[transit] bestTrain:",
+                  bestTrain
+                    ? `entry=${bestTrain.entryStation.name}, exit=${bestTrain.exitStation.name}, ${bestTrain.path.stationIds.length} stations, ${bestTrain.path.segments.length} segments`
+                    : "null",
+                );
 
             if (bestTrain) {
               const WALK_SHADOW_STRENGTH = 0.5;
 
-              const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [{ ...bestTrain.entryStation, kind: "station" }];
+                const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [
+                  { ...bestTrain.entryStation, kind: "station" },
+                ];
               const boardEntrance = pickClosestEntrance(a, boardCandidates, haversineMeters);
 
-              const alightCandidates = stationEntrances.get(bestTrain.exitStation.id) ?? [{ ...bestTrain.exitStation, kind: "station" }];
+                const alightCandidates = stationEntrances.get(bestTrain.exitStation.id) ?? [
+                  { ...bestTrain.exitStation, kind: "station" },
+                ];
               const alightEntrance = pickClosestEntrance(b, alightCandidates, haversineMeters);
 
-              const boardNodeId = snapToGraph([boardEntrance.lon, boardEntrance.lat], routingGraph, spatialGrid);
-              const walkA = dijkstra(routingGraph, effectiveStartId, boardNodeId, WALK_SHADOW_STRENGTH, opts);
-              if (import.meta.env.DEV) console.log("[transit] walkA:", walkA ? `${walkA.distanceM.toFixed(0)}m` : "null", "boardNodeId:", boardNodeId);
+                const boardNodeId = snapToGraph(
+                  [boardEntrance.lon, boardEntrance.lat],
+                  routingGraph,
+                  spatialGrid,
+                );
+                const walkA = dijkstra(
+                  routingGraph,
+                  effectiveStartId,
+                  boardNodeId,
+                  WALK_SHADOW_STRENGTH,
+                  opts,
+                );
+                if (import.meta.env.DEV)
+                  console.log(
+                    "[transit] walkA:",
+                    walkA ? `${walkA.distanceM.toFixed(0)}m` : "null",
+                    "boardNodeId:",
+                    boardNodeId,
+                  );
 
-              const alightNodeId = snapToGraph([alightEntrance.lon, alightEntrance.lat], routingGraph, spatialGrid);
-              const walkB = dijkstra(routingGraph, alightNodeId, effectiveEndId, WALK_SHADOW_STRENGTH, opts);
-              if (import.meta.env.DEV) console.log("[transit] walkB:", walkB ? `${walkB.distanceM.toFixed(0)}m` : "null", "alightNodeId:", alightNodeId);
+                const alightNodeId = snapToGraph(
+                  [alightEntrance.lon, alightEntrance.lat],
+                  routingGraph,
+                  spatialGrid,
+                );
+                const walkB = dijkstra(
+                  routingGraph,
+                  alightNodeId,
+                  effectiveEndId,
+                  WALK_SHADOW_STRENGTH,
+                  opts,
+                );
+                if (import.meta.env.DEV)
+                  console.log(
+                    "[transit] walkB:",
+                    walkB ? `${walkB.distanceM.toFixed(0)}m` : "null",
+                    "alightNodeId:",
+                    alightNodeId,
+                  );
 
               if (!walkA || !walkB) {
-                if (import.meta.env.DEV) console.warn("[transit] Walk leg failed:", !walkA ? "walkA=null" : "", !walkB ? "walkB=null" : "");
+                  if (import.meta.env.DEV)
+                    console.warn(
+                      "[transit] Walk leg failed:",
+                      !walkA ? "walkA=null" : "",
+                      !walkB ? "walkB=null" : "",
+                    );
               }
               if (walkA && walkB) {
                 const walkAGeoJSON = graphToGeoJSON(walkA.nodeIds, routingGraph);
                 const walkBGeoJSON = graphToGeoJSON(walkB.nodeIds, routingGraph);
 
-                const transitCoords: [number, number][] = bestTrain.path.stationIds.map(id => {
+                  const transitCoords: [number, number][] = bestTrain.path.stationIds.map((id) => {
                   const s = trainGraph.stations.get(id)!;
                   return [s.lon, s.lat];
                 });
@@ -1672,28 +1884,28 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   geometry: { type: "LineString", coordinates: transitCoords },
                 };
 
-                const stopNames = bestTrain.path.stationIds.map(id =>
-                  trainGraph.stations.get(id)?.name ?? `Station ${id}`
+                  const stopNames = bestTrain.path.stationIds.map(
+                    (id) => trainGraph.stations.get(id)?.name ?? `Station ${id}`,
                 );
 
-                const primaryLine = bestTrain.path.lines[0] ?? '';
-                const lineColor = trainGraph.lineColors.get(primaryLine) ?? '#0070BD';
+                  const primaryLine = bestTrain.path.lines[0] ?? "";
+                  const lineColor = trainGraph.lineColors.get(primaryLine) ?? "#0070BD";
                 const lineName = trainGraph.lineNames.get(primaryLine) ?? primaryLine;
-                const lineMode = trainGraph.lineModes.get(primaryLine) ?? 'subway';
+                  const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
                 const sunExposure = TRAIN_SUN_EXPOSURE[lineMode];
 
-                const TRAIN_SPEED_MS = 30 * 1000 / 3600;
+                  const TRAIN_SPEED_MS = (30 * 1000) / 3600;
                 const transitTimeSec = bestTrain.path.totalDistM / TRAIN_SPEED_MS;
 
                 const legs: RouteLeg[] = [
                   {
-                    type: 'walk',
+                      type: "walk",
                     geojson: walkAGeoJSON,
                     distanceM: walkA.distanceM,
                     shadowCoverage: walkA.shadowCoverage,
                   },
                   {
-                    type: 'transit',
+                      type: "transit",
                     geojson: transitGeoJSON,
                     travelTimeSec: transitTimeSec,
                     line: primaryLine,
@@ -1703,7 +1915,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                     stops: stopNames,
                   },
                   {
-                    type: 'walk',
+                      type: "walk",
                     geojson: walkBGeoJSON,
                     distanceM: walkB.distanceM,
                     shadowCoverage: walkB.shadowCoverage,
@@ -1712,8 +1924,11 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
                 const totalWalkDistM = walkA.distanceM + walkB.distanceM;
                 const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
-                const shadowCov = totalWalkDistM > 0
-                  ? (walkA.distanceM * walkA.shadowCoverage + walkB.distanceM * walkB.shadowCoverage) / totalWalkDistM
+                  const shadowCov =
+                    totalWalkDistM > 0
+                      ? (walkA.distanceM * walkA.shadowCoverage +
+                          walkB.distanceM * walkB.shadowCoverage) /
+                        totalWalkDistM
                   : 0;
 
                 const combinedGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
@@ -1764,8 +1979,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         distanceM: o.distanceM,
         shadowCoverage: o.shadowCoverage,
       }));
-      const { shadowCoverageGainPp, pathLengthDeltaPct } =
-        computeDerivedKpis(routeSnapshots);
+        const { shadowCoverageGainPp, pathLengthDeltaPct } = computeDerivedKpis(routeSnapshots);
       recordRoutingRun({
         timestamp: Date.now(),
         phases: {
@@ -1792,7 +2006,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
           none: shareOf(canopyProviders, "none"),
         },
         fallbackReason: needsCanvas
-          ? (buildingMask ? "low-confidence" : "mask-unavailable")
+            ? buildingMask
+              ? "low-confidence"
+              : "mask-unavailable"
           : null,
         routes: routeSnapshots,
         routeComputeMs: performance.now() - t0,
@@ -1817,7 +2033,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         shadowCoverage: option.shadowCoverage,
         totalTimeSec: option.totalTimeSec,
       }));
-      const unroutableLegs = options.flatMap((option) => option.partial ? [option.partial] : []);
+        const unroutableLegs = options.flatMap((option) =>
+          option.partial ? [option.partial] : [],
+        );
       if (unroutableLegs.length > 0) {
         return {
           status: "partial",
@@ -1852,12 +2070,20 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         setRoutePreview(null);
       }
     }
-  }, [
-    additionalWaypoints, mapRef, shadowLayerRef, dateRef, fitMapToRoute,
-    flattenForShadowReadback, restorePitchAfterShadowReadback,
-  ]);
+    },
+    [
+      additionalWaypoints,
+      mapRef,
+      shadowLayerRef,
+      dateRef,
+      fitMapToRoute,
+      flattenForShadowReadback,
+      restorePitchAfterShadowReadback,
+    ],
+  );
 
-  const createRoutePlanRequest = useCallback((plan: RoutePlan): RoutePlanRequest => {
+  const createRoutePlanRequest = useCallback(
+    (plan: RoutePlan): RoutePlanRequest => {
     const planRevision = advanceRoutePlanRevision();
     pendingAgentPlanFingerprintRef.current = routePlanFingerprint(plan.from, plan.to, plan.via);
     setAdditionalWaypoints(plan.via);
@@ -1877,17 +2103,47 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       plan,
     };
     return request;
-  }, [advanceRoutePlanRevision]);
+    },
+    [advanceRoutePlanRevision],
+  );
 
-  const submitRoutePlan = useCallback((request: RoutePlanRequest): Promise<RoutePlanTerminalResult> =>
-    agentRouteJobsRef.current.submit(request, (job, signal) => calculateRoute(job.plan, signal)),
-  [calculateRoute]);
+  const submitRoutePlan = useCallback(
+    (request: RoutePlanRequest): Promise<RoutePlanTerminalResult> => {
+      const terminalPromise = agentRouteJobsRef.current.submit(request, (job, signal) =>
+        calculateRoute(job.plan, signal),
+      );
+      // Observe completion without wrapping the coordinator's Promise: C4 callers
+      // rely on concurrent submits of one action receiving the exact same lease.
+      void terminalPromise.then((terminal) => {
+        if (
+          (terminal.status === "completed" || terminal.status === "partial") &&
+          terminal.planRevision === routePlanRevisionRef.current
+        ) {
+          routeReceiptObjectRef.current = {
+            id: `route:${terminal.requestId}:${terminal.actionId}:${terminal.planRevision}`,
+            kind: "route",
+            requestId: terminal.requestId,
+            actionId: terminal.actionId,
+            planRevision: terminal.planRevision,
+          };
+        }
+      });
+      return terminalPromise;
+    },
+    [calculateRoute],
+  );
 
-  const cancelRoutePlan = useCallback((requestId: string) =>
-    agentRouteJobsRef.current.cancel(requestId), []);
+  const cancelRoutePlan = useCallback(
+    (requestId: string) => agentRouteJobsRef.current.cancel(requestId),
+    [],
+  );
   // Read-only seam for C5 receipt verification. The routing owner remains the
   // sole writer of this revision and C5 never infers it from drawn geometry.
   const getCurrentPlanRevision = useCallback(() => routePlanRevisionRef.current, []);
+  const getRouteReceiptMapObjects = useCallback(() => {
+    const object = routeReceiptObjectRef.current;
+    return object && object.planRevision === routePlanRevisionRef.current ? [object] : [];
+  }, []);
 
   const handleCalculateRoute = useCallback(() => {
     // A direct user calculation is a new map application, even when the
@@ -1904,62 +2160,103 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
   // Derived values
   const selectedRoute = navRoutes[selectedRouteIndex];
-  const selectedNavRoute = routePreview ?? (selectedRoute?.legs
+  const selectedNavRoute =
+    routePreview ??
+    (selectedRoute?.legs
     ? ({
         type: "FeatureCollection",
         features: selectedRoute.legs
-          .filter((l: RouteLeg) => l.type === 'walk')
+            .filter((l: RouteLeg) => l.type === "walk")
           .map((l: RouteLeg) => l.geojson),
       } as GeoJSON.FeatureCollection)
-    : navRoutes[selectedRouteIndex]?.geojson ?? null);
+      : (navRoutes[selectedRouteIndex]?.geojson ?? null));
   const navTrainDrawData = selectedRoute?.trainDrawData ?? null;
   const navMrtEntrances = selectedRoute?.mrtEntrances ?? null;
 
   const filteredRoutes = useMemo(() => {
-    if (routeMode === 'walk') {
-      return navRoutes.filter(r => !r.legs?.find((l: RouteLeg) => l.type === 'transit'));
+    if (routeMode === "walk") {
+      return navRoutes.filter((r) => !r.legs?.find((l: RouteLeg) => l.type === "transit"));
     }
-    return navRoutes.filter(r => !!r.legs?.find((l: RouteLeg) => l.type === 'transit'));
+    return navRoutes.filter((r) => !!r.legs?.find((l: RouteLeg) => l.type === "transit"));
   }, [navRoutes, routeMode]);
 
-  const canTransit = !!(
-    waypointA && waypointB &&
-    haversineMeters(waypointA, waypointB) > 500
-  );
+  const canTransit = !!(waypointA && waypointB && haversineMeters(waypointA, waypointB) > 500);
 
   return {
     // State
-    navMode, waypointA, waypointB, navRoutes, selectedRouteIndex,
-    isCalculating, routeProgress, navError, routeSolarIntensity,
-    waypointALabel, waypointBLabel, pendingSlot,
-    saveModalRouteIndex, additionalWaypoints,
-    savedRoutes, savedFolders,
-    userLocation, isLocating,
-    sketchPoints, drawMode, navWarning, simplifiedWaypoints,
-    routeMode, shadowPreference,
+    navMode,
+    waypointA,
+    waypointB,
+    navRoutes,
+    selectedRouteIndex,
+    isCalculating,
+    routeProgress,
+    navError,
+    routeSolarIntensity,
+    waypointALabel,
+    waypointBLabel,
+    pendingSlot,
+    saveModalRouteIndex,
+    additionalWaypoints,
+    savedRoutes,
+    savedFolders,
+    userLocation,
+    isLocating,
+    sketchPoints,
+    drawMode,
+    navWarning,
+    simplifiedWaypoints,
+    routeMode,
+    shadowPreference,
 
     // Setters
-    setPendingSlot, setSelectedRouteIndex, setSaveModalRouteIndex,
+    setPendingSlot,
+    setSelectedRouteIndex,
+    setSaveModalRouteIndex,
 
     // Handlers
-    handleMapClick, handleClear,
-    handleOpenSaveModal, handleConfirmSave,
-    handleLoadRoute, handleExportRoute,
-    handleRemoveAdditionalWaypoint, handleSetAdditionalWaypoints, handleAddAdditionalWaypoint,
-    handleDeleteSavedRoute, handleRenameSavedRoute,
-    handleLocateMe, handleToggleNavMode, handleDrawModeToggle,
-    handleClearSketch, handleRouteModeChange, handleShadowPreferenceChange,
-    handleSketchPointClick, handleSketchPointDrag, handleSketchFinish,
-    handleSetWaypointA, handleSetWaypointB,
-    handleUseLocationAsA, handleUseLocationAsB,
+    handleMapClick,
+    handleClear,
+    handleOpenSaveModal,
+    handleConfirmSave,
+    handleLoadRoute,
+    handleExportRoute,
+    handleRemoveAdditionalWaypoint,
+    handleSetAdditionalWaypoints,
+    handleAddAdditionalWaypoint,
+    handleDeleteSavedRoute,
+    handleRenameSavedRoute,
+    handleLocateMe,
+    handleToggleNavMode,
+    handleDrawModeToggle,
+    handleClearSketch,
+    handleRouteModeChange,
+    handleShadowPreferenceChange,
+    handleSketchPointClick,
+    handleSketchPointDrag,
+    handleSketchFinish,
+    handleSetWaypointA,
+    handleSetWaypointB,
+    handleUseLocationAsA,
+    handleUseLocationAsB,
     handleSwapWaypoints,
-    handleClearWaypointA, handleClearWaypointB,
-    handleMarkerDragEnd, handlePinDragStart,
-    handleCalculateRoute, createRoutePlanRequest, submitRoutePlan, cancelRoutePlan, getCurrentPlanRevision,
+    handleClearWaypointA,
+    handleClearWaypointB,
+    handleMarkerDragEnd,
+    handlePinDragStart,
+    handleCalculateRoute,
+    createRoutePlanRequest,
+    submitRoutePlan,
+    cancelRoutePlan,
+    getCurrentPlanRevision,
+    getRouteReceiptMapObjects,
 
     // Derived
-    selectedNavRoute, navTrainDrawData, navMrtEntrances,
-    filteredRoutes, canTransit,
+    selectedNavRoute,
+    navTrainDrawData,
+    navMrtEntrances,
+    filteredRoutes,
+    canTransit,
     // The geometry shadow field, shared so a day sweep reuses this cache
     // rather than building a second one and re-fetching the same prisms.
     shadowField: shadowFieldRef.current,

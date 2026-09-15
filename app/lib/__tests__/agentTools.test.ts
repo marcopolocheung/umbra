@@ -44,6 +44,8 @@ function makeCtx(): AgentContext {
     })),
     cancelRoutePlan: vi.fn(() => false),
     getCurrentPlanRevision: () => version,
+    getMapObjects: () => [],
+    registerMapObjects: vi.fn(),
     setPins: vi.fn(),
   };
 }
@@ -72,11 +74,12 @@ describe("agent route tools", () => {
           { lat: "bad", lng: -73.0 },
         ],
       },
-      ctx
+      ctx,
     );
 
     expect(result).toMatchObject({ status: "completed", inputVersion: 1 });
-    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
+    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
       requestId: "test-1",
       inputVersion: 1,
       planRevision: 1,
@@ -86,33 +89,50 @@ describe("agent route tools", () => {
       plan: expect.objectContaining({
         from: [-74.0, 40.7],
         to: [-73.98, 40.73],
-        via: [[-73.99, 40.71], [-73.985, 40.72]],
+          via: [
+            [-73.99, 40.71],
+            [-73.985, 40.72],
+          ],
+        }),
       }),
-    }));
+    );
   });
 
   it("clears stale additional waypoints for a two-stop shadowed route", async () => {
     const ctx = makeCtx();
 
-    await executeTool(
-      "plan_shadowed_route",
-      { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 },
-      ctx
-    );
+    await executeTool("plan_shadowed_route", { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 }, ctx);
 
-    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
+    expect(ctx.submitRoutePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
       plan: expect.objectContaining({ via: [] }),
-    }));
+      }),
+    );
   });
 
   it("fails closed when a context returns a mismatched terminal result", async () => {
     const ctx = makeCtx();
     vi.mocked(ctx.submitRoutePlan).mockResolvedValue({
-      requestId: "other", inputVersion: 1, planRevision: 1, actionId: "other", retry: 0, idempotencyKey: "other",
-      status: "completed", metrics: [{ label: "Claimed", distanceM: 100, shadowCoverage: 0.5 }], shadowProvenance: null,
+      requestId: "other",
+      inputVersion: 1,
+      planRevision: 1,
+      actionId: "other",
+      retry: 0,
+      idempotencyKey: "other",
+      status: "completed",
+      metrics: [{ label: "Claimed", distanceM: 100, shadowCoverage: 0.5 }],
+      shadowProvenance: null,
     });
-    const result = await executeTool("plan_shadowed_route", { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 }, ctx);
-    expect(result).toMatchObject({ status: "error", requestId: "test-1", message: expect.stringContaining("invalid terminal result") });
+    const result = await executeTool(
+      "plan_shadowed_route",
+      { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 },
+      ctx,
+    );
+    expect(result).toMatchObject({
+      status: "error",
+      requestId: "test-1",
+      message: expect.stringContaining("invalid terminal result"),
+    });
   });
 
   it("uses shadow-layer point queries for check_shadow without moving the camera", async () => {
@@ -126,7 +146,7 @@ describe("agent route tools", () => {
     const result = await executeTool(
       "check_shadow",
       { lat: 40.7, lng: -74.0, time: "2:00 PM" },
-      ctx
+      ctx,
     );
 
     expect(result).toMatchObject({
@@ -149,8 +169,13 @@ describe("agent route tools", () => {
 
     const result = await executeTool(
       "check_shadow",
-      { points: [{ lat: 40.7, lng: -74.01, label: "A" }, { lat: 40.7, lng: -73.99 }] },
-      ctx
+      {
+        points: [
+          { lat: 40.7, lng: -74.01, label: "A" },
+          { lat: 40.7, lng: -73.99 },
+        ],
+      },
+      ctx,
     );
 
     expect(result.results).toMatchObject([
@@ -172,7 +197,7 @@ describe("agent route tools", () => {
     const result = await executeTool(
       "check_shadow",
       { lat: 40.7, lng: -74.0, time: "2:00 PM" },
-      ctx
+      ctx,
     );
 
     expect(result).toMatchObject({
@@ -233,7 +258,9 @@ describe("search_places", () => {
 
     const [first, second] = vi.mocked(geocodeNear).mock.calls;
     expect(second[3]).toBeGreaterThan(first[3] ?? Infinity);
-    expect((result.results as { name: string }[]).map((r) => r.name.split(",")[0])).toEqual(["Riverside Park"]);
+    expect((result.results as { name: string }[]).map((r) => r.name.split(",")[0])).toEqual([
+      "Riverside Park",
+    ]);
     expect(result.searchRadiusKm).toBeGreaterThan(2);
   });
 });

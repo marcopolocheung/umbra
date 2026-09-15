@@ -26,6 +26,7 @@ import {
   type RoutePlanTerminalResult,
 } from "../routePlanJob";
 import type { LlmFunctionDeclaration } from "./llmClient";
+import type { MapObject } from "./receipts";
 
 export interface AssistantPin {
   lng: number;
@@ -57,6 +58,9 @@ export interface AgentContext {
   cancelRoutePlan: (requestId: string) => boolean;
   /** C4's route owner is the authority for whether an older receipt is current. */
   getCurrentPlanRevision: () => number;
+  /** Application-owned registry; verifier never owns or focuses map objects. */
+  getMapObjects: () => MapObject[];
+  registerMapObjects: (objects: MapObject[]) => void;
   /** Replace the assistant's itinerary pins on the map. */
   setPins: (pins: AssistantPin[]) => void;
 }
@@ -73,11 +77,7 @@ function fmtLocalTime(d: Date, offsetMin: number): string {
 }
 
 /** Build a Date at the given local time string on the currently-set calendar day. */
-function dateAtLocalTime(
-  base: Date,
-  offsetMin: number,
-  timeStr: string | undefined
-): Date {
+function dateAtLocalTime(base: Date, offsetMin: number, timeStr: string | undefined): Date {
   if (!timeStr) return base;
   const mins = parseTime(timeStr);
   if (mins == null) return base;
@@ -113,7 +113,7 @@ function requestBrowserLocation(): Promise<[number, number] | null> {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve([pos.coords.longitude, pos.coords.latitude]),
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   });
 }
@@ -262,10 +262,8 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
 // ---------------------------------------------------------------------------
 
 type Args = Record<string, unknown>;
-const num = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
-const str = (v: unknown): string | undefined =>
-  typeof v === "string" && v.trim() ? v : undefined;
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
 
 /** The pins a `plot_points` call actually places — entries without a numeric lat/lng are dropped. */
 export function parsePins(points: unknown): AssistantPin[] {
@@ -283,7 +281,7 @@ export function parsePins(points: unknown): AssistantPin[] {
 export async function executeTool(
   name: string,
   args: Args,
-  ctx: AgentContext
+  ctx: AgentContext,
 ): Promise<Record<string, unknown>> {
   const offset = ctx.getUtcOffsetMin();
   const map = ctx.mapRef.current;
@@ -426,7 +424,11 @@ export async function executeTool(
         if (pins.length === 0) return { error: "points needs at least one lat/lng." };
         const results = [];
         for (const p of pins) {
-          const r = await executeTool("check_shadow", { lat: p.lat, lng: p.lng, time: args.time }, ctx);
+          const r = await executeTool(
+            "check_shadow",
+            { lat: p.lat, lng: p.lng, time: args.time },
+            ctx,
+          );
           results.push({ label: p.label, lat: p.lat, lng: p.lng, ...r });
         }
         return { results };
@@ -436,7 +438,9 @@ export async function executeTool(
       if (lat == null || lng == null) return { error: "points is required." };
 
       const probeDate = dateAtLocalTime(ctx.dateRef.current, offset, str(args.time));
-      const geometryShadow = ctx.shadowLayerRef.current?.queryPointShadow?.(lng, lat, { date: probeDate });
+      const geometryShadow = ctx.shadowLayerRef.current?.queryPointShadow?.(lng, lat, {
+        date: probeDate,
+      });
       if (geometryShadow) {
         const frac = geometryShadow.shadowFraction;
         return {
@@ -470,12 +474,7 @@ export async function executeTool(
       if (!t) return { error: "time is required." };
       const mins = parseTime(t);
       if (mins == null) return { error: `Could not parse time '${t}'.` };
-      const next = fromMapLocal(
-        ctx.dateRef.current,
-        offset,
-        Math.floor(mins / 60),
-        mins % 60
-      );
+      const next = fromMapLocal(ctx.dateRef.current, offset, Math.floor(mins / 60), mins % 60);
       ctx.setDate(next);
       return { ok: true, newLocalTime: fmtLocalTime(next, offset) };
     }
@@ -491,14 +490,23 @@ export async function executeTool(
           duration: 800,
         });
       } else if (map && pins.length > 1) {
-        let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+        let w = Infinity,
+          s = Infinity,
+          e = -Infinity,
+          n = -Infinity;
         for (const p of pins) {
           w = Math.min(w, p.lng);
           e = Math.max(e, p.lng);
           s = Math.min(s, p.lat);
           n = Math.max(n, p.lat);
         }
-        map.fitBounds([[w, s], [e, n]], { padding: 80, maxZoom: 16, duration: 800 });
+        map.fitBounds(
+          [
+            [w, s],
+            [e, n],
+          ],
+          { padding: 80, maxZoom: 16, duration: 800 },
+        );
       }
 
       return {

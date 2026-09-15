@@ -8,12 +8,7 @@
  * History is the Gemini `contents` array, threaded across turns so the
  * conversation (and the agent's earlier tool observations) persist.
  */
-import {
-  callModel,
-  rolesShareConfig,
-  type LlmContent,
-  type LlmPart,
-} from "./llmClient";
+import { callModel, rolesShareConfig, type LlmContent, type LlmPart } from "./llmClient";
 import {
   executeTool,
   parsePins,
@@ -24,13 +19,17 @@ import {
 import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 import {
   claimSupportMetrics,
+  noticeLabel,
   receiptLabel,
+  unknownLabel,
+  validateToolResultEnvelope,
   verifyAnswer,
   type AgentToolName,
   type MapObject,
   type ToolResultEnvelope,
   type ClaimSupportMetrics,
   type VerifiedAnswer,
+  type VerifiedAnswerBlock,
 } from "./receipts";
 
 const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around shadow and sun comfort: shadowed walks, where to sit or eat out of the sun at a given hour, and shadow-aware routes. If asked anything else, reply in one sentence that you only help plan around shadow, and stop. Do not answer off-topic questions.
@@ -54,7 +53,8 @@ const MAX_STEPS = 8;
 /** Tools whose result depends only on their arguments (and, for shadow, the set time). */
 const CACHEABLE = new Set(["geocode_place", "search_places", "check_shadow"]);
 
-const REPEAT_NOTE = "You already made this exact call; this is its earlier result. Do not repeat it — move on.";
+const REPEAT_NOTE =
+  "You already made this exact call; this is its earlier result. Do not repeat it — move on.";
 const EMPTY_SEARCH_NOTE =
   "No matches for that query. Try again with a different kind of stop or a different anchor — do not repeat this exact call.";
 
@@ -65,7 +65,8 @@ const EMPTY_SEARCH_NOTE =
 // reformulation is the turn's most valuable call. Past the cap the loop stops
 // offering search at all.
 const MAX_SEARCHES = 4;
-const SEARCH_CAP_NOTE = "The search limit for this turn is reached, so this one was not run. Use the places already found, or tell the user what wasn't found.";
+const SEARCH_CAP_NOTE =
+  "The search limit for this turn is reached, so this one was not run. Use the places already found, or tell the user what wasn't found.";
 
 /** The most pins one answer puts on the map. */
 const MAX_PINS = 8;
@@ -133,7 +134,7 @@ function collectPointCandidates(
   toolName: string,
   args: Record<string, unknown>,
   result: Record<string, unknown>,
-  candidates: AssistantPin[]
+  candidates: AssistantPin[],
 ): void {
   const add = (lat: unknown, lng: unknown, label?: unknown) => {
     const nLat = num(lat);
@@ -180,11 +181,22 @@ function asRouteTerminalResult(result: Record<string, unknown>): RoutePlanTermin
 function malformedRouteTerminalResult(result: Record<string, unknown>): RoutePlanTerminalResult {
   return {
     requestId: typeof result.requestId === "string" ? result.requestId : "invalid-route-result",
-    inputVersion: typeof result.inputVersion === "number" && Number.isSafeInteger(result.inputVersion) ? result.inputVersion : 0,
-    planRevision: typeof result.planRevision === "number" && Number.isSafeInteger(result.planRevision) ? result.planRevision : 0,
-    actionId: typeof result.actionId === "string" && result.actionId ? result.actionId : "invalid-action",
-    retry: typeof result.retry === "number" && Number.isSafeInteger(result.retry) ? result.retry : 0,
-    idempotencyKey: typeof result.idempotencyKey === "string" && result.idempotencyKey ? result.idempotencyKey : "invalid-idempotency-key",
+    inputVersion:
+      typeof result.inputVersion === "number" && Number.isSafeInteger(result.inputVersion)
+        ? result.inputVersion
+        : 0,
+    planRevision:
+      typeof result.planRevision === "number" && Number.isSafeInteger(result.planRevision)
+        ? result.planRevision
+        : 0,
+    actionId:
+      typeof result.actionId === "string" && result.actionId ? result.actionId : "invalid-action",
+    retry:
+      typeof result.retry === "number" && Number.isSafeInteger(result.retry) ? result.retry : 0,
+    idempotencyKey:
+      typeof result.idempotencyKey === "string" && result.idempotencyKey
+        ? result.idempotencyKey
+        : "invalid-idempotency-key",
     status: "error",
     message: "The route pipeline returned an invalid terminal result.",
   };
@@ -241,70 +253,118 @@ function routeObjectId(result: RoutePlanTerminalResult): string {
   return `route:${result.requestId}:${result.actionId}:${result.planRevision}`;
 }
 
-function mapObjectsFor(pins: AssistantPin[], evidence: ToolResultEnvelope[]): MapObject[] {
-  const objects: MapObject[] = pins.map((pin) => ({
-    id: pin.objectId ?? `assistant-pin:${pin.lat.toFixed(5)}:${pin.lng.toFixed(5)}`,
-    kind: "pin", lat: pin.lat, lng: pin.lng, label: pin.label,
-  }));
-  for (const envelope of evidence) {
-    if (envelope.toolName !== "plan_shadowed_route") continue;
-    const terminal = validateRoutePlanTerminalResult(envelope.payload);
-    if (terminal) objects.push({ id: routeObjectId(terminal), kind: "route" });
-  }
-  return objects;
-}
-
 function parseModelAnswer(text: string): unknown | null {
-  try { return JSON.parse(text); } catch { /* Gemini occasionally fences JSON despite the prompt. */ }
+  try {
+    return JSON.parse(text);
+  } catch {
+    /* Gemini occasionally fences JSON despite the prompt. */
+  }
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   if (!fenced) return null;
-  try { return JSON.parse(fenced); } catch { return null; }
+  try {
+    return JSON.parse(fenced);
+  } catch {
+    return null;
+  }
 }
 
 /** Honest deterministic fallback when the model's structured response is malformed. */
-function evidenceProposal(evidence: ToolResultEnvelope[], mapObjects: MapObject[], wantsAccessibility: boolean): unknown {
+function evidenceProposal(
+  evidence: ToolResultEnvelope[],
+  mapObjects: MapObject[],
+  wantsAccessibility: boolean,
+): unknown {
   const receipts: Record<string, unknown>[] = [];
-  const blocks: Record<string, unknown>[] = [];
   let index = 0;
   const push = (receipt: Record<string, unknown>) => {
     const claimId = `evidence-${++index}`;
     receipts.push({ claimId, ...receipt });
-    blocks.push({ kind: "claim", claimId });
   };
   for (const envelope of evidence) {
     const payload = envelope.payload;
     if (envelope.toolName === "geocode_place" || envelope.toolName === "search_places") {
       const results = Array.isArray(payload.results) ? payload.results : [];
       for (const raw of results) {
-        const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-        if (typeof item.lat !== "number" || typeof item.lng !== "number" || typeof item.name !== "string") continue;
+        const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+        if (
+          typeof item.lat !== "number" ||
+          typeof item.lng !== "number" ||
+          typeof item.name !== "string"
+        )
+          continue;
         const lat = item.lat;
         const lng = item.lng;
         const name = item.name;
-        const pin = mapObjects.find((object) => object.kind === "pin" && object.lat != null && object.lng != null && Math.abs(object.lat - lat) < 0.0003 && Math.abs(object.lng - lng) < 0.0003);
-        if (pin) push({ kind: "place", subject: name, value: { lat, lng }, mapObjectId: pin.id, supportingResultIds: [envelope.resultId] });
+        const pin = mapObjects.find(
+          (object) =>
+            object.kind === "pin" &&
+            object.lat != null &&
+            object.lng != null &&
+            Math.abs(object.lat - lat) < 0.0003 &&
+            Math.abs(object.lng - lng) < 0.0003,
+        );
+        if (pin)
+          push({
+            kind: "place",
+            subject: name,
+            value: { lat, lng },
+            mapObjectId: pin.id,
+            supportingResultIds: [envelope.resultId],
+          });
       }
     } else if (envelope.toolName === "check_shadow") {
       const values = Array.isArray(payload.results) ? payload.results : [payload];
       for (const raw of values) {
-        const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-        if (typeof item.lat !== "number" || typeof item.lng !== "number" || typeof item.shadowFraction !== "number" || typeof item.atLocalTime !== "string") continue;
-        push({ kind: "shadow", subject: typeof item.label === "string" ? item.label : "checked location", value: { fraction: item.shadowFraction }, coordinates: { lat: item.lat, lng: item.lng }, atLocalTime: item.atLocalTime, supportingResultIds: [envelope.resultId] });
+        const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+        if (
+          typeof item.lat !== "number" ||
+          typeof item.lng !== "number" ||
+          typeof item.shadowFraction !== "number" ||
+          typeof item.atLocalTime !== "string"
+        )
+          continue;
+        push({
+          kind: "shadow",
+          subject: typeof item.label === "string" ? item.label : "checked location",
+          value: { fraction: item.shadowFraction },
+          coordinates: { lat: item.lat, lng: item.lng },
+          atLocalTime: item.atLocalTime,
+          supportingResultIds: [envelope.resultId],
+        });
       }
     } else if (envelope.toolName === "set_time" && typeof payload.newLocalTime === "string") {
-      push({ kind: "time", subject: "simulation time", value: { localTime: payload.newLocalTime }, supportingResultIds: [envelope.resultId] });
+      push({
+        kind: "time",
+        subject: "simulation time",
+        value: { localTime: payload.newLocalTime },
+        supportingResultIds: [envelope.resultId],
+      });
     } else if (envelope.toolName === "plan_shadowed_route") {
       const terminal = validateRoutePlanTerminalResult(payload);
       if (terminal?.status === "completed" || terminal?.status === "partial") {
-        push({ kind: "route", subject: "route", value: { status: terminal.status }, supportingResultIds: [envelope.resultId], requestId: terminal.requestId, actionId: terminal.actionId, planRevision: terminal.planRevision, mapObjectId: routeObjectId(terminal) });
+        push({
+          kind: "route",
+          subject: "route",
+          value: { status: terminal.status },
+          supportingResultIds: [envelope.resultId],
+          requestId: terminal.requestId,
+          actionId: terminal.actionId,
+          planRevision: terminal.planRevision,
+          mapObjectId: routeObjectId(terminal),
+        });
       }
     }
   }
   if (wantsAccessibility) {
-    receipts.push({ claimId: `evidence-${++index}`, kind: "accessibility", subject: "accessibility", value: "unknown", supportingResultIds: [] });
-    blocks.push({ kind: "unknown", claimKind: "accessibility", text: "Accessibility is unknown." });
+    receipts.push({
+      claimId: `evidence-${++index}`,
+      kind: "accessibility",
+      subject: "accessibility",
+      value: "unknown",
+      supportingResultIds: [],
+    });
   }
-  return { blocks, receipts };
+  return { receipts };
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
@@ -314,20 +374,51 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const evidence = [...(opts.evidence ?? [])];
   let resultSequence = evidence.length;
   const now = opts.now ?? (() => ctx.dateRef.current.toISOString());
-  const observe = (name: AgentToolName, args: Record<string, unknown>, payload: Record<string, unknown>): ToolResultEnvelope => {
-    const enriched = name === "check_shadow" && !Array.isArray(payload.results)
+  const observe = (
+    name: AgentToolName,
+    args: Record<string, unknown>,
+    payload: Record<string, unknown>,
+  ): ToolResultEnvelope => {
+    const enriched =
+      name === "check_shadow" && !Array.isArray(payload.results)
       ? { ...payload, lat: payload.lat ?? args.lat, lng: payload.lng ?? args.lng }
       : payload;
-    const terminal = name === "plan_shadowed_route" ? validateRoutePlanTerminalResult(enriched) : null;
+    const terminal =
+      name === "plan_shadowed_route" ? validateRoutePlanTerminalResult(enriched) : null;
     const sequence = ++resultSequence;
     const envelope: ToolResultEnvelope = {
       resultId: opts.resultIdFactory?.({ toolName: name, sequence }) ?? `result-${sequence}`,
-      toolName: name, producedAt: now(),
-      sourceVersion: typeof enriched.sourceVersion === "string" ? enriched.sourceVersion : undefined,
-      requestId: terminal?.requestId, actionId: terminal?.actionId, planRevision: terminal?.planRevision,
+      toolName: name,
+      producedAt: now(),
+      sourceVersion:
+        typeof enriched.sourceVersion === "string" ? enriched.sourceVersion : undefined,
+      requestId: terminal?.requestId,
+      actionId: terminal?.actionId,
+      planRevision: terminal?.planRevision,
       payload: enriched,
     };
+    if (!validateToolResultEnvelope(envelope))
+      envelope.payload = { error: "The tool returned an invalid evidence payload." };
     evidence.push(envelope);
+    if (name === "check_shadow") {
+      const values = Array.isArray(enriched.results) ? enriched.results : [enriched];
+      ctx.registerMapObjects(
+        values.flatMap((raw) => {
+          const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+          return typeof item.lat === "number" && typeof item.lng === "number"
+            ? [
+                {
+                  id: `shadow:${envelope.resultId}:${item.lat.toFixed(5)}:${item.lng.toFixed(5)}`,
+                  kind: "shadow" as const,
+                  lat: item.lat,
+                  lng: item.lng,
+                  label: typeof item.label === "string" ? item.label : undefined,
+                },
+              ]
+            : [];
+        }),
+      );
+    }
     return envelope;
   };
   const modelResult = (envelope: ToolResultEnvelope, reused = false): Record<string, unknown> => ({
@@ -353,7 +444,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     /* map not ready — fall through with empty context */
   }
   const ctxLine = `\n\nLive map context (already fetched — do NOT ask for it): ${JSON.stringify(
-    ctxSnapshot
+    ctxSnapshot,
   )}`;
 
   // When research/response resolve to the same model, a separate write call is
@@ -371,25 +462,68 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       const result = observe("plot_points", { points: pins }, raw);
       if (!result.payload.error) {
         mapPins = pins;
+        // Keep the application-owned pin registry in sync even when an
+        // alternate tool executor (such as the deterministic harness) does
+        // not itself update map state.
+        ctx.setPins(pins);
         plottedThisTurn = true;
       }
     } catch (error) {
-      observe("plot_points", { points: pins }, { error: error instanceof Error ? error.message : "Tool failed." });
+      observe(
+        "plot_points",
+        { points: pins },
+        { error: error instanceof Error ? error.message : "Tool failed." },
+      );
     }
   };
 
   const finalize = (modelText: string, proposed?: unknown): RunAgentResult => {
-    const mapObjects = mapObjectsFor(mapPins, evidence);
+    const mapObjects = ctx.getMapObjects();
     const answer = verifyAnswer(
-      proposed ?? evidenceProposal(evidence, mapObjects, /\b(accessib|wheelchair|step[- ]free)/i.test(opts.userText)),
+      proposed ??
+        evidenceProposal(
+          evidence,
+          mapObjects,
+          /\b(accessib|wheelchair|step[- ]free)/i.test(opts.userText),
+        ),
       { evidence, mapObjects, currentPlanRevision: ctx.getCurrentPlanRevision(), now: now() },
     );
-    const text = answer.blocks.map((block) => {
-      if (block.kind === "text" || block.kind === "unknown") return block.text;
+    const text =
+      answer.blocks
+        .map((block) => {
+          if (block.kind === "unknown") return unknownLabel(block.claimKind);
+          if (block.kind === "notice") return noticeLabel(block);
       const receipt = answer.receipts.find((candidate) => candidate.claimId === block.claimId);
       return receipt ? receiptLabel(receipt) : "";
-    }).filter(Boolean).join("\n") || modelText;
-    return { text, history: contents, answer, evidence, metrics: claimSupportMetrics(answer, { evidence, mapObjects }) };
+        })
+        .filter(Boolean)
+        .join("\n") || modelText;
+    return {
+      text,
+      history: contents,
+      answer,
+      evidence,
+      metrics: claimSupportMetrics(answer, { evidence, mapObjects }),
+    };
+  };
+  const finalizeNotice = (
+    code: Extract<VerifiedAnswerBlock, { kind: "notice" }>["code"],
+    detail?: string,
+  ): RunAgentResult => {
+    const notice: Extract<VerifiedAnswerBlock, { kind: "notice" }> = {
+      kind: "notice",
+      code,
+      detail,
+    };
+    const answer: VerifiedAnswer = { blocks: [notice], receipts: [], rejectedProseCount: 0 };
+    const mapObjects = ctx.getMapObjects();
+    return {
+      text: noticeLabel(notice),
+      history: contents,
+      answer,
+      evidence,
+      metrics: claimSupportMetrics(answer, { evidence, mapObjects }),
+    };
   };
 
   const plotFallbackPoints = async (): Promise<void> => {
@@ -418,10 +552,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     try {
       const raw = await executeTool("plan_shadowed_route", args, ctx);
       const result = observe("plan_shadowed_route", args, raw);
-      terminalRouteResult = asRouteTerminalResult(result.payload) ?? malformedRouteTerminalResult(result.payload);
-      routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
+      terminalRouteResult =
+        asRouteTerminalResult(result.payload) ?? malformedRouteTerminalResult(result.payload);
+      routedThisTurn =
+        terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
     } catch (error) {
-      observe("plan_shadowed_route", args, { error: error instanceof Error ? error.message : "Tool failed." });
+      observe("plan_shadowed_route", args, {
+        error: error instanceof Error ? error.message : "Tool failed.",
+      });
       terminalRouteResult = malformedRouteTerminalResult({});
     }
   };
@@ -467,13 +605,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT + ctxLine }] },
         generationConfig: { temperature: 0 },
       },
-      "research"
+      "research",
     );
 
     const candidate = res.candidates?.[0]?.content;
     if (!candidate) {
       const blocked = res.promptFeedback?.blockReason;
-      if (blocked) return finalize(`I couldn't respond to that (${blocked}).`);
+      if (blocked) return finalizeNotice("blocked", blocked);
       break; // nothing came back — fall through to the write phase
     }
 
@@ -483,7 +621,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       await plotFallbackPoints();
       await routeFallback();
       if (terminalRouteResult && terminalRouteResult.status !== "completed") {
-        return finalize(routeTerminalText(terminalRouteResult), { blocks: [{ kind: "unknown", claimKind: "route", text: routeTerminalText(terminalRouteResult) }], receipts: [] });
+        return finalizeNotice("route_terminal", routeTerminalText(terminalRouteResult));
       }
       // Same config for both roles → research model's answer IS the answer, and
       // returning it saves a full-context write call (TPD savings). So does a
@@ -494,6 +632,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         contents.push({ role: candidate.role ?? "model", parts: candidate.parts });
         const text = extractText(candidate) || "(no reply)";
         await reconcilePins(text);
+        if (step === 0 && evidence.length === 0)
+          return finalizeNotice(ctxSnapshot.locationKnown === false ? "clarification" : "refusal");
         return finalize(text, parseModelAnswer(text));
       }
       // Roles differ → discard this draft; the response model writes below.
@@ -513,7 +653,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         const points = parsePins(args.points)
           .slice(0, MAX_PINS)
           .map((p) =>
-            p.label ? p : { ...p, label: pointCandidates.find((c) => c.label && samePlace(c, p))?.label }
+            p.label
+              ? p
+              : { ...p, label: pointCandidates.find((c) => c.label && samePlace(c, p))?.label },
           );
         args = { ...args, points };
       }
@@ -521,7 +663,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       const key = `${fc.name}${JSON.stringify(args)}${fc.name === "check_shadow" ? ctx.dateRef.current.getTime() : ""}`;
       // An unanchored search reads the moving map, so it is only a repeat within the turn.
       const cacheable =
-        CACHEABLE.has(fc.name) && !(fc.name === "search_places" && args.lat == null && args.near == null);
+        CACHEABLE.has(fc.name) &&
+        !(fc.name === "search_places" && args.lat == null && args.near == null);
       let envelope: ToolResultEnvelope | undefined;
       let result: Record<string, unknown>;
       const earlier = turnResults.get(key);
@@ -567,10 +710,25 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       }
       if (fc.name === "plan_shadowed_route") {
         terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
-        routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
+        routedThisTurn =
+          terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
       }
       collectPointCandidates(fc.name, args, result, pointCandidates);
-      responseParts.push({ functionResponse: { name: fc.name, response: envelope ? { ...result, _receipt: { resultId: envelope.resultId, producedAt: envelope.producedAt, reused: earlier != null || cacheable && cache.get(key) === envelope } } : result } });
+      responseParts.push({
+        functionResponse: {
+          name: fc.name,
+          response: envelope
+            ? {
+                ...result,
+                _receipt: {
+                  resultId: envelope.resultId,
+                  producedAt: envelope.producedAt,
+                  reused: earlier != null || (cacheable && cache.get(key) === envelope),
+                },
+              }
+            : result,
+        },
+      });
     }
     contents.push({ role: "user", parts: responseParts });
     // The model's plot is its last research step — asking it again only buys a
@@ -585,7 +743,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // write-model paraphrase for non-success outcomes: no provider prose can turn
   // cancellation, failure, or an unroutable leg into a claimed completed route.
   if (terminalRouteResult && terminalRouteResult.status !== "completed") {
-    return finalize(routeTerminalText(terminalRouteResult), { blocks: [{ kind: "unknown", claimKind: "route", text: routeTerminalText(terminalRouteResult) }], receipts: [] });
+    return finalizeNotice("route_terminal", routeTerminalText(terminalRouteResult));
   }
 
   // Always state what the map shows — including pins the model placed itself,
@@ -603,15 +761,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       systemInstruction: { parts: [{ text: WRITE_SYSTEM_PROMPT + ctxLine + pinnedLine }] },
       generationConfig: { temperature: 0 },
     },
-    "response"
+    "response",
   );
 
   const finalCandidate = finalRes.candidates?.[0]?.content;
   if (!finalCandidate) {
     const blocked = finalRes.promptFeedback?.blockReason;
-    return finalize(blocked
-        ? `I couldn't respond to that (${blocked}).`
-        : "I didn't get a response from the model. Try rephrasing.");
+    return blocked ? finalizeNotice("blocked", blocked) : finalizeNotice("unverified");
   }
 
   // Offered no tools, a model can still answer with a tool call and no text

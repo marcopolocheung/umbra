@@ -1,4 +1,4 @@
-import type { RoutePlanTerminalResult } from "../routePlanJob";
+import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 
 /** The public tools which can produce evidence. `get_current_context` is ambient state, not evidence. */
 export type AgentToolName =
@@ -32,10 +32,24 @@ export interface ShadowToolPayload {
   source?: string;
   lat?: number;
   lng?: number;
-  results?: Array<{ label?: string; lat: number; lng: number; shadowFraction?: number; atLocalTime?: string; source?: string }>;
+  results?: Array<{
+    label?: string;
+    lat: number;
+    lng: number;
+    shadowFraction?: number;
+    atLocalTime?: string;
+    source?: string;
+  }>;
 }
-export interface TimeToolPayload { ok: boolean; newLocalTime: string; }
-export interface PlotToolPayload { ok: boolean; plotted: number; note?: string; }
+export interface TimeToolPayload {
+  ok: boolean;
+  newLocalTime: string;
+}
+export interface PlotToolPayload {
+  ok: boolean;
+  plotted: number;
+  note?: string;
+}
 export type ToolPayloadByName = {
   locate_user: { lat: number; lng: number; note?: string };
   geocode_place: PlaceToolPayload;
@@ -45,7 +59,44 @@ export type ToolPayloadByName = {
   plot_points: PlotToolPayload;
   plan_shadowed_route: RoutePlanTerminalResult;
 };
-export type TypedToolResultEnvelope<N extends AgentToolName> = ToolResultEnvelope<ToolPayloadByName[N]> & { toolName: N };
+export type TypedToolResultEnvelope<N extends AgentToolName> = ToolResultEnvelope<
+  ToolPayloadByName[N]
+> & { toolName: N };
+
+/** Runtime boundary for stored/reused evidence; provider-shaped data is never trusted by its TS type alone. */
+export function validateToolResultEnvelope(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !asString(value.resultId) ||
+    !asString(value.toolName) ||
+    !asString(value.producedAt) ||
+    !isRecord(value.payload)
+  )
+    return false;
+  if (typeof value.payload.error === "string") return true;
+  switch (value.toolName) {
+    case "geocode_place":
+    case "search_places":
+      return Array.isArray(value.payload.results);
+    case "check_shadow":
+      return (
+        Array.isArray(value.payload.results) ||
+        (asNumber(value.payload.lat) != null &&
+          asNumber(value.payload.lng) != null &&
+          asNumber(value.payload.shadowFraction) != null)
+      );
+    case "set_time":
+      return value.payload.ok === true && !!asString(value.payload.newLocalTime);
+    case "plot_points":
+      return value.payload.ok === true;
+    case "plan_shadowed_route":
+      return validateRoutePlanTerminalResult(value.payload) !== null;
+    case "locate_user":
+      return asNumber(value.payload.lat) != null && asNumber(value.payload.lng) != null;
+    default:
+      return false;
+  }
+}
 
 export type ClaimKind = "place" | "shadow" | "time" | "route" | "accessibility";
 export type ClaimVerificationStatus = "verified" | "unknown" | "rejected";
@@ -82,13 +133,15 @@ export interface PlaceClaimReceipt extends ClaimBase<"place", { lat: number; lng
   mapObjectId: string;
 }
 
-export interface ShadowClaimReceipt extends ClaimBase<"shadow", { fraction: number; unit: "fraction" }> {
+export interface ShadowClaimReceipt
+  extends ClaimBase<"shadow", { fraction: number; unit: "fraction" }> {
   coordinates: { lat: number; lng: number };
   atLocalTime: string;
   mapObjectId?: string;
 }
 
-export interface TimeClaimReceipt extends ClaimBase<"time", { localTime: string; unit: "local-time" }> {}
+export interface TimeClaimReceipt
+  extends ClaimBase<"time", { localTime: string; unit: "local-time" }> {}
 
 export interface RouteClaimReceipt extends ClaimBase<"route", { status: "completed" | "partial" }> {
   requestId: string;
@@ -99,8 +152,7 @@ export interface RouteClaimReceipt extends ClaimBase<"route", { status: "complet
   unroutableLeg?: { failedLeg: number; totalLegs: number };
 }
 
-export interface AccessibilityClaimReceipt extends ClaimBase<"accessibility", "unknown"> {
-}
+export interface AccessibilityClaimReceipt extends ClaimBase<"accessibility", "unknown"> {}
 
 export type ClaimReceipt =
   | PlaceClaimReceipt
@@ -110,37 +162,71 @@ export type ClaimReceipt =
   | AccessibilityClaimReceipt;
 
 export type VerifiedAnswerBlock =
-  | { kind: "text"; text: string }
   | { kind: "claim"; claimId: string }
-  | { kind: "unknown"; text: string; claimKind: ClaimKind };
+  | { kind: "unknown"; claimKind: ClaimKind }
+  | {
+      kind: "notice";
+      code: "refusal" | "clarification" | "blocked" | "unverified" | "route_terminal";
+      detail?: string;
+    };
 
 export interface VerifiedAnswer {
   blocks: VerifiedAnswerBlock[];
   receipts: ClaimReceipt[];
+  /** Count of model-supplied free-text blocks discarded before presentation. */
+  rejectedProseCount: number;
 }
 
 /** Separate measures: place-to-pin agreement is not a proxy for complete grounding. */
+export interface ClaimKindSupportMetrics {
+  proposed: number;
+  supported: number;
+  rejected: number;
+  unknown: number;
+  supportRate: number;
+}
 export interface ClaimSupportMetrics {
-  placeSupport: number;
-  shadowSupport: number;
-  temporalSupport: number;
-  routeSupport: number;
-  accessibilitySupport: number;
+  place: ClaimKindSupportMetrics;
+  shadow: ClaimKindSupportMetrics;
+  time: ClaimKindSupportMetrics;
+  route: ClaimKindSupportMetrics;
+  accessibility: ClaimKindSupportMetrics;
   unsupportedClaimEscapes: number;
+  rejectedUnsupportedProse: number;
 }
 
-export function claimSupportMetrics(answer: VerifiedAnswer, options: Pick<VerifyAnswerOptions, "evidence" | "mapObjects">): ClaimSupportMetrics {
-  const supported = (kind: ClaimKind) => answer.receipts.filter((receipt) => receipt.kind === kind && receipt.verification === "verified").length;
-  const escapes = answer.blocks.flatMap((block) => block.kind === "text" ? unsupportedProseReasons(block.text, options) : []).length;
+export function claimSupportMetrics(
+  answer: VerifiedAnswer,
+  _options: Pick<VerifyAnswerOptions, "evidence" | "mapObjects">,
+): ClaimSupportMetrics {
+  const measure = (kind: ClaimKind): ClaimKindSupportMetrics => {
+    const receipts = answer.receipts.filter((receipt) => receipt.kind === kind);
+    const supported = receipts.filter((receipt) => receipt.verification === "verified").length;
+    const rejected = receipts.filter((receipt) => receipt.verification === "rejected").length;
+    const unknown = receipts.filter((receipt) => receipt.verification === "unknown").length;
   return {
-    placeSupport: supported("place"), shadowSupport: supported("shadow"), temporalSupport: supported("time"),
-    routeSupport: supported("route"), accessibilitySupport: supported("accessibility"), unsupportedClaimEscapes: escapes,
+      proposed: receipts.length,
+      supported,
+      rejected,
+      unknown,
+      supportRate: receipts.length ? supported / receipts.length : 0,
+    };
+  };
+  return {
+    place: measure("place"),
+    shadow: measure("shadow"),
+    time: measure("time"),
+    route: measure("route"),
+    accessibility: measure("accessibility"),
+    // All model text blocks are discarded before rendering, so an escape is impossible by construction.
+    unsupportedClaimEscapes: 0,
+    rejectedUnsupportedProse: answer.rejectedProseCount,
   };
 }
 
 export interface MapObject {
   id: string;
-  kind: "pin" | "route";
+  kind: "pin" | "route" | "shadow";
   lat?: number;
   lng?: number;
   label?: string;
@@ -179,12 +265,30 @@ function resultCoords(payload: Record<string, unknown>): { lat: number; lng: num
   });
 }
 
+function matchingPlace(
+  payload: Record<string, unknown>,
+  coordinate: { lat: number; lng: number },
+): { name: string; lat: number; lng: number } | null {
+  const values = Array.isArray(payload.results) ? payload.results : [];
+  for (const value of values) {
+    if (!isRecord(value)) continue;
+    const name = asString(value.name);
+    const lat = asNumber(value.lat);
+    const lng = asNumber(value.lng);
+    if (name && lat != null && lng != null && coordsMatch({ lat, lng }, coordinate))
+      return { name, lat, lng };
+  }
+  return null;
+}
+
 function findShadow(
   envelope: ToolResultEnvelope,
   coordinates: { lat: number; lng: number },
 ): Record<string, unknown> | null {
   if (envelope.toolName !== "check_shadow" || !isRecord(envelope.payload)) return null;
-  const values = Array.isArray(envelope.payload.results) ? envelope.payload.results : [envelope.payload];
+  const values = Array.isArray(envelope.payload.results)
+    ? envelope.payload.results
+    : [envelope.payload];
   for (const value of values) {
     if (!isRecord(value)) continue;
     const lat = asNumber(value.lat);
@@ -200,13 +304,19 @@ function routeMapObjectId(result: RoutePlanTerminalResult): string {
   return `route:${result.requestId}:${result.actionId}:${result.planRevision}`;
 }
 
-function receiptId(value: LooseReceipt, index: number): string {
-  return asString(value.claimId) ?? `claim-${index + 1}`;
+function receiptId(
+  kind: ClaimKind,
+  subject: string,
+  envelope: ToolResultEnvelope | undefined,
+  index: number,
+): string {
+  const identity = `${kind}:${envelope?.resultId ?? "missing"}:${normal(subject) || index}`;
+  return `claim-${identity.replace(/[^a-z0-9:_-]/gi, "-")}`;
 }
 
 function resultIds(value: LooseReceipt): string[] {
   return Array.isArray(value.supportingResultIds)
-    ? value.supportingResultIds.flatMap((id) => asString(id) ? [asString(id)!] : [])
+    ? value.supportingResultIds.flatMap((id) => (asString(id) ? [asString(id)!] : []))
     : [];
 }
 
@@ -219,10 +329,16 @@ function base(
   reason?: ClaimRejectionReason,
 ) {
   return {
-    claimId: receiptId(value, index), kind, subject: asString(value.subject) ?? "unknown",
-    supportingResultIds: resultIds(value), verification, rejectionReason: reason,
-    observedAt: envelope?.producedAt ?? "unknown", source: isRecord(envelope?.payload) ? asString(envelope.payload.source) : undefined,
-    sourceVersion: envelope?.sourceVersion, confidence: "unknown" as const,
+    claimId: receiptId(kind, asString(value.subject) ?? "unknown", envelope, index),
+    kind,
+    subject: asString(value.subject) ?? "unknown",
+    supportingResultIds: resultIds(value),
+    verification,
+    rejectionReason: reason,
+    observedAt: envelope?.producedAt ?? "unknown",
+    source: isRecord(envelope?.payload) ? asString(envelope.payload.source) : undefined,
+    sourceVersion: envelope?.sourceVersion,
+    confidence: "unknown" as const,
   };
 }
 
@@ -253,38 +369,96 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     const malformed = !kind || supporting.length !== 1 || !envelope;
     const reject = (claimKind: ClaimKind, reason: ClaimRejectionReason): ClaimReceipt => {
       const common = base(value, index, claimKind, envelope, "rejected", reason);
-      if (claimKind === "accessibility") return { ...common, kind: "accessibility", value: "unknown" };
-      if (claimKind === "place") return { ...common, kind: "place", value: { lat: 0, lng: 0 }, mapObjectId: asString(value.mapObjectId) ?? "unknown" };
-      if (claimKind === "shadow") return { ...common, kind: "shadow", value: { fraction: 0, unit: "fraction" }, coordinates: { lat: 0, lng: 0 }, atLocalTime: "unknown" };
-      if (claimKind === "time") return { ...common, kind: "time", value: { localTime: "unknown", unit: "local-time" } };
-      return { ...common, kind: "route", value: { status: "partial" }, requestId: "unknown", actionId: "unknown", planRevision: -1, mapObjectId: "unknown" };
+      if (claimKind === "accessibility")
+        return { ...common, kind: "accessibility", value: "unknown" };
+      if (claimKind === "place")
+        return {
+          ...common,
+          kind: "place",
+          value: { lat: 0, lng: 0 },
+          mapObjectId: asString(value.mapObjectId) ?? "unknown",
+        };
+      if (claimKind === "shadow")
+        return {
+          ...common,
+          kind: "shadow",
+          value: { fraction: 0, unit: "fraction" },
+          coordinates: { lat: 0, lng: 0 },
+          atLocalTime: "unknown",
+        };
+      if (claimKind === "time")
+        return { ...common, kind: "time", value: { localTime: "unknown", unit: "local-time" } };
+      return {
+        ...common,
+        kind: "route",
+        value: { status: "partial" },
+        requestId: "unknown",
+        actionId: "unknown",
+        planRevision: -1,
+        mapObjectId: "unknown",
+      };
     };
     if (!kind || !["place", "shadow", "time", "route", "accessibility"].includes(kind)) {
-      receipts.push(reject("accessibility", "malformed_claim")); return;
+      receipts.push(reject("accessibility", "malformed_claim"));
+      return;
     }
     if (kind === "accessibility") {
       // C5 has no accessibility observation tool. It can only make that absence legible.
       const common = base(value, index, kind, envelope, "unknown");
-      receipts.push({ ...common, kind, value: "unknown", supportingResultIds: [] }); return;
+      receipts.push({ ...common, kind, value: "unknown", supportingResultIds: [] });
+      return;
     }
-    if (malformed) { receipts.push(reject(kind, "missing_result")); return; }
+    if (malformed) {
+      receipts.push(reject(kind, "missing_result"));
+      return;
+    }
     if (kind === "place") {
       if (envelope!.toolName !== "geocode_place" && envelope!.toolName !== "search_places") {
-        receipts.push(reject(kind, "wrong_tool_kind")); return;
+        receipts.push(reject(kind, "wrong_tool_kind"));
+        return;
       }
       const val = isRecord(value.value) ? value.value : {};
-      const lat = asNumber(val.lat); const lng = asNumber(val.lng);
-      const coordinate = lat != null && lng != null ? { lat, lng } : resultCoords(envelope!.payload)[0];
-      const subject = asString(value.subject) ?? "unknown";
-      const resultMatch = resultCoords(envelope!.payload).some((point) => coordinate && coordsMatch(point, coordinate));
-      const mapObject = coordinate && options.mapObjects.find((object) => object.kind === "pin" && object.lat != null && object.lng != null && coordsMatch({ lat: object.lat, lng: object.lng }, coordinate));
-      if (!coordinate || !resultMatch || !mapObject || (mapObject.label && normal(subject) !== normal(mapObject.label) && !normal(mapObject.label).startsWith(normal(subject)))) {
-        receipts.push(reject(kind, !mapObject ? "missing_map_object" : "subject_mismatch")); return;
+      const lat = asNumber(val.lat);
+      const lng = asNumber(val.lng);
+      const coordinate =
+        lat != null && lng != null ? { lat, lng } : resultCoords(envelope!.payload)[0];
+      const resultMatch = coordinate && matchingPlace(envelope!.payload, coordinate);
+      const mapObject =
+        coordinate &&
+        options.mapObjects.find(
+          (object) =>
+            object.kind === "pin" &&
+            object.lat != null &&
+            object.lng != null &&
+            coordsMatch({ lat: object.lat, lng: object.lng }, coordinate),
+        );
+      if (!coordinate || !resultMatch || !mapObject) {
+        receipts.push(reject(kind, !mapObject ? "missing_map_object" : "subject_mismatch"));
+        return;
       }
-      receipts.push({ ...base(value, index, kind, envelope, "verified"), kind, subject: mapObject.label ?? subject, value: coordinate, mapObjectId: mapObject.id }); return;
+      // The provider result establishes identity; a pin's display label may never relabel it.
+      const canonicalValue = { lat: resultMatch.lat, lng: resultMatch.lng };
+      const common = base(
+        { ...value, subject: resultMatch.name },
+        index,
+        kind,
+        envelope,
+        "verified",
+      );
+      receipts.push({
+        ...common,
+        kind,
+        subject: resultMatch.name,
+        value: canonicalValue,
+        mapObjectId: mapObject.id,
+      });
+      return;
     }
     if (kind === "shadow") {
-      if (envelope!.toolName !== "check_shadow" && !options.allowIncompatibleEvidence) { receipts.push(reject(kind, "wrong_tool_kind")); return; }
+      if (envelope!.toolName !== "check_shadow" && !options.allowIncompatibleEvidence) {
+        receipts.push(reject(kind, "wrong_tool_kind"));
+        return;
+      }
       const input = isRecord(value.value) ? value.value : {};
       const coords = isRecord(value.value) ? value.value : {};
       const lat = asNumber(coords.lat) ?? asNumber((value as Record<string, unknown>).lat);
@@ -304,10 +478,14 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
       if (!observation || fraction == null || fraction < 0 || fraction > 1 || fraction !== asNumber(observation.shadowFraction) || !atLocalTime || atLocalTime !== asString(observation.atLocalTime)) {
         receipts.push(reject(kind, observation ? "time_mismatch" : "subject_mismatch")); return;
       }
-      receipts.push({ ...base(value, index, kind, envelope, "verified"), kind, value: { fraction, unit: "fraction" }, coordinates: coordinate, atLocalTime, confidence: "unknown" }); return;
+      const canonicalSubject = asString(observation.label) ?? "checked location";
+      const mapObjectId = `shadow:${envelope!.resultId}:${coordinate.lat.toFixed(5)}:${coordinate.lng.toFixed(5)}`;
+      if (!options.mapObjects.some((object) => object.kind === "shadow" && object.id === mapObjectId)) { receipts.push(reject(kind, "missing_map_object")); return; }
+      receipts.push({ ...base({ ...value, subject: canonicalSubject }, index, kind, envelope, "verified"), kind, subject: canonicalSubject, value: { fraction, unit: "fraction" }, coordinates: coordinate, atLocalTime, mapObjectId, confidence: "unknown" }); return;
     }
     if (kind === "time") {
       if (envelope!.toolName !== "set_time") { receipts.push(reject(kind, "wrong_tool_kind")); return; }
+      if (options.evidence.some((candidate) => candidate.toolName === "set_time" && candidate.producedAt > envelope!.producedAt)) { receipts.push(reject(kind, "stale_evidence")); return; }
       const requested = isRecord(value.value) ? asString(value.value.localTime) : undefined;
       const actual = isRecord(envelope!.payload) ? asString(envelope!.payload.newLocalTime) : undefined;
       if (!requested || !actual || requested !== actual) { receipts.push(reject(kind, "subject_mismatch")); return; }
@@ -325,32 +503,32 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     receipts.push({ ...base(value, index, kind, envelope, "verified"), kind, value: { status: desired }, requestId: terminal.requestId, actionId: terminal.actionId, planRevision: terminal.planRevision, mapObjectId, unroutableLeg: partial ? { failedLeg: partial.failedLeg, totalLegs: partial.totalLegs } : undefined });
   });
 
-  const blocks: VerifiedAnswerBlock[] = [];
+  // Model blocks are never presentation input. Canonical block order and wording
+  // are deterministic, so invented names and paraphrased facts cannot escape.
   const sourceBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-  for (const raw of sourceBlocks) {
-    if (!isRecord(raw)) continue;
-    const rawClaimId = asString(raw.claimId);
-    if (raw.kind === "claim" && rawClaimId && receipts.some((receipt) => receipt.claimId === rawClaimId && receipt.verification === "verified")) blocks.push({ kind: "claim", claimId: rawClaimId });
-    if (raw.kind === "unknown" && asString(raw.text) && ["place", "shadow", "time", "route", "accessibility"].includes(String(raw.claimKind))) blocks.push({ kind: "unknown", text: asString(raw.text)!, claimKind: raw.claimKind as ClaimKind });
-    if (raw.kind === "text" && asString(raw.text) && unsupportedProseReasons(asString(raw.text)!, options).length === 0) blocks.push({ kind: "text", text: asString(raw.text)! });
-  }
-  // Fail closed: malformed model output gets a canonical, evidence-derived answer.
-  if (blocks.length === 0) {
-    for (const receipt of receipts) blocks.push(receipt.verification === "verified" ? { kind: "claim", claimId: receipt.claimId } : { kind: "unknown", claimKind: receipt.kind, text: `${receipt.kind} is unverified.` });
-    if (blocks.length === 0) blocks.push({ kind: "unknown", claimKind: "place", text: "I could not verify a specific result." });
-  }
-  return { blocks, receipts };
+  const rejectedProseCount = sourceBlocks.filter((block) => isRecord(block) && (block.kind === "text" || block.kind === "unknown")).length;
+  const blocks: VerifiedAnswerBlock[] = receipts.map((receipt) => receipt.verification === "verified" ? { kind: "claim", claimId: receipt.claimId } : { kind: "unknown", claimKind: receipt.kind });
+  if (blocks.length === 0) blocks.push({ kind: "notice", code: "unverified" });
+  return { blocks, receipts, rejectedProseCount };
 }
 
 /** A narrow tripwire: factual language only belongs in canonical claim/unknown blocks. */
-export function unsupportedProseReasons(text: string, options: Pick<VerifyAnswerOptions, "evidence" | "mapObjects">): string[] {
-  const reasons: string[] = [];
-  if (options.mapObjects.some((object) => object.label && new RegExp(`(^|[^\\p{L}\\p{N}])${object.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "iu").test(text))) reasons.push("named_place_outside_claim");
-  if (/\b\d+(?:\.\d+)?\s*%\s*(?:shadow|shade)?\b|\b(?:shadow|shade)\s*\d+(?:\.\d+)?\s*%/i.test(text)) reasons.push("shadow_number_outside_claim");
-  if (/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(text)) reasons.push("time_outside_claim");
-  if (/\b(route|walk)\b[^.]{0,30}\b(completed|ready|finished)\b|\b(completed|ready)\b[^.]{0,30}\b(route|walk)\b/i.test(text)) reasons.push("route_status_outside_claim");
-  if (/\b(accessib(?:le|ility)|wheelchair|step[- ]free)\b/i.test(text)) reasons.push("accessibility_outside_claim");
-  return reasons;
+export function unsupportedProseReasons(text: string, _options: Pick<VerifyAnswerOptions, "evidence" | "mapObjects">): string[] {
+  return text.trim() ? ["free_text_not_rendered"] : [];
+}
+
+export function unknownLabel(kind: ClaimKind): string {
+  return kind === "accessibility" ? "Accessibility — unknown" : `${kind[0].toUpperCase()}${kind.slice(1)} — unverified`;
+}
+
+export function noticeLabel(block: Extract<VerifiedAnswerBlock, { kind: "notice" }>): string {
+  switch (block.code) {
+    case "refusal": return "I only help plan a day around shadow and sun.";
+    case "clarification": return "Which city or neighbourhood should I plan around?";
+    case "blocked": return `I couldn't respond to that${block.detail ? ` (${block.detail})` : ""}.`;
+    case "route_terminal": return block.detail ?? "The route result is not currently verified.";
+    case "unverified": return "I could not verify a specific result.";
+  }
 }
 
 export function receiptLabel(receipt: ClaimReceipt): string {
@@ -365,6 +543,6 @@ export function receiptLabel(receipt: ClaimReceipt): string {
 }
 
 export function receiptDetail(receipt: ClaimReceipt): string {
-  const status = receipt.verification === "verified" ? `Checked by ${receipt.source ?? "application tool"} at ${receipt.observedAt}.` : receipt.rejectionReason ? `Not verified: ${receipt.rejectionReason.replaceAll("_", " ")}.` : "Not verified by the available tools.";
-  return `${status} Confidence: ${receipt.confidence === "unknown" ? "unknown" : `${Math.round(receipt.confidence * 100)}%`}.`;
+  const status = receipt.verification === "verified" ? `Checked by ${receipt.source ?? "application tool"} at ${receipt.observedAt}${receipt.sourceVersion ? ` (version ${receipt.sourceVersion})` : ""}.` : receipt.rejectionReason ? `Not verified: ${receipt.rejectionReason.replaceAll("_", " ")}.` : "Not verified by the available tools.";
+  return `${status} Confidence: ${receipt.confidence === "unknown" ? "unknown" : `${Math.round(receipt.confidence * 100)}%`}. Evidence id: ${receipt.supportingResultIds.join(", ") || "none"}.`;
 }

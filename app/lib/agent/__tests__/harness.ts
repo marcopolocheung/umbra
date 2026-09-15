@@ -17,7 +17,7 @@
 import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClient";
 import type { AgentContext, AssistantPin } from "../tools";
 import type { RoutePlan } from "../../routePlanJob";
-import type { VerifiedAnswer } from "../receipts";
+import type { ClaimSupportMetrics, VerifiedAnswer } from "../receipts";
 
 // ---------------------------------------------------------------------------
 // Scenario shape
@@ -121,6 +121,7 @@ export interface Trace {
   plottedPins: AssistantPin[];
   answer: string;
   verified?: VerifiedAnswer;
+  metrics?: ClaimSupportMetrics;
   history: LlmContent[];
 }
 
@@ -166,7 +167,7 @@ export function groundingViolations(trace: Trace, scenario: Scenario): string[] 
       (c) =>
         c.name === "plot_points" &&
         !c.result.error &&
-        (trace.writeIndex < 0 || c.afterLlmCall < trace.writeIndex)
+        (trace.writeIndex < 0 || c.afterLlmCall < trace.writeIndex),
     );
     if (!plotted) violations.push("answered without plotting the itinerary first");
   }
@@ -195,7 +196,12 @@ export type RunAgentFn = (opts: {
   userText: string;
   ctx: AgentContext;
   onToolEvent?: (e: { name: string; args: Record<string, unknown> }) => void;
-}) => Promise<{ text: string; history: LlmContent[]; answer?: VerifiedAnswer }>;
+}) => Promise<{
+  text: string;
+  history: LlmContent[];
+  answer?: VerifiedAnswer;
+  metrics?: ClaimSupportMetrics;
+}>;
 
 const DEFAULT_CONTEXT = {
   center: { lat: 40.7536, lng: -73.9832 },
@@ -246,6 +252,8 @@ export function makeScenarioContext(): AgentContext {
     cancelRoutePlan: () => false,
     // Scripted route terminals use revision 1 even when executeTool is mocked.
     getCurrentPlanRevision: () => Math.max(version, 1),
+    getMapObjects: () => [],
+    registerMapObjects: noop,
     setPins: noop,
   };
 }
@@ -277,7 +285,7 @@ export async function runScenario(
   scenario: Scenario,
   runAgent: RunAgentFn,
   mocks: HarnessMocks,
-  sabotage?: Sabotage
+  sabotage?: Sabotage,
 ): Promise<Trace> {
   const script = [...scenario.script];
   if (sabotage === "answer-invents-place") {
@@ -301,7 +309,7 @@ export async function runScenario(
     if (!turn) {
       throw new Error(
         `scenario "${scenario.id}": the loop made ${cursor} model calls but only ` +
-          `${script.length} were scripted`
+          `${script.length} were scripted`,
       );
     }
     return turnToResponse(turn);
@@ -318,7 +326,7 @@ export function runLiveScenario(
   scenario: Scenario,
   runAgent: RunAgentFn,
   mocks: HarnessMocks,
-  realCallModel: Responder
+  realCallModel: Responder,
 ): Promise<Trace> {
   return replay(scenario, runAgent, mocks, realCallModel);
 }
@@ -328,7 +336,7 @@ async function replay(
   runAgent: RunAgentFn,
   mocks: HarnessMocks,
   respond: Responder,
-  sabotage?: Sabotage
+  sabotage?: Sabotage,
 ): Promise<Trace> {
   const trace: Trace = {
     llmRequests: [],
@@ -339,6 +347,7 @@ async function replay(
     plottedPins: scenario.mapPins ?? [],
     answer: "",
     verified: undefined,
+    metrics: undefined,
     history: [],
   };
 
@@ -365,7 +374,7 @@ async function replay(
     }
     const stub = scenario.tools?.[name];
     const result = record(
-      typeof stub === "function" ? stub(args) : (stub ?? { error: `No stub for ${name}.` })
+      typeof stub === "function" ? stub(args) : (stub ?? { error: `No stub for ${name}.` }),
     );
     if (name === "plot_points" && !result.error) {
       trace.plottedPins = (args.points as AssistantPin[]) ?? [];
@@ -373,7 +382,7 @@ async function replay(
     return result;
   });
 
-  const { text, history, answer } = await runAgent({
+  const { text, history, answer, metrics } = await runAgent({
     history: [],
     pins: scenario.mapPins,
     userText: scenario.userText,
@@ -382,6 +391,7 @@ async function replay(
   });
   trace.answer = text;
   trace.verified = answer;
+  trace.metrics = metrics;
   trace.history = history;
   return trace;
 }

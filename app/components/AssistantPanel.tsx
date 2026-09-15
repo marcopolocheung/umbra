@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useAgent";
-import { receiptDetail, receiptLabel } from "../lib/agent/receipts";
+import { noticeLabel, receiptDetail, receiptLabel, unknownLabel } from "../lib/agent/receipts";
 
 interface AssistantPanelProps {
   open: boolean;
@@ -64,7 +64,10 @@ export default function AssistantPanel({
         className="flex items-center gap-2 px-4 py-3 border-b"
         style={{ borderColor: "var(--md-outline-variant)" }}
       >
-        <span className="material-symbols-outlined text-amber-700" style={{ fontVariationSettings: "'FILL' 1" }}>
+        <span
+          className="material-symbols-outlined text-amber-700"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
           wb_sunny
         </span>
         <div className="flex-1">
@@ -75,7 +78,8 @@ export default function AssistantPanel({
             Plans shadow-aware outings
           </div>
         </div>
-        <button type="button"
+        <button
+          type="button"
           onClick={onReset}
           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
           title="New conversation"
@@ -83,7 +87,8 @@ export default function AssistantPanel({
         >
           <span className="material-symbols-outlined text-lg">refresh</span>
         </button>
-        <button type="button"
+        <button
+          type="button"
           onClick={onClose}
           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
           title="Close"
@@ -98,11 +103,12 @@ export default function AssistantPanel({
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 mt-2">
             <p className="text-xs px-1" style={{ color: "var(--md-on-surface-variant)" }}>
-              Ask me to plan around the sun. I can read the live shadows, check whether
-              a spot is shadowed at a given hour, and draw shadow-aware routes.
+              Ask me to plan around the sun. I can read the live shadows, check whether a spot is
+              shadowed at a given hour, and draw shadow-aware routes.
             </p>
             {SUGGESTIONS.map((s) => (
-              <button type="button"
+              <button
+                type="button"
                 key={s}
                 onClick={() => onSend(s)}
                 className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-amber-50 transition-colors"
@@ -118,10 +124,16 @@ export default function AssistantPanel({
           if (m.role === "tool") {
             return (
               <div key={m.id} className="flex items-center gap-2 px-2 py-1 self-start">
-                <span className="material-symbols-outlined text-sm animate-pulse" style={{ color: "var(--md-primary)" }}>
+                <span
+                  className="material-symbols-outlined text-sm animate-pulse"
+                  style={{ color: "var(--md-primary)" }}
+                >
                   bolt
                 </span>
-                <span className="text-[11px] italic" style={{ color: "var(--md-on-surface-variant)" }}>
+                <span
+                  className="text-[11px] italic"
+                  style={{ color: "var(--md-on-surface-variant)" }}
+                >
                   {m.text}
                 </span>
               </div>
@@ -134,7 +146,9 @@ export default function AssistantPanel({
               className="max-w-[88%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words"
               style={{
                 alignSelf: isUser ? "flex-end" : "flex-start",
-                background: isUser ? "var(--md-primary, #b45309)" : "var(--md-surface-container-low, #f5efe6)",
+                background: isUser
+                  ? "var(--md-primary, #b45309)"
+                  : "var(--md-surface-container-low, #f5efe6)",
                 color: isUser ? "white" : "var(--md-on-surface)",
                 borderBottomRightRadius: isUser ? 4 : undefined,
                 borderBottomLeftRadius: isUser ? undefined : 4,
@@ -143,36 +157,68 @@ export default function AssistantPanel({
               {m.answer ? (
                 <div className="flex flex-col gap-1.5">
                   {m.answer.blocks.map((block) => {
-                    if (block.kind === "text" || block.kind === "unknown") return <span key={`${block.kind}:${block.text}`}>{block.text}</span>;
-                    const receipt = m.answer!.receipts.find((candidate) => candidate.claimId === block.claimId);
+                    if (block.kind === "unknown")
+                      return (
+                        <span key={`unknown:${block.claimKind}`}>
+                          {unknownLabel(block.claimKind)}
+                        </span>
+                      );
+                    if (block.kind === "notice")
+                      return <span key={`notice:${block.code}`}>{noticeLabel(block)}</span>;
+                    const receipt = m.answer!.receipts.find(
+                      (candidate) => candidate.claimId === block.claimId,
+                    );
                     if (!receipt) return null;
                     const mapObjectId = "mapObjectId" in receipt ? receipt.mapObjectId : undefined;
                     return (
-                      <div key={receipt.claimId} className="rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--md-outline-variant)" }}>
+                      <div
+                        key={receipt.claimId}
+                        className="rounded-lg border px-2 py-1.5"
+                        style={{ borderColor: "var(--md-outline-variant)" }}
+                      >
                         <button
                           type="button"
-                          onClick={() => { if (mapObjectId && receipt.verification === "verified") onFocusMapObject(mapObjectId); }}
+                          onClick={() => {
+                            if (mapObjectId && receipt.verification === "verified")
+                              onFocusMapObject(mapObjectId);
+                          }}
                           disabled={!mapObjectId || receipt.verification !== "verified"}
                           className="w-full text-left text-xs font-semibold disabled:cursor-default"
                           aria-label={`${receiptLabel(receipt)}. ${receiptDetail(receipt)}`}
                         >
                           {receiptLabel(receipt)}
                         </button>
-                        <p className="mt-0.5 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>{receiptDetail(receipt)}</p>
+                        <p
+                          className="mt-0.5 text-[10px]"
+                          style={{ color: "var(--md-on-surface-variant)" }}
+                        >
+                          {receiptDetail(receipt)}
+                        </p>
                       </div>
                     );
                   })}
                 </div>
-              ) : m.text}
+              ) : (
+                m.text
+              )}
             </div>
           );
         })}
 
         {isThinking && (
           <div className="flex items-center gap-1.5 px-3 py-2 self-start">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "120ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "240ms" }} />
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              style={{ animationDelay: "0ms" }}
+            />
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              style={{ animationDelay: "120ms" }}
+            />
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              style={{ animationDelay: "240ms" }}
+            />
           </div>
         )}
       </div>
@@ -198,7 +244,8 @@ export default function AssistantPanel({
               maxHeight: 96,
             }}
       />
-          <button type="button"
+          <button
+            type="button"
             onClick={submit}
             disabled={isThinking || !input.trim()}
             className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors disabled:opacity-40"
