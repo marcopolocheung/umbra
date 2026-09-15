@@ -274,13 +274,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         return;
       }
       const name = route.label;
+      // Only name the stops when the exported route actually came from them.
+      // A sketch route is a freehand line the trip had no part in, and the
+      // trip survives entering draw mode — attaching its stops would ship a
+      // file claiming a track visits places it never goes near.
+      const routeTrip = sketchPoints.length > 0 ? undefined : trip;
       if (format === "gpx") {
-        downloadBlob(routeToGPX(route, name, trip), `${name}.gpx`, "application/gpx+xml");
+        downloadBlob(routeToGPX(route, name, routeTrip), `${name}.gpx`, "application/gpx+xml");
       } else {
-        downloadBlob(routeToGeoJSON(route, trip), `${name}.geojson`, "application/geo+json");
+        downloadBlob(routeToGeoJSON(route, routeTrip), `${name}.geojson`, "application/geo+json");
       }
     },
-    [navRoutes, setNavWarning, trip],
+    [navRoutes, setNavWarning, trip, sketchPoints],
   );
 
   const handleToggleNavMode = useCallback(() => {
@@ -386,6 +391,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   return {
     // State
     navMode,
+    trip,
     waypointA,
     waypointB,
     dwellMinutes,

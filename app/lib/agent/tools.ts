@@ -18,7 +18,6 @@ import { computeSolarIntensity } from "../shadowSampling";
 import { queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
 import { buildTrip, tripToRoutePlan } from "../trip/trip";
-import { zoneAt } from "../tzLookup";
 import { parseTime } from "../../hooks/useShadowTime";
 import {
   invalidTerminalResult,
@@ -582,10 +581,10 @@ export async function executeTool(
             ...via.map((coord) => ({ coord })),
             { coord: [toLng, toLat], label: str(args.toLabel) ?? "Destination" },
           ],
-          departAt: {
-            instant: ctx.dateRef.current.toISOString(),
-            zone: zoneAt(fromLat, fromLng) ?? "UTC",
-          },
+          // The plan job needs no anchor — `tripToRoutePlan` drops it. Stated
+          // as the map's current instant in UTC rather than looked up, so this
+          // does not read as a grounded departure zone it never becomes.
+          departAt: { instant: ctx.dateRef.current.toISOString(), zone: "UTC" },
           defaultMode: "walk",
         }),
       );

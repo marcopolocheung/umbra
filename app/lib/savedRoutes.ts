@@ -3,7 +3,6 @@ import "./storageMigration";
 import type { RouteOption } from "./routing";
 import { buildTrip } from "./trip/trip";
 import type { Trip } from "./trip/types";
-import { zoneAt } from "./tzLookup";
 
 export interface SavedFolder {
   id: string;
@@ -41,6 +40,16 @@ function readJSON<T>(key: string, fallback: T): T {
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** The reader's own zone — the frame a browser-local wall-clock reading is
+ * made in. Falls back to UTC only if the runtime withholds it. */
+function browserZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
   }
 }
 
@@ -87,15 +96,21 @@ function isV2Record(value: RecordValue): value is RecordValue & { trip: Trip } {
 }
 
 /**
- * v1 → v2: rebuild the journey from the legacy fields. v1 carries wall-clock
- * minutes with no zone, so the anchor reuses the legacy load's own
- * interpretation (browser-local wall time) and stamps the departure stop's
- * looked-up zone — the same anchor a fresh trip built at that moment gets.
+ * v1 → v2: rebuild the journey from the legacy fields.
+ *
+ * v1 stored wall-clock minutes with no zone, so the instant is reconstructed
+ * exactly as the legacy load read it — browser-local — and the zone recorded
+ * is therefore the BROWSER's, the frame that reading was actually made in.
+ * Stamping the departure point's looked-up zone instead would pair an instant
+ * with a zone it was not derived in: a route saved in Tokyo and reopened in
+ * New York would format to a time the record cannot back. What the record
+ * supports is "this wall-clock reading, in whatever zone the reader is in".
  *
  * Deterministic: ids derive from the record's own id, so re-reading the same
- * stored record yields the same `Trip.id` and `Stop.id` every time. Minting
- * fresh UUIDs here would give a v1 record a new identity on every `getRoutes()`
- * — and the migrated form is not written back, so nothing would ever settle it.
+ * stored record yields the same `Trip.id` and `Stop.id` every time. That
+ * matters because `createRoute`/`updateRoute`/`deleteRoute` all go through
+ * `saveRoutes(getRoutes()…)`, which PERSISTS whatever the migration produced —
+ * minted ids would be frozen into storage at whatever the first read invented.
  * #357's import path depends on this to carry identity across origins.
  */
 export function migrateV1ToV2(value: RecordValue): SavedRoute {
@@ -107,7 +122,7 @@ export function migrateV1ToV2(value: RecordValue): SavedRoute {
   const trip = buildTrip({
     departAt: {
       instant: d.toISOString(),
-      zone: zoneAt(waypointA[1], waypointA[0]) ?? "UTC",
+      zone: browserZone(),
     },
     defaultMode: "walk",
     id: `${recordId}:trip`,

@@ -145,6 +145,39 @@ describe("replaceStops", () => {
     expect(next.stops[1].label).toBe("B");
   });
 
+  it("keeps ids and dwell when a stop is INSERTED, not just replaced", () => {
+    // Index-wise matching silently re-mints every stop after an insertion,
+    // which throws away exactly the "coffee then dinner" dwell this model
+    // exists to carry. An agent plan adding one via goes through this path.
+    const trip = fourStopTrip();
+    const next = replaceStops(trip, [
+      { coord: [-3.7, 40.41] },
+      { coord: [-3.695, 40.412] }, // inserted
+      { coord: [-3.69, 40.415] },
+      { coord: [-3.68, 40.42] },
+      { coord: [-3.67, 40.425] },
+    ]);
+    expect(next.stops[0].id).toBe(trip.stops[0].id);
+    // B shifted from index 1 to 2 and must still be the same stop, dwell intact.
+    expect(next.stops[2].id).toBe(trip.stops[1].id);
+    expect(next.stops[2].dwellMinutes).toBe(30);
+    expect(next.stops[2].label).toBe("B");
+    expect(next.stops[3].id).toBe(trip.stops[2].id);
+    expect(next.stops[4].id).toBe(trip.stops[3].id);
+    // Only the genuinely new stop gets a new id.
+    expect(new Set(next.stops.map((s) => s.id)).size).toBe(5);
+  });
+
+  it("keeps dwell when only the label changes", () => {
+    const trip = fourStopTrip();
+    const entries = trip.stops.map((s) => ({ coord: s.coord }));
+    entries[1] = { ...entries[1], label: "Museum" } as typeof entries[1];
+    const next = replaceStops(trip, entries);
+    expect(next.stops[1].label).toBe("Museum");
+    expect(next.stops[1].dwellMinutes).toBe(30);
+    expect(next.stops[1].id).toBe(trip.stops[1].id);
+  });
+
   it("applies explicit label and dwell overrides to preserved stops", () => {
     const trip = fourStopTrip();
     const next = replaceStops(trip, [

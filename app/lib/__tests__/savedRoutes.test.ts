@@ -52,15 +52,29 @@ describe("normalizeSavedRoute", () => {
     const instant = new Date(migrated?.trip?.departAt.instant ?? "");
     expect(instant.getHours()).toBe(9);
     expect(instant.getMinutes()).toBe(30);
-    expect(typeof migrated?.trip?.departAt.zone).toBe("string");
+    // The anchor's zone must be the frame the instant was reconstructed in.
+    // v1 stored wall-clock minutes with no zone, so that frame is the reader's
+    // own — stamping the departure point's zone would pair the instant with a
+    // zone it was not derived in, and formatting the pair would print a time
+    // the record cannot back (save in Tokyo, reopen in New York).
+    const zone = migrated?.trip?.departAt.zone;
+    expect(zone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const shown = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: zone,
+    }).format(instant);
+    expect(shown).toBe("09:30");
     // The legacy fields and the route survive untouched.
     expect(migrated?.waypointA).toEqual([-3.7, 40.41]);
     expect(migrated?.routeOption).toEqual(V1_SAVED_ROUTE.routeOption);
   });
 
   it("re-migrates the same v1 record to the same ids", () => {
-    // `getRoutes()` re-migrates on every read and never writes the result
-    // back, so minted ids would give the record a new identity each time —
+    // `getRoutes()` re-migrates on every read, and `createRoute`/`updateRoute`/
+    // `deleteRoute` all persist what it returns via `saveRoutes(getRoutes()…)`.
+    // Minted ids would therefore freeze whatever the first read invented —
     // and identity is exactly what C11 asserts survives a revision.
     const once = normalizeSavedRoute(JSON.parse(JSON.stringify(V1_SAVED_ROUTE)) as unknown);
     const twice = normalizeSavedRoute(JSON.parse(JSON.stringify(V1_SAVED_ROUTE)) as unknown);

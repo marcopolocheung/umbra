@@ -513,20 +513,22 @@ export default function Home() {
       );
 
       if (shared.date) setDate(shared.date);
-      // Order matters: A, then B, then via. Each handler commits one trip
-      // update and React batches them, so B must land while the trip is still
-      // short enough to append (not replace the last stop), with via last.
+      // `dwell` is positional over the stops that are actually present, in
+      // [a, ...via, b] order — so the destination's index depends on whether
+      // a start was in the link at all. Assuming a start would drop B's dwell
+      // from a destination-only link.
       const dwellAt = (i: number) => shared.dwell[i] ?? 0;
+      const aOffset = shared.waypointA ? 1 : 0;
       if (shared.waypointA)
         handleSetWaypointA(shared.waypointA, "Shared start", { dwellMinutes: dwellAt(0) });
       if (shared.waypointB)
         handleSetWaypointB(shared.waypointB, "Shared destination", {
-          dwellMinutes: dwellAt(shared.additionalWaypoints.length + 1),
+          dwellMinutes: dwellAt(aOffset + shared.additionalWaypoints.length),
         });
       if (shared.additionalWaypoints.length > 0) {
         handleSetAdditionalWaypoints(
           shared.additionalWaypoints,
-          shared.additionalWaypoints.map((_, i) => dwellAt(i + 1)),
+          shared.additionalWaypoints.map((_, i) => dwellAt(aOffset + i)),
         );
       }
       if (shared.travelMode !== "walk") handleTravelModeChange(shared.travelMode);

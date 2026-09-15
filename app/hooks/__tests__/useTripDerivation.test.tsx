@@ -178,3 +178,143 @@ describe("plan revisions and dwell (C5)", () => {
     expect(result.current.dwellMinutes).toEqual([0, 45]);
   });
 });
+
+/**
+ * The regression that survived the first review round: clearing or retyping an
+ * endpoint of a trip that HAS via stops promoted a via into the empty slot and
+ * dropped it from the stop list. `WaypointInput` fires `onClear()` on the first
+ * keystroke of a retype, so this was reachable by typing, not just by the ✗.
+ */
+describe("endpoints and via stops do not cannibalise each other", () => {
+  const V1: [number, number] = [-3.69, 40.415];
+  const V2: [number, number] = [-3.685, 40.417];
+
+  function tripWithVias() {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Origin"));
+    act(() => result.current.handleSetWaypointB(B, "Dest"));
+    act(() => result.current.handleAddAdditionalWaypoint(V1));
+    act(() => result.current.handleAddAdditionalWaypoint(V2));
+    return result;
+  }
+
+  it("clearing the origin leaves every via stop and the destination alone", () => {
+    const result = tripWithVias();
+    act(() => result.current.handleClearWaypointA());
+    expect(result.current.waypointA).toBeNull();
+    expect(result.current.additionalWaypoints).toEqual([V1, V2]);
+    expect(result.current.waypointB).toEqual(B);
+  });
+
+  it("clearing the destination leaves every via stop and the origin alone", () => {
+    const result = tripWithVias();
+    act(() => result.current.handleClearWaypointB());
+    expect(result.current.waypointB).toBeNull();
+    expect(result.current.additionalWaypoints).toEqual([V1, V2]);
+    expect(result.current.waypointA).toEqual(A);
+  });
+
+  it("retyping the origin (clear then set) keeps the via stops", () => {
+    const result = tripWithVias();
+    const retyped: [number, number] = [-3.6, 40.5];
+    act(() => result.current.handleClearWaypointA());
+    act(() => result.current.handleSetWaypointA(retyped, "New origin"));
+    expect(result.current.waypointA).toEqual(retyped);
+    expect(result.current.additionalWaypoints).toEqual([V1, V2]);
+    expect(result.current.waypointB).toEqual(B);
+  });
+
+  it("adding a stop with only a destination set does not steal the destination", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointB(B, "Dest"));
+    act(() => result.current.handleAddAdditionalWaypoint(V1));
+    expect(result.current.waypointA).toBeNull();
+    expect(result.current.waypointB).toEqual(B);
+    expect(result.current.additionalWaypoints).toEqual([V1]);
+  });
+
+  it("adding a stop before the destination exists keeps it when one arrives", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Origin"));
+    act(() => result.current.handleAddAdditionalWaypoint(V1));
+    act(() => result.current.handleSetWaypointB(B, "Dest"));
+    expect(result.current.waypointA).toEqual(A);
+    expect(result.current.waypointB).toEqual(B);
+    expect(result.current.additionalWaypoints).toEqual([V1]);
+  });
+
+  it("removing a via removes that via, not a neighbour", () => {
+    const result = tripWithVias();
+    act(() => result.current.handleRemoveAdditionalWaypoint(0));
+    expect(result.current.additionalWaypoints).toEqual([V2]);
+    expect(result.current.waypointA).toEqual(A);
+    expect(result.current.waypointB).toEqual(B);
+  });
+
+  it("setting the via list replaces only the vias", () => {
+    const result = tripWithVias();
+    act(() => result.current.handleSetAdditionalWaypoints([V2]));
+    expect(result.current.additionalWaypoints).toEqual([V2]);
+    expect(result.current.waypointA).toEqual(A);
+    expect(result.current.waypointB).toEqual(B);
+  });
+
+  it("vias survive a swap of the two endpoints", () => {
+    const result = tripWithVias();
+    act(() => result.current.handleSwapWaypoints());
+    expect(result.current.waypointA).toEqual(B);
+    expect(result.current.waypointB).toEqual(A);
+    expect(result.current.additionalWaypoints).toEqual([V1, V2]);
+  });
+});
+
+describe("a slot pointed at a new place starts clean", () => {
+  it("does not inherit the previous occupant's dwell", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Origin"));
+    act(() => result.current.handleSetWaypointB(B, "Dest", { dwellMinutes: 45 }));
+    expect(result.current.dwellMinutes).toEqual([0, 45]);
+    // A different coordinate is a different place; the 45 minutes belonged to
+    // the place it replaced, and would otherwise reach the exported file.
+    act(() => result.current.handleSetWaypointB([-3.5, 40.6], "Elsewhere"));
+    expect(result.current.dwellMinutes).toEqual([0, 0]);
+  });
+});
+
+/**
+ * Partial share links. `page.tsx` treats a link with only `b` and/or `via` as
+ * route state and opens directions on it, so these shapes are supported and
+ * must land in the slots the link named — not shuffle up into whatever slot
+ * happens to be first in the list.
+ */
+describe("partial share links restore into the slots the link named", () => {
+  const V: [number, number] = [-3.69, 40.415];
+
+  it("a destination and stops, with no start", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointB(B, "Shared destination"));
+    act(() => result.current.handleSetAdditionalWaypoints([V]));
+    expect(result.current.waypointA).toBeNull();
+    expect(result.current.waypointB).toEqual(B);
+    expect(result.current.additionalWaypoints).toEqual([V]);
+  });
+
+  it("a start and stops, with no destination", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Shared start"));
+    act(() => result.current.handleSetAdditionalWaypoints([V]));
+    expect(result.current.waypointA).toEqual(A);
+    expect(result.current.waypointB).toBeNull();
+    expect(result.current.additionalWaypoints).toEqual([V]);
+  });
+
+  it("a full link restores all three in order", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Shared start"));
+    act(() => result.current.handleSetWaypointB(B, "Shared destination"));
+    act(() => result.current.handleSetAdditionalWaypoints([V]));
+    expect(result.current.waypointA).toEqual(A);
+    expect(result.current.waypointB).toEqual(B);
+    expect(result.current.additionalWaypoints).toEqual([V]);
+  });
+});

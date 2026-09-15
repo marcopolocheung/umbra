@@ -155,27 +155,53 @@ function coordsEqual(a: [number, number], b: [number, number]): boolean {
 }
 
 /**
- * Replace the whole stop list index-wise, keeping the identity (and the
- * dwell, label, place) of every stop whose coordinates did not move. This
- * is what makes an agent plan revision — or any legacy setter sequence —
- * preserve unaffected stops: same coordinates, same stop.
+ * Replace the whole stop list, keeping the identity (and the dwell, label,
+ * place) of every stop whose coordinates did not move. This is what makes an
+ * agent plan revision — or any legacy setter sequence — preserve unaffected
+ * stops: same coordinates, same stop.
+ *
+ * Matching is by coordinate, not by position. Index-wise matching looks right
+ * until a stop is INSERTED, which shifts every later stop by one and re-mints
+ * the id and drops the dwell of all of them — exactly the "coffee then dinner"
+ * case this model exists for. The same-index stop is still preferred so that
+ * moving one stop onto another's old coordinates cannot steal its identity.
  */
 export function replaceStops(trip: Trip, entries: StopEntry[]): Trip {
+  const key = (c: [number, number]) => `${c[0]},${c[1]}`;
+  const byCoord = new Map<string, Stop[]>();
+  for (const stop of trip.stops) {
+    const k = key(stop.coord);
+    const bucket = byCoord.get(k);
+    if (bucket) bucket.push(stop);
+    else byCoord.set(k, [stop]);
+  }
+  const claimed = new Set<Stop>();
+
+  const carryOver = (entry: StopEntry, existing: Stop): Stop => {
+    const next: Stop = { ...existing };
+    if (entry.label !== undefined) next.label = entry.label;
+    if (entry.dwellMinutes !== undefined) {
+      const dwell = normalizeDwellMinutes(entry.dwellMinutes);
+      if (dwell > 0) next.dwellMinutes = dwell;
+      else delete next.dwellMinutes;
+    }
+    if (entry.placeId !== undefined) {
+      if (entry.placeId) next.placeId = entry.placeId;
+      else delete next.placeId;
+    }
+    return next;
+  };
+
   const stops = entries.map((entry, i) => {
-    const existing = trip.stops[i];
-    if (existing && coordsEqual(existing.coord, entry.coord)) {
-      const next: Stop = { ...existing };
-      if (entry.label !== undefined) next.label = entry.label;
-      if (entry.dwellMinutes !== undefined) {
-        const dwell = normalizeDwellMinutes(entry.dwellMinutes);
-        if (dwell > 0) next.dwellMinutes = dwell;
-        else delete next.dwellMinutes;
-      }
-      if (entry.placeId !== undefined) {
-        if (entry.placeId) next.placeId = entry.placeId;
-        else delete next.placeId;
-      }
-      return next;
+    const sameIndex = trip.stops[i];
+    if (sameIndex && !claimed.has(sameIndex) && coordsEqual(sameIndex.coord, entry.coord)) {
+      claimed.add(sameIndex);
+      return carryOver(entry, sameIndex);
+    }
+    const moved = byCoord.get(key(entry.coord))?.find((s) => !claimed.has(s));
+    if (moved) {
+      claimed.add(moved);
+      return carryOver(entry, moved);
     }
     return makeStop(entry.coord, entry.label ?? null, {
       dwellMinutes: entry.dwellMinutes,
@@ -205,8 +231,12 @@ export function tripToRoutePlan(trip: Trip): RoutePlan {
 
 /**
  * Each leg's departure: the previous departure plus that leg's travel plus
- * the dwell AT the stop it arrives at. Dwell is what moves a later leg into
- * a different hour — the point of E5.
+ * the dwell AT the stop it arrives at.
+ *
+ * This is the schedule, NOT what the router used. Every leg is still costed
+ * against the shadow at the current map time; routing each leg at its own
+ * departure is #365. A caller that shows these times must not imply the route
+ * was chosen for them.
  */
 export function legDepartureTimes(trip: Trip, legTravelSecs: number[]): Date[] {
   if (legTravelSecs.length !== trip.legs.length) {

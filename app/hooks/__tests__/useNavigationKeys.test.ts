@@ -105,6 +105,7 @@ describe("useNavigation return contract", () => {
         "sketchPoints",
         "submitRoutePlan",
         "travelMode",
+        "trip",
         "userLocation",
         "waypointA",
         "waypointALabel",

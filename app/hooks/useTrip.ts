@@ -24,10 +24,10 @@ import type { NavSeam } from "./useRouting";
  * `useNavigationKeys.test.ts`) and every existing consumer keep working.
  *
  * Two deliberate mappings, both recorded in the E5 decisions:
- * - A lone stop remembers its slot (`singleSlotRef`): the legacy slots allow
- *   "B without A" (destination typed first), while a trip only orders stops.
- *   The flag is UI slot memory, not journey state — zero stops, or two or
- *   more, always derive positionally.
+ * - Which edges of the list are the origin and destination is remembered
+ *   separately (`slotsRef`, a `SlotFill`): the legacy slots allow "B without
+ *   A" (destination typed first) and "A plus stops, no destination yet", while
+ *   a trip only orders stops. That is UI slot memory, not journey state.
  * - `departAt`/`defaultMode` sync from the map date, the departure stop's
  *   zone and the facade's travel mode during render (derived state, converged
  *   by comparison — no churn, no loop). Loading a record stamps its own
@@ -72,36 +72,65 @@ function entriesOf(trip: Trip): StopEntry[] {
 }
 
 /**
- * Slot-aware upsert, pure: empty creates a lone stop, a lone other-slot stop
- * grows the trip, otherwise the slot's stop is replaced in place (id kept on
- * an exact-coordinate match by `replaceStops`).
+ * Which legacy slots the stop list currently fills.
+ *
+ * The legacy state held `waypointA`, `waypointB` and `additionalWaypoints`
+ * independently, so it could express "a destination and two stops, no origin
+ * yet" — an ordered list cannot. These two booleans carry exactly that missing
+ * information and nothing else: the first stop is the origin only when
+ * `origin` is set, the last is the destination only when `dest` is set, and
+ * everything between them is a via stop.
+ *
+ * A single flag for the one-stop case is NOT enough: clearing the origin of
+ * [A, via, B] must leave [via, B] with no origin, or the via is silently
+ * promoted into the start field and vanishes from the stop list.
+ */
+interface SlotFill {
+  origin: boolean;
+  dest: boolean;
+}
+
+/** Resolve the slots against a stop count, so the pair can never over-claim. */
+function resolveSlots(stopCount: number, slots: SlotFill) {
+  const origin = slots.origin && stopCount >= 1;
+  const dest = slots.dest && stopCount >= (origin ? 2 : 1);
+  return {
+    origin,
+    dest,
+    /** Index range of the via stops, [start, end). */
+    viaStart: origin ? 1 : 0,
+    viaEnd: dest ? stopCount - 1 : stopCount,
+  };
+}
+
+/**
+ * Slot-aware upsert, pure. Replaces the slot's stop when that slot is filled,
+ * otherwise inserts one at the slot's edge and leaves every other stop alone.
+ *
+ * The entry is built fresh rather than spread over the outgoing stop: a slot
+ * being pointed at a different place must not inherit the previous occupant's
+ * dwell or `placeId`. `replaceStops` still keeps the id when the coordinate
+ * did not move, which is the case that means "same stop, relabelled".
  */
 function upsertSlot(
   prev: Trip,
   slot: "A" | "B",
-  lone: "A" | "B" | null,
+  slots: SlotFill,
   coord: [number, number],
   label?: string | null,
   dwellMinutes?: number,
 ): Trip {
-  const entry: StopEntry = { coord, label, dwellMinutes };
-  if (prev.stops.length === 0) return replaceStops(prev, [entry]);
-  if (prev.stops.length === 1 && lone !== null && lone !== slot) {
-    return slot === "A"
-      ? replaceStops(prev, [entry, ...entriesOf(prev)])
-      : replaceStops(prev, [...entriesOf(prev), entry]);
-  }
+  const r = resolveSlots(prev.stops.length, slots);
   const entries = entriesOf(prev);
-  const index = slot === "A" ? 0 : entries.length - 1;
-  entries[index] = { ...entries[index], coord, ...(label !== undefined ? { label } : {}), ...(dwellMinutes !== undefined ? { dwellMinutes } : {}) };
+  const entry: StopEntry = { coord, label: label ?? null, dwellMinutes };
+  if (slot === "A") {
+    if (r.origin) entries[0] = entry;
+    else entries.unshift(entry);
+  } else {
+    if (r.dest) entries[entries.length - 1] = entry;
+    else entries.push(entry);
+  }
   return replaceStops(prev, entries);
-}
-
-/** The lone slot after a slot upsert on the event-time trip. */
-function loneAfterUpsert(prev: Trip, slot: "A" | "B", lone: "A" | "B" | null): "A" | "B" | null {
-  if (prev.stops.length === 0) return slot;
-  if (prev.stops.length === 1 && lone !== null && lone !== slot) return null;
-  return lone;
 }
 
 export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripArgs) {
@@ -114,7 +143,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   );
   const tripRef = useRef(trip);
   tripRef.current = trip;
-  const singleSlotRef = useRef<"A" | "B" | null>(null);
+  const slotsRef = useRef<SlotFill>({ origin: false, dest: false });
 
   // Anchor the journey to the map date and the departure stop's real zone.
   // The zone lookup resolves asynchronously; until it does the existing zone
@@ -140,15 +169,12 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
     });
   }
 
-  // A lone stop fills exactly one slot, and `loneB` says which. Both slots must
-  // consult it: reading it for A alone drops the destination of a trip that has
-  // one — the ordinary "type the destination first" and "clear the origin of an
-  // A+B trip" flows both land here.
-  const loneStop = trip.stops.length === 1 ? trip.stops[0] : null;
-  const loneB = loneStop != null && singleSlotRef.current === "B";
-  const lastStop = trip.stops.length > 1 ? trip.stops[trip.stops.length - 1] : null;
-  const stopA = loneB ? null : trip.stops[0] ?? null;
-  const stopB = loneB ? loneStop : lastStop;
+  // Derive the legacy slot shape from the stop list plus which edges are
+  // filled. Reading position alone loses the distinction the legacy state
+  // carried, and promotes a via stop into a cleared endpoint.
+  const slots = resolveSlots(trip.stops.length, slotsRef.current);
+  const stopA = slots.origin ? trip.stops[0] : null;
+  const stopB = slots.dest ? trip.stops[trip.stops.length - 1] : null;
   const waypointA = stopA?.coord ?? null;
   const waypointB = stopB?.coord ?? null;
   const waypointALabel = stopA?.label ?? null;
@@ -156,8 +182,8 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   // Memoized: `useRouting`'s plan-revision effect depends on this identity,
   // so a fresh array every render would advance the revision every render.
   const additionalWaypoints = useMemo(
-    () => trip.stops.slice(1, -1).map((s) => s.coord),
-    [trip.stops],
+    () => trip.stops.slice(slots.viaStart, slots.viaEnd).map((s) => s.coord),
+    [trip.stops, slots.viaStart, slots.viaEnd],
   );
   /** Dwell per stop, positional. The plan-revision fingerprint reads this so
    * dwell edits invalidate agent jobs exactly like coordinate edits (C5). */
@@ -223,7 +249,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   const replaceAllStops = useCallback(
     (entries: StopEntry[]): string => {
       seam.current.cancelInFlightCalculation();
-      singleSlotRef.current = entries.length === 1 ? "A" : null;
+      slotsRef.current = { origin: entries.length >= 1, dest: entries.length >= 2 };
       const next = replaceStops(tripRef.current, entries);
       setTrip(next);
       clearRoutes();
@@ -233,27 +259,18 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   );
 
   const clearTrip = useCallback(() => {
-    singleSlotRef.current = null;
+    slotsRef.current = { origin: false, dest: false };
     setTrip((prev) =>
       buildTrip({ stops: [], departAt: prev.departAt, defaultMode: prev.defaultMode }),
     );
   }, []);
 
-  /** Relabel one slot's stop; a no-op when the slot has no stop. */
+  /** Relabel one slot's stop; a no-op when the slot holds no stop. */
   const relabelWaypoint = useCallback((slot: "A" | "B", label: string | null) => {
-    const prev = tripRef.current;
-    const lone = singleSlotRef.current;
-    const index =
-      slot === "A"
-        ? prev.stops.length > 0 && !(prev.stops.length === 1 && lone === "B")
-          ? 0
-          : -1
-        : prev.stops.length - 1;
-    if (index < 0 || index >= prev.stops.length) return;
     setTrip((t) => {
+      const r = resolveSlots(t.stops.length, slotsRef.current);
+      if (slot === "A" ? !r.origin : !r.dest) return t;
       const at = slot === "A" ? 0 : t.stops.length - 1;
-      if (at < 0 || at >= t.stops.length) return t;
-      if (slot === "A" && t.stops.length === 1 && singleSlotRef.current === "B") return t;
       const entries = entriesOf(t);
       entries[at] = { ...entries[at], label };
       return replaceStops(t, entries);
@@ -309,7 +326,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
         // storage). The render sync keeps the current travel mode, exactly as
         // v1 loads never touched it.
         const journey = saved.trip;
-        singleSlotRef.current = journey.stops.length === 1 ? "A" : null;
+        slotsRef.current = { origin: journey.stops.length >= 1, dest: journey.stops.length >= 2 };
         setTrip({
           ...journey,
           stops: journey.stops.map((s) => ({ ...s })),
@@ -319,12 +336,16 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
         const at = new Date(journey.departAt.instant);
         if (!Number.isNaN(at.getTime())) setDate(at);
       } else {
-        singleSlotRef.current = null;
+        // A v1 record carries no dwell, so every stop's dwell is stated as 0
+        // rather than left undefined — `replaceStops` preserves the dwell of a
+        // coordinate-matched stop, which would otherwise let the journey
+        // currently on screen leak its dwell into the loaded one.
+        slotsRef.current = { origin: true, dest: true };
         setTrip((prev) =>
           replaceStops(prev, [
-            { coord: saved.waypointA, label: saved.waypointALabel },
-            ...saved.additionalWaypoints.map((coord) => ({ coord })),
-            { coord: saved.waypointB, label: saved.waypointBLabel },
+            { coord: saved.waypointA, label: saved.waypointALabel, dwellMinutes: 0 },
+            ...saved.additionalWaypoints.map((coord) => ({ coord, dwellMinutes: 0 })),
+            { coord: saved.waypointB, label: saved.waypointBLabel, dwellMinutes: 0 },
           ]),
         );
         const d = new Date(saved.dateIso + "T00:00:00");
@@ -341,8 +362,9 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
     (index: number) => {
       seam.current.cancelInFlightCalculation();
       setTrip((prev) => {
-        if (index < 0 || index + 1 >= prev.stops.length - 1) return prev;
-        return removeStop(prev, index + 1);
+        const r = resolveSlots(prev.stops.length, slotsRef.current);
+        if (index < 0 || index >= r.viaEnd - r.viaStart) return prev;
+        return removeStop(prev, r.viaStart + index);
       });
       clearRoutes();
     },
@@ -353,12 +375,17 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
     (waypoints: [number, number][], dwellMinutes?: number[]) => {
       seam.current.cancelInFlightCalculation();
       setTrip((prev) => {
+        // Replace the via RANGE, leaving whichever endpoints exist in place.
+        // Appending instead would make a via the destination of a trip that
+        // has none yet, which is how a `b`+`via` share link lost its slots.
+        const r = resolveSlots(prev.stops.length, slotsRef.current);
+        const entries = entriesOf(prev);
         const middles = waypoints.map((coord, i) => ({ coord, dwellMinutes: dwellMinutes?.[i] }));
-        if (prev.stops.length >= 2) {
-          const entries = entriesOf(prev);
-          return replaceStops(prev, [entries[0], ...middles, entries[entries.length - 1]]);
-        }
-        return replaceStops(prev, [...entriesOf(prev), ...middles]);
+        return replaceStops(prev, [
+          ...entries.slice(0, r.viaStart),
+          ...middles,
+          ...entries.slice(r.viaEnd),
+        ]);
       });
       clearRoutes();
     },
@@ -367,12 +394,13 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
 
   const handleAddAdditionalWaypoint = useCallback(
     (coord: [number, number]) => {
-      const prev = tripRef.current;
-      if (prev.stops.length === 0) singleSlotRef.current = "A";
       seam.current.cancelInFlightCalculation();
-      setTrip((t) =>
-        addStop(t, makeStop(coord), t.stops.length >= 2 ? t.stops.length - 1 : t.stops.length),
-      );
+      // Append to the via range. Adding a stop must never claim an endpoint
+      // slot — doing so swapped the user's destination into the start field.
+      setTrip((t) => {
+        const r = resolveSlots(t.stops.length, slotsRef.current);
+        return addStop(t, makeStop(coord), r.viaEnd);
+      });
       clearRoutes();
     },
     [seam, clearRoutes],
@@ -411,11 +439,10 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
 
   const handleSetWaypointA = useCallback(
     (coord: [number, number], label: string, opts?: { jump?: boolean; dwellMinutes?: number }) => {
-      const prev = tripRef.current;
-      const lone = singleSlotRef.current;
-      singleSlotRef.current = loneAfterUpsert(prev, "A", lone);
+      const slotsAtEvent = slotsRef.current;
+      slotsRef.current = { ...slotsAtEvent, origin: true };
       seam.current.cancelInFlightCalculation();
-      setTrip((t) => upsertSlot(t, "A", lone, coord, label, opts?.dwellMinutes));
+      setTrip((t) => upsertSlot(t, "A", slotsAtEvent, coord, label, opts?.dwellMinutes));
       clearRoutes();
       const map = mapRef.current;
       if (map && opts?.jump !== false) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
@@ -425,11 +452,10 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
 
   const handleSetWaypointB = useCallback(
     (coord: [number, number], label: string, opts?: { jump?: boolean; dwellMinutes?: number }) => {
-      const prev = tripRef.current;
-      const lone = singleSlotRef.current;
-      singleSlotRef.current = loneAfterUpsert(prev, "B", lone);
+      const slotsAtEvent = slotsRef.current;
+      slotsRef.current = { ...slotsAtEvent, dest: true };
       seam.current.cancelInFlightCalculation();
-      setTrip((t) => upsertSlot(t, "B", lone, coord, label, opts?.dwellMinutes));
+      setTrip((t) => upsertSlot(t, "B", slotsAtEvent, coord, label, opts?.dwellMinutes));
       clearRoutes();
       const map = mapRef.current;
       if (map && opts?.jump !== false) map.jumpTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
@@ -452,54 +478,52 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   );
 
   const handleSwapWaypoints = useCallback(() => {
-    const prev = tripRef.current;
+    const r = resolveSlots(tripRef.current.stops.length, slotsRef.current);
     seam.current.cancelInFlightCalculation();
-    if (prev.stops.length >= 2) {
-      singleSlotRef.current = null;
+    if (r.origin && r.dest) {
       setTrip((t) => (t.stops.length >= 2 ? swapStops(t, 0, t.stops.length - 1) : t));
-    } else if (prev.stops.length === 1) {
-      singleSlotRef.current = singleSlotRef.current === "B" ? "A" : "B";
-      // The stop itself is untouched — but the slot flip changes the derived
-      // waypoints, so commit a no-op state update to re-render.
+    } else if (r.origin || r.dest) {
+      // Only one endpoint exists: the stop stays put and changes slot. Commit
+      // a new object anyway so the derived waypoints re-render.
+      slotsRef.current = { origin: r.dest, dest: r.origin };
       setTrip((t) => ({ ...t }));
     }
     clearRoutes();
   }, [seam, clearRoutes]);
 
-  const handleClearWaypointA = useCallback(() => {
-    const prev = tripRef.current;
-    seam.current.cancelInFlightCalculation();
-    if (prev.stops.length === 0 || (prev.stops.length === 1 && singleSlotRef.current === "B")) {
+  /**
+   * Clear one endpoint. The stop is removed and that edge is marked unfilled,
+   * so the neighbouring via stop stays a via — it must NOT slide into the
+   * empty slot. `WaypointInput` fires this on the first keystroke of a retype,
+   * so a promotion here would delete a stop the user never touched.
+   */
+  const clearSlot = useCallback(
+    (slot: "A" | "B") => {
+      const r = resolveSlots(tripRef.current.stops.length, slotsRef.current);
+      seam.current.cancelInFlightCalculation();
+      if (slot === "A" ? r.origin : r.dest) {
+        slotsRef.current =
+          slot === "A" ? { ...slotsRef.current, origin: false } : { ...slotsRef.current, dest: false };
+        setTrip((t) => removeStop(t, slot === "A" ? 0 : t.stops.length - 1));
+      }
       clearRoutes();
-      return;
-    }
-    singleSlotRef.current = prev.stops.length === 2 ? "B" : null;
-    setTrip((t) => (t.stops.length > 0 ? removeStop(t, 0) : t));
-    clearRoutes();
-  }, [seam, clearRoutes]);
+    },
+    [seam, clearRoutes],
+  );
 
-  const handleClearWaypointB = useCallback(() => {
-    const prev = tripRef.current;
-    seam.current.cancelInFlightCalculation();
-    if (prev.stops.length === 0 || (prev.stops.length === 1 && singleSlotRef.current === "A")) {
-      clearRoutes();
-      return;
-    }
-    singleSlotRef.current = prev.stops.length === 2 ? "A" : null;
-    setTrip((t) => (t.stops.length > 0 ? removeStop(t, t.stops.length - 1) : t));
-    clearRoutes();
-  }, [seam, clearRoutes]);
+  const handleClearWaypointA = useCallback(() => clearSlot("A"), [clearSlot]);
+  const handleClearWaypointB = useCallback(() => clearSlot("B"), [clearSlot]);
 
   const handleMarkerDragEnd = useCallback(
     (slot: "A" | "B", coord: { lng: number; lat: number }) => {
       const lngLat: [number, number] = [coord.lng, coord.lat];
       const coordLabel = `${coord.lat.toFixed(3)}, ${coord.lng.toFixed(3)}`;
-      const prev = tripRef.current;
-      const lone = singleSlotRef.current;
-      singleSlotRef.current = loneAfterUpsert(prev, slot, lone);
+      const slotsAtEvent = slotsRef.current;
+      slotsRef.current =
+        slot === "A" ? { ...slotsAtEvent, origin: true } : { ...slotsAtEvent, dest: true };
       seam.current.cancelInFlightCalculation();
       clearRoutes();
-      setTrip((t) => upsertSlot(t, slot, lone, lngLat, coordLabel));
+      setTrip((t) => upsertSlot(t, slot, slotsAtEvent, lngLat, coordLabel));
       geocodeReverse(coord.lat, coord.lng).then((lbl) => {
         if (lbl) relabelWaypoint(slot, lbl);
       });

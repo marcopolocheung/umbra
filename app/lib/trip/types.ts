@@ -18,7 +18,11 @@ export interface Stop {
   coord: [number, number];
   label: string | null;
   /** Minutes spent AT this stop before departing the next leg. Shifts every
-   * later leg's departure — which hour a leg is routed for is the point. */
+   * later leg's departure, as `legDepartureTimes` computes it.
+   *
+   * NOTE: routing does NOT yet honour that shift — every leg is still costed
+   * against the shadow at the current map time (see #365). Do not present a
+   * leg as routed for its own departure hour until that lands. */
   dwellMinutes?: number;
   /** Foursquare id, when the stop came from a place. */
   placeId?: string;
