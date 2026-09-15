@@ -189,7 +189,7 @@ export default function DirectionsPanel({
               key={mode}
               onClick={() => onTravelModeChange(mode)}
               aria-pressed={travelMode === mode}
-              aria-label={mode === 'scoot' ? 'Kick scooter and skateboard — not for electric scooters' : undefined}
+              aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
               className={`px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
                   ? 'text-amber-900 bg-amber-50'

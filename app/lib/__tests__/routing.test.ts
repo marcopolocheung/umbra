@@ -1404,6 +1404,58 @@ describe("paretoRoutes — scoot mode cost (E4)", () => {
 });
 
 /**
+ * Unavoidable sett corridor with two shaded loops. Direct 1→2→3→4 is 500 m
+ * physical with one 10 m sett edge (scoot cost 1500); the moderate loop
+ * 1→6→4 is 1800 m smooth; the huge loop 1→5→4 is 3000 m smooth. Edge lengths
+ * match their haversine distances so the remaining-distance heuristic stays
+ * admissible. The old budget (1500×2 + flat) admitted the 6× loop; pricing
+ * the allowance in physical metres rejects it while keeping the moderate one.
+ */
+function makeSettCorridorGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.0, lon: 0.0022 }],
+    [3, { id: 3, lat: 0.0, lon: 0.00229 }],
+    [4, { id: 4, lat: 0.0, lon: 0.00449 }],
+    [5, { id: 5, lat: 0.013285, lon: 0.00225 }],
+    [6, { id: 6, lat: 0.007764, lon: 0.00225 }],
+  ]);
+  const link = (toId: number, distanceM: number, shadowFactor: number, surface = "asphalt"): GraphEdge =>
+    ({ toId, distanceM, shadowFactor, surface });
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [link(2, 245, 0), link(5, 1500, 1), link(6, 900, 1)]],
+    [2, [link(1, 245, 0), { ...link(3, 10, 0), surface: "sett" }]],
+    [3, [{ ...link(2, 10, 0), surface: "sett" }, link(4, 245, 0)]],
+    [4, [link(3, 245, 0), link(5, 1500, 1), link(6, 900, 1)]],
+    [5, [link(1, 1500, 1), link(4, 1500, 1)]],
+    [6, [link(1, 900, 1), link(4, 900, 1)]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("paretoRoutes — penalty-free detour allowance (E4 review)", () => {
+  it("rejects the 6× shaded loop but keeps the moderate one in scoot mode", () => {
+    const routes = paretoRoutes(makeSettCorridorGraph(), 1, 4, { travelMode: "scoot" });
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    // Shortest is the sett corridor itself.
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
+    // The moderate shaded loop survives: the allowance is alive, not zeroed.
+    expect(routes[routes.length - 1].nodeIds).toEqual([1, 6, 4]);
+    // The huge loop's 3000 m cost exceeds the 2535 m budget — under the old
+    // penalty-doubling budget (3535 m) it was admitted.
+    for (const r of routes) {
+      expect(r.nodeIds).not.toContain(5);
+    }
+  });
+
+  it("leaves the walk front on the same graph exactly where it was", () => {
+    const routes = paretoRoutes(makeSettCorridorGraph(), 1, 4);
+    expect(routes.length).toBe(1);
+    expect(routes[0].nodeIds).toEqual([1, 2, 3, 4]);
+  });
+});
+
+/**
  * Dedicated-cycleway detour: 1→3 direct on an ordinary road (200 m) vs
  * 1→2→3 on highway=cycleway (220 m). Walk takes the shortcut.
  */

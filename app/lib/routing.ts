@@ -674,7 +674,15 @@ export function paretoRoutes(
   // The flat allowance is walk-metres (see `speedRatioVsWalk`): scaling it keeps
   // the same *time* allowance per mode. Walk's ratio is 1, so walk's budget is
   // byte-for-byte the old one.
-  const budgetM = shortestCostM * maxDetourFactor + DETOUR_FLAT_M * speedRatioVsWalk(travelMode);
+  // The ×2 factor prices the baseline's *physical* length, not its penalties:
+  // an unavoidable +1000 m surface penalty shifts the baseline without
+  // doubling the allowance (doubling penalties admitted ~4× detours on
+  // sett-heavy streets and slowed the search — E4 review). For walk this is
+  // exactly the old formula (cost == physical, bit-for-bit); bike moves
+  // modestly by (physical − cost) on the baseline path — see TRACK_E.md.
+  const budgetM = shortestCostM
+    + shortestRun.distanceM * (maxDetourFactor - 1)
+    + DETOUR_FLAT_M * speedRatioVsWalk(travelMode);
   const effectiveCrossingM = crossingPenaltyM * speedRatioVsWalk(travelMode);
   // Admissible remaining-cost heuristic: every remaining physical meter costs at
   // least `costRatio` mode meters.
