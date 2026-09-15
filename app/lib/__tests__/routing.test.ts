@@ -1184,3 +1184,136 @@ describe("parallelSidewalkEdges", () => {
     }
   });
 });
+
+// ── E1: travel-mode cost model ───────────────────────────────────────────────
+// Behavior: given this graph and this mode, this path wins. Shadow strength is
+// 0 throughout so only the mode policy decides.
+
+/**
+ * Stairs shortcut: 1→3 direct over steps (100 m) vs 1→2→3 on footways (200 m).
+ */
+function makeStairsShortcutGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "steps" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "footway" },
+      { toId: 3, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, highway: "steps" },
+      { toId: 2, distanceM: 100, shadowFactor: 0, highway: "footway" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Rough shortcut: 1→3 direct on cobblestones (100 m) vs 1→2→3 on asphalt (160 m).
+ */
+function makeRoughShortcutGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 100, shadowFactor: 0, surface: "cobblestone" },
+      { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+      { toId: 3, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 100, shadowFactor: 0, surface: "cobblestone" },
+      { toId: 2, distanceM: 80, shadowFactor: 0, surface: "asphalt" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+/**
+ * Cycleway detour: 1→3 direct with no cycleway (200 m) vs 1→2→3 on
+ * cycleway lanes (220 m). Walk takes the shortcut; bike takes the lanes.
+ */
+function makeCyclewayGraph(): RoutingGraph {
+  const nodes = new Map<number, OsmNode>([
+    [1, { id: 1, lat: 0.0, lon: 0.0 }],
+    [2, { id: 2, lat: 0.001, lon: 0.001 }],
+    [3, { id: 3, lat: 0.0, lon: 0.002 }],
+  ]);
+  const adj = new Map<number, GraphEdge[]>([
+    [1, [
+      { toId: 3, distanceM: 200, shadowFactor: 0 },
+      { toId: 2, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+    [2, [
+      { toId: 1, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+      { toId: 3, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+    [3, [
+      { toId: 1, distanceM: 200, shadowFactor: 0 },
+      { toId: 2, distanceM: 110, shadowFactor: 0, cycleway: "lane" },
+    ]],
+  ]);
+  return { nodes, adj };
+}
+
+describe("dijkstra — travel mode cost (E1)", () => {
+  it("walk takes the stairs shortcut; bike walks around it", () => {
+    expect(dijkstra(makeStairsShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the cobbled shortcut; bike takes smooth asphalt", () => {
+    expect(dijkstra(makeRoughShortcutGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeRoughShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("walk takes the shorter road; bike prefers the cycleway detour", () => {
+    expect(dijkstra(makeCyclewayGraph(), 1, 3, 0)!.nodeIds).toEqual([1, 3]);
+    expect(
+      dijkstra(makeCyclewayGraph(), 1, 3, 0, { travelMode: "bike" })!.nodeIds,
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("reported distance stays physical meters, not cost meters", () => {
+    const result = dijkstra(makeStairsShortcutGraph(), 1, 3, 0, { travelMode: "bike" })!;
+    expect(result.nodeIds).toEqual([1, 2, 3]);
+    expect(result.distanceM).toBeCloseTo(200, 5);
+  });
+});
+
+describe("paretoRoutes — travel mode cost (E1)", () => {
+  it("bike mode keeps the untagged front intact (shortest first, detour last)", () => {
+    const routes = paretoRoutes(makeTwoPathGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    expect(routes[0].nodeIds).toEqual([1, 3]);
+    expect(routes[routes.length - 1].nodeIds).toEqual([1, 2, 3]);
+    const keys = new Set(routes.map((r) => r.nodeIds.join(",")));
+    expect(keys.size).toBe(routes.length);
+  });
+
+  it("bike mode prices the stairs shortcut out of the front", () => {
+    const routes = paretoRoutes(makeStairsShortcutGraph(), 1, 3, { travelMode: "bike" });
+    expect(routes.length).toBeGreaterThan(0);
+    // Every returned route avoids steps: the 600 m-cost shortcut never wins a
+    // representative against the 200 m footway path.
+    for (const r of routes) {
+      expect(r.nodeIds).toEqual([1, 2, 3]);
+    }
+  });
+});

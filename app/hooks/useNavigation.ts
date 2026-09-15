@@ -65,6 +65,7 @@ import { summarizeShadowSource } from "../lib/shadowProvenance";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
+import type { TravelModeId } from "../lib/travelMode";
 import { routeBounds } from "../lib/routeBounds";
 import {
   RoutePlanJobCoordinator,
@@ -220,6 +221,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   // Route mode and shadow preference
   const [routeMode, setRouteMode] = useState<"walk" | "transit">("walk");
   const [shadowPreference, setShadowPreference] = useState(0.5);
+
+  // Active-travel mode for walk routing (E1). Transit access legs stay
+  // pedestrian — mixed-mode journeys are E6.
+  const [travelMode, setTravelMode] = useState<TravelModeId>("walk");
+  const travelModeRef = useRef(travelMode);
+  travelModeRef.current = travelMode;
 
   // Refs for stale-closure avoidance
   const waypointARef = useRef(waypointA);
@@ -445,6 +452,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSimplifiedWaypoints(null);
     setRouteMode("walk");
     setShadowPreference(0.5);
+    setTravelMode("walk");
   }, [cancelInFlightCalculation]);
 
   const handleOpenSaveModal = useCallback(
@@ -630,6 +638,16 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     (mode: "walk" | "transit") => {
       cancelInFlightCalculation();
       setRouteMode(mode);
+      setNavRoutes([]);
+      setSelectedRouteIndex(0);
+    },
+    [cancelInFlightCalculation],
+  );
+
+  const handleTravelModeChange = useCallback(
+    (mode: TravelModeId) => {
+      cancelInFlightCalculation();
+      setTravelMode(mode);
       setNavRoutes([]);
       setSelectedRouteIndex(0);
     },
@@ -1573,7 +1591,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         const midLng = (a[0] + b[0]) / 2;
         const solarIntensity = computeSolarIntensity(dateRef.current, midLat, midLng);
         const CROSSING_PENALTY_M = 15;
-        const opts = { crossingPenaltyM: CROSSING_PENALTY_M, solarIntensity, straightLineDistM };
+        const travelMode = travelModeRef.current;
+        const opts = { crossingPenaltyM: CROSSING_PENALTY_M, solarIntensity, straightLineDistM, travelMode };
+        // Station access is pedestrian even on a bike journey (mixed-mode is E6).
+        const walkOpts = { ...opts, travelMode: "walk" as TravelModeId };
 
         let options: RouteOption[];
 
@@ -1601,6 +1622,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
             detourRatio: result.detourRatio,
             turnCount: result.turnCount,
             shadowSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
+            travelMode,
           }));
         } else {
           const nodeChain = snappedStops.ids;
@@ -1690,6 +1712,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   turnCount: 0,
                   legs,
                   shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+                  travelMode,
                   partial: {
                     completedLegs: failedLeg - 1,
                     failedLeg,
@@ -1724,6 +1747,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
               turnCount: 0,
               legs,
               shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+              travelMode,
               partial: forcedPartial ?? undefined,
             });
           }
@@ -1832,7 +1856,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   effectiveStartId,
                   boardNodeId,
                   WALK_SHADOW_STRENGTH,
-                  opts,
+                  walkOpts,
                 );
                 if (import.meta.env.DEV)
                   console.log(
@@ -1852,7 +1876,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
                   alightNodeId,
                   effectiveEndId,
                   WALK_SHADOW_STRENGTH,
-                  opts,
+                  walkOpts,
                 );
                 if (import.meta.env.DEV)
                   console.log(
@@ -2208,6 +2232,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     simplifiedWaypoints,
     routeMode,
     shadowPreference,
+    travelMode,
 
     // Setters
     setPendingSlot,
@@ -2231,6 +2256,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     handleDrawModeToggle,
     handleClearSketch,
     handleRouteModeChange,
+    handleTravelModeChange,
     handleShadowPreferenceChange,
     handleSketchPointClick,
     handleSketchPointDrag,

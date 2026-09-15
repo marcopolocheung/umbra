@@ -11,13 +11,13 @@
 
 ## Current state
 
-- **Active checkpoint:** E1 (not started)
-- **Done:** nothing — but `travelMode.ts` exists and `GraphEdge` already carries the tags E1 needs
-- **Open PRs:** none
-- **Decisions made:** none yet
+- **Active checkpoint:** E1 (in review — bike cost model + selector)
+- **Done:** nothing merged — E1 implements the cost model, UI, and share-URL mode
+- **Open PRs:** (E1 PR — see git log on `feat/e1-mode-cost-model`)
+- **Decisions made:** cycleway preference is a capped discount (min(40 m, 50% of edge)) so Pareto pruning stays admissible; reported `distanceM` stays physical, labels/budget live in mode-cost space; transit access legs stay pedestrian (mixed-mode is E6); `RouteOption.travelMode` drives displayed durations, dose/heat weighting deferred to E2/Track D
 - **Blocked on:** nothing
-- **Next action:** E1 — wire `TRAVEL_MODE_POLICIES` into edge cost and add a mode selector
-- **Last verified:** 2026-08-24, 156 tests / 23 files green on main
+- **Next action:** get E1 reviewed; then E5 (`Trip`)
+- **Last verified:** 2026-09-15, 862 tests green in worktree (jsdom-file workers fail to start on this machine — pre-existing, same on untouched checkout), e2e smoke 4/4
 
 ---
 

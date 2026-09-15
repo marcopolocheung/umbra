@@ -1,4 +1,5 @@
 import type { RouteLeg } from "./routing";
+import type { TravelModeId } from "./travelMode";
 
 function formatDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
@@ -20,7 +21,11 @@ export interface RouteLegSummary {
   detail: string;
 }
 
-export function routeLegSummary(leg: RouteLeg, index: number): RouteLegSummary {
+export function routeLegSummary(
+  leg: RouteLeg,
+  index: number,
+  travelMode: TravelModeId = "walk",
+): RouteLegSummary {
   if (leg.type === "transit") {
     const line = leg.lineName || leg.line || "Transit";
     const stopCount = leg.stops ? Math.max(0, leg.stops.length - 1) : null;
@@ -41,8 +46,11 @@ export function routeLegSummary(leg: RouteLeg, index: number): RouteLegSummary {
     leg.shadowCoverage != null ? `${Math.round(leg.shadowCoverage * 100)}% shadow` : null,
   ].filter(Boolean);
 
+  // `type` stays "walk" for active-travel legs (E6 generalizes it); the label
+  // follows the route's mode so bike legs don't read as walking.
+  const modeLabel = travelMode === "bike" ? "Bike" : "Walk";
   return {
-    title: `Leg ${index + 1}: Walk`,
-    detail: parts.length > 0 ? parts.join(" - ") : "Walking segment",
+    title: `Leg ${index + 1}: ${modeLabel}`,
+    detail: parts.length > 0 ? parts.join(" - ") : `${modeLabel}ing segment`,
   };
 }

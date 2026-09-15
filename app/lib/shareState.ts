@@ -1,4 +1,6 @@
 import { toMapLocal } from "./timezone";
+import { parseTravelMode } from "./travelMode";
+import type { TravelModeId } from "./travelMode";
 
 export type LngLat = [number, number];
 export type MapCenterLatLng = [number, number];
@@ -10,6 +12,7 @@ export interface ParsedShareState {
   waypointA: LngLat | null;
   waypointB: LngLat | null;
   additionalWaypoints: LngLat[];
+  travelMode: TravelModeId;
 }
 
 export interface ShareStateInput {
@@ -20,6 +23,7 @@ export interface ShareStateInput {
   waypointA: LngLat | null;
   waypointB: LngLat | null;
   additionalWaypoints: LngLat[];
+  travelMode: TravelModeId;
 }
 
 const COORD_PRECISION = 5;
@@ -89,6 +93,7 @@ export function parseShareState(search: string, utcOffsetMin: number): ParsedSha
     waypointA: parseCoord(params.get("a")),
     waypointB: parseCoord(params.get("b")),
     additionalWaypoints,
+    travelMode: parseTravelMode(params.get("mode")),
   };
 }
 
@@ -113,6 +118,8 @@ export function serializeShareState(state: ShareStateInput): string {
   if (state.additionalWaypoints.length > 0) {
     params.set("via", state.additionalWaypoints.map(formatCoord).join(";"));
   }
+  // Walk is the default and stays unwritten so old links keep parsing.
+  if (state.travelMode !== "walk") params.set("mode", state.travelMode);
 
   return `?${params.toString()}`;
 }

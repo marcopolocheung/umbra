@@ -138,7 +138,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Journey Legs</div>
             <div className="mt-1 flex flex-col gap-1">
               {r.legs.map((leg, index) => {
-                const summary = routeLegSummary(leg, index);
+                const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
                 return (
                   <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
                     <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--md-primary-container)", color: "var(--md-on-primary-container)" }}>
