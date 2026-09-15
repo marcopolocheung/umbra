@@ -19,7 +19,9 @@ run in parallel with any other.
   one-empty-search closeout; exact-call deduplication plus the four-search budget is the current
   policy.
 - **The route now gets requested and drawn**, including ordered `via` stops. That does not close
-  C4: the tool still reports “started” rather than observing a terminal calculation result.
+  C4: #59 observation 1 was confirmed in `npm run dev` on 2026-09-11, but the tool still reports
+  “started” rather than observing a terminal calculation result, and the 10-stop route remains
+  flaky (#303).
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
   Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
   `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.
