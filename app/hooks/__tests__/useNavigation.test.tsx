@@ -273,10 +273,105 @@ describe("terminal agent route jobs", () => {
 
     expect(terminal!).toMatchObject({
       status: "completed", requestId: request.requestId, inputVersion: request.inputVersion,
+      planRevision: request.planRevision, actionId: request.actionId, retry: request.retry,
       metrics: [expect.objectContaining({ distanceM: expect.any(Number) })],
     });
     expect(result.current.additionalWaypoints).toEqual([[103.8005, 1.3005]]);
     expect(result.current.navRoutes).not.toEqual([]);
+  });
+
+  it("rejects a request after the application route plan has been edited", async () => {
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    let request!: ReturnType<typeof result.current.createRoutePlanRequest>;
+    act(() => {
+      request = result.current.createRoutePlanRequest({
+        from: [103.8, 1.3], to: [103.801, 1.301], via: [], fromLabel: "Start", toLabel: "End",
+      });
+    });
+    act(() => result.current.handleSetWaypointA([103.802, 1.302], "Edited start"));
+    let terminal!: Awaited<ReturnType<typeof result.current.submitRoutePlan>>;
+    await act(async () => { terminal = await result.current.submitRoutePlan(request); });
+
+    expect(terminal).toMatchObject({ status: "cancelled", reason: "superseded", planRevision: request.planRevision });
+    expect(result.current.navRoutes).toEqual([]);
+  });
+
+  it("makes explicit route-job cancellation terminal at the navigation boundary", async () => {
+    let releaseGraph!: (graph: ReturnType<typeof threeNodeGraph>) => void;
+    vi.mocked(fetchRoutingGraph).mockImplementationOnce(() => new Promise((resolve) => { releaseGraph = resolve; }) as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    let request!: ReturnType<typeof result.current.createRoutePlanRequest>;
+    let terminal!: ReturnType<typeof result.current.submitRoutePlan>;
+    act(() => {
+      request = result.current.createRoutePlanRequest({ from: [103.8, 1.3], to: [103.801, 1.301], via: [], fromLabel: "Start", toLabel: "End" });
+      terminal = result.current.submitRoutePlan(request);
+    });
+    await waitFor(() => expect(fetchRoutingGraph).toHaveBeenCalledTimes(1));
+    expect(result.current.cancelRoutePlan(request.requestId)).toBe(true);
+    releaseGraph(threeNodeGraph());
+
+    await expect(terminal).resolves.toMatchObject({ status: "cancelled", reason: "cancelled" });
+  });
+
+  it("deduplicates only a concurrent submission of the same navigation action", async () => {
+    let releaseGraph!: (graph: ReturnType<typeof threeNodeGraph>) => void;
+    vi.mocked(fetchRoutingGraph).mockImplementationOnce(() => new Promise((resolve) => { releaseGraph = resolve; }) as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    let request!: ReturnType<typeof result.current.createRoutePlanRequest>;
+    let first!: ReturnType<typeof result.current.submitRoutePlan>;
+    let duplicate!: ReturnType<typeof result.current.submitRoutePlan>;
+    act(() => {
+      request = result.current.createRoutePlanRequest({ from: [103.8, 1.3], to: [103.801, 1.301], via: [], fromLabel: "Start", toLabel: "End" });
+      first = result.current.submitRoutePlan(request);
+      duplicate = result.current.submitRoutePlan(request);
+    });
+    expect(duplicate).toBe(first);
+    await waitFor(() => expect(fetchRoutingGraph).toHaveBeenCalledTimes(1));
+    expect(result.current.cancelRoutePlan(request.requestId)).toBe(true);
+    releaseGraph(threeNodeGraph());
+    await expect(first).resolves.toMatchObject({ status: "cancelled" });
+    expect(fetchRoutingGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a completed action lease so an identical route recomputes against current map state", async () => {
+    let releaseFirstGraph!: (graph: ReturnType<typeof threeNodeGraph>) => void;
+    vi.mocked(fetchRoutingGraph)
+      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirstGraph = resolve; }) as never)
+      .mockResolvedValueOnce(threeNodeGraph() as never);
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }) });
+    const { result } = renderHook(() => useNavigation({
+      mapRef: { current: map as never }, dateRef: { current: new Date("2026-08-16T04:00:00Z") }, setDate: vi.fn(),
+    }));
+    const plan = { from: [103.8, 1.3] as [number, number], to: [103.801, 1.301] as [number, number], via: [], fromLabel: "Start", toLabel: "End" };
+    let firstRequest!: ReturnType<typeof result.current.createRoutePlanRequest>;
+    let firstTerminal!: ReturnType<typeof result.current.submitRoutePlan>;
+    act(() => {
+      firstRequest = result.current.createRoutePlanRequest(plan);
+      firstTerminal = result.current.submitRoutePlan(firstRequest);
+    });
+    await waitFor(() => expect(fetchRoutingGraph).toHaveBeenCalledTimes(1));
+    act(() => result.current.handleClear());
+    releaseFirstGraph(threeNodeGraph());
+    await expect(firstTerminal).resolves.toMatchObject({ status: "cancelled", reason: "superseded" });
+
+    let secondRequest!: ReturnType<typeof result.current.createRoutePlanRequest>;
+    let secondTerminal!: Awaited<ReturnType<typeof result.current.submitRoutePlan>>;
+    act(() => { secondRequest = result.current.createRoutePlanRequest(plan); });
+    await act(async () => { secondTerminal = await result.current.submitRoutePlan(secondRequest); });
+
+    expect(secondRequest.actionId).not.toBe(firstRequest.actionId);
+    expect(secondRequest.idempotencyKey).not.toBe(firstRequest.idempotencyKey);
+    expect(secondTerminal).toMatchObject({ status: "completed", planRevision: secondRequest.planRevision });
+    expect(fetchRoutingGraph).toHaveBeenCalledTimes(2);
   });
 
   it("reports an unroutable leg as partial instead of dropping it", async () => {

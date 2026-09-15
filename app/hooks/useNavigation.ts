@@ -130,6 +130,14 @@ function routingEdgeBatch(graph: RoutingGraph): {
   return { refs, keys, distances, directedCount };
 }
 
+function routePlanFingerprint(
+  from: [number, number] | null,
+  to: [number, number] | null,
+  via: [number, number][],
+): string {
+  return JSON.stringify({ from, to, via });
+}
+
 interface UseNavigationArgs {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
   shadowLayerRef?: React.MutableRefObject<IShadowLayer | null>;
@@ -179,9 +187,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
   const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
-  const routePlanVersionRef = useRef(0);
-  const routePlanRequestSeqRef = useRef(0);
-  const routePlanRequestsByKeyRef = useRef(new Map<string, RoutePlanRequest>());
+  const routePlanInputVersionRef = useRef(0);
+  const routePlanRevisionRef = useRef(0);
+  const routePlanActionSeqRef = useRef(0);
+  const pendingAgentPlanFingerprintRef = useRef<string | null>(null);
   const waypointALabelRef = useRef(waypointALabel);
   const waypointBLabelRef = useRef(waypointBLabel);
   const drawModeRef = useRef(drawMode);
@@ -223,6 +232,23 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   waypointBLabelRef.current = waypointBLabel;
   drawModeRef.current = drawMode;
   sketchPointsRef.current = sketchPoints;
+  const routePlanTime = dateRef.current.getTime();
+  const advanceRoutePlanRevision = useCallback(() => {
+    const revision = ++routePlanRevisionRef.current;
+    agentRouteJobsRef.current.advancePlanRevision(revision);
+    return revision;
+  }, []);
+
+  // Any real route-defining edit, including the selected shadow time,
+  // invalidates a job based on the older plan.
+  useEffect(() => {
+    const fingerprint = routePlanFingerprint(waypointA, waypointB, additionalWaypoints);
+    if (pendingAgentPlanFingerprintRef.current === fingerprint) {
+      pendingAgentPlanFingerprintRef.current = null;
+      return;
+    }
+    advanceRoutePlanRevision();
+  }, [waypointA, waypointB, additionalWaypoints, routePlanTime, advanceRoutePlanRevision]);
 
   // Escape to cancel pending slot
   useEffect(() => {
@@ -900,9 +926,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   ]);
 
   const handleSketchFinish = useCallback(() => {
+    advanceRoutePlanRevision();
     setDrawMode(false);
     calculateSketchRoute();
-  }, [calculateSketchRoute]);
+  }, [calculateSketchRoute, advanceRoutePlanRevision]);
 
   const handleSetWaypointA = useCallback((coord: [number, number], label: string) => {
     cancelInFlightCalculation();
@@ -1831,23 +1858,26 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   ]);
 
   const createRoutePlanRequest = useCallback((plan: RoutePlan): RoutePlanRequest => {
-    // The key is intent-derived, so an LLM retry of the same plan resolves the
-    // original job rather than starting another set of mutations.
-    const coordinates = [plan.from, ...plan.via, plan.to]
-      .map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
-      .join(";");
-    const idempotencyKey = `agent-route:${dateRef.current.getTime()}:${coordinates}`;
-    const duplicate = routePlanRequestsByKeyRef.current.get(idempotencyKey);
-    if (duplicate) return duplicate;
+    const planRevision = advanceRoutePlanRevision();
+    pendingAgentPlanFingerprintRef.current = routePlanFingerprint(plan.from, plan.to, plan.via);
+    setAdditionalWaypoints(plan.via);
+    setWaypointA(plan.from);
+    setWaypointB(plan.to);
+    setWaypointALabel(plan.fromLabel);
+    setWaypointBLabel(plan.toLabel);
+    const actionId = `agent-route-action-${++routePlanActionSeqRef.current}`;
+    const retry = 0;
     const request: RoutePlanRequest = {
-      requestId: `agent-route-${++routePlanRequestSeqRef.current}`,
-      inputVersion: ++routePlanVersionRef.current,
-      idempotencyKey,
+      requestId: `agent-route-request-${routePlanActionSeqRef.current}`,
+      inputVersion: ++routePlanInputVersionRef.current,
+      planRevision,
+      actionId,
+      retry,
+      idempotencyKey: `${actionId}:retry:${retry}`,
       plan,
     };
-    routePlanRequestsByKeyRef.current.set(idempotencyKey, request);
     return request;
-  }, [dateRef]);
+  }, [advanceRoutePlanRevision]);
 
   const submitRoutePlan = useCallback((request: RoutePlanRequest): Promise<RoutePlanTerminalResult> =>
     agentRouteJobsRef.current.submit(request, (job, signal) => calculateRoute(job.plan, signal)),
@@ -1857,6 +1887,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     agentRouteJobsRef.current.cancel(requestId), []);
 
   const handleCalculateRoute = useCallback(() => {
+    // A direct user calculation is a new map application, even when the
+    // coordinates happen to be identical to a previous agent action.
+    advanceRoutePlanRevision();
     const useSketch = drawModeRef.current && sketchPointsRef.current.length >= 2;
     if (useSketch) {
       setDrawMode(false);
@@ -1864,7 +1897,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     } else {
       calculateRoute();
     }
-  }, [calculateRoute, calculateSketchRoute]);
+  }, [calculateRoute, calculateSketchRoute, advanceRoutePlanRevision]);
 
   // Derived values
   const selectedRoute = navRoutes[selectedRouteIndex];

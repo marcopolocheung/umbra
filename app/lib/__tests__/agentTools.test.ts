@@ -25,15 +25,21 @@ function makeCtx(): AgentContext {
     createRoutePlanRequest: (plan: RoutePlan) => ({
       requestId: `test-${version + 1}`,
       inputVersion: ++version,
+      planRevision: version,
+      actionId: `test-action-${version}`,
+      retry: 0,
       idempotencyKey: `test:${version}`,
       plan,
     }),
     submitRoutePlan: vi.fn(async (request: RoutePlanRequest) => ({
       requestId: request.requestId,
       inputVersion: request.inputVersion,
+      planRevision: request.planRevision,
+      actionId: request.actionId,
+      retry: request.retry,
       idempotencyKey: request.idempotencyKey,
       status: "completed" as const,
-      metrics: [],
+      metrics: [{ label: "Shortest", distanceM: 100, shadowCoverage: 0.5 }],
       shadowProvenance: null,
     })),
     cancelRoutePlan: vi.fn(() => false),
@@ -72,6 +78,9 @@ describe("agent route tools", () => {
     expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
       requestId: "test-1",
       inputVersion: 1,
+      planRevision: 1,
+      actionId: "test-action-1",
+      retry: 0,
       idempotencyKey: "test:1",
       plan: expect.objectContaining({
         from: [-74.0, 40.7],
@@ -93,6 +102,16 @@ describe("agent route tools", () => {
     expect(ctx.submitRoutePlan).toHaveBeenCalledWith(expect.objectContaining({
       plan: expect.objectContaining({ via: [] }),
     }));
+  });
+
+  it("fails closed when a context returns a mismatched terminal result", async () => {
+    const ctx = makeCtx();
+    vi.mocked(ctx.submitRoutePlan).mockResolvedValue({
+      requestId: "other", inputVersion: 1, planRevision: 1, actionId: "other", retry: 0, idempotencyKey: "other",
+      status: "completed", metrics: [{ label: "Claimed", distanceM: 100, shadowCoverage: 0.5 }], shadowProvenance: null,
+    });
+    const result = await executeTool("plan_shadowed_route", { fromLat: 1, fromLng: 2, toLat: 3, toLng: 4 }, ctx);
+    expect(result).toMatchObject({ status: "error", requestId: "test-1", message: expect.stringContaining("invalid terminal result") });
   });
 
   it("uses shadow-layer point queries for check_shadow without moving the camera", async () => {

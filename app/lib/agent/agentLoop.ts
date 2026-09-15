@@ -21,7 +21,7 @@ import {
   type AgentContext,
   type AssistantPin,
 } from "./tools";
-import type { RoutePlanTerminalResult } from "../routePlanJob";
+import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 
 const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around shadow and sun comfort: shadowed walks, where to sit or eat out of the sun at a given hour, and shadow-aware routes. If asked anything else, reply in one sentence that you only help plan around shadow, and stop. Do not answer off-topic questions.
 
@@ -156,16 +156,20 @@ function primaryName(label: string | undefined): string {
 }
 
 function asRouteTerminalResult(result: Record<string, unknown>): RoutePlanTerminalResult | null {
-  switch (result.status) {
-    case "completed":
-    case "partial":
-    case "no_plan_found":
-    case "cancelled":
-    case "error":
-      return result as unknown as RoutePlanTerminalResult;
-    default:
-      return null;
-  }
+  return validateRoutePlanTerminalResult(result);
+}
+
+function malformedRouteTerminalResult(result: Record<string, unknown>): RoutePlanTerminalResult {
+  return {
+    requestId: typeof result.requestId === "string" ? result.requestId : "invalid-route-result",
+    inputVersion: typeof result.inputVersion === "number" && Number.isSafeInteger(result.inputVersion) ? result.inputVersion : 0,
+    planRevision: typeof result.planRevision === "number" && Number.isSafeInteger(result.planRevision) ? result.planRevision : 0,
+    actionId: typeof result.actionId === "string" && result.actionId ? result.actionId : "invalid-action",
+    retry: typeof result.retry === "number" && Number.isSafeInteger(result.retry) ? result.retry : 0,
+    idempotencyKey: typeof result.idempotencyKey === "string" && result.idempotencyKey ? result.idempotencyKey : "invalid-idempotency-key",
+    status: "error",
+    message: "The route pipeline returned an invalid terminal result.",
+  };
 }
 
 function routeTerminalText(result: RoutePlanTerminalResult): string {
@@ -287,14 +291,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     onToolEvent?.({ name: "plan_shadowed_route", args });
     try {
       const result = await executeTool("plan_shadowed_route", args, ctx);
-      terminalRouteResult = asRouteTerminalResult(result);
-      routedThisTurn = !result.error && (
-        terminalRouteResult == null ||
-        terminalRouteResult.status === "completed" ||
-        terminalRouteResult.status === "partial"
-      );
+      terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
+      routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
     } catch {
-      terminalRouteResult = null;
+      terminalRouteResult = malformedRouteTerminalResult({});
     }
   };
 
@@ -434,12 +434,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         plottedThisTurn = true;
       }
       if (fc.name === "plan_shadowed_route") {
-        terminalRouteResult = asRouteTerminalResult(result);
-        routedThisTurn = !result.error && (
-          terminalRouteResult == null ||
-          terminalRouteResult.status === "completed" ||
-          terminalRouteResult.status === "partial"
-        );
+        terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
+        routedThisTurn = terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
       }
       collectPointCandidates(fc.name, args, result, pointCandidates);
       responseParts.push({ functionResponse: { name: fc.name, response: result } });

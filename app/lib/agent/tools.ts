@@ -18,7 +18,13 @@ import { computeSolarIntensity } from "../shadowSampling";
 import { queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
 import { parseTime } from "../../hooks/useShadowTime";
-import type { RoutePlan, RoutePlanRequest, RoutePlanTerminalResult } from "../routePlanJob";
+import {
+  invalidTerminalResult,
+  validateRoutePlanTerminalResult,
+  type RoutePlan,
+  type RoutePlanRequest,
+  type RoutePlanTerminalResult,
+} from "../routePlanJob";
 import type { LlmFunctionDeclaration } from "./llmClient";
 
 export interface AssistantPin {
@@ -525,7 +531,13 @@ export async function executeTool(
         fromLabel: str(args.fromLabel) ?? "Start",
         toLabel: str(args.toLabel) ?? "Destination",
       };
-      return ctx.submitRoutePlan(ctx.createRoutePlanRequest(plan));
+      const request = ctx.createRoutePlanRequest(plan);
+      try {
+        const terminal = await ctx.submitRoutePlan(request);
+        return validateRoutePlanTerminalResult(terminal, request) ?? invalidTerminalResult(request);
+      } catch {
+        return invalidTerminalResult(request);
+      }
     }
 
     default:

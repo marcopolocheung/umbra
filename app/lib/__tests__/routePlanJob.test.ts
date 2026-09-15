@@ -13,6 +13,9 @@ function request(version: number, key = `route:${version}`): RoutePlanRequest {
   return {
     requestId: `request-${version}`,
     inputVersion: version,
+    planRevision: version,
+    actionId: `action-${version}`,
+    retry: 0,
     idempotencyKey: key,
     plan,
   };
@@ -31,6 +34,9 @@ describe("RoutePlanJobCoordinator", () => {
     expect(result).toMatchObject({
       requestId: "request-1",
       inputVersion: 1,
+      planRevision: 1,
+      actionId: "action-1",
+      retry: 0,
       idempotencyKey: "route:1",
       status: "completed",
       metrics: [{ distanceM: 1200, shadowCoverage: 0.75 }],
@@ -106,11 +112,39 @@ describe("RoutePlanJobCoordinator", () => {
   it("deduplicates a repeated idempotency key before it can mutate twice", async () => {
     const coordinator = new RoutePlanJobCoordinator();
     const run = vi.fn(async () => completed);
-    const first = coordinator.submit(request(1, "same-intent"), run);
-    const duplicate = coordinator.submit(request(2, "same-intent"), run);
+    const action = request(1, "same-intent");
+    const first = coordinator.submit(action, run);
+    const duplicate = coordinator.submit(action, run);
 
     expect(duplicate).toBe(first);
     await expect(first).resolves.toMatchObject({ status: "completed" });
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a later action with the same route intent", async () => {
+    const coordinator = new RoutePlanJobCoordinator();
+    const run = vi.fn(async () => completed);
+    await coordinator.submit(request(1, "intent:coordinates"), run);
+    await coordinator.submit({ ...request(2, "intent:coordinates"), actionId: "action-2" }, run);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels an active job when the application plan revision advances", async () => {
+    const coordinator = new RoutePlanJobCoordinator();
+    let finish!: () => void;
+    const active = coordinator.submit(request(1), async () => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return completed;
+    });
+    coordinator.advancePlanRevision(2);
+    finish();
+    await expect(active).resolves.toMatchObject({ status: "cancelled", reason: "superseded" });
+  });
+
+  it("fails closed when a runner returns a malformed completed result", async () => {
+    const result = await new RoutePlanJobCoordinator().submit(request(1), async () => ({
+      status: "completed", metrics: [], shadowProvenance: null,
+    } as any));
+    expect(result).toMatchObject({ status: "error", message: expect.stringContaining("invalid terminal result") });
   });
 });
