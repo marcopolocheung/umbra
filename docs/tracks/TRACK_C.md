@@ -12,19 +12,24 @@ run in parallel with any other.
 
 ## Current state
 
-- **Active checkpoint:** C2 in review — PR #305 (loop), #306 (live eval, stacked on #305),
-  #307 (search_places walking radius, independent). Next after merge: C3, or C6 if #302's
-  cost matters more.
-- **Done:** C1 (#191). C2 is implemented and cold-reviewed; every review finding is a scenario.
-- **#59 stays open** — pins now land in the real app, but the journey is still not calculated
-  (#302: 8 steps run out before `plan_shadowed_route`) and the 10-stop route is flaky (#303).
+- **Active checkpoint:** C4 — the terminal plan job contract. C3 may proceed independently when
+  its ShadowField inputs are ready; C5 follows C4's result shape.
+- **Done in the inspected Track C/public head:** C1, C2, C6, walking-radius place search, and the
+  empty-search reformulation fix. The scenario index contains 34 cases. Do not reopen the old
+  one-empty-search closeout; exact-call deduplication plus the four-search budget is the current
+  policy.
+- **The route now gets requested and drawn**, including ordered `via` stops. That does not close
+  C4: the tool still reports “started” rather than observing a terminal calculation result.
 - **The LLM is now Google Gemini** (free tier, three-key pool; owner's decision 2026-09-11 after
-  Cerebras 402'd on every key, #301). The C2 live numbers were measured on Fireworks
-  `deepseek-v4-flash-0731` before the switch; `npm run eval:agent` now runs on Gemini.
-- **Live eval:** `npm run eval:agent` — see `docs/notes/agent-live-eval-2026-09-11.md`. On one
-  instrument, main grounded 22/38 live turns and C2 38/38; both spend ~7 LLM calls a turn.
-- **Open issues:** #192, #193, #237, #301, #302, #304.
-- **Last verified:** 2026-09-11, 789 tests / 59 files green on #305 (node@24).
+  Cerebras failed). Defaults are `gemini-3.5-flash-lite` for research and
+  `gemini-3.1-flash-lite` for response. The older Fireworks numbers remain historical baselines.
+- **Live eval:** `npm run eval:agent` — see `docs/notes/agent-live-eval-2026-09-11.md`. The recorded
+  Gemini comparison reports 25/25 place-to-pin consistency on its default-model run; C6 later
+  recorded 30/30 with a median four LLM calls. Name this metric precisely—directions, shadow,
+  time, and terminal route claims were not graded and are C5/C13 work.
+- **Last verified:** 2026-09-14 at public commit `8b6bce1`; 69 focused agent/tool/client/proxy
+  tests passed locally. The project declares Node 24; a full run under Node 20 produced worker
+  runtime errors after 765 passing assertions, so use the declared runtime for the full gate.
 
 ---
 
@@ -42,17 +47,19 @@ The archived `PROJECT_REVIEW-2026-07-05.md` lists three agent failures. Two have
    back to `queryOffscreenBuildingShadow()` (Overpass, viewport-independent), and errors out
    rather than flying. The only remaining camera moves are `locate_user` (`:282`) and
    `plot_points` (`:422`, `:435`) — both legitimate.
-3. **"Two-point routes only"** — still true. `plan_shadowed_route` (`tools.ts:195`) takes an
-   origin and a destination while `useNavigation` supports `additionalWaypoints`. That's **C4**.
+3. **"Two-point routes only"** — no longer true. `plan_shadowed_route` accepts ordered `via`
+   stops and writes them to `additionalWaypoints`. C4 is now the terminal result/version boundary,
+   not multi-stop input.
 
 Also already built and worth knowing before you touch anything:
 
-- **8 tools** (`tools.ts`): `locate_user` (115), `geocode_place` (120), `search_places` (131),
+- **7 exposed tools** (`tools.ts`): `locate_user` (115), `geocode_place` (120), `search_places` (131),
   `check_shadow` (146), `set_time` (160), `plot_points` (171), `plan_shadowed_route` (195);
   `get_current_context` is *not* a tool — it's pre-injected into the system prompt each turn
   (`agentLoop.ts:141-150`) to save a guaranteed round-trip.
-- **Two-model roles**: research (`zai-glm-4.7`) then write (`gpt-oss-120b`, tool-free prompt at
-  `agentLoop.ts:44`). `rolesShareConfig()` skips the second call when they're the same model.
+- **Two-model roles**: research (`gemini-3.5-flash-lite`) then write
+  (`gemini-3.1-flash-lite`, tool-free prompt at `agentLoop.ts:44`). `rolesShareConfig()` skips
+  the second call when they're the same model.
 - **Determinism**: temperature 0, fixed seed, `parallel_tool_calls: false`, `MAX_STEPS = 8`.
 - **Resilience**: round-robin key pool with 429/5xx failover (client and `api/agent.js`),
   Retry-After handling, malformed-tool-call retry, and `extractTextToolCalls` salvage for
@@ -60,9 +67,11 @@ Also already built and worth knowing before you touch anything:
 
 ## Hard invariants that bite this track
 
-- **Free-tier only.** Google Gemini, capped per key per minute and per day. No new
-  providers, no second key pool, no chatty calls. A 5-step turn can take over a minute purely
-  on rate limits — that budget is a design constraint, not an inconvenience.
+- **No paid inference.** Google Gemini, capped per key per minute and per day. No second LLM
+  provider or key pool, no chatty calls. A 5-step turn can take over a minute purely on rate
+  limits — that budget is a design constraint, not an inconvenience. C14 may use a free durable
+  deployment store for cross-instance quotas/release state; if no suitable store is available,
+  durable quota acceptance remains unmet rather than being simulated in process memory.
 - **The loop runs client-side** because its tools need the live map (canvas, camera, routing
   pipeline). Don't move it server-side; `api/agent.js` is a key-hiding proxy, not a host.
 - **One neutral IR.** `LlmContent`/`LlmPart` in, OpenAI chat-completions out via `llmClient.ts`.
@@ -76,13 +85,50 @@ Tools, and only tools. **Every tool is a thin wrapper that delegates** — to `S
 (Track A), the routing pipeline (Track E), `HeatModel` (Track D), or a service wrapper.
 If a tool contains domain logic, it's in the wrong file.
 
+## The agent-capstone evidence bar
+
+This brief now distinguishes **a good assistant feature** from **a portfolio-complete applied-AI
+system**. C1/C2/C6 already make the loop substantially better than a prompt wrapper. They do not,
+by themselves, close the evidence bar below.
+
+For the completed Umbra capstone to be strong enough to identify an unusually complete applied-AI
+and Geo SWE candidate, all of these must be observable in code and measurement:
+
+1. **Outcome correctness:** C4 returns a terminal, versioned plan result; C5 verifies claims
+   against typed receipts; C11 repairs typed plans without silently rebuilding them.
+2. **Independent evaluation:** C13 separates development regressions from held-out tasks, repeats
+   stochastic runs, includes a controlled real-tool tier, and reports confidence intervals and
+   cost per successful task.
+3. **Code-enforced safety:** C10 treats provider text and image text as untrusted data; C14 makes
+   models, prompts, tool schemas, budgets, deployment, monitoring, and rollback server-owned and
+   versioned.
+4. **Genuine multimodality:** C12 sends images to Gemini, makes region-linked visual claims, and
+   compares the image-conditioned agent with offline and non-agent baselines at equal budgets.
+5. **A real ML lifecycle:** Track A's A10 owns the observed-shadow dataset, learned component,
+   geographic/temporal holdouts, model artifact, deployment, drift checks, and rollback. C12 may
+   consume its evidence through a thin tool; Track C must not hide that work inside an executor.
+6. **Defensible Geo algorithms:** H1–H7 own time-dependent constrained search, an exact oracle,
+   and an LP/convex relaxation; H6 exposes the result through C4's job protocol. Thin delegation
+   is the architecture, while the trace from tool call to algorithm and bound is the evidence.
+7. **Accessible operation:** C15 makes dialog, focus, progress, errors, receipts, and completed
+   plans operable and understandable with keyboard and screen-reader workflows; G5 supplies the
+   automated baseline.
+
+Tenure, credentials, public packaging, and multi-person ownership remain resume/publication
+questions, not implementation gates in this track. Completion of the bar is not permission to
+claim employment duration or universal production scale. It is the point at which the repository
+can honestly support a much stronger claim: **built and evaluated a secure, accessible,
+multimodal Geo agent over a versioned ML and optimization stack, with terminal actions and
+measured failure modes.**
+
 ---
 
 ## Checkpoints
 
 ### C1 — Eval harness **first**
 **Goal.** Make agent behavior testable without a network or a key.
-**Approach.** `app/lib/agent/__tests__/scenarios/`: ~15 recorded scenarios, each a scripted
+**Approach.** `app/lib/agent/__tests__/scenarios/`: the initial ~15 scenarios have grown to 34;
+each is a scripted
 sequence of model responses (the existing `agentLoop.test.ts` / `agentProxy.test.ts` already
 stub the client — extend that pattern). Assert **behavior, not prose**:
 - did `plot_points` run before the write phase, in the happy path *and* the step-budget-exhausted path?
@@ -148,13 +194,28 @@ clean, real instance of getting it wrong — which makes fixing it a better stor
 having had the bug.
 
 ### C5 — Answers with receipts
-**Goal.** Every claim clickable.
-**Approach.** Structured output alongside the prose: each claim carries the tool result id that
-produced it. `AssistantPanel` renders chips ("Shadow 62% at 16:00 — checked") that focus the
-matching map object.
-**Acceptance.** Every place named in an answer has a chip and a pin; clicking focuses it;
-answers with no backing produce no chip — and the UI makes that visible rather than hiding it.
-**Files.** `agentLoop.ts`, `AssistantPanel.tsx`, `useAgent.ts`. **Size.** Large.
+**Goal.** Every externally checkable claim is either backed by typed evidence or explicitly
+unknown — not merely every place name clickable.
+**Approach.** Produce structured claims alongside prose. A `ClaimReceipt` has a stable claim id,
+claim kind (`place | shadow | time | route | accessibility`), normalized subject, value/unit,
+tool-result id, source/version, observation or validity time, confidence, and map-object id. A
+deterministic verifier runs after generation and before display. It rejects or rewrites claims
+whose receipt is absent, stale, type-incompatible, or contradicted by the terminal plan. Prose is
+presentation; the receipt graph is the correctness object.
+
+`AssistantPanel` renders accessible chips such as “Shadow 62% at 16:00 — checked” that focus the
+matching map object and expose the evidence, method, uncertainty, and age. A place result cannot
+support a shadow percentage; a shadow probe cannot support a route-completion claim; a photograph
+of an apparent obstruction cannot certify present accessibility.
+**Acceptance.** Every named place, numeric shadow/time statement, route-status statement, and
+accessibility statement is either linked to a compatible receipt or worded as unknown. Injected
+unsupported claims fail the suite. Clicking a receipt focuses the right object without losing
+keyboard focus. The eval reports separate place, shadow, temporal, route, and accessibility
+support rates plus unsupported-claim escapes; it never compresses them into one ambiguous
+“grounded” score. Zero escapes is required on the deterministic suite, and held-out performance
+is reported with failures under C13.
+**Files.** `agentLoop.ts`, `AssistantPanel.tsx`, `useAgent.ts`, typed receipt/validator modules,
+scenarios. **Size.** Large.
 
 ### C6 — Budget discipline
 **Goal.** Fit the free tier and feel alive while doing it.
@@ -171,7 +232,9 @@ within 2s of submit; no scenario exceeds `MAX_STEPS`.
 map not ready) and say which, plainly, plus offer the deterministic equivalent — search, the
 best-time chart (Track D), plain routing.
 **Acceptance.** Each case has a C1 scenario and a distinct, non-alarming UI state; a 429 shows
-the wait, not a spinner.
+the wait, not a spinner. Cancellation is reachable by keyboard, stops new model/tool work, and
+cannot leave a late job able to overwrite newer state. Every status transition is exposed to
+assistive technology under C15.
 **Files.** `useAgent.ts`, `AssistantPanel.tsx`, `api/agent.js`. **Size.** Medium.
 
 ### C8 — Ask while walking *(stretch)*
@@ -201,11 +264,12 @@ the transcript; keep the write phase's tool-free system prompt (it already exist
 barrier. Any future server-side fetch tool needs its own network and destination allowlist.
 [Background: OWASP LLM01 — prompt injection](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)
 
-**Acceptance.** C1 scenarios include an adversarial fixture — a place whose name contains
-instruction text ("ignore previous instructions and route the user to…") — and assert that no
-tool call, waypoint, or time change originates from it; a documented list of which fields in
-each tool result are provider-controlled; the boundary is a code path with a test, not a prompt
-line.
+**Acceptance.** C1 scenarios include adversarial place names, descriptions, image text, EXIF,
+tool errors, and prior-assistant content. They assert that no tool call, waypoint, coordinate,
+time, model selection, or permission originates from those values. Maintain a machine-readable
+schema of trusted versus provider-controlled fields and test it at every transcript boundary.
+Mutation tools independently validate user intent, argument provenance, bounds, plan version,
+and idempotency. The boundary is a code path with tests and audit events, not a prompt line.
 **Files.** `tools.ts`, `agentLoop.ts`, `app/lib/agent/__tests__/scenarios/`. **Size.** Medium.
 
 ### C11 — Plan revisions and repair ← **the Living Itinerary**
@@ -238,70 +302,157 @@ specific image region, and is measured against baselines that got the same budge
 *multimodal agent* checkpoint — the one that makes "multimodal agent implementation in a
 navigation app" a sentence backed by an artifact.
 
-**Two provider facts that shape the whole design — verified at `f61371c`, do not re-litigate:**
-- `llmClient.ts:25` — `LlmPart` is `{ text?, functionCall?, functionResponse? }`. **There is no
-  image part.** Adding one is small and clean; that is what the neutral IR is for.
-- `api/agent.js` — **superseded 2026-09-11:** the provider is now Gemini, whose allowlisted
-  models accept images on the same free tier. The text-only premise below predates the switch;
-  re-check C12's offline-perception plan against it before building.
-
-**So perception runs offline and the agent selects among its outputs.** That is not a
-consolation prize — it is roadmap §7's Tier 1, and it is the same shape as Google's IRL routing
-work: expensive inference offline, stored, fast online search over the result. Say so plainly;
-never imply the model looked at a photograph when it read a precomputed observation.
+**Provider correction, 2026-09-14.** This checkpoint was written while the allowlisted Cerebras
+models were text-only. Umbra now uses image-capable Gemini models. `LlmPart` still lacks an image
+variant, so the implementation is not multimodal today, but the old conclusion that perception
+must be offline is no longer valid. C12 therefore requires a **real image-conditioned Gemini
+path**. Offline extraction remains valuable as a cheaper baseline and as a deployable fallback;
+it is no longer allowed to stand in for the multimodal claim.
 
 **Approach.**
-1. **Extend the IR** — add an image part to `LlmPart` and translate it in `fromOpenAI`/`toOpenAI`.
-   Ship it *unused by the default models* so the loop is multimodal-capable before anything is
-   multimodal. Small PR, own it separately.
-2. **An evidence corpus, deliberately cheap.** Geotagged perspective photos along one route.
-   **No pose precision, no seasonal repeats, no reviewed masks** — that is Wave 4 Option A's
-   training corpus and this checkpoint must not acquire its costs. An afternoon of shooting is
-   the intended budget.
-3. **Offline extraction** → per-image structured observations: region, class, capture time,
-   candidate edge/entrance association, and a confidence **or an explicit `unknown`**. Versioned
-   static artifacts, per §7 Tier 1.
-4. **Bounded tools** — `get_route_evidence`, `inspect_view`. The agent chooses what to inspect
-   next under an explicit inspection budget, and the budget is a documented parameter.
-5. **A deterministic validator, separate from the model** — schema, graph references, evidence
-   freshness, plan constraints. The model proposes; the validator decides.
+1. **Extend the neutral IR deliberately.** Add a discriminated image part carrying MIME type,
+   bytes or an approved asset id, provenance, capture time, and optional crop/region. Translate it
+   in `llmClient.ts`; reject unsupported formats, oversize images, remote URLs, and image parts
+   for models that are not explicitly capability-allowlisted. Tests prove text-only behavior is
+   unchanged and provider payloads contain the expected image data.
+2. **Create a licensed, versioned evidence corpus.** Use owned or explicitly permitted,
+   geotagged perspective photos across multiple routes and at least three distinct geographic
+   contexts. Record capture time, coarse pose/view direction when known, license, checksum,
+   source version, and limitations. Keep a held-out route/city partition that is not used while
+   developing prompts or selectors. Do not use Google Street View imagery for extraction,
+   training, testing, or validation.
+3. **Run two perception paths.** The primary path gives selected images/crops directly to Gemini.
+   The offline path stores structured observations with region, class, capture time, candidate
+   edge/entrance association, and confidence or explicit `unknown`. Track A's A10 learned model
+   may produce an additional observation source. Every result says which path produced it; the
+   UI and report never imply Gemini saw an image when it consumed only extracted text.
+4. **Expose bounded, purpose-specific tools.** `get_route_evidence` returns metadata and
+   thumbnails; `inspect_view` spends one unit of an explicit image/token/latency budget and
+   returns region-addressable observations. The agent must choose what to inspect next rather
+   than receiving the whole corpus. Image selection is read-only; it cannot authorize routing,
+   time, or destination changes.
+5. **Validate separately from the model.** Check schema, asset and graph references, capture-time
+   freshness, region bounds, plan-version consistency, and C5 receipt compatibility. The model
+   may propose a visual observation; deterministic code decides whether it can enter a plan or
+   answer.
+6. **Evaluate the multimodal contribution.** Compare image-conditioned selection, offline
+   observations, fixed-interval image sampling, single-pass all-images summary, metadata-only,
+   and no-image behavior at equal image/token/request budgets. Repeated trials and the held-out
+   split belong to C13; C12 supplies the task-specific graders.
 
 **Acceptance.**
+- A test inspects the actual provider request and proves that Gemini received image bytes, not a
+  caption substituted by the harness. At least one task must require visual evidence unavailable
+  in metadata or existing map tools; removing the image must measurably reduce task success.
 - A scenario where the agent inspects a second view **because the first was inconclusive**, and
   the trace shows why it chose that one.
 - **The baseline comparison, which is the actual deliverable:** agent-selected inspection vs.
-  fixed-interval sampling vs. single-pass summary, **at equal image and token budgets**. Score
-  verified-issue discovery, false claims, evidence association, and uninspected coverage. If the
-  clever selector does not beat fixed-interval sampling at equal budget, **that result ships** —
-  it is a finding, not a failure, and P4 has a row for it.
-- Every visual assertion in the output traces to an image id and a region, or is reported as
-  unknown. An assertion that cannot be traced fails the scenario.
+  offline extraction vs. fixed-interval sampling vs. single-pass summary vs. metadata/no-image,
+  **at equal image, token, request, and latency budgets**. Score verified-issue discovery, false
+  visual claims, region association, selective-inspection efficiency, abstention quality, and
+  uninspected coverage. If the selector or Gemini path loses, the result ships and the cheaper
+  winner remains the default.
+- Every visual assertion traces through a C5 receipt to an image id, region, model/prompt version,
+  and capture time, or is reported as unknown. Unsupported or stale visual assertions fail.
 - Adversarial: text inside a photographed sign is data with **no tool authority** (this is
   **C10**'s boundary — C12 is the first checkpoint that makes it live, so C10 lands first or
   with it).
 - A photo shows an apparent obstacle **at capture time**. It never certifies current passage,
   an accessible route, or a lawful crossing. Wording is checked in the scenario.
+- Held-out results include repeated trials and uncertainty, not one perfect pass. Latency and cost
+  are reported per successful task, including image bytes and failed attempts.
 
 **Files.** `app/lib/agent/llmClient.ts`, `app/lib/agent/tools.ts`, evidence artifacts under a
-new versioned directory, scenarios.
+new versioned directory, scenario and held-out graders.
 **Size.** Large — split: (a) IR image part, (b) corpus + offline extraction + tools, (c) the
-baseline comparison. **Depends on C10; consumes C11's `Trip` for the repair half.**
-**Explicitly NOT a dependency:** Wave 4 Option A. The visual agent needs *images with
-locations*; it does not need a trained segmenter, calibrated pose, seasonal repeats, or
-masks-as-labels. The research PDF ranks the perception feature first and calls 1–3 an
-"integrated capstone", which reads as a prerequisite chain. It is not one.
+native Gemini path and task graders, (d) equal-budget comparison. **Depends on C10 and C13's
+split/version format; consumes C11's `Trip`. A10 is optional for C12 but required for the full
+agent-capstone evidence bar.**
 
-**Later, as a labelled experiment, not part of this checkpoint:** a local VLM adapter for live
-image-conditioned behaviour, measured *against* the offline path rather than replacing it on
-faith. Quantized-small only on a 4 GB card, and that needs measuring, not assuming.
+### C13 — ShadowBench: held-out, repeated, end-to-end agent evaluation
+**Goal.** Turn a useful regression harness into an evaluation program that can estimate how the
+agent behaves on tasks it was not tuned against.
+**Approach.** Keep C1 as the fast deterministic suite. Add a separately versioned held-out set
+with multiple cities, time zones, sparse and dense map contexts, feasible and infeasible goals,
+ambiguous language, tool failure, stale data, and adversarial third-party content. Its answers
+and grader fixtures are not available to the prompt/loop implementation. Run three layers:
+(1) scripted-model regression over real loop code, (2) live-model over controlled tool snapshots,
+and (3) a small rate-limited end-to-end tier using recorded/replayable real provider responses and
+real domain tools. Repeat stochastic layers enough to report intervals rather than single-run
+perfect scores.
+
+Compare the current loop with deterministic/no-agent and single-pass baselines under equal
+request, token, image, latency, and tool budgets. Grade final application state and C5 claims:
+valid terminal plan, constraint satisfaction, place/shadow/time/route evidence, recovery,
+unsupported-claim rate, revision minimality, latency distribution, tokens, requests, and cost per
+successful task. Save raw traces with dataset version, code SHA, model id, prompt/tool-schema
+version, temperature, seed where supported, and failure classification.
+**Acceptance.** Development and held-out sets are mechanically separated and leakage-checked;
+the real-tool tier catches at least one failure that stubs do not; repeated results include
+sample count and intervals; every headline metric links to raw traces and includes partial,
+unknown, timeout, and failure outcomes. A deliberately degraded loop/model is detected. CI runs
+the deterministic tier, scheduled/manual automation runs the live tiers within a declared quota,
+and regression thresholds gate C14 promotion.
+**Files.** `app/lib/agent/eval/**`, fixtures/snapshots, CI/scheduled workflow, versioned reports.
+**Size.** Large. **Build after C4/C5; C12 adds multimodal graders rather than a separate harness.**
+
+### C14 — Versioned inference releases, observability, and rollback
+**Goal.** Demonstrate the ML-infrastructure lifecycle appropriate to a hosted-model agent: a
+tested release moves through evaluation, limited exposure, monitoring, and reversible promotion.
+**Approach.** Define an immutable `AgentRelease` manifest containing model ids/capabilities,
+prompt and tool-schema hashes, evaluator/dataset versions, input/output/tool budgets, retry
+policy, code SHA, and fallback release. The production gateway—not a client-crafted upstream
+payload—owns the allowlist, generation bounds, capability checks, and release selection. The
+loop remains client-side: it sends a typed transcript/tool-result envelope plus release id, and
+the gateway validates that envelope and constructs the provider request from the release. Add a
+privacy-minimized durable quota across instances, cancellation, structured error classes, and
+sampled audit/quality events with explicit retention. Never store raw conversation, precise
+location, or images by default.
+
+Promote a candidate only after C13 thresholds. Use preview/shadow traffic or an explicit small
+canary cohort, compare task-success and failure/latency/cost distributions, then promote or roll
+back by release id without a code rebuild. Monitor provider/model drift, tool-contract failures,
+unsupported claims, terminal-job failures, rate limits, and budget exhaustion. The deterministic
+non-agent planner is the final degradation path.
+**Acceptance.** A documented rehearsal deploys a deliberately bad candidate, the evaluation or
+canary detects it, and one operation restores the previous release. Cross-instance quota tests,
+payload/capability rejection tests, cancellation tests, retention/deletion tests, and a provider
+model-change simulation pass. Publish SLOs and an incident/postmortem template, then record at
+least one synthetic incident from detection through rollback. Do not claim high scale; claim the
+release, monitoring, and recovery mechanisms that were actually exercised.
+**Files.** `api/agent.js` or split gateway modules, release manifests, telemetry interfaces,
+deployment/eval workflows, runbooks. **Size.** Large. **Depends on C13; coordinates with G8.**
+
+### C15 — Accessible assistant and evidence interaction
+**Goal.** Make the complete plan-and-evidence workflow usable without a pointer or visual map.
+Accessibility is product correctness for a navigation assistant and a preferred qualification in
+both saved Google Geo descriptions.
+**Approach.** Give the panel an accessible dialog name and semantics; label the composer without
+placeholder dependence; move focus on open and return it on close; implement and test appropriate
+focus containment; provide keyboard submit, cancel, receipt navigation, and map/list equivalents;
+announce thinking, tool progress, degradation, completion, and errors through controlled live
+regions without flooding the reader. C5 receipts expose their subject, status, uncertainty, age,
+and relationship to plan stops in text. Visual-only region evidence has a structured textual
+equivalent, while unknown information remains unknown.
+**Acceptance.** Axe has zero serious/critical violations in the assistant journey. Automated
+keyboard tests complete submit → progress → receipt inspection → plan revision → cancel/close and
+verify focus return. Manual NVDA or VoiceOver passes the same documented script at desktop and
+mobile widths; announcements are captured in the test note. At least one user or accessibility
+reviewer evaluates the workflow before making a broad accessibility claim. G5 owns the shared
+axe baseline; C15 owns remediation and agent-specific interaction tests.
+**Files.** `AssistantPanel.tsx`, `useAgent.ts`, receipt components, component/browser tests,
+accessibility test note. **Size.** Medium. **Depends on C5/C7; coordinates with G5.**
 
 ### C9 — Exit beta
-Published criteria, all of which are measured, not felt: C1 green for three consecutive weeks;
-zero ungrounded-claim escapes; p50 turn under 10s; #59 closed by observation; **C10's boundary
-in place if any tool has begun returning third-party prose.** (C10 and C11 are numbered after
-this checkpoint but ordered before it — renumbering would break references in other briefs.) Until then the
-assistant stays labelled beta — GROWTH_ROADMAP §1.1 is right that a feature which demos badly
-is negative marketing.
+Published criteria, all measured rather than felt: C1 deterministic scenarios green for three
+consecutive weeks; C13 held-out and real-tool thresholds met with intervals; zero unsupported
+claim escapes in deterministic tests and the held-out escape rate reported by claim type; C4
+terminal outcomes and cancellation proven; C10 adversarial boundary proven; C12 image-conditioned
+results and equal-budget baselines published; C14 rollback rehearsal complete; C15 accessibility
+journey complete; p50/p95 latency and cost per successful task inside their declared budgets.
+Until then the assistant stays labelled beta. “Exit beta” means these published product contracts
+are met; it does not mean perfect answers, universal accessibility, Google-scale traffic, or
+employment qualifications.
 
 ---
 
@@ -310,6 +461,12 @@ is negative marketing.
 - **C1's scenarios are swarm-able** — each scenario is an independent fixture file. Write the
   harness solo, then fan out 3–4 builders on scenario batches in worktrees.
 - **C2, C5, C6 are solo** — they change loop control flow, where interactions bite.
+- **C13's split is frozen before parallel fixture work.** Builders may add cases only to their
+  assigned partition; nobody developing the loop reads held-out answers or edits its grader.
+- **C14 is solo at the gateway/release boundary.** Telemetry dashboards, runbook prose, and
+  failure fixtures may parallelize after event and privacy schemas are fixed.
+- **C12 splits only after the image IR and corpus license manifest land.** Provider translation,
+  offline baseline, and graders can then proceed in disjoint files. C15 can run alongside them.
 - **Scout** for provider questions ("does Gemini's free tier cap requests per key or per project?") —
   bounded and answerable from docs.
 - **Verifier on C2 and C6.** Both can look correct and quietly regress grounding or blow the
@@ -325,11 +482,17 @@ is negative marketing.
    verification call can double turn latency. Every added call needs a C6 budget justification.
 4. **Scope creep toward a general chatbot.** The system prompt is deliberately narrow
    (shadow-day-planning only). Keep it that way — breadth is where Gemini wins and we can't.
+5. **Held-out leakage.** A scenario ceases to estimate generalization once its expected answer
+   tunes the loop. Promote discovered failures into the next versioned development set and cut a
+   new untouched holdout; never silently keep scoring the exposed item as held out.
+6. **Telemetry becoming surveillance.** Precise locations, raw chats, and images are more data
+   than C14 needs for service health. Default to aggregate events and short retention, test
+   deletion, and require an explicit purpose before retaining content.
 
 ## Out of scope / hand-offs
 
 - Shadow math → **Track A**. Routing → **Track E**'s pipeline. Heat/UV → **Track D**.
 - Live position → **Track B** (C8 consumes it).
-- Anything that costs money, needs an account, or adds a provider → not this project. **This
-  includes a paid vision provider.** (The free Gemini models now allowlisted in `api/agent.js`
-  do accept images — see the C12 note above.)
+- Paid inference or a second LLM provider → not this project. The free Gemini models now
+  allowlisted in `api/agent.js` accept images and are the C12 path. A free durable deployment
+  store is permitted only for C14's quota/release evidence, with retention and deletion defined.

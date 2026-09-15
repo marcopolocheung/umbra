@@ -26,7 +26,7 @@ an item passing one.
 | `docs/research/*.md` | the outside evidence this roadmap was reconciled against (§5) |
 | the code | anything factual. Always. |
 
-Last reconciliation: **2026-09-09** (§5c — three frontier papers). **Current state lives in the briefs** — the session-start
+Last reconciliation: **2026-09-14** (§5d — agent/Geo hiring-evidence pass). **Current state lives in the briefs** — the session-start
 hook prints every track's active checkpoint, and that is the only state worth trusting.
 
 ---
@@ -51,7 +51,7 @@ conclude four things, and each needs an artifact they can click.
 | They must conclude | Proved by | Status |
 |---|---|---|
 | **Can do real algorithms** | A time-dependent, constraint-aware routing search checked against a brute-force oracle, with a published approximation gap. Not a wrapper around a routing API. | ⚠️ Half — Pareto label-setting with dominance pruning exists (`routing.ts:566`); the time dimension does not → **Track H** |
-| **Can ship applied AI that works** | A tool-using agent with typed contracts, a job/result protocol, deterministic validation, and a public eval suite **whose failures are reported**. | ⚠️ Half — loop and 7 tools exist; C1's harness is in review; no published numbers → **C1–C5** |
+| **Can ship applied AI that works** | A tool-using agent with typed contracts, a job/result protocol, deterministic validation, and an eval program **whose failures are reported**. | ⚠️ Strong core, incomplete proof — bounded loop, 7 tools, 34 scenarios and live-model runs exist; terminal results, typed claim receipts, held-out/real-tool evaluation, releases/rollback and accessibility remain → **C4, C5, C10–C15** |
 | **Understands systems and performance** | Measured wins in CI: worker offload, a bundle budget, a browser smoke test that runs — and the ~1,000–2,200× shadow-index speedup **stated as what it is, a synthetic Node microbenchmark of the index in isolation, not end-to-end browser route time**. | ⚠️ Half — G1 landed, index win measured (#166) and now qualified **both here and in `docs/notes/evidence.md`**, so **#207 can close**; A5 and G2/G3 are not → **G2, A5** |
 | **Is honest about what they measured** | The agreement harness publishing `mean 2.6pp · worst 62.5pp · severe 3.3%` — worst case included. Confidence values labelled in code as *priors, not measurements*. UI numbers linking to their own method. | ✅ The strongest signal here — and **invisible to anyone outside the repo** → **Track P** |
 
@@ -60,6 +60,29 @@ measures; essentially none publishes its own worst case. `ShadowField.ts:199` al
 *"Neither is measured ground truth — these are priors"* in a source comment. That instinct is
 the most hireable thing in this repository and no recruiter can currently see it. **Track P
 exists to fix exactly that, and it is cheaper than any feature on this list.**
+
+### The agent/Geo hiring-evidence completion bar *(added 2026-09-14)*
+
+The four rows above remain the product portfolio thesis. For the narrower goal of making Umbra an
+exceptionally complete identifier for applied-AI and Geo engineering candidates, “agent works” is
+not enough. The completed artifact must expose these independent proofs:
+
+| Proof | Owned by | Completion evidence |
+|---|---|---|
+| Terminal actions and claim-level grounding | C4, C5, C11 | Versioned terminal job results; typed receipts for place, shadow, time, route and accessibility claims; deterministic repair validation |
+| Evaluation that estimates generalization | C13 | Leakage-checked held-out tasks, repeated live trials, a controlled real-tool tier, equal-budget baselines, intervals and raw traces |
+| Production LLM/agent operations | C14 | Immutable model/prompt/tool releases, server-owned policy, durable quotas, monitored canary, exercised rollback and privacy/retention tests |
+| Genuine multimodal reasoning | C12 | Actual images reach Gemini; region-linked receipts; image-required tasks; offline, metadata and fixed-sampling baselines at equal budgets |
+| Full learned-model lifecycle | A10 | Owned/licensed data, geographic/date holdouts, baselines, optional segmentation justified by data, versioned artifact, drift test and rollback |
+| Defensible Geo optimization | H1–H7, exposed by H6 | Time-dependent constrained search, brute-force oracle, integer reference, LP/convex relaxation, published gaps and agent-visible certificates |
+| Code-enforced safety and accessible use | C10, C15, G5 | Adversarial trust-boundary tests and a keyboard/screen-reader-complete plan/evidence journey |
+
+This is intentionally a higher bar than “good personal project.” It does not pretend a repository
+proves years of employment, credentials, teamwork, adoption at Google scale, or interview
+performance. Those are assessed elsewhere. It does ensure the implementation itself no longer
+depends on a hiring manager generously interpreting a hosted-model call as ML infrastructure, a
+pin match as complete grounding, an initiated route as success, or precomputed captions as
+multimodality. Full acceptance lives in the owning track briefs.
 
 ### The novelty claim, stated precisely
 
@@ -172,6 +195,12 @@ or `suncalc`.
 already done into signal a reviewer can see.** P4 was already marked "startable immediately";
 this makes the promotion structural instead of a parenthetical nobody acts on.
 
+**Priority correction, 2026-09-14:** publication drift is not an agent-implementation blocker.
+Do not interrupt C4/C5/C10/C13–C15, H, or A10 to repeatedly polish the public surface while the
+underlying contracts are still changing. Already-written P2/P4 work may merge when convenient;
+the definitive README, demo, scorecards, and ledger refresh happen after the capstone evidence is
+implemented. Track P remains responsible for that final pass.
+
 Take them **as a pair**. P4 alone recreates the problem it exists to solve one level down: a
 numbers page nobody navigates to is as invisible as a number nobody published. P2 is the door.
 
@@ -195,13 +224,7 @@ This wave adds almost no new ideas on purpose.
 | 2 | **A5** worker, **A6** sweep | A5 gets routing off the main thread (#38). A6 exploits that a prism's shadow is an affine function of sun azimuth/altitude — an exactness criterion, not a vague speedup. **A6 gates Track H.** |
 | 2.5 | **A7** Overpass trees, **A8** canopy raster *(promoted 2026-09-08)* | **The app says "exposed" on a tree-lined street in July.** `ShadowSource` already declares `"canopy"` and `"mixed"` and `ShadowSample.shadow` is already a fraction (`ShadowField.ts:36,39`) — the contract reserved the slot and nothing filled it; `canopy.ts` does not exist and `overpass.ts:399` fetches `way["building"]` alone. §2 concedes Geuneullo already models street trees, so this is the gap between us and the *consumer* state of the art, not a stretch goal. Closes **#46**. **Take it before H3** — "routes around tree shadow" is a materially better flagship than "routes around building shadow", and the A2 contract means H never has to know a canopy source exists. **It is also the experiment that decides Wave 4**: A7+A8 are ~2–3 weeks and zero fieldwork, so measure what is *still* wrong before committing to Option A's season-locked corpus. |
 | 3 | **B2 → B7** | The app is called navigation and does not navigate. **B6 is the reason Track B exists**: *"cross to the shadowed side"* — an instruction no competitor can generate. B7 unparks F and supplies P3's demo. |
-| 4 | **C1 → C5**, then **C10 → C11 → C12** | Eval harness first, then probes on `ShadowField`, then **C4 — the plan job contract** (re-scoped; see the brief), then receipts. Then **C11 — plan revisions and repair**, the *Living Itinerary*: a plan is a data object with provenance, expiry and a version, and a late departure re-solves only the affected span. This is exactly the shape agent-platform and model-evaluation postings describe, and "I built the eval harness first" separates people who have shipped an agent from people who have prompted one. **C11 is the second-most distinctive capability in the product and P3's demo ends on it.**
-**C12** (added 2026-09-08) is the *multimodal agent* checkpoint: the agent chooses which visual
-evidence to inspect under a budget, grounds every claim in an image region, and is measured
-against fixed-interval sampling **at equal budget**. Its corpus is geotagged photos from one
-walk — weeks, not Wave 4's months. Note two verified constraints it is designed around:
-`LlmPart` has no image part (`llmClient.ts:25`) and both allowlisted Cerebras models are
-text-only (`api/agent.js:36`), so perception is offline per §7 Tier 1. |
+| 4 | **C1 → C5**, then **C7 → C10 → C11** | Eval harness first, then probes on `ShadowField`, then **C4 — the terminal plan job contract**, claim-level receipts, honest degradation, the code-enforced trust boundary, and **C11 — the Living Itinerary**. This is the dependable core. C12–C15 are deliberately sequenced later as the capstone evidence layer; putting native images or release machinery on top of an unverifiable action contract would create a larger demo, not a stronger agent. |
 | 5 | **D3, D4** + the mobile strip fix | Turns a unitless fraction into UV dose and a heat score, with ranges, documented assumptions and graceful degradation. **Not done until P1 lands.** #197 — the D1 strip never renders on mobile — is a shipped feature nobody on a phone can see. |
 | 6 | **E1**, then **E5** | E1 is the cheapest large win on the board: the policies, the edge tags and the Overpass ingest all exist and nothing is wired to cost. E5 (`Trip`) is the structural half of the Living Itinerary and H5 consumes it. |
 
@@ -218,7 +241,8 @@ unprovable without G2. Full brief: `docs/tracks/TRACK_H.md`.
 | **H3** Sun Budget reachability | The flagship interaction, and it **inverts the product**: every other maps app needs your destination first; this answers *"where can I even go?"* Forces the honesty split between an exact result, a bounded approximation, and *a search that ran out of budget* — a capped search returning nothing has not proved impossibility. |
 | **H4** oracle + published gap | What upgrades H from a cool feature to an algorithm you can defend. Without it H3 is a demo. |
 | **H5** waiting, dwell, return leg | The subtle correctness point: earlier arrival does **not** dominate if the wait it implies breaks the budget. Noticing that before it bites is the difference between a student implementation and an engineered one. |
-| **H6** *(stretch)* feasibility for the agent | Where Track C and Track H become one product. Makes §1's request answerable rather than narrated. Needs C4 first — a feasibility query returning "started" is useless. |
+| **H6** feasibility for the agent | Where Track C and Track H become one product. Returns a typed feasibility certificate that C5 can cite. Needs C4 first — a feasibility query returning "started" is useless. |
+| **H7** optimization formulation and bounds | An independently implemented integer formulation and LP/convex relaxation cross-check the production label search, publish optimality/integrality gaps, and prevent “algorithm exists” from turning into an unsupported optimality claim. |
 
 ### NEXT — Wave 3: Track P, the rest of it
 
@@ -229,14 +253,34 @@ best note is H2's objective correction, and P6 cannot be filled before H4 produc
 `docs/tracks/TRACK_P.md` — ~~P1 mirror~~ *(in review)* · ~~P2 README~~ *(Wave 0.5)* · P3 demo
 recording · ~~P4 publish the numbers~~ *(Wave 0.5)* · P5 design notes · P6 the ledger.
 
-### LATER — Wave 4: pick exactly one specialization
+### NEXT — Wave 3.5: agent capstone evidence
 
-**Decide; do not accumulate.** All four are credible; doing two halfway is worse than one
-properly. Record the choice in this file when it is made. None has a brief yet — write one when
-chosen. **Option C was added 2026-09-08** from the Google-roles research; it needs no data
-collection at all. **Option D was added 2026-09-09** from the frontier-literature pass (§5c) and
-is the current frontrunner — it is the only one that answers a question the literature explicitly
-poses, and the only one whose prerequisites are already on Wave 1.
+This wave exists for the hiring-evidence bar in §2; none of it substitutes for the dependable
+core or H's domain algorithm.
+
+1. **C13 ShadowBench** after C4/C5: freeze the held-out split, then add repeated live and
+   controlled real-tool evaluation with equal-budget baselines and raw traces.
+2. **C14 release operations** after C13: server-owned release manifests and limits, durable
+   quotas, canary/monitoring, privacy tests, and an exercised rollback.
+3. **G5 + C15 accessibility** after C5/C7, in parallel with C13 where file ownership permits:
+   the keyboard and screen-reader journey is an acceptance contract, with G5 supplying
+   automation and C15 owning remediation.
+4. **C12 native multimodality** after C10 and the C13 split format: actual images reach Gemini;
+   claims cite regions; image-required tasks and offline/metadata/fixed-sampling baselines run at
+   equal budgets. The earlier Cerebras-era offline-only premise is retired.
+
+### LATER — Wave 4: learned-model specialization
+
+**A10 Reality Check is selected for the agent/Geo hiring-evidence goal as of 2026-09-14.** C12
+proves native multimodal agent behavior; A10 independently proves data, modeling, evaluation,
+artifact deployment, monitoring, and rollback. Combining those two adjacent proofs is more
+valuable for the saved AI/ML roles than adding an unrelated platform. The full acceptance criteria
+now live in Track A rather than only in this options list.
+
+Do not accumulate the alternatives below. Option C's optimization evidence is now covered more
+naturally by H7's integer reference and LP/convex bound over the real route problem. Option D
+remains the strongest product-science follow-up after the hiring bar. Option B remains a valid
+offline product choice, not a prerequisite.
 
 **Two of these moved on 2026-09-09 without new evidence, purely because the client-side-only
 constraint was lifted (#248).** Record why, so it is not re-litigated: **Option B weakened** —
@@ -244,17 +288,14 @@ constraint was lifted (#248).** Record why, so it is not re-litigated: **Option 
 binds, and offline remains a real user need but a thinner *story*. **Option C strengthened** — its
 weakest section now has published method (see #209).
 
-**Option A — Reality Check (the perception-ML story).** Users flag where predicted shadow
+**Option A — Reality Check (the perception-ML story) → selected as A10.** Users flag where predicted shadow
 disagrees with what they observe; a learned correction improves on the geometry baseline.
 
-> **Demoted 2026-09-08 for the stated goal, which is a *multimodal agent* in a navigation app.**
-> This is perception ML, not agent work: a segmenter, a fusion step, an evaluation. It reaches
-> a multimodal-agent story only as **a tool C12's agent can call**, and it is the most expensive
-> way to obtain one. Fine-tuning a segmenter on a few hundred street images is also a
-> well-trodden exercise many candidates have. **Take Option A when the residual after A7/A8
-> justifies it, or for a perception-ML role — not as the route to an agent story.** The agent
-> story is **C12 + C10 + C11 + E5**, it is weeks rather than months, and it does not depend on
-> this option in any way.
+> **Decision corrected 2026-09-14.** A10 is still not needed merely to call C12 a multimodal
+> agent: Gemini now accepts images directly. It is required for the higher hiring-evidence bar
+> because native Gemini inference does not demonstrate an owned dataset, learned artifact,
+> leakage-safe training/evaluation, serving parity, drift handling, or rollback. A10 and C12
+> therefore remain separate implementations joined by a typed tool boundary.
 - **Stop at the achievable rung** unless the data justifies more: logistic regression or GBTs
   over geometry confidence, solar altitude, street orientation, canopy features, observation
   conditions. ~90% of the MLE story for ~10% of the cost of a vision model.
@@ -388,7 +429,7 @@ proposals that were considered and declined.
 | Driving navigation | **Declined** | Out of mission — under own power only. |
 | In-browser SOLWEIG/CFD microclimate | **Declined** *(reason sharpened 2026-09-09)* | Still declined **in the browser**. But the blocker was misdiagnosed: ASU's four hours per 24 h of MRT is dominated by redoing *geometry* every hour, which A6 exists to avoid, and their real constraint is **LiDAR — a data problem, not a compute one**, with a free global substitute (OSM heights + Meta/WRI 1 m canopy + Copernicus DEM). §7 Tier 1 always permitted precomputed physics; #248 permits the weather-conditioned half. **CFD (ENVI-met) stays declined outright** — commercial, licensed, hours per domain. See #247. |
 | A native app | **Deferred** | PWA first; revisit only if background location or notifications block D7. |
-| A 50–100 task agent benchmark | **Rescoped** | Cerebras is 5 req/min; 100 tasks with repeats is hours per run. C1's ~15 recorded, network-free scenarios is the right start — **grow from real failures, not to a target number.** |
+| A 50–100 task agent benchmark | **Rescoped** | Free-tier live runs with repeats take hours. C1 has grown from ~15 to 34 recorded, network-free scenarios; C13 adds a smaller leakage-safe holdout and repeated tiers rather than chasing a vanity task count. **Grow from real failures, not to a target number.** |
 | Chasing Google's feature list | **Declined** | The answer to "Prefer shadow" is not a better toggle. It is §2's five clauses. |
 
 ---
@@ -418,20 +459,24 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 - [ ] **A5** worker offload · [ ] **A6** time sweep *(gates H)*
 - [ ] **A7** Overpass trees *(#46)* · [ ] **A8** canopy raster + height fallback — *promoted from "not yet prioritized" 2026-09-08; run before H3 and before any Wave 4 decision*
 - [ ] **B2** · [ ] **B3** · [ ] **B4** · [ ] **B5** · [ ] **B6** *(the reason B exists)* · [ ] **B7** *(unparks F)*
-- [ ] **C1** *(PR #191)* · [ ] **C2** · [ ] **C3** · [ ] **C4** *(re-scoped: plan job contract)* · [ ] **C5** · [ ] **C10** *(tool authority — gates C12)* · [ ] **C11** *(repair — the Living Itinerary)* · [ ] **C12** *(visual evidence + budget-matched baseline)*
+- [ ] **C1** *(PR #191)* · [ ] **C2** · [ ] **C3** · [ ] **C4** *(terminal plan job contract)* · [ ] **C5** *(typed claim receipts)* · [ ] **C7** *(honest degradation/cancellation)* · [ ] **C10** *(tool authority — gates C12)* · [ ] **C11** *(repair — the Living Itinerary)*
 - [ ] **D3** *(PR #189)* · [ ] **D4** *(PR #196)* · [ ] #197 mobile strip
 - [ ] **E1** mode cost model · [ ] **E5** `Trip`
 
 **Wave 2 — Track H** *(gated on A6 + G2)*
-- [ ] **H1** · [ ] **H2** · [ ] **H3** · [ ] **H4** · [ ] **H5** · [ ] **H6** *(stretch)*
+- [ ] **H1** · [ ] **H2** · [ ] **H3** · [ ] **H4** · [ ] **H5** · [ ] **H6** · [ ] **H7** *(integer/LP reference and bounds)*
 
 **Wave 3 — Track P, the rest** *(P2/P4 moved to Wave 0.5)*
 - [ ] **P3** demo recording · [ ] **P5** design notes · [ ] **P6** ledger
 
-**Wave 4 — one specialization** *(pick exactly one)*
-- [ ] Option A Reality Check · [ ] Option B City Capsules *(weakened by #248)* ·
-  [ ] Option C Shadow Design Studio *(#209)* · [ ] **Option D The Comfort Engine** *(#250 —
-  current frontrunner)* · *decision recorded on:* ______
+**Wave 3.5 — agent capstone evidence**
+- [ ] **C13** held-out/repeated/end-to-end eval · [ ] **C14** releases/monitoring/rollback ·
+  [ ] **G5 + C15** accessible agent journey · [ ] **C12** native Gemini images + equal-budget baselines
+
+**Wave 4 — selected learned-model specialization**
+- [ ] **A10 Reality Check** — data/model/deploy/drift/rollback lifecycle; selected 2026-09-14
+- Alternatives after the bar, not concurrent prerequisites: Option B City Capsules · Option C
+  Shadow Design Studio *(optimization portion superseded by H7)* · Option D Comfort Engine
 
 **Conditional** — not on a wave, but required the moment a precondition is met:
 - [ ] **C10** untrusted content and tool authority — **required before any tool returns
@@ -441,7 +486,7 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 
 **Not yet prioritized** — in their briefs; pull one up when it earns its place against §2's two
 questions, not because it is next in a list:
-A9 · B8–B9 · C6–C9 · D5–D8 · E2–E4, E6–E8 · F1–F6 · G3–G5. *(A7/A8 left this list on 2026-09-08 — see Wave 1.)*
+A9 · B8–B9 · C6, C8–C9 · D5–D8 · E2–E4, E6–E8 · F1–F6 · G3. *(C7 moved to the agent core; G5, C12–C15 and A10 now have explicit waves; G4 is already delivered.)*
 
 ---
 
@@ -496,7 +541,7 @@ it was re-verified line by line and all of them hold.** Recorded so no session r
 | `shadowIndex.ts:227` excludes points inside footprints, so an overhead canopy would shadow nothing | ✅ correct for buildings, wrong for canopies | **Option C** prerequisite |
 | Timezone still longitude-rounded; fix before claiming temporal plans | ✅ | **D0**, already Wave 0 |
 | `plan_shadowed_route` returns "started"; `via` already supported | ✅ (agrees with the 09-07 pass) | **C4** |
-| 7 tools, 18 recorded scenarios, model and tools mocked — replay is not model competence | ✅ counts exact | **P4**'s layer table |
+| At the 2026-09-08 pass: 7 tools and 18 recorded scenarios, model and tools mocked — replay is not model competence | ✅ then-current counts; the suite is now 34 and a live runner exists | **P4**'s layer table; **C13** for independent evaluation |
 | Confidences are hand-set priors; the harness measures method agreement, not physical accuracy | ✅ `ShadowField.ts:193` | **P4**, Option A |
 
 **Its ranking is a keyword ranking, not a value ranking.** It optimizes for matching two JD
@@ -509,27 +554,25 @@ seventh product feature"*, which is Track P.
 **Feature 3 → C12** (see below); Feature 2 needed nothing — it *is* Track H, which it
 independently ranked 2nd of 6.
 
-**Two constraints found while acting on it, verified at `f61371c`.** Both shape C12 and neither
-is in the report:
+**Two constraints found while acting on it, verified at `f61371c`.** The first still shapes C12;
+the second is retained as historical context and was superseded by the Gemini migration:
 
 | Finding | Consequence |
 |---|---|
 | `llmClient.ts:25` — `LlmPart` is `{ text?, functionCall?, functionResponse? }`, **no image part** | Small, clean addition; that is what the neutral IR is for. Ship it before anything needs it. |
-| `api/agent.js:36` — both allowlisted models (`gpt-oss-120b`, `zai-glm-4.7`) are **text-only** | There is no vision model available on the free provider, and adding one that has it is a §2 anti-goal. **Perception runs offline (§7 Tier 1) and the agent selects among its outputs.** Never imply the model looked at a photograph when it read a precomputed observation. |
+| At `f61371c`, both allowlisted models (`gpt-oss-120b`, `zai-glm-4.7`) were **text-only** | **Superseded 2026-09-11:** the allowlist now uses image-capable Gemini models. C12 requires native image-conditioned requests and retains offline perception as a baseline/fallback, not as proof of multimodality. |
 
-**And one correction to the report's own framing.** It ranks the perception feature first and
-calls Features 1–3 an "integrated capstone", which reads as a prerequisite chain. **It is not
-one.** The visual agent needs *images with locations*; it does not need a trained segmenter,
-calibrated pose, seasonal repeats, or masks-as-labels. **C12 is weeks and does not depend on
-Wave 4 Option A at all** — which is why Option A is demoted for the multimodal-agent goal and
-kept only for the perception-ML one.
+**And one correction to the report's own framing.** Native C12 multimodality does not require a
+trained segmenter: it needs permitted images, direct Gemini image input, region receipts, and a
+fair evaluation. **A10 remains a separate dependency only for the higher, ML-lifecycle hiring
+bar.** Keeping the boundary explicit prevents either checkpoint borrowing the other's claim.
 
 **What was declined or deferred, and why:**
 
 | Proposed | Verdict | Reason |
 |---|---|---|
-| Features 1 & 4 — Visual Shadow Field, Active Survey Planner | **Deferred → Wave 4 Option A** | Not new scope, it *is* Option A with a better evaluation protocol (pose rejection, geographic *and* temporal holdouts, leaf-season splits, reliability diagrams, dataset card, rollback — adopt these wholesale if Option A is chosen). The cost is a pose-accurate seasonal photo corpus: **months, and season-locked**. Do **A7 + A8 first** — free Overpass trees and the free Meta/WRI 1 m canopy raster may deliver most of the *routing-decision* benefit for none of the fieldwork; the panorama corpus buys per-position sky-view-factor and transmittance, which is better physics at a much higher price. Measure the residual before committing months. |
-| Feature 3's **visual** half — live VLM route scout | **Deferred** | The non-visual half is already **C4 + C11 + E5**. Its "local VLM adapter (Gemma)" is a second model path — not a paid provider, so not literally a §2 anti-goal, but it must be a recorded decision, not drift. |
+| Features 1 & 4 — Visual Shadow Field, Active Survey Planner | **Selected → A10 after A7/A8** | It is Option A with a stronger lifecycle protocol: pose rejection, geographic and temporal holdouts, leaf-season slices, reliability diagrams, dataset/model cards, drift checks, and rollback. The expensive segmentation corpus is still conditional on baseline residuals; the learned-model lifecycle is not. |
+| Feature 3's **visual** half — live VLM route scout | **Adopted as revised C12** | The provider migration removed the old text-only constraint. C12 requires native Gemini image input, retains offline observations as a measured baseline/fallback, and does not add an unmeasured local model path. |
 | Feature 5 — Find the Light w/ SigLIP retrieval | **Kept where it is** | Already in the playful list. The retrieval framing is a real upgrade; the 20–50 curated micro-locations and photo permissions are the actual cost. |
 | Street View as a training corpus | **Prohibited** | Maps Platform Terms §3.2.3 restricts extraction and model training/testing/validation and building a tree-location index. Own photographs only. Not a judgment call. |
 | Offline Python training + versioned derived artifacts | **Adopted with a boundary** | This is the one real architecture change it proposes and it does not flag it as one. Permitted as a **build step producing versioned static assets**, never as a request-path service — see §7. |
@@ -586,8 +629,36 @@ CFD). Reopening Wave 4 on this evidence — P1's street-view segmentation is sup
 A's method, but they performed **no validation against measured shadow**, only a visual
 sun-position check, so it is weak support and the demotion stands.
 
-**Changed nothing:** Wave 0 (D0, G8, #208, G7), **Track C entirely** — there is no agent,
-tool-use or evaluation content in any of these papers — and Track B.
+**Changed nothing in the 2026-09-09 literature pass:** Wave 0 (D0, G8, #208, G7), **Track C
+entirely** — there is no agent, tool-use or evaluation content in those papers — and Track B.
+The later hiring-evidence pass below changes Track C for different evidence.
+
+### 5d. The 2026-09-14 agent/Geo hiring-evidence pass
+
+The two saved Google Geo descriptions and the current SWE/AI/ML hiring market were compared with
+the implemented agent, its tests/live eval, the wider repository, and the public evidence. Full
+assessment: `docs/research/Umbra_Track_C_Hiring_Assessment_2026-09-14.md`.
+
+The implementation already provides strong applied-agent evidence: bounded orchestration,
+provider adaptation, retries, deterministic state reconciliation, failure scenarios, live-model
+runs, and measured request/latency work. The decisive implementation gaps were narrower and more
+specific than “add more AI”:
+
+- the route tool reports initiation instead of a terminal outcome → **C4**;
+- place/pin agreement is not claim-level factual grounding → **C5**;
+- development scenarios are not a leakage-safe held-out/end-to-end evaluation → **C13**;
+- hosted inference lacks a versioned promotion/monitor/rollback lifecycle → **C14**;
+- external text/image authority needs code enforcement → **C10**;
+- assistant keyboard/screen-reader operation is incomplete → **C15 + G5**;
+- the C12 brief retained an obsolete text-only-provider premise after Gemini arrived → **C12
+  now requires actual image-conditioned Gemini requests**;
+- the project did not independently demonstrate a learned-model lifecycle → **A10**;
+- the Maps-facing optimization story lacked an LP/convex artifact → **H7**, attached to the real
+  time-dependent route problem rather than a keyword-only toy.
+
+Experience duration, credentials, solo ownership, and final public packaging were deliberately not
+turned into implementation checkpoints: a repository cannot prove the first two, solo ownership is
+not a code defect, and Track P already owns publication after the underlying evidence exists.
 
 ---
 
@@ -600,11 +671,15 @@ public mirror.
 | | Line | Earned by |
 |---|---|---|
 | ⬜ | "Built a time-dependent pedestrian planner with exposure and arrival constraints; reduced [error] by [measured] versus a static baseline on [versioned fixtures]." | H1–H4 |
-| ⬜ | "Developed a tool-using itinerary agent with deterministic validation and recovery; improved valid-plan rate from [A] to [B] over [N] held-out tasks at [cost] per successful task." | C1, C4, C5, P4 |
+| ⬜ | "Developed a tool-using itinerary agent with terminal job contracts, deterministic claim validation and repair; improved valid-plan rate from [A] to [B] over [N] held-out tasks at [cost] per successful task." | C1, C4, C5, C11, C13, P4 |
+| ⬜ | "Built and evaluated an image-conditioned Gemini agent over [N] held-out Geo tasks; improved [task metric] over metadata, offline-extraction and fixed-sampling baselines at equal budgets, with [visual-claim escape rate]." | C10, C12, C13 |
+| ⬜ | "Versioned model/prompt/tool releases behind server-owned policy; detected a degraded canary on [metric] and rolled back in [time], with cross-instance quota and privacy-retention tests." | C14 |
+| ⬜ | "Formulated Sun Budget routing as an integer program with an LP/convex relaxation; measured production-search and integrality gaps over [N] fixtures and exposed verified feasibility certificates to the agent." | H4, H6, H7 |
+| ⬜ | "Shipped a keyboard- and screen-reader-complete agent planning flow with zero serious/critical axe violations and a documented manual assistive-technology run." | C15, G5 |
 | ⬜ | "Cut per-edge shadow sampling by [measured]× by precomputing and indexing shadow geometry per sun cell." | **Already measured (#166) — needs only P4** |
 | ⬜ | "Published a shadow-model agreement harness across [N] cases and 3 cities, reporting mean, p90 and worst-case error against committed regression ceilings." | **Already true (A3) — needs only P4** |
 | ⬜ | "Implemented offline neighborhood routing with atomic snapshot updates; [latency and size], verified online/offline parity on [device]." | Wave 4 Option B |
-| ⬜ | "Trained and calibrated a geospatial shadow-correction model with neighborhood and date holdouts; measured [metric] and [route impact], with versioned deployment and rollback." | Wave 4 Option A |
+| ⬜ | "Trained and calibrated a geospatial shadow-correction model with neighborhood and date holdouts; measured [metric] and [route impact], with versioned deployment, drift checks and rollback." | A10 |
 
 **Two of six are already earned and merely unpublished.** That is the cheapest value available
 anywhere in this document.

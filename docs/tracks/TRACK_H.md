@@ -170,14 +170,49 @@ checked by test; the model's assumptions are in `docs/notes/sun-budget-model.md`
 **Files.** `app/lib/routing.ts`, `app/lib/trip/**` (E's — consume via the contract).
 **Size.** Medium. **Depends on H3; coordinate with E5.**
 
-### H6 — Feasibility answers for the assistant *(stretch)*
+### H6 — Feasibility answers for the assistant
 **Goal.** Close the loop with Track C: the agent asks "is this possible?" and gets a real answer.
 **Approach.** Expose H3's search behind a tool that returns feasible / infeasible / *unknown,
 budget exhausted*, with the violated constraint named when infeasible. This is what makes the
 §1 request ("90 minutes, coffee, ≤8 minutes of sun, home by 5:30") answerable rather than
 narrated. **Depends on Track C's C4 job contract** — a feasibility query that returns "started" is
 useless.
-**Size.** Medium. **Depends on H3, C4. Track C owns the tool wrapper; H owns the search.**
+Return a typed certificate: input/plan version, model and geometry versions, terminal status,
+constraint ledger, exposure/time totals, bound or approximation gap where available, and the
+edges/observations that explain the limiting constraint. C5 receipts cite this certificate; the
+agent never derives feasibility from prose.
+**Acceptance.** Held-out scenarios cover feasible, proven infeasible, budget-exhausted unknown,
+partial, cancelled, and stale/superseded results. The final answer and application state agree
+with the certificate; injected prose claiming success cannot override it. At least one browser
+flow follows a tool receipt into the H4/H7 evidence explaining the answer. Compare typed-tool
+agent success with a text-only/single-pass baseline at equal budgets under C13.
+**Size.** Medium. **Depends on H3, H4, C4, C5. Track C owns the tool wrapper; H owns the search
+and certificate.**
+
+### H7 — Optimization formulation, relaxation, and bounds
+**Goal.** Make the optimization claim inspectable in a second, independently implemented form,
+and add real linear/convex optimization evidence without replacing the interactive label-setting
+search with an inappropriate solver.
+**Approach.** Formulate small, time-expanded Sun Budget instances with decision variables for
+edge/time traversal and waiting, flow conservation, time propagation, exposure and return-budget
+constraints, and the same objective H2/H5 use. Solve the integer form offline as a reference and
+its LP relaxation as a convex lower bound. State where time discretization or non-linear comfort
+terms prevent equivalence rather than hiding them. Compare the production bounded-label search,
+H4 brute-force oracle, integer optimum, and LP bound on identical versioned fixtures. Report
+runtime, memory, optimality/approximation gap, and integrality gap.
+
+Use the solver only in evaluation and explanation unless measurement proves it fits the product
+budget. H6 may return the stored bound/certificate for a fixture or completed offline job, but a
+model never invents or certifies an optimum.
+**Acceptance.** A design note derives variables, objective, and every constraint; at least one
+fixture exposes a loose relaxation and one catches a deliberately incorrect production dominance
+rule. Brute force and integer results agree on their common small domain. Report distributions and
+worst cases, not a single favorable example. Claims use “optimal” only when the integer/exact
+certificate supports it and otherwise name the measured gap or unknown. The formulation and
+reproduction command are versioned and linked from the agent receipt/evidence page.
+**Files.** Offline solver/eval under `scripts/` or `server/`, H fixtures, model note and exported
+certificates; no solver dependency in the default browser bundle. **Size.** Large. **Depends on
+H2, H4, H5; coordinates with C13/P4.**
 
 ---
 
@@ -201,6 +236,8 @@ useless.
   swarming them lands H2 unverified. This is the anti-pattern `docs/tracks/README.md` names.
 - **H4's property tests are swarm-able** — each is an independent test file. Write the oracle
   yourself, then fan out `builder`s on test batches in worktrees.
+- **H7's formulation is solo; fixtures may parallelize after it is frozen.** An independently
+  coded solver is useful only if nobody copies the production recurrence into it.
 - **`verifier` on H2, without exception.** A changed objective function that silently still
   optimizes the old quantity would pass every existing test and invalidate the entire track's
   claim. Cold review is the only thing that catches it.
@@ -223,6 +260,9 @@ useless.
 4. **`routing.ts` contention.** A, E and H all edit it. Until G6, say so in the PR's first
    sentence, keep the diff minimal, and reformat nothing.
 5. **Deleting the static path too early.** See the last design note.
+6. **Calling an LP bound a feasible route.** The relaxation is a bound, not necessarily an
+   executable itinerary. Only an integer/exact certificate or a validated production plan may be
+   presented as feasible.
 
 ## Out of scope / hand-offs
 
