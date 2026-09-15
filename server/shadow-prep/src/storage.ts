@@ -92,8 +92,13 @@ export function candidateStore(root: string): ObjectStore {
 export function r2StoreFromEnvironment(): S3Store {
   const bucket = process.env.SHADE_PACK_R2_BUCKET;
   const endpoint = process.env.SHADE_PACK_R2_ENDPOINT;
-  if (!bucket || !endpoint) throw new Error("SHADE_PACK_R2_BUCKET and SHADE_PACK_R2_ENDPOINT are required for R2 output");
+  const accessKeyId = process.env.SHADE_PACK_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.SHADE_PACK_R2_SECRET_ACCESS_KEY;
+  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey)
+    throw new Error("R2 output requires its bucket, endpoint, access key id, and secret access key");
   if (!/^https:\/\/[a-f0-9]{32}(?:\.[a-z]+)?\.r2\.cloudflarestorage\.com$/.test(endpoint))
     throw new Error("SHADE_PACK_R2_ENDPOINT must be an account-scoped HTTPS R2 endpoint");
-  return new S3Store(bucket, "", new S3Client({ region: "auto", endpoint, forcePathStyle: true }));
+  // Follow R2's AWS SDK v3 configuration exactly. Its account endpoint plus
+  // bucket parameter selects the virtual-hosted S3 request shape.
+  return new S3Store(bucket, "", new S3Client({ region: "auto", endpoint, credentials: { accessKeyId, secretAccessKey } }));
 }
