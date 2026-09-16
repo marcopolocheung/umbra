@@ -11,6 +11,8 @@ COPY app ./app
 COPY scripts/preflight-shadow-v2.mjs ./scripts/preflight-shadow-v2.mjs
 COPY server/shadow-prep ./server/shadow-prep
 ENV SHADE_PREP_ROOT=/data
+# Batch v2 jobs fetch their admitted manifest and geometry from S3 object
+# specs; no host `/workspace/admission` path is assumed or mounted.
 # The command selects the entrypoint. This keeps existing normalizer jobs
 # compatible while allowing a dedicated pack benchmark without a shell wrapper.
 ENTRYPOINT ["node", "server/shadow-prep/node_modules/tsx/dist/cli.mjs"]

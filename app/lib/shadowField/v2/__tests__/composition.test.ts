@@ -112,8 +112,7 @@ it("resolves whole features before clipping with roof then stable ID precedence"
   ).toMatchObject({ featureId: 4 });
 });
 
-it("uses fallback crowns only where native support is unavailable and clips roof overlap", () => {
-  const components = syntheticComponents();
+it("uses fallback crowns only where native support is unavailable and clips roof overlap", () => {  const components = syntheticComponents();
   const canopy = components[2];
   const index = STORED_SIZE + 2;
   const support = canopy.planes.find((entry) => entry.name === "canopySupport")?.words;
@@ -135,4 +134,32 @@ it("uses fallback crowns only where native support is unavailable and clips roof
   result = composeTile(components, syntheticManifest(components), { reserve: () => true });
   expect(result.crownBaseQ[index]).toBe(result.buildingTopQ[index]);
   expect(result.crownTopQ[index]).toBe(result.groundQ[index] + 700);
+});
+
+it("composes partial support with per-source independence", () => {
+  const components = syntheticComponents();
+  const buildings = components[1];
+  const support = buildings.planes.find((plane) => plane.name === "buildingSupport")?.words;
+  if (!support) throw new Error("fixture support missing");
+  support.fill(2);
+  buildings.support = "partial";
+  const occupied = STORED_SIZE + 2;
+  const first = STORED_SIZE * 2 + 3;
+  const result = composeTile(components, syntheticManifest(components), { reserve: () => true });
+  // The building-unknown cell is flagged incomplete, yet both sources still
+  // compose: the roof stands and the known canopy crown is not skipped.
+  expect(result.evidence!.complete).toBe(false);
+  expect(result.evidence!.buildings).toBe("partial");
+  expect(result.evidence!.buildingUnknownCells).toBe(count);
+  expect(result.flagsAndMaterial[occupied] & COMPONENT_FLAGS.buildingUnknown).toBeTruthy();
+  expect(result.buildingTopQ[occupied]).toBe(608);
+  expect(result.crownTopQ[first]).toBe(result.groundQ[first] + 960);
+});
+
+it("still rejects fully unresolved building support", () => {
+  const components = syntheticComponents();
+  components[1].support = "unknown";
+  expect(() =>
+    composeTile(components, syntheticManifest(components), { reserve: () => true }),
+  ).toThrow(/unresolved/);
 });

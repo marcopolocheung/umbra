@@ -59,6 +59,8 @@ export function syntheticComponents(terrainBumpQ = 0): Component[] {
   buildingAglQ[STORED_SIZE + 2] = 640;
   const buildingMask = new Uint32Array(words);
   buildingMask[STORED_SIZE + 2] = 1;
+  const buildingSupport = new Uint32Array(words);
+  buildingSupport.fill(1);
   const buildingFeatureId = new Uint32Array(words);
   buildingFeatureId[STORED_SIZE + 2] = 7;
   const canopyHeightAglQ = new Uint32Array(words);
@@ -103,6 +105,13 @@ export function syntheticComponents(terrainBumpQ = 0): Component[] {
         name: "buildingMask",
         type: "u32",
         words: buildingMask,
+        predictor: "none",
+        provenanceTableIndex: 0,
+      },
+      {
+        name: "buildingSupport",
+        type: "u32",
+        words: buildingSupport,
         predictor: "none",
         provenanceTableIndex: 0,
       },

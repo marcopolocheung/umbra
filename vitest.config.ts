@@ -3,7 +3,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["app/{lib,services,hooks,components}/**/__tests__/**/*.test.{ts,tsx}"],
+    include: [
+      "app/{lib,services,hooks,components}/**/__tests__/**/*.test.{ts,tsx}",
+      // Pure Worker allow-list/gating logic (no workerd APIs at import time).
+      "cloudflare/shadow-data-worker/src/**/*.test.ts",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],

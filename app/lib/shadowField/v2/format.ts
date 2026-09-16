@@ -170,7 +170,7 @@ function assertComponent(component: Component): void {
   }
   if (
     component.support &&
-    !["present", "known-empty", "nodata", "unknown"].includes(component.support)
+    !["present", "known-empty", "nodata", "unknown", "partial"].includes(component.support)
   )
     throw new Error("unknown component support");
   const tables = component.tables;
@@ -185,7 +185,8 @@ function assertComponent(component: Component): void {
   }
   if (
     tables.provenance.some(
-      (entry) => !["present", "known-empty", "nodata", "unknown"].includes(entry.support),
+      (entry) =>
+        !["present", "known-empty", "nodata", "unknown", "partial"].includes(entry.support),
     )
   )
     throw new Error("invalid provenance support");
@@ -336,6 +337,15 @@ function parseDirectory(bytes: Uint8Array): Directory {
     tables: directory.tables,
   });
   return directory;
+}
+
+/**
+ * Recompute the physics hash over decoded planes in directory order, using the
+ * same concatenation as `encodeComponent`. Bundle decoding uses this to verify
+ * the outer transport record instead of treating it as documentation.
+ */
+export async function componentPhysicsHash(planes: ComponentPlane[]): Promise<string> {
+  return sha256(concat(planes.map((plane) => bytesFor(plane.words))));
 }
 
 export async function decodeComponent(bytes: Uint8Array): Promise<Component> {

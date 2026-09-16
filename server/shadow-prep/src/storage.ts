@@ -7,20 +7,78 @@ import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCom
 
 /** A deliberately small object-store contract.  Candidate publication depends on
  * the descriptor being written last; it never depends on directory rename
- * semantics (which S3 does not have). */
+ * semantics (which S3 does not have).
+ *
+ * Production compare-and-swap is R2 (`S3Store.writeConditional`, backed by
+ * S3 `If-Match` / `If-None-Match` conditional writes).  `FilesystemStore` is
+ * test-fidelity only: it re-reads the head tag and then does an atomic
+ * tmp-file + rename, which is not linearizable under concurrent processes
+ * the way R2's server-side precondition is.  Do not rely on the filesystem
+ * store for real promotion races. */
+export interface ObjectHead {
+  bytes: number;
+  sha256?: string;
+  /** Opaque CAS tag: the S3 `ETag` on R2, the content sha256 locally. */
+  etag?: string;
+}
+export interface ConditionalWriteOptions {
+  ifMatch?: string;
+  ifNoneMatch?: "*";
+}
 export interface ObjectStore {
   readonly kind: "filesystem" | "s3";
   read(key: string): Promise<Uint8Array>;
   /** Streams a remote object to a caller-owned local temporary path. */
   copyToFile(key: string, destination: string): Promise<void>;
   write(key: string, value: Uint8Array, contentType?: string): Promise<void>;
-  head(key: string): Promise<{ bytes: number; sha256?: string } | undefined>;
+  /** Conditional write: `ifMatch` requires the current etag, `ifNoneMatch: "*"`
+   * requires absence.  Throws a `PreconditionFailed` (412) error on mismatch. */
+  writeConditional(key: string, value: Uint8Array, contentType?: string, opts?: ConditionalWriteOptions): Promise<void>;
+  head(key: string): Promise<ObjectHead | undefined>;
+}
+
+/** True for S3/R2 conditional-write conflicts (`PreconditionFailed`,
+ * `FailedPrecondition`, HTTP 412) and for the filesystem store's equivalent. */
+export function isConditionalWriteConflict(error: unknown): boolean {
+  const failure = error as { name?: string; code?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+  const name = failure?.name ?? failure?.code ?? failure?.Code;
+  if (name === "PreconditionFailed" || name === "FailedPrecondition") return true;
+  if (failure?.$metadata?.httpStatusCode === 412) return true;
+  return false;
+}
+
+function preconditionFailed(message: string): Error {
+  const error = new Error(message) as Error & { $metadata: { httpStatusCode: number } };
+  error.name = "PreconditionFailed";
+  error.$metadata = { httpStatusCode: 412 };
+  return error;
 }
 
 function safeKey(key: string): string {
   const cleaned = normalize(key).replaceAll("\\", "/");
   if (!key || cleaned === ".." || cleaned.startsWith("../") || key.startsWith("/")) throw new Error(`unsafe object key ${key}`);
   return cleaned;
+}
+
+/** Parse the object-spec forms used by operator runbooks.  Accept both the
+ * canonical `s3:<bucket>:<key>` form and the historically documented
+ * `s3:<bucket>/<key>` / URI form so an old invocation cannot silently select a
+ * different bucket or key. */
+export function parseS3ObjectSpec(spec: string): { bucket: string; key: string } {
+  if (!spec.startsWith("s3:")) throw new Error(`not an s3 object spec: ${spec}`);
+  const value = spec.slice(3);
+  if (value.startsWith("//")) {
+    const slash = value.indexOf("/", 2);
+    if (slash <= 2 || slash === value.length - 1) throw new Error(`s3 object spec must include bucket and key: ${spec}`);
+    return { bucket: value.slice(2, slash), key: safeKey(value.slice(slash + 1)) };
+  }
+  const colon = value.indexOf(":");
+  if (colon > 0 && colon < value.length - 1)
+    return { bucket: value.slice(0, colon), key: safeKey(value.slice(colon + 1)) };
+  const slash = value.indexOf("/");
+  if (slash > 0 && slash < value.length - 1)
+    return { bucket: value.slice(0, slash), key: safeKey(value.slice(slash + 1)) };
+  throw new Error(`s3 object spec must include bucket and key: ${spec}`);
 }
 
 export class FilesystemStore implements ObjectStore {
@@ -33,17 +91,47 @@ export class FilesystemStore implements ObjectStore {
   }
   async read(key: string): Promise<Uint8Array> { return new Uint8Array(await readFile(this.path(key))); }
   async copyToFile(key: string, destination: string): Promise<void> { await mkdir(dirname(destination), { recursive: true }); await copyFile(this.path(key), destination); }
-  async write(key: string, value: Uint8Array): Promise<void> {
+  async write(key: string, value: Uint8Array, _contentType?: string): Promise<void> {
+    await this.writeConditional(key, value, _contentType, {});
+  }
+  async writeConditional(key: string, value: Uint8Array, _contentType?: string, opts: ConditionalWriteOptions = {}): Promise<void> {
+    // Test-fidelity CAS only: re-read the head tag, fail on mismatch, then
+    // atomic tmp-file + rename.  The check-and-rename is not atomic across
+    // processes — production races are decided by R2 server-side instead.
+    if (opts.ifNoneMatch === "*") {
+      try {
+        await stat(this.path(key));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          // Absent as required; fall through to the write below.
+        } else throw error;
+        const path = this.path(key); await mkdir(dirname(path), { recursive: true });
+        const temporary = `${path}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+        await writeFile(temporary, value); await rename(temporary, path);
+        return;
+      }
+      throw preconditionFailed(`promotion refused: concurrent promotion on ${key}`);
+    }
+    if (opts.ifMatch !== undefined) {
+      const current = await this.head(key);
+      const currentTag = current?.etag ?? current?.sha256;
+      if (!current || currentTag !== opts.ifMatch)
+        throw preconditionFailed(`promotion refused: concurrent promotion on ${key}`);
+    }
     const path = this.path(key); await mkdir(dirname(path), { recursive: true });
     const temporary = `${path}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
     await writeFile(temporary, value); await rename(temporary, path);
   }
-  async head(key: string): Promise<{ bytes: number; sha256?: string } | undefined> {
+  async head(key: string): Promise<ObjectHead | undefined> {
     const path = this.path(key);
     try {
       const metadata = await stat(path); const hash = createHash("sha256");
       await new Promise<void>((resolve, reject) => { const stream = createReadStream(path); stream.on("data", (chunk) => hash.update(chunk)); stream.on("error", reject); stream.on("end", resolve); });
-      return { bytes: metadata.size, sha256: hash.digest("hex") };
+      // Local etag is the content sha256 (free: head already hashes).  It is
+      // NOT an S3 ETag — R2 tags are opaque multipart hashes — so etags from
+      // one store kind must never be compared against the other.
+      const digest = hash.digest("hex");
+      return { bytes: metadata.size, sha256: digest, etag: digest };
     } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
   }
 }
@@ -66,13 +154,31 @@ export class S3Store implements ObjectStore {
     await pipeline(result.Body as unknown as NodeJS.ReadableStream, createWriteStream(destination, { flags: "w" }));
   }
   async write(key: string, value: Uint8Array, contentType = "application/octet-stream"): Promise<void> {
-    const digest = createHash("sha256").update(value).digest("hex");
-    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: this.key(key), Body: value, ContentType: contentType, Metadata: { sha256: digest } }));
+    await this.writeConditional(key, value, contentType, {});
   }
-  async head(key: string): Promise<{ bytes: number; sha256?: string } | undefined> {
+  async writeConditional(key: string, value: Uint8Array, contentType = "application/octet-stream", opts: ConditionalWriteOptions = {}): Promise<void> {
+    // Production CAS: R2 evaluates IfMatch/IfNoneMatch server-side (S3
+    // conditional writes), so concurrent promoters are serialized by the
+    // store rather than by a client-side read-compare-write.
+    const digest = createHash("sha256").update(value).digest("hex");
+    await this.client.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: this.key(key),
+      Body: value,
+      ContentType: contentType,
+      Metadata: { sha256: digest },
+      ...(opts.ifMatch !== undefined ? { IfMatch: opts.ifMatch } : {}),
+      ...(opts.ifNoneMatch !== undefined ? { IfNoneMatch: opts.ifNoneMatch } : {}),
+    }));
+  }
+  async head(key: string): Promise<ObjectHead | undefined> {
     try {
       const value = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: this.key(key) }));
-      return { bytes: Number(value.ContentLength ?? 0), sha256: value.Metadata?.sha256 };
+      // ETags are opaque entity-tags.  Preserve the quotes returned by
+      // HeadObject: R2 expects the If-Match header value exactly as supplied
+      // (for example, `"29d9..."`), not a stripped digest.
+      const etag = value.ETag || undefined;
+      return { bytes: Number(value.ContentLength ?? 0), sha256: value.Metadata?.sha256, ...(etag ? { etag } : {}) };
     } catch (error) {
       const code = (error as { name?: string; $metadata?: { httpStatusCode?: number } }).name;
       if (code === "NotFound" || (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return undefined;

@@ -144,7 +144,7 @@ describe("v2 browser tile bundle transport", () => {
     await expect(decodeBrowserTileBundle(badTile)).rejects.toThrow(/mismatch/);
   });
 
-  it("rejects invalid hash syntax without computing physics agreement", async () => {
+  it("rejects invalid hash syntax without decoding components", async () => {
     const { encoded } = await validBundle();
     const badTransport = rebuildBundle(encoded.bytes, (directory) => {
       directory.components[0].transportHash = "not-hex";

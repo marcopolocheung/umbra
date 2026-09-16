@@ -186,3 +186,77 @@ waves until the pending quota increase arrives. It waits for index → array →
 aggregate in that order, and leaves the current pointer unchanged. Review and
 explicitly run it only after the capacity request is approved and the reviewed
 image/stack update is live.
+
+## PR2 corrected generation (recipe v2)
+
+The v1 generation's bundles carry building masks but declare `known-empty`
+support: the v1 producer allocated `buildingSupport` as zeros and never filled
+it. PR2 repacks from the existing immutable candidate planes — no source
+redownload, no GDAL rerun — under the new immutable generation
+`nyc-70e3507f16d472adf5475b614a60cb16-five-borough-v2`
+(recipe `nyc-candidate-browser-pack-v2`):
+
+- Per-cell building support derives from the hash-pinned frozen-support
+  geometry (1 covered, 2 outside admitted coverage, 0 forbidden); an occupied
+  cell outside coverage fails the tile instead of publishing.
+- Component states gain `partial`; composition accepts it and keeps building
+  and canopy evaluation independent.
+- Bundle decoding verifies outer physics hashes and shared
+  generation/tile/recipe/datum/hierarchy identity universally; v1 zero planes
+  are grandfathered for support semantics only.
+- The v2 `sourceHash` binds the original candidate identity plus the repair
+  receipt (policy, geometry, original/corrected plane hashes).
+- New immutable artifacts, all hash-pinned by `generation.json` (the only
+  document `current.json` v2 names): `coverage.json` (availability vs
+  borough-clipped activation), `bounds.json` (composed leaf bounds plus the
+  z17..z10 reduction pyramid plus any `roof-below-terrain` tiles that PR3 must
+  not compose), `notices.json` (receipt-level rights URLs, FABDEM modification
+  disclosure, Overture building/building-part, CHMv2 height/mask and Vantor,
+  OSM fallback, and installed NGA-grid notices). The detailed manifest is
+  retained for audit.
+- `current.json` moves last with an expected-previous-sha256
+  compare-and-swap (hash the live `current.json` bytes before promoting);
+  rollback is restoring the v1 pointer value, with the old generation retained
+  in R2 for forensic comparison.
+
+Runbook (operator, after the reviewed image/stack update is live):
+
+```sh
+# 0. Stage the two pinned geometry inputs where Batch can read them.
+#    Support geometry hash must match the acquisition manifest pin;
+#    borough hash must match regions/new-york-city-v1.json boundary.sha256.
+# 1. Dry smoke of the repair on representative tiles:
+docker run --rm -v "$HOME/shade-prep-data:/data" umbra-shadow-prep \
+  server/shadow-prep/src/pack-cli.ts --normalization-id 70e3507f16d472adf5475b614a60cb16 \
+  --tiles 18/77196/98516,18/77336/98545 --recipe 2 \
+  --support-geometry /data/acquisition/nyc-five-borough-20km-support.geojson \
+  --support-sha256 <support-pin> --write-dir /tmp/repair-smoke
+# 2. Full run (index is reused, not rebuilt):
+scripts/aws/submit-nyc-browser-pack.sh --execute --v2 \
+  --support-geometry s3:<evidence-bucket>:inputs/support.geojson --support-sha256 <support-pin> \
+  --borough-boundary s3:<evidence-bucket>:inputs/borough.geojson \
+  --admission-manifest s3:<evidence-bucket>:evidence/admission/new-york-city-v1.json
+# 3. Verify without writing, then promote explicitly:
+#    pack-full-cli --promote --verify-only [--report promote-verify.json]
+#    pack-full-cli --promote --expected-previous-sha256 03343254... [--report promote.json]
+```
+
+Batch jobs have no host `/workspace/admission` mount. The AWS launcher supplies
+the retained admission object automatically when `--admission-manifest` is
+omitted; an explicit value must be an S3 object spec. Both the canonical
+`s3:<bucket>:<key>` form and the older `s3:<bucket>/<key>` spelling are accepted.
+
+Budgets enforced by producers and browser parsers: coverage 2 MiB, bounds
+6 MiB, notices 256 KiB, generation root 256 KiB. The aggregate step fails if
+any artifact exceeds its budget; the size-gate projection test lives in
+`app/lib/shadowField/v2/__tests__/artifacts.test.ts`.
+
+Known live-data condition: whole-feature foundations on steep real terrain
+can store a roof below the local ground cell (observed in staged v1 tiles
+18/77196/98516 and 18/77196/98517, up to ~1 m buried). The shared composer
+rejects those cells, so pack-time bounds fall back to the conservative plane
+reduction (`reduceConservativeBounds`, parity-tested against composition) and
+each affected tile is recorded as a `roof-below-terrain` anomaly in shard
+receipts, the aggregation report, and the promotion sample report. The
+anomaly list is PR4's input for a buried-roof marching/rendering policy; it
+never blocks packing or promotion once recorded.

@@ -1,3 +1,4 @@
+import { SUPPORT_UNKNOWN } from "./support";
 import { validateManifestDependencies } from "./format";
 import { composeCrown } from "./treeModel";
 import {
@@ -11,10 +12,12 @@ import {
 export interface CompositionReservation {
   reserve(bytes: number): boolean;
 }
+/** Identity of the source-join implementation, pinned through v2 component identities. */
+export const COMPOSITOR_VERSION = "nyc-shadow-compositor-v1";
 export interface CompositionEvidence {
   terrain: "present";
-  buildings: "present" | "known-empty";
-  canopy: "present" | "known-empty";
+  buildings: "present" | "known-empty" | "partial";
+  canopy: "present" | "known-empty" | "partial";
   complete: boolean;
   buildingUnknownCells?: number;
   canopyUnknownCells?: number;
@@ -107,6 +110,9 @@ export function composeTile(
     throw new Error("terrain support is required for composition");
   if (pinned && (!buildings || !canopy))
     throw new Error("component support is required for composition");
+  // "partial" is explicitly composable: per-cell unknown flags below keep each
+  // source independent, so a building-unknown cell still composes known canopy
+  // and vice versa. Only fully unresolved support fails here.
   if (
     buildings?.support === "unknown" ||
     buildings?.support === "nodata" ||
@@ -123,6 +129,7 @@ export function composeTile(
   const buildingAgl = plane(buildings, "buildingAglQ");
   const buildingMask = plane(buildings, "buildingMask");
   const buildingSupport = plane(buildings, "buildingSupport");
+  const canopySupport = plane(canopy, "canopySupport");
   const buildingFeature = plane(buildings, "buildingFeatureId");
   const flagsSource = plane(canopy, "flagsAndMaterial") ?? plane(buildings, "flagsAndMaterial");
   const provenanceSource = plane(canopy, "provenanceIndex") ?? plane(buildings, "provenanceIndex");
@@ -137,17 +144,30 @@ export function composeTile(
     provenanceIndex: provenanceSource?.slice() ?? new Uint32Array(words),
     evidence: {
       terrain: "present",
-      buildings: buildings?.support === "known-empty" || !buildings ? "known-empty" : "present",
-      canopy: canopy?.support === "known-empty" || !canopy ? "known-empty" : "present",
+      buildings:
+        buildings?.support === "known-empty" || !buildings
+          ? "known-empty"
+          : buildings?.support === "partial"
+            ? "partial"
+            : "present",
+      canopy:
+        canopy?.support === "known-empty" || !canopy
+          ? "known-empty"
+          : canopy?.support === "partial"
+            ? "partial"
+            : "present",
       complete: true,
     },
     accounting: { outputBytes, reservedBytes: outputBytes },
   };
   for (let index = 0; index < words; index++) {
-    // 0 is known support, 1 is known-empty support, 2 is explicitly unknown.
-    // Unknown never becomes clear space in the in-memory field.
-    if (buildingSupport?.[index] === 2) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.buildingUnknown; result.evidence!.complete = false; result.evidence!.buildingUnknownCells = (result.evidence!.buildingUnknownCells ?? 0) + 1; continue; }
-    if (plane(canopy, "canopySupport")?.[index] === 2) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.canopyUnknown; result.evidence!.complete = false; result.evidence!.canopyUnknownCells = (result.evidence!.canopyUnknownCells ?? 0) + 1; }
+    // Cell support: 1 is source-covered (occupancy lives in the mask), 2 is
+    // explicitly unknown, 0 is the legacy-unset value the v1 building producer
+    // emitted everywhere (grandfathered here as covered; v2 forbids it at
+    // pack/decode time). Unknown never becomes clear space in the in-memory
+    // field, and one source's unknown cells never suppress the other source.
+    if (buildingSupport?.[index] === SUPPORT_UNKNOWN) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.buildingUnknown; result.evidence!.complete = false; result.evidence!.buildingUnknownCells = (result.evidence!.buildingUnknownCells ?? 0) + 1; }
+    if (canopySupport?.[index] === SUPPORT_UNKNOWN) { result.flagsAndMaterial[index] |= COMPONENT_FLAGS.canopyUnknown; result.evidence!.complete = false; result.evidence!.canopyUnknownCells = (result.evidence!.canopyUnknownCells ?? 0) + 1; }
     const hasBuilding = buildingMask ? buildingMask[index] !== 0 : signed(buildingAgl, index) !== 0;
     if (hasBuilding) {
       if (pinned && (!foundation || !foundationPresent?.[index]))
