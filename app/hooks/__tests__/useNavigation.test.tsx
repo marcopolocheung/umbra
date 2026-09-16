@@ -5,7 +5,8 @@ import type { RouteOption } from "../../lib/routing";
 import type { SavedRoute } from "../../lib/savedRoutes";
 import { downloadBlob } from "../../lib/exportRoute";
 import { geocodeReverse } from "../../lib/nominatim";
-import { fetchRoutingGraph } from "../../lib/overpass";
+import { fetchRoutingGraph, fetchStationEntrances } from "../../lib/overpass";
+import { fetchBestTrainGraph } from "../../lib/transit/trainGraphSource";
 import {
   sampleBuildingMaskBothSidewalks,
 } from "../../lib/shadowSampling";
@@ -13,6 +14,10 @@ import { useNavigation } from "../useNavigation";
 
 vi.mock("../../lib/nominatim", () => ({
   geocodeReverse: vi.fn(),
+}));
+
+vi.mock("../../lib/transit/trainGraphSource", () => ({
+  fetchBestTrainGraph: vi.fn(),
 }));
 
 vi.mock("../../lib/overpass", async () => {
@@ -833,5 +838,126 @@ describe("routing reads the shadow field (A4b)", () => {
     // Nothing was flattened, so the finally has no tilt to give back.
     expect(log).not.toContain("jumpTo(0)");
     expect(map.getPitch()).toBe(60);
+  });
+});
+
+
+// ─── #395: which array an index from the panel refers to ────────────────────
+
+/**
+ * Four nodes in a line, ~1.1 km end to end — far enough apart that the pipeline
+ * looks for a transit option at all (it skips under 500 m).
+ */
+function transitCorridorGraph() {
+  const node = (id: number, lon: number) => [id, { id, lat: 1.3, lon }] as const;
+  const hop = (toId: number, distanceM: number) => ({ toId, distanceM });
+  return {
+    nodes: new Map([node(1, 103.8), node(2, 103.803), node(3, 103.807), node(4, 103.81)]),
+    adj: new Map([
+      [1, [hop(2, 334)]],
+      [2, [hop(1, 334), hop(3, 445)]],
+      [3, [hop(2, 445), hop(4, 334)]],
+      [4, [hop(3, 334)]],
+    ]),
+  };
+}
+
+/** Three stations sitting on that corridor, on one line. */
+function corridorTrainGraph() {
+  const station = (id: string, name: string, lon: number) => ({ id, name, lat: 1.3, lon, lines: ["T"] });
+  const rail = (to: string) => ({ to, weightSec: 60, type: "rail" as const, line: "T" });
+  return {
+    stations: new Map([
+      ["subway:1", station("subway:1", "Alpha", 103.803)],
+      ["subway:2", station("subway:2", "Beta", 103.805)],
+      ["subway:3", station("subway:3", "Gamma", 103.807)],
+    ]),
+    adj: new Map([
+      ["subway:1", [rail("subway:2")]],
+      ["subway:2", [rail("subway:1"), rail("subway:3")]],
+      ["subway:3", [rail("subway:2")]],
+    ]),
+    lineColors: new Map([["T", "#D82233"]]),
+    lineNames: new Map([["T", "Test Line"]]),
+    lineModes: new Map([["T", "subway" as const]]),
+  };
+}
+
+describe("a route index from the panel resolves against the list the panel shows (#395)", () => {
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
+  });
+
+  async function calculateInTransitMode() {
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64),
+              width: 8,
+              height: 8,
+              pixelRatioX: 1,
+              pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.81, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+    return result;
+  }
+
+  it("draws the transit route the card describes, not a walk route", async () => {
+    const result = await calculateInTransitMode();
+
+    // The state that hid this bug: both kinds live in `navRoutes`, and the
+    // transit one is NOT at `selectedRouteIndex`.
+    expect(result.current.navRoutes.length).toBeGreaterThan(1);
+    expect(result.current.filteredRoutes).toHaveLength(1);
+    expect(result.current.selectedRouteIndex).toBe(0);
+    expect(result.current.navRoutes.indexOf(result.current.filteredRoutes[0])).toBeGreaterThan(0);
+
+    const transitRoute = result.current.filteredRoutes[0];
+    expect(transitRoute.label).toBe("Via Transit");
+    // Resolved against `navRoutes`, all three of these come back for a walk
+    // route: null draw data, null entrances, and the wrong geometry.
+    expect(result.current.navTrainDrawData).toBe(transitRoute.trainDrawData);
+    expect(result.current.navTrainDrawData).not.toBeNull();
+    expect(result.current.navMrtEntrances).toBe(transitRoute.mrtEntrances);
+    expect(result.current.selectedNavRoute).toEqual({
+      type: "FeatureCollection",
+      features: transitRoute.legs
+        ?.filter((l) => l.type === "walk")
+        .map((l) => l.geojson),
+    });
+  });
+
+  it("exports the transit route the card describes", async () => {
+    const result = await calculateInTransitMode();
+    const transitRoute = result.current.filteredRoutes[0];
+
+    act(() => result.current.handleExportRoute(0, "geojson"));
+
+    expect(downloadBlob).toHaveBeenCalledTimes(1);
+    const [, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect(String(filename).toLowerCase()).toContain("transit");
+    expect(transitRoute.label).toBe("Via Transit");
   });
 });

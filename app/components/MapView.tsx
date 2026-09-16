@@ -1365,8 +1365,12 @@ export default function MapView({
     if (map.isStyleLoaded()) {
       apply();
     } else {
-      map.once("load", apply);
-      return () => { map.off("load", apply); };
+      // `load` fires once, when the map first comes up — long before any route
+      // exists. Waiting on it here means waiting for an event that has already
+      // happened, so the train layers were never added at all. `styledata`
+      // recurs, which is why the MRT connector below has always worked.
+      map.once("styledata", apply);
+      return () => { map.off("styledata", apply); };
     }
   }, [navTrainDrawData]);
 

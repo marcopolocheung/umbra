@@ -190,7 +190,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSketchPoints,
     setNavWarning,
     setSimplifiedWaypoints,
-    navRoutes,
+    visibleRoutes: filteredRoutes,
   };
 
   const handleMapClick = useCallback(
@@ -267,7 +267,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
 
   const handleExportRoute = useCallback(
     (routeIndex: number, format: "gpx" | "geojson") => {
-      const route = navRoutes[routeIndex];
+      // The index comes from a card in the panel, which renders the filtered list.
+      const route = filteredRoutes[routeIndex];
       if (!route) return;
       if (route.partial) {
         setNavWarning(partialRouteNotice(route.partial));
@@ -285,7 +286,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
         downloadBlob(routeToGeoJSON(route, routeTrip), `${name}.geojson`, "application/geo+json");
       }
     },
-    [navRoutes, setNavWarning, trip, sketchPoints],
+    [filteredRoutes, setNavWarning, trip, sketchPoints],
   );
 
   const handleToggleNavMode = useCallback(() => {
