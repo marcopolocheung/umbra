@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   countRouteLinePixels,
+  countTransitLinePixels,
   maskDiff,
   sampleMapCanvas,
   shadowMask,
@@ -15,6 +16,7 @@ import {
   SHARE_URL,
   START_MINUTES,
   stubNetwork,
+  TRANSIT_SHARE_URL,
 } from "./helpers/scenario";
 
 /**
@@ -179,4 +181,62 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
       message: "leaving Scoot did not clear mode from the share URL",
     })
     .toBeNull();
+});
+
+
+/**
+ * The transit client's only browser check. `npm test` cannot reach any of this:
+ * the shard fetch, the graph built from it, the card, and the drawn line are
+ * all browser-side, and two of the three bugs that kept transit off the map
+ * were invisible to the unit suite.
+ */
+test("routes on the published transit data and draws the line", async ({ page }, testInfo) => {
+  const basemap: Basemap = testInfo.project.name === "smoke-live" ? "live" : "fixture";
+  await stubNetwork(page, { basemap });
+
+  await page.goto(TRANSIT_SHARE_URL);
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+
+  // Switching mode clears any existing result, so choose it before calculating.
+  await page
+    .getByRole("button", { name: "Transit", exact: true })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          Boolean(
+            (window as unknown as { __umbraMetrics?: { latest?: unknown } }).__umbraMetrics?.latest,
+          ),
+        ),
+      { timeout: 60_000, message: "no routing run was ever recorded" },
+    )
+    .toBe(true);
+
+  // The panel is position-fixed, so `offsetParent` is null and Playwright's
+  // visibility heuristic rejects it — read the text rather than the element.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            document.querySelector('[role="radiogroup"][aria-label="Route options"]')
+              ?.textContent ?? "",
+        ),
+      { timeout: 30_000, message: "the transit option never reached the route list" },
+    )
+    .toContain("Via Transit");
+
+  // The fixture line is magenta and nothing else on the map is. Zero here means
+  // the card describes a journey the map is not drawing.
+  await expect
+    .poll(() => countTransitLinePixels(page), {
+      timeout: 30_000,
+      message: "the transit line never appeared on the map canvas",
+    })
+    .toBeGreaterThan(0);
 });

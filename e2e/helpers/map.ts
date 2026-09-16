@@ -74,3 +74,28 @@ export async function countRouteLinePixels(page: Page): Promise<number> {
     return count;
   });
 }
+
+/**
+ * Pixels of the fixture transit line's colour (#FF00FF). Nothing else on the
+ * map is magenta, so a non-zero count means `buildTrainDrawData`'s polylines
+ * actually reached the canvas — which is the half of the transit feature that
+ * no unit test can see.
+ */
+export async function countTransitLinePixels(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("canvas.maplibregl-canvas");
+    if (!canvas) throw new Error("MapLibre canvas not found");
+    const scratch = document.createElement("canvas");
+    scratch.width = canvas.width;
+    scratch.height = canvas.height;
+    const ctx = scratch.getContext("2d");
+    if (!ctx) throw new Error("2d context unavailable");
+    ctx.drawImage(canvas, 0, 0);
+    const { data } = ctx.getImageData(0, 0, scratch.width, scratch.height);
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 190 && data[i + 1] < 90 && data[i + 2] > 190) count++;
+    }
+    return count;
+  });
+}
