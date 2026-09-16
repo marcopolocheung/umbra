@@ -10,7 +10,16 @@ import { normalizeBus, type BusNormalized } from "./normalizeBus";
 import { normalizeSubway, type SubwayNormalized } from "./normalizeSubway";
 import { FEED_SOURCES } from "./sources";
 import { buildSpatialStubs, SPATIAL_TRANSFER_CAP_PER_STATION, SPATIAL_TRANSFER_RADIUS_M, SPATIAL_WALK_MPS } from "./transfers";
-import type { DayType, FeedVersion, StopNode, TransferEdge } from "./model";
+import type {
+  DayType,
+  FeedVersion,
+  HeadwayRow,
+  RouteEdge,
+  RouteInfo,
+  ShapeMap,
+  StopNode,
+  TransferEdge,
+} from "./model";
 import type { RepresentativeDates } from "./serviceCalendar";
 import { readReceipts } from "./receipts";
 import { requireRoot, sha256, writeJson } from "./util";
@@ -119,6 +128,65 @@ export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, "");
 }
 
+export interface BusShard {
+  kind: "bus-shard";
+  feed: string;
+  feeds: FeedVersion[];
+  stops: StopNode[];
+  edges: RouteEdge[];
+  routes: RouteInfo[];
+  shapes: ShapeMap;
+  headways: HeadwayRow[];
+  stats: BusNormalized["stats"];
+}
+
+/**
+ * One borough's shard. An edge belongs to it when either endpoint stop was
+ * listed by that borough's feed (a boundary stop appears in both), and
+ * everything else — routes, shapes, headways — is scoped to the routes those
+ * edges actually use.
+ *
+ * Scoping the routes and shapes is the point. Shipping the city-wide tables in
+ * all six shards put 3.07 MB of byte-identical duplication inside a 15 MB
+ * budget (559 KB of shapes and 55 KB of routes, six times over) and defeated
+ * the sharding it was meant to serve: a client loading one borough downloaded
+ * every borough's geometry anyway, and bus-busco.json sat at 94% of its 3 MB
+ * ceiling on duplicated bytes.
+ */
+export function busShard(bus: BusNormalized, feedId: string): BusShard {
+  const stopById = new Map(bus.stops.map((stop) => [stop.id, stop]));
+  const listedBy = (stopId: string): boolean =>
+    (stopById.get(stopId)?.feeds ?? []).includes(feedId);
+  const stops = new Map<string, StopNode>();
+  const edges: RouteEdge[] = [];
+  const used = new Set<string>();
+  for (const edge of bus.edges) {
+    if (!listedBy(edge.from) && !listedBy(edge.to)) continue;
+    edges.push(edge);
+    used.add(edge.route);
+    const from = stopById.get(edge.from);
+    const to = stopById.get(edge.to);
+    if (from) stops.set(from.id, from);
+    if (to) stops.set(to.id, to);
+  }
+  const shapes: ShapeMap = {};
+  for (const [key, points] of Object.entries(bus.shapes)) {
+    // Shape keys are `<display route>:<direction>`; a route name never has a colon.
+    if (used.has(key.slice(0, key.lastIndexOf(":")))) shapes[key] = points;
+  }
+  return {
+    kind: "bus-shard",
+    feed: feedId,
+    feeds: bus.feeds,
+    stops: [...stops.values()].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    edges,
+    routes: bus.routes.filter((route) => used.has(route.id)),
+    shapes,
+    headways: bus.headways.filter((row) => used.has(row.route)),
+    stats: bus.stats,
+  };
+}
+
 export async function normalizeAll(options?: NormalizeOptions): Promise<{
   subway: SubwayNormalized | null;
   bus: BusNormalized | null;
@@ -202,44 +270,8 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     objects.push({ key: "subway.json", value: { ...subway, stops: allSubwayStops, transfers: [...subway.transfers, ...stubs] } });
   }
   if (bus) {
-    const busSources = FEED_SOURCES.filter((item) => item.kind === "bus");
-    const stopById = new Map(bus.stops.map((stop) => [stop.id, stop]));
-    const feedsOf = (id: string): string[] => stopById.get(id)?.feeds ?? [];
-    for (const source of busSources) {
-      const shardStops = new Map<string, StopNode>();
-      for (const edge of bus.edges) {
-        // Keep an edge in a borough shard when either endpoint stop was
-        // listed by that borough feed (boundary stops appear in both).
-        const fromFeeds = feedsOf(edge.from);
-        const toFeeds = feedsOf(edge.to);
-        if (fromFeeds.includes(source.id) || toFeeds.includes(source.id)) {
-          const from = stopById.get(edge.from);
-          const to = stopById.get(edge.to);
-          if (from) shardStops.set(from.id, from);
-          if (to) shardStops.set(to.id, to);
-        }
-      }
-      const shardEdges = bus.edges.filter((edge) => {
-        const fromFeeds = feedsOf(edge.from);
-        const toFeeds = feedsOf(edge.to);
-        return fromFeeds.includes(source.id) || toFeeds.includes(source.id);
-      });
-      objects.push({
-        key: source.shard,
-        value: {
-          kind: "bus-shard" as const,
-          feed: source.id,
-          feeds: bus.feeds,
-          stops: [...shardStops.values()].sort((a, b) => (a.id < b.id ? -1 : 1)),
-          edges: shardEdges,
-          routes: bus.routes,
-          shapes: bus.shapes,
-          headways: bus.headways.filter((row) =>
-            shardEdges.some((edge) => edge.route === row.route),
-          ),
-          stats: bus.stats,
-        },
-      });
+    for (const source of FEED_SOURCES.filter((item) => item.kind === "bus")) {
+      objects.push({ key: source.shard, value: busShard(bus, source.id) });
     }
   }
 

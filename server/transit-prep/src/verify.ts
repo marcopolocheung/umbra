@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { json, requireRoot, sha256 } from "./util";
 
 interface ShardLike {
+  kind?: string;
   stops: { id: string }[];
   edges: { from: string; to: string; route: string; medianSec: number }[];
   routes: { id: string }[];
@@ -84,6 +85,19 @@ function checkShard(key: string, shard: ShardLike): void {
   }
   for (const row of shard.headways) {
     if (!routeIds.has(row.route)) fail(`headway references unknown route ${row.route}`);
+  }
+  if (shard.kind === "bus-shard") {
+    // A bus shard is scoped to the routes its own edges use. The subway shard is
+    // not checked this way: its routes come from routes.txt and a route whose
+    // edges were all dropped as sparse legitimately has none.
+    const used = new Set(shard.edges.map((edge) => edge.route));
+    for (const route of shard.routes) {
+      if (!used.has(route.id)) fail(`route ${route.id} has no edge in this shard`);
+    }
+    for (const key of Object.keys(shard.shapes)) {
+      const route = key.slice(0, key.lastIndexOf(":"));
+      if (!used.has(route)) fail(`shape ${key} belongs to route ${route}, which has no edge here`);
+    }
   }
   for (const [shapeKey, points] of Object.entries(shard.shapes)) {
     if (points.length < 2) fail(`shape ${shapeKey} has <2 points`);

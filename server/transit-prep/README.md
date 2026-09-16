@@ -62,8 +62,31 @@ npm test               # tsx --test, hermetic fixtures (no network, no env)
 ```
 
 Budgets (build fails past them): 3 MB/shard, 15 MB total. Current
-generation: ~13 MB. Heap: validate needs 4 GB, normalize/build 6 GB
+generation: ~10.8 MB. Each bus shard carries only the routes its own edges
+use, plus those routes' shapes and headways — see "Shard scope" below. Heap: validate needs 4 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
+
+## Shard scope
+
+A bus edge belongs to a borough shard when either endpoint stop was listed by
+that borough's feed, and the shard's `routes`, `shapes` and `headways` are
+scoped to the routes those edges use. `verify` enforces that: a bus shard
+carrying a route with no edge, or a shape for such a route, fails.
+
+Overlap between shards is real and irreducible under per-borough sharding —
+boundary stops put a route in every shard that lists one of its stops, and
+BusCo's express routes (BxM/QM/BM) span the city, so `bus-busco.json` keeps 493
+of the 683 shapes. The six shards hold 1,665 shape entries for 683 distinct
+shapes. What *was* removable was shipping all 683 in all six regardless of use:
+that cost 1.99 MB of the 12.76 MB total.
+
+Routes with no surviving edge anywhere (54 of 399 display routes — every edge
+dropped as sparse or implausibly fast) now appear in no shard. Nothing can
+route over them, and no headway row survives for them either.
+
+`bus-busco.json` is still 86% of its 3 MB ceiling, so a pick that adds BusCo
+routes can fail the build. Raising the per-shard budget or splitting that feed
+is an open decision, not something this scoping fixed.
 
 ## Publish env
 
