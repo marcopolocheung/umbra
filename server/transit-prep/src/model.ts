@@ -36,6 +36,15 @@ export interface HeadwayRow {
   route: string;
   direction: number;
   dayType: DayType;
+  /**
+   * Hour of the service day, 0-27 — NOT a wall-clock hour of `dayType`. GTFS
+   * puts a departure after midnight on the previous service day at 24:xx-27:xx,
+   * so hours 24+ are the early morning of `representativeDates[dayType].nextDate`.
+   *
+   * Hours 0-3 and 24-27 are both "around midnight" and must not be merged: they
+   * are different calendar days with different service. The 7 train weekday
+   * direction 0 ships hour 1 at 1200 s and hour 24 at 570 s.
+   */
   hour: number;
   medianSec: number;
   trips: number;

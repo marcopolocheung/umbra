@@ -8,12 +8,12 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { json, requireRoot, sha256 } from "./util";
 
-interface ShardLike {
+export interface ShardLike {
   kind?: string;
   stops: { id: string }[];
   edges: { from: string; to: string; route: string; medianSec: number }[];
   routes: { id: string }[];
-  headways: { route: string }[];
+  headways: { route: string; hour: number }[];
   shapes: Record<string, [number, number][]>;
   transfers?: { from: string; to: string; minSec: number }[];
 }
@@ -67,7 +67,7 @@ export async function verifyGeneration(generation?: string): Promise<{ generatio
   return { generation: name, shards: manifest.shards.length };
 }
 
-function checkShard(key: string, shard: ShardLike): void {
+export function checkShard(key: string, shard: ShardLike): void {
   const fail = (message: string): never => {
     throw new Error(`${key}: ${message}`);
   };
@@ -85,6 +85,11 @@ function checkShard(key: string, shard: ShardLike): void {
   }
   for (const row of shard.headways) {
     if (!routeIds.has(row.route)) fail(`headway references unknown route ${row.route}`);
+    // 24-27 are legal: a departure after midnight keeps the previous service
+    // day's hour. Anything else means the hour stopped meaning what it says.
+    if (!Number.isInteger(row.hour) || row.hour < 0 || row.hour > 27) {
+      fail(`headway for ${row.route} has hour ${row.hour}, outside the 0-27 service day`);
+    }
   }
   if (shard.kind === "bus-shard") {
     // A bus shard is scoped to the routes its own edges use. The subway shard is
