@@ -17,6 +17,7 @@
     "approve-controls": "tsx src/cli.ts approve-controls",
     "receipts": "tsx src/cli.ts receipts",
     "normalize": "tsx src/cli.ts normalize",
+    "pack:benchmark": "tsx src/pack-cli.ts",
     "build": "tsx src/cli.ts build",
     "verify": "tsx src/cli.ts verify",
     "test": "tsx --test test/*.test.ts",

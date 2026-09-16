@@ -208,7 +208,7 @@ describe("v2 component format", () => {
     new DataView(unknownHeader.buffer).setUint16(4, 2, true);
     await expect(decodeComponent(unknownHeader)).rejects.toThrow(/format/);
     await expect(decodeComponent(encoded.bytes.subarray(0, 19))).rejects.toThrow();
-    const huge = new Uint8Array(words * 4 * 9);
+    const huge = new Uint8Array(words * 4 * 10);
     const hugeGzip = new Uint8Array(gzipSync(huge, { level: 6 }));
     await expect(
       decodeComponent(rewriteDirectory(encoded.bytes, () => {}, hugeGzip)),

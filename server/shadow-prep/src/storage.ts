@@ -3,7 +3,7 @@ import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/prom
 import { dirname, join, normalize, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 /** A deliberately small object-store contract.  Candidate publication depends on
  * the descriptor being written last; it never depends on directory rename
@@ -79,9 +79,43 @@ export class S3Store implements ObjectStore {
       throw error;
     }
   }
+  /** List complete bucket keys below a logical prefix.  This is intentionally
+   * only exposed on S3: the full-run index is built once, before the array
+   * workers begin, so they never each enumerate the 1.1m candidate objects. */
+  async listKeys(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.client.send(new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: this.key(prefix),
+        ContinuationToken: continuationToken,
+      }));
+      for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key);
+      continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return keys;
+  }
 }
 
 export function candidateStore(root: string): ObjectStore {
   if ((process.env.SHADE_PREP_STORAGE ?? "filesystem") === "s3") return new S3Store(process.env.SHADE_PREP_S3_BUCKET ?? "", process.env.SHADE_PREP_S3_PREFIX ?? "");
   return new FilesystemStore(root);
+}
+
+/** R2 exposes the S3 API. Credentials come only from the runtime environment
+ * (normally an AWS Secrets Manager injection), never from source or a Batch
+ * command line. The R2 endpoint requires the AWS SDK's `auto` region. */
+export function r2StoreFromEnvironment(): S3Store {
+  const bucket = process.env.SHADE_PACK_R2_BUCKET;
+  const endpoint = process.env.SHADE_PACK_R2_ENDPOINT;
+  const accessKeyId = process.env.SHADE_PACK_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.SHADE_PACK_R2_SECRET_ACCESS_KEY;
+  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey)
+    throw new Error("R2 output requires its bucket, endpoint, access key id, and secret access key");
+  if (!/^https:\/\/[a-f0-9]{32}(?:\.[a-z]+)?\.r2\.cloudflarestorage\.com$/.test(endpoint))
+    throw new Error("SHADE_PACK_R2_ENDPOINT must be an account-scoped HTTPS R2 endpoint");
+  // Follow R2's AWS SDK v3 configuration exactly. Its account endpoint plus
+  // bucket parameter selects the virtual-hosted S3 request shape.
+  return new S3Store(bucket, "", new S3Client({ region: "auto", endpoint, credentials: { accessKeyId, secretAccessKey } }));
 }

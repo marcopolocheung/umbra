@@ -26,6 +26,18 @@ Parameters:
     Default: bootstrap
     AllowedPattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
     Description: Immutable ECR commit-SHA tag. Leave bootstrap only until the image-publish workflow has completed.
+  R2PackUploaderSecretArn:
+    Type: String
+    Default: arn:aws:secretsmanager:us-east-1:486678742062:secret:shademap/r2-nyc-pack-uploader-7SKBza
+    AllowedPattern: '^arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+    NoEcho: true
+    Description: Exact AWS secret ARN holding JSON keys access_key_id and secret_access_key for the scoped R2 uploader credential.
+  RegionalMaxVcpus:
+    Type: Number
+    Default: 128
+    MinValue: 1
+    MaxValue: 256
+    Description: Approved private browser-pack capacity. Jobs remain queued until the EC2 On-Demand vCPU quota permits it.
 Conditions:
   HasGitHubImmutableSubjectPrefix: !Not [!Equals [!Ref GitHubImmutableSubjectPrefix, '']]
 Resources:
@@ -43,8 +55,18 @@ Resources:
       BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
       VersioningConfiguration: { Status: Enabled }
-      # Candidate expiry is intentionally absent. Item 7 may later add a
-      # lifecycle rule only after verified-generation handoff.
+      # Candidate expiry is intentionally absent. PR2 repairs buildingSupport
+      # from these normalized candidates without renormalizing, so no rule may
+      # expire them until a corrected generation is verified and promoted.
+      LifecycleConfiguration:
+        Rules:
+          # The Overture lookup index is reproducible from raw sources and is
+          # not part of the browser handoff, so retain its short disposal window.
+          - Id: expire-reproducible-vector-index-after-7-days
+            Status: Enabled
+            Prefix: vector-index/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration: { NoncurrentDays: 7 }
   EvidenceBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -92,7 +114,7 @@ Resources:
         Type: EC2
         AllocationStrategy: BEST_FIT_PROGRESSIVE
         MinvCpus: 0
-        MaxvCpus: 4
+        MaxvCpus: !Ref RegionalMaxVcpus
         DesiredvCpus: 0
         InstanceRole: !GetAtt BatchInstanceProfile.Arn
         InstanceTypes: ['optimal']
@@ -125,6 +147,16 @@ Resources:
     Properties:
       AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: 'sts:AssumeRole' }] }
       ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy']
+      Policies:
+        # ECS reads a Batch `Secrets` entry before the task starts, so this
+        # belongs to the execution role—not the application/job role.
+        - PolicyName: read-only-r2-pack-uploader-credential
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref R2PackUploaderSecretArn
   BatchJobDefinition:
     Type: AWS::Batch::JobDefinition
     Properties:
@@ -138,7 +170,7 @@ Resources:
         Memory: 15360
         JobRoleArn: !GetAtt BatchJobRole.Arn
         ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
-        Command: ['normalize', '--smoke']
+        Command: ['server/shadow-prep/src/cli.ts', 'normalize', '--smoke']
         Environment:
           - { Name: SHADE_PREP_ROOT, Value: /scratch }
           - { Name: SHADE_PREP_RAW_BUCKET, Value: !Ref RawBucket }
@@ -150,6 +182,111 @@ Resources:
           - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
           - { Name: SHADE_PREP_EVIDENCE_PREFIX, Value: evidence }
         LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: prep } }
+  BrowserPackSmokeJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # The benchmark reads, packs, uploads, and fully re-reads 36
+      # representative tiles. It never changes the current-generation pointer.
+      Timeout: { AttemptDurationSeconds: 1800 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command:
+          - server/shadow-prep/src/pack-cli.ts
+          - --normalization-id
+          - 70e3507f16d472adf5475b614a60cb16
+          - --tiles
+          - 18/77196/98516,18/77196/98517,18/77196/98518,18/77197/98516,18/77197/98517,18/77197/98518,18/77198/98516,18/77198/98517,18/77198/98518,18/77335/98545,18/77335/98546,18/77335/98547,18/77336/98545,18/77336/98546,18/77336/98547,18/77337/98545,18/77337/98546,18/77337/98547,18/77280/98428,18/77280/98429,18/77280/98430,18/77281/98428,18/77281/98429,18/77281/98430,18/77282/98428,18/77282/98429,18/77282/98430,18/77076/98687,18/77076/98688,18/77076/98689,18/77077/98687,18/77077/98688,18/77077/98689,18/77078/98687,18/77078/98688,18/77078/98689
+          - --concurrency
+          - '1'
+          - --write-r2
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PACK_R2_BUCKET, Value: shademap-nyc-shadow-staging }
+          # Cloudflare and AWS account identifiers are unrelated; this is the
+          # Cloudflare account that owns the explicitly named staging bucket.
+          - { Name: SHADE_PACK_R2_ENDPOINT, Value: https://056c5ee24d776cdb856a8a8dea30ed34.r2.cloudflarestorage.com }
+        Secrets:
+          # Do not use AWS_ACCESS_KEY_ID here: that would override the Batch
+          # task role used for the source candidate S3 bucket.
+          - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
+          - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-smoke } }
+  BrowserPackIndexJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # One metadata-only listing pass over the candidate prefix. It does not
+      # read candidate planes or write R2 objects.
+      Timeout: { AttemptDurationSeconds: 3600 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--build-index']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-index } }
+  BrowserPackArrayJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # Each one-vCPU child owns a deterministic contiguous ~480-tile range.
+      Timeout: { AttemptDurationSeconds: 3600 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--pack-shard', '--array-shards', '128']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          - { Name: SHADE_PACK_R2_BUCKET, Value: shademap-nyc-shadow-staging }
+          - { Name: SHADE_PACK_R2_ENDPOINT, Value: https://056c5ee24d776cdb856a8a8dea30ed34.r2.cloudflarestorage.com }
+        Secrets:
+          - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
+          - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-array } }
+  BrowserPackAggregateJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      PlatformCapabilities: [EC2]
+      RetryStrategy: { Attempts: 1 }
+      # Reads 128 receipts and re-heads every immutable R2 object before it
+      # writes the sole final manifest. It never advances current.json.
+      Timeout: { AttemptDurationSeconds: 7200 }
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${PrepImageTag}'
+        Vcpus: 1
+        Memory: 4096
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command: ['server/shadow-prep/src/pack-full-cli.ts', '--aggregate', '--array-shards', '128']
+        Environment:
+          - { Name: SHADE_PREP_S3_BUCKET, Value: !Ref NormalizedBucket }
+          - { Name: SHADE_PREP_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          - { Name: SHADE_PACK_R2_BUCKET, Value: shademap-nyc-shadow-staging }
+          - { Name: SHADE_PACK_R2_ENDPOINT, Value: https://056c5ee24d776cdb856a8a8dea30ed34.r2.cloudflarestorage.com }
+        Secrets:
+          - { Name: SHADE_PACK_R2_ACCESS_KEY_ID, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, access_key_id, '', '']] }
+          - { Name: SHADE_PACK_R2_SECRET_ACCESS_KEY, ValueFrom: !Join [':', [!Ref R2PackUploaderSecretArn, secret_access_key, '', '']] }
+        LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref BatchLogs, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: browser-pack-aggregate } }
   BatchLogs:
     Type: AWS::Logs::LogGroup
     Properties: { RetentionInDays: 30 }
@@ -196,4 +333,8 @@ Outputs:
   EcrRepositoryUri: { Value: !GetAtt EcrRepository.RepositoryUri }
   BatchQueue: { Value: !Ref BatchQueue }
   BatchJobDefinition: { Value: !Ref BatchJobDefinition }
+  BrowserPackSmokeJobDefinition: { Value: !Ref BrowserPackSmokeJobDefinition }
+  BrowserPackIndexJobDefinition: { Value: !Ref BrowserPackIndexJobDefinition }
+  BrowserPackArrayJobDefinition: { Value: !Ref BrowserPackArrayJobDefinition }
+  BrowserPackAggregateJobDefinition: { Value: !Ref BrowserPackAggregateJobDefinition }
   GitHubPublisherRoleArn: { Value: !GetAtt GitHubPublisherRole.Arn }

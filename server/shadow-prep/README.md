@@ -158,3 +158,31 @@ external candidate operation only: it has no manifest, hierarchy, current pointe
 publication, deployment, or build/verify side effect. Candidate plane bytes use
 canonical little-endian words and their descriptor is renamed atomically only after
 all planes exist. Do not run `build` or `verify` as part of Item 6.
+
+## Private NYC browser-pack handoff
+
+The prepared five-borough candidate set can be converted into browser bundles
+without making it public. The full handoff has three deliberately separate
+Batch definitions: `BrowserPackIndexJobDefinition` scans only descriptor keys
+once and freezes the expected 61,442 z18 tiles in the private evidence bucket;
+`BrowserPackArrayJobDefinition` is submitted as a 128-child array, whose
+children each own one deterministic contiguous slice and write an immutable R2
+receipt after decoding every object they uploaded; and
+`BrowserPackAggregateJobDefinition` accepts only all 128 valid receipts, heads
+every packed R2 object, and then writes the sole complete manifest.
+
+The city run uses the distinct immutable generation
+`nyc-70e3507f16d472adf5475b614a60cb16-five-borough-v1`, so it cannot collide
+with the earlier 36-tile smoke generation. It never writes `current.json`;
+that remains a separate, explicit promotion decision. The R2 credential is
+injected into Batch only from the scoped Secrets Manager secret and is named
+`SHADE_PACK_R2_*` so it cannot replace the task-role credentials used to read
+candidate S3.
+
+`scripts/aws/submit-nyc-browser-pack.sh` (from the repository root) is intentionally a dry run unless
+called with `--execute`. It refuses to submit only when the EC2 standard On-Demand
+vCPU quota is below 1; with fewer than 128 vCPUs the 128-child array runs in
+waves until the pending quota increase arrives. It waits for index → array →
+aggregate in that order, and leaves the current pointer unchanged. Review and
+explicitly run it only after the capacity request is approved and the reviewed
+image/stack update is live.

@@ -22,5 +22,5 @@
     "**/*.tsx",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "oldbuild", "dist", "docs"]
+  "exclude": ["node_modules", "oldbuild", "dist", "docs", "cloudflare"]
 }
