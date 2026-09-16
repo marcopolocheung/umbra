@@ -56,6 +56,7 @@ import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
 import type { TravelModeId } from "../lib/travelMode";
+import type { StopEntry } from "../lib/trip/types";
 import { routeBounds } from "../lib/routeBounds";
 import {
   RoutePlanJobCoordinator,
@@ -123,11 +124,14 @@ export interface UseRoutingArgs {
   additionalWaypoints: [number, number][];
   waypointARef: React.MutableRefObject<[number, number] | null>;
   waypointBRef: React.MutableRefObject<[number, number] | null>;
-  setWaypointA: React.Dispatch<React.SetStateAction<[number, number] | null>>;
-  setWaypointB: React.Dispatch<React.SetStateAction<[number, number] | null>>;
-  setWaypointALabel: React.Dispatch<React.SetStateAction<string | null>>;
-  setWaypointBLabel: React.Dispatch<React.SetStateAction<string | null>>;
-  setAdditionalWaypoints: React.Dispatch<React.SetStateAction<[number, number][]>>;
+  /** Dwell per stop, positional — dwell edits advance the plan revision (C5). */
+  dwellSignature: string;
+  /**
+   * Single-op whole-trip replacement for agent plans (id-preserving). Returns
+   * the dwell signature of the trip it commits, which is not always all zeros
+   * — `replaceStops` keeps the dwell of a stop whose coordinates did not move.
+   */
+  replaceAllStops: (entries: StopEntry[]) => string;
   seam: React.MutableRefObject<NavSeam>;
 }
 
@@ -149,11 +153,8 @@ export function useRouting({
   additionalWaypoints,
   waypointARef,
   waypointBRef,
-  setWaypointA,
-  setWaypointB,
-  setWaypointALabel,
-  setWaypointBLabel,
-  setAdditionalWaypoints,
+  dwellSignature,
+  replaceAllStops,
   seam,
 }: UseRoutingArgs) {
   const [navRoutes, setNavRoutes] = useState<RouteOption[]>([]);
@@ -212,16 +213,16 @@ export function useRouting({
     return revision;
   }, []);
 
-  // Any real route-defining edit, including the selected shadow time,
-  // invalidates a job based on the older plan.
+  // Any real route-defining edit, including the selected shadow time and
+  // per-stop dwell, invalidates a job based on the older plan.
   useEffect(() => {
-    const fingerprint = routePlanFingerprint(waypointA, waypointB, additionalWaypoints);
+    const fingerprint = routePlanFingerprint(waypointA, waypointB, additionalWaypoints, dwellSignature);
     if (pendingAgentPlanFingerprintRef.current === fingerprint) {
       pendingAgentPlanFingerprintRef.current = null;
       return;
     }
     advanceRoutePlanRevision();
-  }, [waypointA, waypointB, additionalWaypoints, routePlanTime, advanceRoutePlanRevision]);
+  }, [waypointA, waypointB, additionalWaypoints, dwellSignature, routePlanTime, advanceRoutePlanRevision]);
 
   /**
    * Flatten the camera before a shadow readback. Returns whether it moved, because a
@@ -294,11 +295,11 @@ export function useRouting({
       // Agent jobs pass their complete input directly. State updates keep the UI in
       // sync, but calculation no longer waits for React to commit them.
       if (plan) {
-        setAdditionalWaypoints(plan.via);
-        setWaypointA(plan.from);
-        setWaypointB(plan.to);
-        setWaypointALabel(plan.fromLabel);
-        setWaypointBLabel(plan.toLabel);
+        replaceAllStops([
+          { coord: plan.from, label: plan.fromLabel },
+          ...plan.via.map((coord) => ({ coord })),
+          { coord: plan.to, label: plan.toLabel },
+        ]);
       }
 
       const a = snapOutsideBuilding(rawA, map as unknown as MapBuildingQuery);
@@ -1167,23 +1168,31 @@ export function useRouting({
       fitMapToRoute,
       flattenForShadowReadback,
       restorePitchAfterShadowReadback,
-      setAdditionalWaypoints,
-      setWaypointA,
-      setWaypointB,
-      setWaypointALabel,
-      setWaypointBLabel,
+      replaceAllStops,
     ],
   );
 
   const createRoutePlanRequest = useCallback(
     (plan: RoutePlan): RoutePlanRequest => {
       const planRevision = advanceRoutePlanRevision();
-      pendingAgentPlanFingerprintRef.current = routePlanFingerprint(plan.from, plan.to, plan.via);
-      setAdditionalWaypoints(plan.via);
-      setWaypointA(plan.from);
-      setWaypointB(plan.to);
-      setWaypointALabel(plan.fromLabel);
-      setWaypointBLabel(plan.toLabel);
+      // Fingerprint what the trip ACTUALLY commits, not what a C4 plan looks
+      // like it should commit. A plan carries no dwell, but `replaceStops`
+      // preserves the dwell of any stop whose coordinates did not move, so a
+      // plan issued over a trip that already has dwell commits a non-zero
+      // signature. Assuming zeros here would miss the skip below, bump the
+      // revision twice, and supersede the agent's own job.
+      const entries = [
+        { coord: plan.from, label: plan.fromLabel },
+        ...plan.via.map((coord) => ({ coord })),
+        { coord: plan.to, label: plan.toLabel },
+      ];
+      const committedDwell = replaceAllStops(entries);
+      pendingAgentPlanFingerprintRef.current = routePlanFingerprint(
+        plan.from,
+        plan.to,
+        plan.via,
+        committedDwell,
+      );
       const actionId = `agent-route-action-${++routePlanActionSeqRef.current}`;
       const retry = 0;
       const request: RoutePlanRequest = {
@@ -1199,11 +1208,7 @@ export function useRouting({
     },
     [
       advanceRoutePlanRevision,
-      setAdditionalWaypoints,
-      setWaypointA,
-      setWaypointB,
-      setWaypointALabel,
-      setWaypointBLabel,
+      replaceAllStops,
     ],
   );
 

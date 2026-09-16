@@ -234,6 +234,7 @@ export default function Home() {
     navMode,
     waypointA,
     waypointB,
+    dwellMinutes,
     navRoutes,
     selectedRouteIndex,
     isCalculating,
@@ -512,10 +513,23 @@ export default function Home() {
       );
 
       if (shared.date) setDate(shared.date);
-      if (shared.waypointA) handleSetWaypointA(shared.waypointA, "Shared start");
-      if (shared.waypointB) handleSetWaypointB(shared.waypointB, "Shared destination");
+      // `dwell` is positional over the stops that are actually present, in
+      // [a, ...via, b] order — so the destination's index depends on whether
+      // a start was in the link at all. Assuming a start would drop B's dwell
+      // from a destination-only link.
+      const dwellAt = (i: number) => shared.dwell[i] ?? 0;
+      const aOffset = shared.waypointA ? 1 : 0;
+      if (shared.waypointA)
+        handleSetWaypointA(shared.waypointA, "Shared start", { dwellMinutes: dwellAt(0) });
+      if (shared.waypointB)
+        handleSetWaypointB(shared.waypointB, "Shared destination", {
+          dwellMinutes: dwellAt(aOffset + shared.additionalWaypoints.length),
+        });
       if (shared.additionalWaypoints.length > 0) {
-        handleSetAdditionalWaypoints(shared.additionalWaypoints);
+        handleSetAdditionalWaypoints(
+          shared.additionalWaypoints,
+          shared.additionalWaypoints.map((_, i) => dwellAt(aOffset + i)),
+        );
       }
       if (shared.travelMode !== "walk") handleTravelModeChange(shared.travelMode);
       if (shared.center || shared.zoom != null) {
@@ -550,10 +564,11 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      dwellMinutes,
       travelMode,
     });
     window.history.replaceState(null, "", url);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleShareLink = useCallback(async () => {
     const url = shareUrlFromState({
@@ -564,6 +579,7 @@ export default function Home() {
       waypointA,
       waypointB,
       additionalWaypoints,
+      dwellMinutes,
       travelMode,
     });
     try {
@@ -573,7 +589,7 @@ export default function Home() {
       setShareStatus("error");
     }
     window.setTimeout(() => setShareStatus("idle"), 1800);
-  }, [additionalWaypoints, date, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
 
   const handleDismissShadowLegend = useCallback(() => {
     setShadowLegendDismissed(true);

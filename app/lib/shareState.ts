@@ -12,6 +12,8 @@ export interface ParsedShareState {
   waypointA: LngLat | null;
   waypointB: LngLat | null;
   additionalWaypoints: LngLat[];
+  /** Dwell minutes positional over [A, ...via, B]; [] when the link has none. */
+  dwell: number[];
   travelMode: TravelModeId;
 }
 
@@ -23,6 +25,8 @@ export interface ShareStateInput {
   waypointA: LngLat | null;
   waypointB: LngLat | null;
   additionalWaypoints: LngLat[];
+  /** Dwell minutes positional over [A, ...via, B]. All-zero/omitted stays unwritten. */
+  dwellMinutes?: number[];
   travelMode: TravelModeId;
 }
 
@@ -85,6 +89,13 @@ export function parseShareState(search: string, utcOffsetMin: number): ParsedSha
     .split(";")
     .map((s) => parseCoord(s))
     .filter((coord): coord is LngLat => coord != null);
+  const dwell = (params.get("dwell") ?? "")
+    .split(",")
+    .filter((s) => s.trim() !== "")
+    .map((s) => {
+      const n = Number(s);
+      return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    });
 
   return {
     center,
@@ -93,6 +104,7 @@ export function parseShareState(search: string, utcOffsetMin: number): ParsedSha
     waypointA: parseCoord(params.get("a")),
     waypointB: parseCoord(params.get("b")),
     additionalWaypoints,
+    dwell,
     travelMode: parseTravelMode(params.get("mode")),
   };
 }
@@ -117,6 +129,13 @@ export function serializeShareState(state: ShareStateInput): string {
   if (state.waypointB) params.set("b", formatCoord(state.waypointB));
   if (state.additionalWaypoints.length > 0) {
     params.set("via", state.additionalWaypoints.map(formatCoord).join(";"));
+  }
+  // Dwell stays unwritten for all-zero trips, so old links keep parsing and
+  // new dwell-free links stay short. Consumers align positionally over
+  // [A, ...via, B], padding short arrays with zero and trimming the excess.
+  const dwell = state.dwellMinutes ?? [];
+  if (dwell.some((minutes) => minutes > 0)) {
+    params.set("dwell", dwell.map((minutes) => Math.max(0, Math.floor(minutes))).join(","));
   }
   // Walk is the default and stays unwritten so old links keep parsing.
   if (state.travelMode !== "walk") params.set("mode", state.travelMode);

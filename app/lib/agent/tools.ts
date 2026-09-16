@@ -17,6 +17,7 @@ import { haversineMeters } from "../routing";
 import { computeSolarIntensity } from "../shadowSampling";
 import { queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
+import { buildTrip, tripToRoutePlan } from "../trip/trip";
 import { parseTime } from "../../hooks/useShadowTime";
 import {
   invalidTerminalResult,
@@ -567,13 +568,26 @@ export async function executeTool(
       // The navigation hook owns mutations and routing. This wrapper only validates
       // tool arguments, asks it to allocate a versioned request, and awaits the
       // pipeline's terminal result.
-      const plan: RoutePlan = {
-        from: [fromLng, fromLat],
-        to: [toLng, toLat],
-        via,
-        fromLabel: str(args.fromLabel) ?? "Start",
-        toLabel: str(args.toLabel) ?? "Destination",
-      };
+      //
+      // The plan is built as a `Trip` and adapted (E5), so the agent and the app
+      // now describe a journey with the same object. `tripToRoutePlan` drops the
+      // ids, dwell and anchor the plan job has no use for, which keeps C4's
+      // terminal contract and every C1 scenario byte-identical: a C4 plan carries
+      // no dwell, so this is exactly the object this branch built before.
+      const plan: RoutePlan = tripToRoutePlan(
+        buildTrip({
+          stops: [
+            { coord: [fromLng, fromLat], label: str(args.fromLabel) ?? "Start" },
+            ...via.map((coord) => ({ coord })),
+            { coord: [toLng, toLat], label: str(args.toLabel) ?? "Destination" },
+          ],
+          // The plan job needs no anchor — `tripToRoutePlan` drops it. Stated
+          // as the map's current instant in UTC rather than looked up, so this
+          // does not read as a grounded departure zone it never becomes.
+          departAt: { instant: ctx.dateRef.current.toISOString(), zone: "UTC" },
+          defaultMode: "walk",
+        }),
+      );
       const request = ctx.createRoutePlanRequest(plan);
       try {
         const terminal = await ctx.submitRoutePlan(request);

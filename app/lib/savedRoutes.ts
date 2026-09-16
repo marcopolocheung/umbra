@@ -1,6 +1,8 @@
 import "./storageMigration";
 // app/lib/savedRoutes.ts
 import type { RouteOption } from "./routing";
+import { buildTrip } from "./trip/trip";
+import type { Trip } from "./trip/types";
 
 export interface SavedFolder {
   id: string;
@@ -21,10 +23,16 @@ export interface SavedRoute {
   timeOfDayMinutes: number; // 0–1439
   dateIso: string;          // "YYYY-MM-DD"
   createdAt: number;
+  /** Absent = v1. v2 carries the journey as a `Trip`. */
+  version?: 1 | 2;
+  /** The journey, preferred over the legacy waypoint fields when present. */
+  trip?: Trip;
 }
 
 const FOLDERS_KEY = "umbra:folders";
 const ROUTES_KEY  = "umbra:routes";
+/** Records `getRoutes` could not read. Kept verbatim — never silently dropped. */
+const QUARANTINE_KEY = "umbra:routes-quarantine";
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -32,6 +40,151 @@ function readJSON<T>(key: string, fallback: T): T {
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** The reader's own zone — the frame a browser-local wall-clock reading is
+ * made in. Falls back to UTC only if the runtime withholds it. */
+function browserZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+type RecordValue = Record<string, unknown>;
+function record(value: unknown): value is RecordValue {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCoord(value: unknown): value is [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "number" &&
+    Number.isFinite(value[0]) &&
+    typeof value[1] === "number" &&
+    Number.isFinite(value[1])
+  );
+}
+
+/** The v1 shape: everything `createRoute` wrote before the `Trip` model. */
+function isV1Record(value: RecordValue): boolean {
+  if (value.version !== undefined && value.version !== 1) return false;
+  if (typeof value.id !== "string" || typeof value.name !== "string") return false;
+  if (!record(value.routeOption) || !record(value.routeOption.geojson)) return false;
+  if (!isCoord(value.waypointA) || !isCoord(value.waypointB)) return false;
+  if (!Array.isArray(value.additionalWaypoints) || !value.additionalWaypoints.every(isCoord)) {
+    return false;
+  }
+  if (typeof value.dateIso !== "string" || typeof value.timeOfDayMinutes !== "number") return false;
+  return true;
+}
+
+function isV2Record(value: RecordValue): value is RecordValue & { trip: Trip } {
+  if (value.version !== 2 || !isV1Record({ ...value, version: 1 })) return false;
+  const trip = value.trip;
+  if (!record(trip) || typeof trip.id !== "string" || typeof trip.defaultMode !== "string") {
+    return false;
+  }
+  if (!Array.isArray(trip.stops) || !Array.isArray(trip.legs)) return false;
+  if (!record(trip.departAt) || typeof trip.departAt.instant !== "string") return false;
+  return trip.stops.every(
+    (stop) => record(stop) && typeof stop.id === "string" && isCoord(stop.coord),
+  );
+}
+
+/**
+ * v1 → v2: rebuild the journey from the legacy fields.
+ *
+ * v1 stored wall-clock minutes with no zone, so the instant is reconstructed
+ * exactly as the legacy load read it — browser-local — and the zone recorded
+ * is therefore the BROWSER's, the frame that reading was actually made in.
+ * Stamping the departure point's looked-up zone instead would pair an instant
+ * with a zone it was not derived in: a route saved in Tokyo and reopened in
+ * New York would format to a time the record cannot back. What the record
+ * supports is "this wall-clock reading, in whatever zone the reader is in".
+ *
+ * Deterministic: ids derive from the record's own id, so re-reading the same
+ * stored record yields the same `Trip.id` and `Stop.id` every time. That
+ * matters because `createRoute`/`updateRoute`/`deleteRoute` all go through
+ * `saveRoutes(getRoutes()…)`, which PERSISTS whatever the migration produced —
+ * minted ids would be frozen into storage at whatever the first read invented.
+ * #357's import path depends on this to carry identity across origins.
+ */
+export function migrateV1ToV2(value: RecordValue): SavedRoute {
+  const recordId = value.id as string;
+  const waypointA = value.waypointA as [number, number];
+  const timeOfDayMinutes = value.timeOfDayMinutes as number;
+  const d = new Date(`${value.dateIso}T00:00:00`);
+  d.setHours(Math.floor(timeOfDayMinutes / 60), timeOfDayMinutes % 60, 0, 0);
+  const trip = buildTrip({
+    departAt: {
+      instant: d.toISOString(),
+      zone: browserZone(),
+    },
+    defaultMode: "walk",
+    id: `${recordId}:trip`,
+    stops: [
+      {
+        coord: waypointA,
+        label: (value.waypointALabel as string | null) ?? null,
+        id: `${recordId}:stop:0`,
+      },
+      ...(value.additionalWaypoints as [number, number][]).map((coord, i) => ({
+        coord,
+        id: `${recordId}:stop:${i + 1}`,
+      })),
+      {
+        coord: value.waypointB as [number, number],
+        label: (value.waypointBLabel as string | null) ?? null,
+        id: `${recordId}:stop:${(value.additionalWaypoints as unknown[]).length + 1}`,
+      },
+    ],
+  });
+  return { ...(value as unknown as SavedRoute), version: 2, trip };
+}
+
+/**
+ * Validate one stored record and migrate it to v2. Returns null for anything
+ * unreadable — including unknown future versions, which must quarantine
+ * rather than be guessed at. Pure: quarantine persistence lives in
+ * `getRoutes`, so this stays usable from the #357 import path on any origin.
+ */
+export function normalizeSavedRoute(raw: unknown): SavedRoute | null {
+  if (!record(raw)) return null;
+  if (raw.version !== undefined && raw.version !== 1 && raw.version !== 2) return null;
+  if (raw.version === 2) return isV2Record(raw) ? (raw as unknown as SavedRoute) : null;
+  return isV1Record(raw) ? migrateV1ToV2(raw) : null;
+}
+
+function quarantineRoutes(bad: unknown[]): void {
+  if (bad.length === 0) return;
+  let existing: unknown[];
+  try {
+    const raw = localStorage.getItem(QUARANTINE_KEY);
+    existing = raw ? (JSON.parse(raw) as unknown[]) : [];
+    if (!Array.isArray(existing)) existing = [];
+  } catch {
+    existing = [];
+  }
+  const seen = new Set(existing.map((item) => JSON.stringify(item)));
+  let added = false;
+  for (const item of bad) {
+    const key = JSON.stringify(item);
+    if (!seen.has(key)) {
+      seen.add(key);
+      existing.push(item);
+      added = true;
+    }
+  }
+  // Side effect, but idempotent and converging: once quarantined, later reads
+  // write nothing. (Reads already write in `migrateBrowserStorage`'s precedent.)
+  if (added) {
+    try {
+      localStorage.setItem(QUARANTINE_KEY, JSON.stringify(existing));
+    } catch { /* Storage denial must not break listing routes. */ }
   }
 }
 
@@ -44,7 +197,17 @@ export function saveFolders(folders: SavedFolder[]): void {
 }
 
 export function getRoutes(): SavedRoute[] {
-  return readJSON<SavedRoute[]>(ROUTES_KEY, []);
+  const raw = readJSON<unknown>(ROUTES_KEY, []);
+  if (!Array.isArray(raw)) return [];
+  const routes: SavedRoute[] = [];
+  const bad: unknown[] = [];
+  for (const item of raw) {
+    const normalized = normalizeSavedRoute(item);
+    if (normalized) routes.push(normalized);
+    else bad.push(item);
+  }
+  quarantineRoutes(bad);
+  return routes;
 }
 
 export function saveRoutes(routes: SavedRoute[]): void {

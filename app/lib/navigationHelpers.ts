@@ -97,8 +97,9 @@ export function routePlanFingerprint(
   from: [number, number] | null,
   to: [number, number] | null,
   via: [number, number][],
+  dwell?: string,
 ): string {
-  return JSON.stringify({ from, to, via });
+  return JSON.stringify({ from, to, via, dwell: dwell ?? "" });
 }
 
 export function cloneRoutingGraph(graph: RoutingGraph): RoutingGraph {
