@@ -1,0 +1,250 @@
+# Transit client — Step 6
+
+> **You are here because the NYC transit data is published, verified and reachable, and
+> nothing in the app reads it.** `server/transit-prep` is steps 1–5 of a six-step pipeline.
+> This document is step 6: make the browser route on that data instead of Overpass.
+
+**Verified 2026-09-16**, `main` at `55f9c71`. Every claim below has a command next to it.
+If this document disagrees with the code, the code wins — fix the document in the same PR
+as the work, as `docs/tracks/README.md` requires of the briefs.
+
+---
+
+## What is live
+
+```
+https://pub-c960c9abbd204246901a291a24850f55.r2.dev/transit/nyc/current.json
+  → nyc-2026-09-16-f8c5f275d305    7 shards + manifest, 9.14 MB
+```
+
+Bucket `umbra-transit-public` (public, CORS allows `shademapnav.vercel.app` and
+`localhost:5173`). Shards are served `immutable`; the pointer and manifest are `max-age=300`.
+
+Re-check it:
+
+```sh
+curl -s -A "Mozilla/5.0 Chrome/140" \
+  https://pub-c960c9abbd204246901a291a24850f55.r2.dev/transit/nyc/current.json
+```
+
+Two traps. `r2.dev` **filters on User-Agent** — Python's `urllib` gets a 403 where curl with a
+browser UA gets 200, so any server-side check needs a real UA. And `r2.dev` is rate-limited;
+production wants a custom domain (`docs/shadow-engine-v2/02b-placement.md`).
+
+Rebuilding and republishing is `server/transit-prep`'s job, not yours; credentials live in
+`~/.config/umbra/r2-transit.env`.
+
+---
+
+## The contract you consume
+
+Three hops: pointer → manifest → shards. Paths in the pointer are **bucket-relative**, so the
+client supplies the base URL itself (see *Open decisions*).
+
+```jsonc
+// current.json
+{ "version": 1, "dataset": "nyc-transit",
+  "generation": "nyc-2026-09-16-f8c5f275d305",
+  "manifestPath": "transit/nyc/<gen>/manifest.json",
+  "manifestSha256": "a5de6d…" }
+```
+
+`manifest.json` lists the 7 shards with `bytes`/`sha256` (verify if you like — every hash held
+when checked from the public URL), plus `schedulesAsOf`, `headwayDates`, `constants` and
+`notes`. **Read `notes`.** They are the honesty statements the transit card has to surface.
+
+```jsonc
+// subway.json — keys: kind, feed, stops, edges, routes, headways, transfers, stats
+{"id":"subway:127","name":"Times Sq-42 St","lat":40.75529,"lon":-73.987495,"changeSec":0}
+{"from":"subway:101","to":"subway:103","route":"1","direction":1,
+ "medianSec":90,"trips":550,"distM":544}
+{"from":"subway:112","to":"subway:A09","minSec":180,"kind":"gtfs"}
+{"from":"subway:101","to":"bus:100587","minSec":57,"kind":"spatial"}
+
+// bus-<borough>.json — keys: kind, feed, feeds, stops, edges, routes, headways, stats
+{"id":"bus:200132","name":"LILY POND AV/McCLEAN AV","lat":…,"lon":…,"feeds":["bus-si"]}
+{"route":"B1","direction":0,"dayType":"weekday","hour":13,
+ "medianSec":360,"trips":9,"services":1}
+```
+
+Sizes: subway 1.09 MB (2,737 stops / 1,949 edges / 5,322 transfers); bus shards 0.94–2.16 MB.
+A shard is **self-contained** — every stop its edges reference ships with it, including the far
+end of a cross-borough hop (the S53 over the Verrazzano puts Staten Island stops in `bus-b`).
+
+**There is no route geometry.** Draw and sample a leg stop-to-stop from its edges. That was a
+deliberate decision — see *Settled decisions*.
+
+---
+
+## The five mismatches — this is the actual work
+
+`app/lib/trainGraph.ts` (679 lines) was written against Overpass. The shards do not fit it.
+
+**1. Identity is the wrong type.** `TrainStation.id` and `TrainGraphEdge.to` are `number`
+(OSM node ids); shards use `"subway:127"` / `"bus:300000"` strings. The change ripples through
+`trainDijkstra`, `nearestStations`, `matchEntranceToTrainStation`, `buildTrainDrawData` and
+anything that persisted a station id.
+
+**2. The cost model is in metres.** `TrainGraphEdge.weight` is metres and `trainDijkstra`
+minimises distance, with a flat `TRANSFER_PENALTY_M = 300` standing in for a change of line.
+Shards give **seconds**. That is strictly better data, but once you are in seconds the flat
+penalty has to become time, and two real terms appear that the app has never had:
+
+- `StopNode.changeSec` — the feed's own cost for changing lines inside a station
+- **headway wait** — from the `headways` table, the thing that makes "how long am I standing
+  in the sun at this stop?" answerable at all. It is why this data exists.
+
+**3. `TrainStation.lines` has no shard equivalent.** Derive it by grouping `edges` by `route`.
+
+**4. Bus is new surface, not a swap.** `TrainMode` is `subway | light_rail | monorail` and
+`TRAIN_SUN_EXPOSURE` has no bus figure. A bus runs at grade in the sun and a bus stop wait is
+fully exposed — that is new modelling, and it is the half that matters most for Umbra. Note
+`TRAIN_SUN_EXPOSURE.subway = 0.0` is already a simplification: NYC's elevated lines (7 in
+Queens, J/M/Z, much of the outer boroughs) are not underground. Out of scope here; worth filing.
+
+**5. Station entrances still come from Overpass.** `fetchStationEntrances`
+(`app/lib/overpass.ts:657`) runs alongside the graph fetch in `useRouting.ts`. Shards carry
+station **centroids**, not entrances. Step 6 does not remove the Overpass dependency unless
+entrances are added to the pipeline — decide explicitly, do not discover it late.
+
+---
+
+## Where it plugs in
+
+`app/hooks/useRouting.ts:854`:
+
+```ts
+const [trainGraph, entrances] = await Promise.all([
+  fetchTrainGraph(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
+  fetchStationEntrances(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
+]);
+```
+
+Everything downstream — `findBestTrainRoute`, `matchEntranceToTrainStation`, the
+`TRAIN_SUN_EXPOSURE[lineMode]` lookup at `:979`, `buildTrainDrawData` at `:1031` — consumes
+`TrainGraph`. Keeping that interface and replacing only its **producer** is the cheapest
+first slice, even though the type has to change (mismatch 1).
+
+`RouteLeg.sunExposure` (`routing.ts:100`) already carries per-leg exposure. Transit legs
+already exist. You are changing where the graph comes from, not inventing legs.
+
+---
+
+## Suggested slicing
+
+Each is one PR. Stop after any of them and the app still works.
+
+**S1 — transport.** Fetch pointer → manifest → shards, cache by generation, choose shards by
+bbox. Pure module, no `trainGraph` change. Hermetic tests against a fixture; no network in CI.
+`VITE_TRANSIT_BASE` env var, absent = feature off.
+
+**S2 — adapter, subway only, behind the flag.** Build a `TrainGraph`-shaped object from the
+shards with string ids. Keep the metres cost model for now (use `distM`) so the diff is
+*only* the data source and you can A/B it against Overpass on the same O-D pair.
+
+**S3 — time-based cost.** Switch `weight` to seconds; `changeSec` and headway wait replace
+`TRANSFER_PENALTY_M`. This is where the routes start differing from today's, and where an
+E2-style derivation note is warranted — see `docs/notes/mode-shadow-weight.md` for the form.
+
+**S4 — bus.** New `TrainMode` member, a sun-exposure figure for at-grade transit, stop-wait
+exposure. Largest and most product-shaped slice.
+
+**S5 — retire the Overpass path**, or decide entrances stay on it and say so in the brief.
+
+---
+
+## Settled decisions — do not re-litigate
+
+Each was measured; the measurement is in the PR.
+
+- **Headways describe one representative date per day type**, chosen as the modal
+  active-service pattern on or after a reference date — not the union of every Mon–Fri
+  service. Unioning them halved the headway (median 0.57× true, 42% of Brooklyn buckets at or
+  below half). `manifest.headwayDates` names the date and how typical it is. (#376)
+- **`hour` is a service-day hour, 0–27, not a wall-clock hour.** Hours 24+ are the early
+  morning of `headwayDates[dataset][dayType].nextDate`, whose type is given as `nextDayType` —
+  **Saturday's hour 24 is Sunday service.** Hours 0–3 and 24–27 are different calendar days
+  and must not be merged: the 7 train ships hour 1 at 1200 s and hour 24 at 570 s. (#383)
+- **`changeSec` is verbatim, including 0.** The 57 zeros are cross-platform interchanges
+  (Times Sq, Grand Central, Union Sq) where you step across one platform. Do not treat 0 as
+  missing. 33 stations have no value — 11 of them multi-route, all same-platform pairs; the
+  field is absent rather than defaulted, so no number appears the agency did not give. (#384)
+- **No route geometry ships.** One polyline per `route:direction` cannot describe a branched
+  route: 54 of 56 subway pairs had >10% of their stations >400 m off the line (M train 27/36).
+  Straight-line stop-to-stop measured 93% of true street path, and `distM` is measured the same
+  way, so drawn geometry and reported distance agree. Per-**edge** geometry is the upgrade
+  path and is additive. (#385)
+- **`distM` is straight-line haversine**, ~5–7% under true path length.
+- **Generation ids are content-addressed** — identical inputs and code rebuild to the same id.
+
+---
+
+## Known gaps — none blocking, all real
+
+- **54 of 399 display routes ship nowhere** (every edge dropped as sparse or implausibly
+  fast). Nothing can route over them; no headway row survives for them.
+- **Subway↔bus transfers are spatial stubs** — every bus stop within 200 m of a station,
+  capped at 10, at 1.4 m/s. Never validated against reality. 5,172 of them.
+- **No GTFS-RT.** Weekend construction reroutes are invisible. Scheduled, not traffic-aware.
+- **Bus stop wait assumes an unsheltered stop** (GTFS carries no shelter geometry).
+- **`bus-busco.json` is 72% of its 3 MB shard budget**; the count baselines (496 subway
+  parents / 13,461 bus stops) hard-fail the build on the next pick by design.
+- **The subway feed expires 2026-10-31.** Around mid-October the pipeline needs a fresh feed;
+  the freshness guardrail fails at <14 days out.
+- **#10 from the review is open**: the shadow pointer uses serving routes (`/_shadow/…`) and
+  the transit pointer uses bucket keys. Belongs with the Cloudflare move (#358/#360).
+
+---
+
+## What is NOT verified
+
+**No client code has ever consumed this data.** The only thing that has is a throwaway
+Playwright probe. It is the honest starting point for S1, and it worked:
+
+```js
+const pointer  = await (await fetch(`${base}/transit/nyc/current.json`)).json();
+const manifest = await (await fetch(`${base}/${pointer.manifestPath}`)).json();
+const dir      = pointer.manifestPath.split("/").slice(0, -1).join("/");
+const subway   = await (await fetch(`${base}/${dir}/subway.json`)).json();
+const busB     = await (await fetch(`${base}/${dir}/bus-b.json`)).json();
+
+const adj = new Map();
+for (const e of [...subway.edges, ...busB.edges]) {
+  if (!adj.has(e.from)) adj.set(e.from, []);
+  adj.get(e.from).push(e);
+}
+```
+
+From Chromium at `localhost:5173`: **3.0 MB in ~1,048 ms, 5,117 adjacency nodes, no console
+errors.** `subway:127` reads `changeSec: 0`; B1 weekday 13:00 reads `360s from 9 trips,
+1 service`. Nothing beyond that has been exercised — no routing, no rendering, no shade
+sampling on a transit leg.
+
+---
+
+## Relationship to Track E
+
+This is **not** E6. E6 is *mixed-mode journeys* — walk + transit + bike legs in one `Trip`,
+with per-leg modes and totals that sum across them. Step 6 is a **data-source swap** that E6
+then builds on. E5's decision that "transit access legs stay pedestrian (mixed-mode is E6)"
+still holds.
+
+Do it before E6. E6 generalising `trainGraph.ts` over the Overpass graph, and then having the
+data source change underneath it, is the expensive ordering.
+
+---
+
+## Commands
+
+```sh
+npm run dev            # localhost:5173 is in the CORS allowlist
+/gates                 # all four, before any PR
+npm run e2e            # the only automated browser check
+
+# the pipeline that produced the data (not your job, but this is how to look)
+cd server/transit-prep
+TRANSIT_PREP_ROOT=$HOME/shade-prep-data-nyc-transit npm run verify
+```
+
+`npm test` never opens a browser. If you change what the map draws, say the browser check is
+outstanding rather than letting four green gates imply it.
