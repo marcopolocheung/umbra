@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { routeLegSummary } from "../routeLegSummary";
+import { routeLegSummary, transitSunLabel, transitSunCardLabel, TRANSIT_SUN_CAVEAT } from "../routeLegSummary";
 import type { RouteLeg } from "../routing";
 
 const line: GeoJSON.Feature<GeoJSON.LineString> = {
@@ -35,8 +35,34 @@ describe("routeLegSummary", () => {
 
     expect(routeLegSummary(leg, 1)).toEqual({
       title: "Leg 2: Red Line",
-      detail: "11 min - 2 stops - underground",
+      detail: "11 min - 2 stops - assumed underground",
     });
+  });
+
+  it("does not state undergroundness as fact (#393)", () => {
+    // `sunExposure` is TRAIN_SUN_EXPOSURE[mode] — a constant per mode, not a
+    // measurement of this track. Every subway line prices at 0.0, and NYC's
+    // elevated lines are in full sun, so the label has to read as the model
+    // assumption it is.
+    const elevated: RouteLeg = {
+      type: "transit",
+      geojson: line,
+      lineName: "7",
+      travelTimeSec: 600,
+      stops: ["A", "B"],
+      sunExposure: 0,
+    };
+
+    const { detail } = routeLegSummary(elevated, 0);
+    expect(detail).toContain("assumed");
+    expect(transitSunLabel(0)).toBe("assumed underground");
+    expect(transitSunCardLabel(0)).toBe("Assumed underground");
+    expect(TRANSIT_SUN_CAVEAT).toMatch(/not measured|elevated/i);
+  });
+
+  it("leaves a leg the model never priced unlabelled", () => {
+    // Absent is not zero: an unpriced leg must not read as "underground".
+    expect(transitSunLabel(undefined)).toBeNull();
   });
 
   it("labels unsampled legs in the route's mode, with a grammatical fallback", () => {

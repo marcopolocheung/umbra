@@ -10,12 +10,32 @@ function formatMinutes(sec: number): string {
   return `${Math.max(1, Math.ceil(sec / 60))} min`;
 }
 
-function transitSunLabel(sunExposure: number | undefined): string | null {
+/**
+ * Why "assumed": a transit leg's `sunExposure` is `TRAIN_SUN_EXPOSURE[mode]`, a
+ * constant per *mode*, not a measurement of the track this leg actually runs
+ * on. Every subway line therefore prices at 0.0, and NYC's elevated lines — the
+ * 7 through Queens, the J/M/Z, much of the outer boroughs — are in full sun.
+ * Stating "underground" as fact is a claim the data cannot support; naming it as
+ * a model assumption is what it is until exposure is a property of a segment
+ * rather than a mode (#393).
+ */
+export function transitSunLabel(sunExposure: number | undefined): string | null {
   if (sunExposure == null) return null;
-  if (sunExposure < 0.05) return "underground";
+  if (sunExposure < 0.05) return "assumed underground";
   if (sunExposure < 0.2) return "mostly shadowed";
   return "some sun";
 }
+
+/** The same judgement, worded for a route card rather than a leg line. */
+export function transitSunCardLabel(sunExposure: number | undefined): string {
+  if (sunExposure != null && sunExposure >= 0.2) return "Some sun exposure";
+  if (sunExposure != null && sunExposure >= 0.05) return "Mostly shadowed";
+  return "Assumed underground";
+}
+
+/** Why that label is an assumption, for a tooltip. */
+export const TRANSIT_SUN_CAVEAT =
+  "Estimated from the line's mode, not measured along this segment — elevated track is not modelled.";
 
 export interface RouteLegSummary {
   title: string;
