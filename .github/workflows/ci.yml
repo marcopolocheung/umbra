@@ -56,6 +56,15 @@ jobs:
       # MapTiler key is only read at runtime for tile fetches.
       - run: npm run build
 
+      # Pinned Wrangler validates the NYC shadow-data sidecar without deploying
+      # it: the generated Env types stay current and the bundle compiles. Neither
+      # step authenticates or uploads anything.
+      - run: npx -y wrangler@4.86.0 types --check
+        working-directory: cloudflare/shadow-data-worker
+
+      - run: npx -y wrangler@4.86.0 deploy --dry-run
+        working-directory: cloudflare/shadow-data-worker
+
   e2e:
     name: browser smoke test
     needs: verify

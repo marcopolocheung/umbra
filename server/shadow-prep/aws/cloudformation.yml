@@ -55,15 +55,11 @@ Resources:
       BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
       VersioningConfiguration: { Status: Enabled }
-      # Candidate planes are private intermediate artifacts. Keep them long
-      # enough for browser-pack verification, then clean them up automatically.
+      # Candidate expiry is intentionally absent. PR2 repairs buildingSupport
+      # from these normalized candidates without renormalizing, so no rule may
+      # expire them until a corrected generation is verified and promoted.
       LifecycleConfiguration:
         Rules:
-          - Id: expire-private-candidates-after-30-days
-            Status: Enabled
-            Prefix: normalized/
-            ExpirationInDays: 30
-            NoncurrentVersionExpiration: { NoncurrentDays: 30 }
           # The Overture lookup index is reproducible from raw sources and is
           # not part of the browser handoff, so retain its short disposal window.
           - Id: expire-reproducible-vector-index-after-7-days

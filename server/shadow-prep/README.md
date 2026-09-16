@@ -180,8 +180,9 @@ injected into Batch only from the scoped Secrets Manager secret and is named
 candidate S3.
 
 `scripts/aws/submit-nyc-browser-pack.sh` (from the repository root) is intentionally a dry run unless
-called with `--execute`. It refuses to submit unless the EC2 standard On-Demand
-vCPU quota is at least 128, waits for index → array → aggregate in that order,
-and leaves the current pointer unchanged. Review and explicitly run it only
-after the capacity request is approved and the reviewed image/stack update is
-live.
+called with `--execute`. It refuses to submit only when the EC2 standard On-Demand
+vCPU quota is below 1; with fewer than 128 vCPUs the 128-child array runs in
+waves until the pending quota increase arrives. It waits for index → array →
+aggregate in that order, and leaves the current pointer unchanged. Review and
+explicitly run it only after the capacity request is approved and the reviewed
+image/stack update is live.

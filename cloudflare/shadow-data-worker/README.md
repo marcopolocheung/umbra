@@ -30,6 +30,20 @@ immutable and cacheable for one year. Upload a complete immutable generation
 first; update `current.json` only after its manifest and every tile have been
 verified.
 
+## Type regeneration
+
+`worker-configuration.d.ts` is generated with a pinned Wrangler and without
+runtime types (the root `tsc` covers this tree with DOM libs, so the full
+runtime bundle would shadow globals and break the app typecheck):
+
+```bash
+cd cloudflare/shadow-data-worker
+npx -y wrangler@4.86.0 types --include-runtime=false
+```
+
+CI enforces `wrangler@4.86.0 types --check` and a `deploy --dry-run`
+compilation on every PR. Neither authenticates nor uploads anything.
+
 ## PR1 scope: read-only staging checks, no browser consumer yet
 
 PR1 lands this Worker and the catalog/bundle transport tested but uncalled: no
