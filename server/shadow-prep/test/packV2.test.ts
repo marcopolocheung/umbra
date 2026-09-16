@@ -210,7 +210,7 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
       if (!prior) await output.write(packed.key, bytes);
       entries.push(packed);
     }
-    const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
+    const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), candidateTileGeometryHash: "c".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
     const receipt = browserPackShardReceipt(entries, identity, 0, 1, repair);
     assert.ok(receipt.bounds && receipt.repair);
     assert.equal(receipt.repair.receiptManifestSha256, regionInput.receiptManifestSha256);
@@ -222,6 +222,7 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
       borough: world,
       boroughFile: { filename: "test-borough.geojson", sha256: "c".repeat(64) },
       regionInput,
+      repairGeometry: repair,
     });
     assert.ok(full.generationKey && full.generationSha256);
     assert.ok(full.coverageKey && full.boundsKey && full.noticesKey);
@@ -237,15 +238,16 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
     assert.equal(root.activationTileCount, 2);
     assert.equal(root.artifacts.manifest.sha256, full.manifestSha256);
 
-    // A receipt can be syntactically valid yet claim a different admitted
-    // manifest. Recompute its receipt digest to prove aggregation catches the
-    // provenance disagreement rather than merely relying on receipt integrity.
+    // A receipt can be syntactically valid yet claim different repair evidence.
+    // Recompute its receipt digest to prove aggregation catches the provenance
+    // disagreement rather than merely relying on receipt integrity.
     const receiptKey = `generations/${identity.generation}/shards/000-of-001.json`;
-    const tampered = JSON.parse(new TextDecoder().decode(await output.read(receiptKey))) as Record<string, unknown> & {
-      repair: { receiptManifestSha256: string };
+    const originalReceiptBytes = await output.read(receiptKey);
+    const tampered = JSON.parse(new TextDecoder().decode(originalReceiptBytes)) as Record<string, unknown> & {
+      repair: { candidateTileGeometryHash: string };
       sha256: string;
     };
-    tampered.repair.receiptManifestSha256 = "c".repeat(64);
+    tampered.repair.candidateTileGeometryHash = "d".repeat(64);
     const { sha256: _ignored, ...tamperedBody } = tampered;
     tampered.sha256 = sha256(new TextEncoder().encode(JSON.stringify(tamperedBody)));
     await output.write(receiptKey, new TextEncoder().encode(`${JSON.stringify(tampered)}\n`));
@@ -254,8 +256,20 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
         borough: world,
         boroughFile: { filename: "test-borough.geojson", sha256: "c".repeat(64) },
         regionInput,
+        repairGeometry: repair,
       }),
-      /licence provenance diverges/,
+      /repair\/licence provenance diverges/,
+    );
+    await output.write(receiptKey, originalReceiptBytes);
+
+    await assert.rejects(
+      aggregateBrowserPack(output, index, identity, 1, {
+        borough: world,
+        boroughFile: { filename: "test-borough.geojson", sha256: "c".repeat(64) },
+        regionInput,
+        repairGeometry: { ...repair, supportGeometryHash: "d".repeat(64) },
+      }),
+      /repair\/licence provenance diverges/,
     );
 
     // v2 manifest helper stands alone too.
@@ -331,6 +345,7 @@ test("buried roofs fall back to conservative bounds with a recorded anomaly", as
       policy: REPAIR_POLICY_VERSION,
       policyHash: repairPolicyHash(),
       supportGeometryHash: "b".repeat(64),
+      candidateTileGeometryHash: "c".repeat(64),
       regionFileSha256: regionInput.regionFileSha256,
       receiptManifestSha256: regionInput.receiptManifestSha256!,
       licenceHashes: componentLicenceHashes(regionInput),

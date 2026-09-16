@@ -17,7 +17,7 @@ import {
   type PackedBrowserTile,
   type RepairContext,
 } from "./pack";
-import { verifySupportGeometryTiles, REPAIR_POLICY_VERSION, repairPolicyHash } from "./repair";
+import { verifyCandidateTileGeometry, REPAIR_POLICY_VERSION, repairPolicyHash } from "./repair";
 import { loadAdmittedLicenceInput, loadRegionDocument } from "./notices";
 import { parseS3ObjectSpec, r2StoreFromEnvironment, S3Store, isConditionalWriteConflict, type ObjectStore } from "./storage";
 import { supportGeometry } from "./support";
@@ -99,6 +99,14 @@ async function loadSupportGeometry(): Promise<{ geometry: CoverageGeometry; geom
   return { geometry: supportGeometry(JSON.parse(new TextDecoder().decode(bytes))), geometryHash: hash };
 }
 
+async function loadCandidateTileGeometry(): Promise<{ geometry: CoverageGeometry; geometryHash: string }> {
+  const spec = optional("--candidate-tile-geometry");
+  const hash = optional("--candidate-tile-sha256");
+  if (!spec || !hash) throw new Error("v2 packing requires --candidate-tile-geometry and --candidate-tile-sha256");
+  const bytes = await loadEvidenceBytes(spec, hash);
+  return { geometry: supportGeometry(JSON.parse(new TextDecoder().decode(bytes))), geometryHash: hash };
+}
+
 async function loadBoroughBoundary(): Promise<{ geometry: CoverageGeometry; file: { filename: string; sha256: string } }> {
   const spec = optional("--borough-boundary");
   if (!spec) throw new Error("v2 aggregation requires --borough-boundary");
@@ -153,9 +161,12 @@ async function packShard(): Promise<void> {
   const { source, indexStore } = await sourceAndIndexStore();
   const index = await loadIndex(indexStore);
   const { geometry, geometryHash } = await loadSupportGeometry();
-  // The geometry self-authenticates: it must reproduce the frozen index tile
-  // set exactly before any tile is repaired.
-  verifySupportGeometryTiles(geometry, index.tiles);
+  const candidateTiles = await loadCandidateTileGeometry();
+  // Candidate selection and source support are distinct evidence. The
+  // unbuffered output target must reproduce the frozen index exactly; the
+  // wider admitted support geometry below determines whether each cell is
+  // known by the source.
+  verifyCandidateTileGeometry(candidateTiles.geometry, index.tiles);
   const regionInput = await loadV2LicenceInput();
   const tiles = contiguousShard(index.tiles, shardIndex, count);
   const descriptors: CandidateDescriptor[] = [];
@@ -181,6 +192,7 @@ async function packShard(): Promise<void> {
     policy: REPAIR_POLICY_VERSION,
     policyHash: repairPolicyHash(),
     supportGeometryHash: geometryHash,
+    candidateTileGeometryHash: candidateTiles.geometryHash,
     regionFileSha256: regionInput.regionFileSha256,
     receiptManifestSha256: regionInput.receiptManifestSha256!,
     licenceHashes: componentLicenceHashes(regionInput),
@@ -193,6 +205,9 @@ async function aggregate(): Promise<void> {
   if (!Number.isInteger(count) || count < 1) throw new Error("--array-shards must be a positive integer");
   const { indexStore } = await sourceAndIndexStore();
   const index = await loadIndex(indexStore);
+  const support = await loadSupportGeometry();
+  const candidateTiles = await loadCandidateTileGeometry();
+  verifyCandidateTileGeometry(candidateTiles.geometry, index.tiles);
   const borough = await loadBoroughBoundary();
   const regionInput = await loadV2LicenceInput();
   const identity = browserPackIdentityV2(NORMALIZATION_ID, GENERATION_SUFFIX);
@@ -200,6 +215,10 @@ async function aggregate(): Promise<void> {
     borough: borough.geometry,
     boroughFile: borough.file,
     regionInput,
+    repairGeometry: {
+      supportGeometryHash: support.geometryHash,
+      candidateTileGeometryHash: candidateTiles.geometryHash,
+    },
   });
   await report({ action: "aggregate", indexKey: INDEX_KEY, generation: identity.generation, reconciliation });
 }

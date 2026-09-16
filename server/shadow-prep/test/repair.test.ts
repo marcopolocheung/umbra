@@ -13,7 +13,7 @@ import {
   repairPolicyHash,
   REPAIR_POLICY_VERSION,
   supportPlaneHash,
-  verifySupportGeometryTiles,
+  verifyCandidateTileGeometry,
   type RepairReceipt,
 } from "../src/repair";
 import { STORED_SIZE } from "../../../app/lib/shadowField/v2/types";
@@ -111,7 +111,7 @@ test("repair derives mixed support on boundary tiles", () => {
   assert.ok(classified.some((value) => value === 2));
 });
 
-test("support geometry must reproduce the frozen tile set", async () => {
+test("candidate-tile geometry must reproduce the frozen tile set independently of source support", async () => {
   const { supportTiles } = await import("../src/tiles.js");
   const square: CoverageGeometry = {
     type: "Polygon",
@@ -120,9 +120,9 @@ test("support geometry must reproduce the frozen tile set", async () => {
   const derived = supportTiles(square).map((tile) => tile.key);
   assert.ok(derived.length > 0 && derived.length < 1000);
   // The comparator accepts the exact derived set and refuses anything else.
-  verifySupportGeometryTiles(square, derived);
-  assert.throws(() => verifySupportGeometryTiles(square, derived.slice(1)), /refusing repair/);
-  assert.throws(() => verifySupportGeometryTiles(square, ["18/10/10"]), /refusing repair/);
+  verifyCandidateTileGeometry(square, derived);
+  assert.throws(() => verifyCandidateTileGeometry(square, derived.slice(1)), /refusing repair/);
+  assert.throws(() => verifyCandidateTileGeometry(square, ["18/10/10"]), /refusing repair/);
 });
 
 test("source binding is deterministic and sensitive to every input", () => {

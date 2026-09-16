@@ -126,7 +126,10 @@ export type ComponentLicenceHashes = Record<ComponentKind, string>;
 export interface PackRepairProvenance {
   policy: typeof REPAIR_POLICY_VERSION;
   policyHash: string;
+  /** Wider admitted source coverage used to derive per-cell support. */
   supportGeometryHash: string;
+  /** Unbuffered output target that must reproduce the frozen candidate index. */
+  candidateTileGeometryHash: string;
   regionFileSha256: string;
   /** Hash of the exact admitted source-receipts/acquisition manifest. */
   receiptManifestSha256: string;
@@ -530,8 +533,12 @@ export function browserPackShardReceipt(
   const body: Omit<PackShardReceipt, "sha256"> = { version: 1, generation: identity.generation, identity, shardIndex, shardCount, tiles };
   if (identity.model) {
     if (!repair) throw new Error("v2 shard receipts require repair provenance");
-    if (!/^[a-f0-9]{64}$/.test(repair.regionFileSha256) || !/^[a-f0-9]{64}$/.test(repair.receiptManifestSha256))
-      throw new Error("v2 shard receipts require region and receipt manifest hashes");
+    if (
+      !/^[a-f0-9]{64}$/.test(repair.supportGeometryHash) ||
+      !/^[a-f0-9]{64}$/.test(repair.candidateTileGeometryHash) ||
+      !/^[a-f0-9]{64}$/.test(repair.regionFileSha256) ||
+      !/^[a-f0-9]{64}$/.test(repair.receiptManifestSha256)
+    ) throw new Error("v2 shard receipts require repair, region, and receipt manifest hashes");
     assertLicenceHashes(repair.licenceHashes, "v2 shard receipt");
     if (entries.some((entry) => !entry.bounds)) throw new Error("v2 shard receipts require per-tile bounds");
     const bounds: LeafBoundsArrays = { minG: [], maxG: [], maxTopQ: [], maxCrownQ: [], coverage: [] };
@@ -628,6 +635,8 @@ export interface GenerationArtifactInputs {
   borough: CoverageGeometry;
   boroughFile: { filename: string; sha256: string };
   regionInput: RegionLicenceInput;
+  /** Independently supplied geometry pins checked against every shard receipt. */
+  repairGeometry: Pick<PackRepairProvenance, "supportGeometryHash" | "candidateTileGeometryHash">;
   activationRule?: string;
   /** Published in bounds.json so clients defer these tiles until PR4 policy. */
   anomalies?: Array<{ tile: string; reason: string }>;
@@ -793,13 +802,19 @@ export async function aggregateBrowserPack(
     if (receipt.sha256 !== createHash("sha256").update(JSON.stringify(body)).digest("hex") || receipt.version !== 1 || receipt.generation !== identity.generation || JSON.stringify(receipt.identity) !== JSON.stringify(identity) || receipt.shardIndex !== shardIndex || receipt.shardCount !== shardCount)
       throw new Error(`invalid shard receipt: ${key}`);
     if (identity.model) {
-      if (!/^[a-f0-9]{64}$/.test(receipt.repair!.regionFileSha256) || !/^[a-f0-9]{64}$/.test(receipt.repair!.receiptManifestSha256))
+      if (
+        !/^[a-f0-9]{64}$/.test(receipt.repair!.supportGeometryHash) ||
+        !/^[a-f0-9]{64}$/.test(receipt.repair!.candidateTileGeometryHash) ||
+        !/^[a-f0-9]{64}$/.test(receipt.repair!.regionFileSha256) ||
+        !/^[a-f0-9]{64}$/.test(receipt.repair!.receiptManifestSha256)
+      )
         throw new Error(`invalid shard repair hashes: ${key}`);
       assertLicenceHashes(receipt.repair!.licenceHashes, `shard repair provenance ${key}`);
       const provenance = {
         policy: receipt.repair!.policy,
         policyHash: receipt.repair!.policyHash,
         supportGeometryHash: receipt.repair!.supportGeometryHash,
+        candidateTileGeometryHash: receipt.repair!.candidateTileGeometryHash,
         regionFileSha256: receipt.repair!.regionFileSha256,
         receiptManifestSha256: receipt.repair!.receiptManifestSha256,
         licenceHashes: receipt.repair!.licenceHashes,
@@ -809,6 +824,7 @@ export async function aggregateBrowserPack(
         repair.policy !== provenance.policy ||
         repair.policyHash !== provenance.policyHash ||
         repair.supportGeometryHash !== provenance.supportGeometryHash ||
+        repair.candidateTileGeometryHash !== provenance.candidateTileGeometryHash ||
         repair.regionFileSha256 !== provenance.regionFileSha256 ||
         repair.receiptManifestSha256 !== provenance.receiptManifestSha256 ||
         !sameLicenceHashes(repair.licenceHashes, provenance.licenceHashes)
@@ -851,8 +867,15 @@ export async function aggregateBrowserPack(
       if (!input.receiptManifestSha256 || !/^[a-f0-9]{64}$/.test(input.receiptManifestSha256))
         throw new Error("v2 aggregation requires the hash-pinned admitted receipt manifest");
       const expectedLicenceHashes = componentLicenceHashes(input);
-      if (!repair || repair.regionFileSha256 !== input.regionFileSha256 || repair.receiptManifestSha256 !== input.receiptManifestSha256 || !sameLicenceHashes(repair.licenceHashes, expectedLicenceHashes))
-        throw new Error("shard licence provenance diverges from aggregate input");
+      if (
+        !repair ||
+        repair.supportGeometryHash !== generationInputs.repairGeometry.supportGeometryHash ||
+        repair.candidateTileGeometryHash !== generationInputs.repairGeometry.candidateTileGeometryHash ||
+        repair.regionFileSha256 !== input.regionFileSha256 ||
+        repair.receiptManifestSha256 !== input.receiptManifestSha256 ||
+        !sameLicenceHashes(repair.licenceHashes, expectedLicenceHashes)
+      )
+        throw new Error("shard repair/licence provenance diverges from aggregate input");
       assertLicenceHashes(repair.licenceHashes, "shard repair provenance");
       const anomalies = [...aggregateAnomalies].sort((a, b) => (a.tile < b.tile ? -1 : a.tile > b.tile ? 1 : 0));
       for (const entry of entries) {
