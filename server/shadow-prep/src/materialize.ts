@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { quantizeHeight } from "../../../app/lib/shadowField/v2/format";
+import { SUPPORT_KNOWN, SUPPORT_UNKNOWN } from "../../../app/lib/shadowField/v2/support";
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
 import type { Admission, AdmittedAsset, PolygonalCoverage } from "./admission";
 import { ownsCellCentre, wholeFoundationQ, type RawRing } from "./buildings";
@@ -66,6 +67,16 @@ export async function terrainPlanes(admission: Admission, tile: Z18Tile): Promis
 
 interface Surface { id: string; height: number; minHeight: number; outer: RawRing; holes: RawRing[]; }
 interface CompleteBuilding { id: string; height: number; minHeight: number; footprints: Surface[]; parts: Surface[]; }
+/**
+ * Admitted source coverage for the building family. Cell support is derived
+ * from these hash-pinned polygons — never blanket-filled: 1 where the cell
+ * center is covered by both admitted building and building-part sources,
+ * 2 outside admitted complete coverage (edge tiles, gutter spill).
+ */
+export interface BuildingSourceCoverage {
+  buildings: PolygonalCoverage[];
+  parts: PolygonalCoverage[];
+}
 const surfaces = (row: GeoParquetRow): Surface[] => {
   if (!row.geometry.polygons.length) throw new Error(`building ${row.id} has no polygonal geometry`);
   // Overture permits a WKB MultiPolygon.  Preserve every component under its
@@ -79,7 +90,7 @@ const surfaceBounds = (surface: Surface): Bounds => {
 };
 const overlapsTile = (surface: Surface, tile: Bounds): boolean => intersects(surfaceBounds(surface), tile);
 function featureId(id: string): number { let value = 2166136261; for (const character of id) { value ^= character.charCodeAt(0); value = Math.imul(value, 16777619); } return value >>> 0; }
-export function buildingPlanes(tile: Z18Tile, terrain: Uint32Array, buildingRows: GeoParquetRow[], partRows: GeoParquetRow[]): ComponentPlane[] {
+export function buildingPlanes(tile: Z18Tile, terrain: Uint32Array, buildingRows: GeoParquetRow[], partRows: GeoParquetRow[], coverage: BuildingSourceCoverage): ComponentPlane[] {
   const partsByParent = new Map<string, Surface[]>();
   for (const row of partRows) partsByParent.set(row.buildingId!, [...(partsByParent.get(row.buildingId!) ?? []), ...surfaces(row)]);
   // Do this inexpensive envelope cull before rasterizing: the admitted vector
@@ -91,6 +102,10 @@ export function buildingPlanes(tile: Z18Tile, terrain: Uint32Array, buildingRows
   for (const building of buildings) cellsByBuilding.set(building.id, []);
   for (let index = 0; index < words; index++) {
     const x = index % STORED_SIZE, y = Math.floor(index / STORED_SIZE); const [lon, lat] = tileCellLonLat(tile, x, y);
+    const point: readonly [number, number] = [lon, lat];
+    // Support comes from admitted source coverage, not occupancy: gutter and
+    // exterior cells beyond the complete extracts stay explicitly unknown.
+    support[index] = coverage.buildings.some((item) => supported(item, point)) && coverage.parts.some((item) => supported(item, point)) ? SUPPORT_KNOWN : SUPPORT_UNKNOWN;
     for (const building of buildings) if (building.footprints.some((surface) => ownsCellCentre(surface.outer, surface.holes, lon, lat))) cellsByBuilding.get(building.id)!.push(index);
   }
   for (const building of buildings) {

@@ -1,3 +1,4 @@
+import { SUPPORT_KNOWN } from "./support";
 import { COMPONENT_FLAGS, type Component } from "./types";
 
 export const TreeModelV2 = {
@@ -33,7 +34,7 @@ export function composeCrown(
   const nativeHeight = plane(canopy, "canopyHeightAglQ") ?? plane(canopy, "crownTopAglQ");
   const nativeBase = plane(canopy, "canopyBaseAglQ") ?? plane(canopy, "crownBaseAglQ");
   const support = plane(canopy, "canopySupport");
-  const nativeAvailable = support ? support[index] === 1 : true;
+  const nativeAvailable = support ? support[index] === SUPPORT_KNOWN : true;
   const nativePresent =
     nativeAvailable && (nativeMask ? nativeMask[index] !== 0 : signed(nativeHeight, index) > 0);
   const fallbackMask = plane(canopy, "fallbackCanopyMask");

@@ -10,7 +10,8 @@
     }
   ],
   "vars": {
-    "ALLOWED_ORIGIN": "https://shademapnav.vercel.app"
+    "ALLOWED_ORIGIN": "https://shademapnav.vercel.app",
+    "LEGACY_GENERATIONS": "nyc-70e3507f16d472adf5475b614a60cb16-five-borough-v1"
   },
   "observability": {
     "enabled": true,

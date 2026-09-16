@@ -75,3 +75,5 @@ export function groundReceiverValidity(
 
 export const RECEIVER_BIAS_Q = 1;
 export const QUANTUM_METRES = 1 / QUANTIZATION;
+/** Receiver-model identity pinned through v2 component identities. */
+export const RECEIVER_MODEL_VERSION = "receiver-v2";

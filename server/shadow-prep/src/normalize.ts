@@ -1,4 +1,5 @@
 import { STORED_SIZE, type ComponentPlane } from "../../../app/lib/shadowField/v2/types";
+import { SUPPORT_KNOWN, SUPPORT_UNKNOWN } from "../../../app/lib/shadowField/v2/support";
 import type { Admission } from "./admission";
 import { normalizeBuildings, type RawBuilding } from "./buildings";
 import { selectCanopy, type CanopyCell } from "./canopy";
@@ -10,9 +11,9 @@ import { supportTiles, tileBounds, type Z18Tile } from "./tiles";
 import { requireRoot, sha256 } from "./util";
 import { candidateStore } from "./storage";
 import { loadFrozenSupport } from "./support";
+import { NORMALIZER_VERSION } from "./versions";
 
 export interface NormalizedTile { tile: string; terrain: ComponentPlane[]; buildings: ComponentPlane[]; canopy: ComponentPlane[]; evidence: Record<string, string>; }
-export const NORMALIZER_VERSION = "nyc-z18-normalizer-v1";
 export const BILINEAR_TERRAIN_POLICY = "FABDEM-native-zip/bilinear/z18-vertices/EGM2008-to-EGM96/quantize-once-1-over-64";
 export const TREE_MODEL_RECIPE = "tree-model-v2/native-nearest/fallback-explicit-height-only";
 export interface NormalizationPlan { normalizationId: string; supportPath: string; supportHash: string; tiles: Z18Tile[]; maximumCandidateBytes: number; requiredFreeBytes: number; }
@@ -80,7 +81,9 @@ export function deterministicShard<T extends { key: string }>(items: readonly T[
 function supportCounts(planes: ComponentPlane[]): { known: number; empty: number; unknown: number } {
   const values = planes.find((item) => item.name === "canopySupport" || item.name === "buildingSupport")?.words;
   if (!values) return { known: STORED_SIZE * STORED_SIZE, empty: 0, unknown: 0 };
-  let known = 0, empty = 0, unknown = 0; for (const value of values) { if (value === 2) unknown++; else if (value === 1) known++; else empty++; } return { known, empty, unknown };
+  // Cell semantics: 1 is source-covered, 2 is explicitly unknown, 0 is the
+  // legacy-unset value counted as empty for v1 descriptor compatibility.
+  let known = 0, empty = 0, unknown = 0; for (const value of values) { if (value === SUPPORT_UNKNOWN) unknown++; else if (value === SUPPORT_KNOWN) known++; else empty++; } return { known, empty, unknown };
 }
 /** Item 6 is deliberately candidate-only. The full vector prepass occurs before
  * any tile descriptor; each independent tile then streams GDAL output through
@@ -100,7 +103,10 @@ export async function normalizeAdmitted(admission: Admission, suppliedPlan?: Nor
     for (const row of [...buildings, ...parts]) if (row.height < 0 || row.minHeight < 0 || row.minHeight > row.height) throw new Error(`missing, invalid, or contradictory building/part height: ${row.id}`);
     const parentIds = new Set(buildings.map((row) => row.id)); for (const part of parts) if (!parentIds.has(part.buildingId!)) throw new Error(`building part ${part.id} has no complete parent ${part.buildingId}`);
     const terrain = await terrainPlanes(admission, tile); const ground = terrain.find((item) => item.name === "groundQ")!.words;
-    const rawBuilding = buildingPlanes(tile, ground, buildings, parts);
+    const rawBuilding = buildingPlanes(tile, ground, buildings, parts, {
+      buildings: receipt(admission, "overture-buildings").assets.map((asset) => asset.supportCoverage),
+      parts: receipt(admission, "overture-building-parts").assets.map((asset) => asset.supportCoverage),
+    });
     for (const name of ["foundationQ", "foundationPresent"] as const) terrain.find((item) => item.name === name)!.words.set(rawBuilding.find((item) => item.name === name)!.words);
     const building = rawBuilding.filter((item) => item.name !== "foundationQ" && item.name !== "foundationPresent"); const canopy = await canopyPlanes(admission, tile);
     await writeCandidate(store, { schemaVersion: 1, normalizationId: plan.normalizationId, tile: tile.key, gutter: 1, byteOrder: "little-endian-u32", support: { terrain: { known: STORED_SIZE * STORED_SIZE, empty: 0, unknown: 0 }, buildings: supportCounts(building), canopy: supportCounts(canopy) } }, { terrain, buildings: building, canopy });

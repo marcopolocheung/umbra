@@ -35,7 +35,7 @@ test("raw staging fails before download when the bounded scratch allowance is to
 test("raw staging rejects expected objects without S3 sha256 metadata", async () => {
   const source = await mkdtemp(join(tmpdir(), "stage-source-")); const target = await mkdtemp(join(tmpdir(), "stage-target-"));
   try {
-    const backing = new FilesystemStore(source); const missingMetadata: ObjectStore = { kind: "s3", read: backing.read.bind(backing), write: backing.write.bind(backing), copyToFile: backing.copyToFile.bind(backing), async head(key) { const value = await backing.head(key); return value && { bytes: value.bytes }; } };
+    const backing = new FilesystemStore(source); const missingMetadata: ObjectStore = { kind: "s3", read: backing.read.bind(backing), write: backing.write.bind(backing), writeConditional: backing.writeConditional.bind(backing), copyToFile: backing.copyToFile.bind(backing), async head(key) { const value = await backing.head(key); return value && { bytes: value.bytes }; } };
     await mkdir(join(source, "raw"), { recursive: true }); await writeFile(join(source, "raw", "source-receipts.json"), "[]"); await writeFile(join(source, "raw", "nyc-borough-boundaries-26b.geojson"), "not accepted without metadata");
     await assert.rejects(stageAdmittedInputs(missingMetadata, { root: target, maxScratchBytes: 1024 * 1024 }), /sha256 metadata is missing/);
   } finally { await rm(source, { recursive: true, force: true }); await rm(target, { recursive: true, force: true }); }

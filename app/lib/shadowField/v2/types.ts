@@ -34,7 +34,7 @@ export type PlaneName =
 export type PlaneType = "i32" | "u32";
 export type Predictor = "none" | "horizontal-delta-u32";
 export type Codec = "gzip";
-export type SupportState = "present" | "known-empty" | "nodata" | "unknown";
+export type SupportState = "present" | "known-empty" | "nodata" | "unknown" | "partial";
 
 export const COMPONENT_FLAGS = {
   buildingPresent: 1 << 0,

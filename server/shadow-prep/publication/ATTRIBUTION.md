@@ -10,4 +10,7 @@ receive terrain-derived absolute values or FABDEM terms merely through compositi
 
 NYC source preparation in this project is for personal, non-commercial use only.
 FABDEM V1.2-derived output retains FABDEM attribution and is subject to CC BY-NC-SA
-4.0. It must not be made public, sold, ad-supported, or distributed to customers.
+4.0. FABDEM-derived terrain may be shared for noncommercial purposes under CC BY-NC-SA
+4.0, with required attribution, modification notices, and ShareAlike terms. Commercial use
+(including ads, paid access, or distribution to customers) requires separate permission
+from the FABDEM rights holders. (License interpretation, not formal legal advice.)

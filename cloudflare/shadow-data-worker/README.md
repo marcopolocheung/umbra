@@ -47,6 +47,37 @@ CI enforces `wrangler@4.86.0 types --check`, the standalone `tsc -p` contract
 check, and a `deploy --dry-run` compilation on every PR. None authenticates or
 uploads anything.
 
+## PR2 scope: generation roots, compact artifacts, and publication gating
+
+PR2 keeps the v1 generation servable and adds the corrected generation
+`nyc-70e3507f16d472adf5475b614a60cb16-five-borough-v2` with four new immutable
+files per generation:
+
+```text
+/_shadow/generations/nyc-<normalization-id>-<suffix>/generation.json
+/_shadow/generations/nyc-<normalization-id>-<suffix>/coverage.json
+/_shadow/generations/nyc-<normalization-id>-<suffix>/bounds.json
+/_shadow/generations/nyc-<normalization-id>-<suffix>/notices.json
+```
+
+`current.json` v2 names only `generation.json` (plus its SHA-256); the root
+names the other three with path, SHA-256, and byte length. An unpromoted
+generation prefix is not retrievable merely for existing: every generation
+asset except a grandfathered manifest/tile requires that generation's
+published `generation.json` marker (`LEGACY_GENERATIONS` lists the pre-root
+v1 generation so rollback keeps serving). v1 smoke generations verify through
+the R2 API directly and never need Worker serving, so full gating changes
+nothing for them. No app code fetches any of these
+until PR3's lazy loader, so there are still zero new browser requests:
+
+```bash
+BASE=https://shademap-nyc-shadow-staging.marcoctpolo.workers.dev
+GEN=nyc-70e3507f16d472adf5475b614a60cb16-five-borough-v1
+curl -fsSI -H 'Origin: https://shademapnav.vercel.app' "$BASE/_shadow/generations/$GEN/manifest.json" # 200, grandfathered
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/_shadow/generations/$GEN/coverage.json" # 404, no v1 root marker
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/_shadow/generations/$GEN/notes.txt" # 404, outside the allow-list
+```
+
 ## PR1 scope: read-only staging checks, no browser consumer yet
 
 PR1 lands this Worker and the catalog/bundle transport tested but uncalled: no
