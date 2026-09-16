@@ -39,6 +39,7 @@ import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import type { MapObject } from "./lib/agent/receipts";
 import { fetchCloudCoverForecast } from "./services/weather";
+import { loadShadowCurrent, shadowApiBase, type ShadowCurrent } from "./lib/shadowField/remoteCatalog";
 
 const MapView = lazy(() => import("./components/MapView"));
 const SHADOW_LEGEND_STORAGE_KEY = "umbra:shadowLegendDismissed";
@@ -329,7 +330,29 @@ export default function Home() {
   const [cloudCoverPct, setCloudCoverPct] = useState<number | null>(null);
   const [shadowLayerReady, setShadowLayerReady] = useState(false);
   const [shadowLegendDismissed, setShadowLegendDismissed] = useState(readShadowLegendDismissed);
+  const [remoteShadowCurrent, setRemoteShadowCurrent] = useState<ShadowCurrent | undefined>();
+  const [remoteShadowError, setRemoteShadowError] = useState<string | null>(null);
   const didHydrateShareRef = useRef(false);
+
+  // This is only a small active-generation health check. Browser tile loading
+  // remains deliberately separate from the existing local shadow renderer.
+  useEffect(() => {
+    if (!shadowApiBase()) return;
+    const controller = new AbortController();
+    void loadShadowCurrent(controller.signal)
+      .then((current) => {
+        if (controller.signal.aborted) return;
+        setRemoteShadowCurrent(current);
+        setRemoteShadowError(null);
+        if (current) console.info("[shadow-data] active NYC generation", current.generation);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setRemoteShadowError(error instanceof Error ? error.message : "NYC shadow pointer request failed");
+        }
+      });
+    return () => controller.abort();
+  }, []);
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -828,6 +851,19 @@ export default function Home() {
         >
           zoom {mapZoom.toFixed(1)}
         </div>
+        {remoteShadowCurrent && (
+          <div
+            className="text-[10px] select-none"
+            style={{ color: "var(--md-on-surface-variant)" }}
+          >
+            NYC shade data ready ({remoteShadowCurrent.tileCount.toLocaleString()} tiles)
+          </div>
+        )}
+        {remoteShadowError && (
+          <div className="text-[10px]" role="status" style={{ color: "#b91c1c" }}>
+            NYC shade data unavailable: {remoteShadowError}
+          </div>
+        )}
       </div>
     </div>
   );
