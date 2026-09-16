@@ -4,6 +4,11 @@
 > nothing in the app reads it.** `server/transit-prep` is steps 1–5 of a six-step pipeline.
 > This document is step 6: make the browser route on that data instead of Overpass.
 
+> **Superseded for planning by [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md).** S1–S3a and the S5
+> decision are merged; this document is now the *record* of how the client came to route on the
+> published data, and the settled decisions behind it. What is left — S3b, bus, and the two
+> defects the browser found — is planned there.
+
 **Status, 2026-09-16.** S1, S2 and S3a are implemented: the app fetches the published shards,
 routes the NYC subway on them, and prices the graph in seconds. S3b (#391), S4 (blocked on
 #388) and the S5 decision are covered below. Overpass is **not** retired and will not be —
