@@ -15,6 +15,7 @@ blocks.
 | [`PUBLICATION.md`](PUBLICATION.md) | making the existing work visible (P4 + P2) | 2 PRs, no new engineering |
 | [`THREAD_SHADOW.md`](THREAD_SHADOW.md) | building the differentiator (G→A→H) | long; one checkpoint per PR |
 | [`THREAD_AGENT.md`](THREAD_AGENT.md) | building the multimodal agent (Track C) | long; one checkpoint per PR |
+| [`TRANSIT_CLIENT.md`](TRANSIT_CLIENT.md) | routing on the published NYC transit data instead of Overpass (step 6) | long; five ordered PRs |
 
 **Order.** `WAVE_0` first — it unblocks both threads and its items are hours, not days. Then
 `PUBLICATION`, which is the cheapest signal on the board. The two threads are **independent and
