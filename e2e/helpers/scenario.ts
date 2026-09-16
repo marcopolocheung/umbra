@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test";
 import { fixtureBasemapStyle } from "../fixtures/basemapStyle";
 import { overpassGridResponse } from "../fixtures/overpassGrid";
+import {
+  transitManifestJson,
+  transitPointerJson,
+  transitShardJson,
+} from "../fixtures/transitShards";
 
 // Midtown Manhattan at z17 on the June solstice morning: dense towers, low sun,
 // long shadows. Fixed on purpose — the assertions are pixel counts, and a moving
@@ -14,10 +19,27 @@ export const START_TIME = "09:00";
 export const START_MINUTES = 9 * 60;
 // Straight-line A→B is ~340 m, under the 500 m threshold that pulls the transit
 // graph in — one fewer network dependency for the same route assertion.
+/**
+ * The transit assertion needs its own pair: A→B above is deliberately ~340 m,
+ * under the 500 m threshold that pulls the transit graph in. These sit at
+ * opposite corners of the same grid, ~950 m apart.
+ */
+export const TRANSIT_WAYPOINT_A: [number, number] = [-73.9871, 40.7518];
+export const TRANSIT_WAYPOINT_B: [number, number] = [-73.9809, 40.7562];
+
+/** Must match `VITE_TRANSIT_BASE` in `playwright.config.ts`'s webServer env. */
+export const TRANSIT_BASE = "https://transit.e2e.test";
+
 export const SHARE_URL =
   `/?lat=${CENTER.lat}&lng=${CENTER.lng}&z=${CENTER.zoom}` +
   `&date=2026-06-21&time=${START_TIME}` +
   `&a=${WAYPOINT_A[0]},${WAYPOINT_A[1]}&b=${WAYPOINT_B[0]},${WAYPOINT_B[1]}`;
+
+export const TRANSIT_SHARE_URL =
+  `/?lat=${CENTER.lat}&lng=${CENTER.lng}&z=${CENTER.zoom}` +
+  `&date=2026-06-21&time=${START_TIME}` +
+  `&a=${TRANSIT_WAYPOINT_A[0]},${TRANSIT_WAYPOINT_A[1]}` +
+  `&b=${TRANSIT_WAYPOINT_B[0]},${TRANSIT_WAYPOINT_B[1]}`;
 
 // Dragging the timeline left advances time: TimelineSlider maps 2 px to a minute
 // and subtracts the drag delta, so -360 px is +3 h — 09:00 to noon, which moves
@@ -56,6 +78,23 @@ export async function stubNetwork(page: Page, opts: { basemap: Basemap }): Promi
       })
     );
   }
+
+  // The published transit dataset, served from the fixture rather than R2. The
+  // bucket's CORS allowlist covers the deployed origin and localhost:5173, not
+  // the 127.0.0.1 this suite runs on, so a real fetch could never work here —
+  // and CI must stay hermetic anyway.
+  await page.route(`${TRANSIT_BASE}/**`, (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const body = path.endsWith("/current.json")
+      ? transitPointerJson
+      : path.endsWith("/manifest.json")
+        ? transitManifestJson
+        : path.endsWith("/subway.json")
+          ? transitShardJson
+          : null;
+    if (body === null) return route.fulfill({ status: 404, body: "" });
+    return route.fulfill({ status: 200, contentType: "application/json", body });
+  });
 
   // Overpass is stubbed in both projects: the public instance rate-limits and
   // its graph changes month to month.

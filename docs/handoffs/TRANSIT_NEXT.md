@@ -44,6 +44,15 @@ Three constraints, and they fully determine the sequence:
 
 ## Phase 1 — make it visible and honest
 
+**Done, in review: #397 (1A), #398 (1B), #399 (1C).** #399 is stacked on #397 because it
+asserts behaviour #397 creates; #398 is independent. 1D remains, and is an ops step.
+
+*One correction to the plan below:* 1A turned out to be **two** independent bugs, not one. The
+index mismatch was only half — the train-layer effect also fell back to `map.once("load")`, an
+event that fires when the map first comes up and never again, so the layers were never added at
+all. Fixing either alone leaves the map blank. The Phase 1 ordering held: nothing else was
+diagnosable until the map drew something.
+
 Three small PRs. One session can carry all three; none depends on another, so they can also be
 split. Do **1A first regardless** — it is what lets you see the other two.
 
@@ -126,7 +135,7 @@ both needed:
 Adding the e2e origin to the bucket's CORS instead would test the network rather than the
 client; if the real fetch is worth covering, that belongs in a `smoke-live`-shaped project.
 
-### 1D — enable it in production *(ops, not a PR)*
+### 1D — enable it in production *(ops, not a PR; the only Phase 1 item left)*
 
 Set `VITE_TRANSIT_BASE` in Vercel. Until then all of the above is inert in production —
 `configuredBase()` returns `undefined` and no request is made.

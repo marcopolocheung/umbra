@@ -77,6 +77,10 @@ export default defineConfig({
     // default, `vite preview` binds the name `localhost`, which on Node 17+
     // can resolve to ::1 while Playwright waits on 127.0.0.1 and times out.
     command: `npm run build && npm run start -- --host 127.0.0.1 --port ${PORT} --strictPort`,
+    // Without this the transit client is compiled out entirely (`configuredBase`
+    // returns undefined), and the transit test would pass for the wrong reason.
+    // `stubNetwork` serves this origin from `fixtures/transitShards.ts`.
+    env: { VITE_TRANSIT_BASE: "https://transit.e2e.test" },
     url: BASE_URL,
     // Never reuse: a preview server already on this port would serve an old
     // dist/ and quietly skip the build, so the test would pass against code
