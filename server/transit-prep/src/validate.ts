@@ -9,7 +9,7 @@
  * - bus routes.txt is byte-identical across all 6 borough feeds
  */
 
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertExactHeader, headerBody, parseCsv } from "./csv";
 import {
@@ -87,9 +87,36 @@ export interface ValidationReport {
  */
 export const SHARED_STOP_TOLERANCE_M = 150;
 
-async function readHeader(root: string, workDir: string, file: string): Promise<string[]> {
-  const text = await readFile(join(root, workDir, file), "utf8");
-  return headerBody(parseCsv(text)).header;
+/**
+ * How much of a file to read looking for its header line. GTFS headers are a
+ * few hundred bytes; this is wide enough that hitting the limit means the file
+ * is not what it claims to be.
+ */
+export const HEADER_WINDOW_BYTES = 64 * 1024;
+
+/**
+ * Read just the header line.
+ *
+ * This used to `readFile` the whole file and run `parseCsv` over all of it to
+ * look at row 0 — building the full string[][] matrix for a 155 MB
+ * stop_times.txt and throwing it away, seven times per feed, which is exactly
+ * what the streaming loaders exist to avoid and most of why validate carried
+ * --max-old-space-size=4096.
+ */
+export async function readHeader(root: string, workDir: string, file: string): Promise<string[]> {
+  const handle = await open(join(root, workDir, file), "r");
+  try {
+    const buffer = Buffer.alloc(HEADER_WINDOW_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, HEADER_WINDOW_BYTES, 0);
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
+    const end = text.indexOf("\n");
+    if (end < 0 && bytesRead === HEADER_WINDOW_BYTES) {
+      throw new Error(`${file}: no header line in the first ${HEADER_WINDOW_BYTES} bytes`);
+    }
+    return headerBody(parseCsv(end < 0 ? text : text.slice(0, end))).header;
+  } finally {
+    await handle.close();
+  }
 }
 
 function checkStops(stops: GtfsStop[], feedId: string): void {

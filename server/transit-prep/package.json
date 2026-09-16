@@ -9,7 +9,7 @@
     "acquire:plan": "tsx src/cli.ts acquire --plan",
     "acquire": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/cli.ts acquire --execute",
     "receipts": "tsx src/cli.ts receipts",
-    "validate": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/cli.ts validate",
+    "validate": "NODE_OPTIONS=--max-old-space-size=2048 tsx src/cli.ts validate",
     "normalize": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts normalize",
     "build": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts build",
     "verify": "tsx src/cli.ts verify",
