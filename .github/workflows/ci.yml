@@ -57,10 +57,13 @@ jobs:
       - run: npm run build
 
       # Pinned Wrangler validates the NYC shadow-data sidecar without deploying
-      # it: the generated Env types stay current and the bundle compiles. Neither
-      # step authenticates or uploads anything.
+      # it: the generated Env types stay current, the full R2 API contract
+      # typechecks under workerd types, and the bundle compiles. None of these
+      # steps authenticate or upload anything.
       - run: npx -y wrangler@4.86.0 types --check
         working-directory: cloudflare/shadow-data-worker
+
+      - run: npx tsc -p cloudflare/shadow-data-worker/tsconfig.json
 
       - run: npx -y wrangler@4.86.0 deploy --dry-run
         working-directory: cloudflare/shadow-data-worker

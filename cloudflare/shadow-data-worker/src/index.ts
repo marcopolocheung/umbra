@@ -47,4 +47,4 @@ export default {
     headers.set("Cache-Control", key === currentPointer ? "public, max-age=60" : "public, max-age=31536000, immutable");
     return new Response(object.body, { headers });
   },
-};
+} satisfies ExportedHandler<Env>;
