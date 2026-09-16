@@ -347,15 +347,23 @@ export async function promoteGeneration(
     ...(manifestSample.sampleAnomalies.length ? { sampleAnomalies: manifestSample.sampleAnomalies } : {}),
   });
   if (verifyOnly) return;
-  // Real compare-and-swap: the expected sha is checked against a single head
-  // read, and the pointer move itself carries the store precondition (etag or
-  // absence), so a promotion that interleaves between the two loses
-  // server-side instead of last-writer-winning. No read-compare-unconditional
-  // write remains on this path.
+  // Real compare-and-swap: hash the live bytes rather than requiring sha256
+  // object metadata, because the legacy v1 pointer predates that metadata.
+  // When metadata is present it remains an independent integrity check. The
+  // pointer move itself carries the ETag returned by the original HEAD (or an
+  // absence precondition), so an interleaved promotion still loses
+  // server-side instead of last-writer-winning.
   const previousMeta = await output.head("current.json");
+  let previousEtag: string | undefined;
   if (previousMeta) {
-    if (previousMeta.sha256 !== expectedPrevious)
+    const previousBytes = await output.read("current.json");
+    const previousDigest = sha256(previousBytes);
+    if (previousMeta.sha256 !== undefined && previousMeta.sha256 !== previousDigest)
+      throw new Error("promotion refused: current.json sha256 metadata does not match its content");
+    if (previousDigest !== expectedPrevious)
       throw new Error("promotion refused: current.json changed since --expected-previous-sha256 was recorded");
+    previousEtag = previousMeta.etag;
+    if (!previousEtag) throw new Error("promotion cannot resolve current.json etag");
   } else if (expectedPrevious !== "absent") {
     throw new Error("promotion refused: current.json is absent but --expected-previous-sha256 is not 'absent'");
   }
@@ -371,9 +379,8 @@ export async function promoteGeneration(
   const pointerBytes = new TextEncoder().encode(`${JSON.stringify(pointer)}\n`);
   try {
     if (previousMeta) {
-      const matchTag = previousMeta.etag ?? previousMeta.sha256;
-      if (!matchTag) throw new Error("promotion cannot resolve current.json etag");
-      await output.writeConditional("current.json", pointerBytes, "application/json", { ifMatch: matchTag });
+      if (!previousEtag) throw new Error("promotion cannot resolve current.json etag");
+      await output.writeConditional("current.json", pointerBytes, "application/json", { ifMatch: previousEtag });
     } else {
       await output.writeConditional("current.json", pointerBytes, "application/json", { ifNoneMatch: "*" });
     }
