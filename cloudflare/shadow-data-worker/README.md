@@ -30,6 +30,24 @@ immutable and cacheable for one year. Upload a complete immutable generation
 first; update `current.json` only after its manifest and every tile have been
 verified.
 
+## PR1 scope: read-only staging checks, no browser consumer yet
+
+PR1 lands this Worker and the catalog/bundle transport tested but uncalled: no
+app code fetches `current.json`, tiles, or the manifest, so there are zero new
+browser requests. Verify the existing staging deployment with read-only `curl`
+(no `wrangler deploy`, no R2 writes, no `current.json` promotion in this PR):
+
+```bash
+BASE=https://shademap-nyc-shadow-staging.marcoctpolo.workers.dev
+curl -fsSI -H 'Origin: https://shademapnav.vercel.app' "$BASE/_shadow/current.json"
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$BASE/_shadow/current.json" # 405
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/_shadow/normalized/private-object" # 404
+curl -sSI -H 'Origin: http://localhost:5173' "$BASE/_shadow/current.json" # no ACAO header
+```
+
+Catalog unit tests use mocked `fetch`. A Vite same-origin dev proxy lands with
+PR3, when the first lazy browser consumer exists.
+
 ## Batch uploader credentials
 
 The uploader uses R2's S3-compatible API, not the public Worker endpoint.

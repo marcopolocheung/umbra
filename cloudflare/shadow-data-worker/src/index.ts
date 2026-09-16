@@ -1,4 +1,4 @@
-// A generation suffix distinguishes a verified city-wide pack from a small
+// A generation suffix distinguishes a complete/reconciled city-wide pack from a small
 // smoke pack that used the same source normalization.  The allow-list stays
 // narrow: only tiled bundles and the final immutable manifest are public.
 const immutableAsset = /^generations\/nyc-[a-f0-9]{32}(?:-[a-z0-9-]{1,48})?\/(?:tiles\/18-\d+-\d+\.smb|manifest\.json)$/;
@@ -29,6 +29,15 @@ export default {
       return new Response("Method not allowed", { status: 405, headers });
     const key = requestedKey(new URL(request.url));
     if (!key) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
+    // HEAD must not pull the object body; it only proves existence + ETag.
+    if (request.method === "HEAD") {
+      const meta = await env.SHADOW_TILES.head(key);
+      if (!meta) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
+      headers.set("Content-Type", key.endsWith(".json") ? "application/json" : "application/octet-stream");
+      headers.set("ETag", meta.httpEtag);
+      headers.set("Cache-Control", key === currentPointer ? "public, max-age=60" : "public, max-age=31536000, immutable");
+      return new Response(null, { headers });
+    }
     const object = await env.SHADOW_TILES.get(key);
     // Do not cache a miss: R2 can become immediately consistent after an
     // upload, while an intermediary-cached 404 would hide the new object.
@@ -36,6 +45,6 @@ export default {
     headers.set("Content-Type", key.endsWith(".json") ? "application/json" : "application/octet-stream");
     headers.set("ETag", object.httpEtag);
     headers.set("Cache-Control", key === currentPointer ? "public, max-age=60" : "public, max-age=31536000, immutable");
-    return new Response(request.method === "HEAD" ? null : object.body, { headers });
+    return new Response(object.body, { headers });
   },
 };

@@ -94,13 +94,27 @@ export async function decodeBrowserTileBundle(bytes: Uint8Array): Promise<Compon
   }
   if (directory.version !== 1 || !/^18\/\d+\/\d+$/.test(directory.tile) || !Array.isArray(directory.components) || directory.components.length !== 3)
     throw new Error("invalid browser tile bundle directory");
+  const bodyLength = bytes.byteLength - HEADER_BYTES - length;
   const seen = new Set<Component["kind"]>();
-  const components: Component[] = [];
+  const hashPattern = /^[a-f0-9]{64}$/;
   for (const entry of directory.components) {
     const end = entry.offset + entry.length;
-    if (!(["terrain", "buildings", "canopy"] as const).includes(entry.kind) || seen.has(entry.kind) || !Number.isSafeInteger(entry.offset) || !Number.isSafeInteger(entry.length) || entry.offset < 0 || entry.length <= 0 || end > bytes.byteLength - HEADER_BYTES - length)
+    if (!(["terrain", "buildings", "canopy"] as const).includes(entry.kind) || seen.has(entry.kind) || !Number.isSafeInteger(entry.offset) || !Number.isSafeInteger(entry.length) || !Number.isSafeInteger(end) || entry.offset < 0 || entry.length <= 0 || end > bodyLength)
+      throw new Error("invalid browser tile bundle entry");
+    if (typeof entry.transportHash !== "string" || !hashPattern.test(entry.transportHash) || typeof entry.physicsHash !== "string" || !hashPattern.test(entry.physicsHash))
       throw new Error("invalid browser tile bundle entry");
     seen.add(entry.kind);
+  }
+  // Entries must exactly cover the body: no overlaps, gaps, or trailing bytes.
+  const ordered = [...directory.components].sort((a, b) => a.offset - b.offset);
+  let cursor = 0;
+  for (const entry of ordered) {
+    if (entry.offset !== cursor) throw new Error("invalid browser tile bundle entry");
+    cursor += entry.length;
+  }
+  if (cursor !== bodyLength) throw new Error("invalid browser tile bundle entry");
+  const components: Component[] = [];
+  for (const entry of directory.components) {
     const start = HEADER_BYTES + length + entry.offset;
     const component = await decodeComponent(bytes.subarray(start, start + entry.length));
     if (component.kind !== entry.kind || component.identity.tile !== directory.tile || component.transportHash !== entry.transportHash)
