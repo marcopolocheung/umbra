@@ -12,7 +12,12 @@ import { haversineMeters } from "./routing";
 export type TrainMode = "subway" | "light_rail" | "monorail";
 
 export interface TrainStation {
-  id: number; // OSM node ID
+  /**
+   * Namespaced, and opaque to every consumer: `osm:123456` from the Overpass
+   * producer, `subway:127` from the published shards. Never parse it — the two
+   * producers must be able to coexist without their ids colliding.
+   */
+  id: string;
   lat: number;
   lon: number;
   name: string;
@@ -21,15 +26,15 @@ export interface TrainStation {
 }
 
 export interface TrainGraphEdge {
-  to: number;
+  to: string;
   weight: number; // meters
   type: "rail" | "transfer";
   line?: string;
 }
 
 export interface TrainGraph {
-  stations: Map<number, TrainStation>;
-  adj: Map<number, TrainGraphEdge[]>;
+  stations: Map<string, TrainStation>;
+  adj: Map<string, TrainGraphEdge[]>;
   lineColors: Map<string, string>;
   lineNames: Map<string, string>;
   lineModes: Map<string, TrainMode>;
@@ -39,14 +44,14 @@ export interface TrainGraph {
 
 export interface TrainRouteSegment {
   type: "train";
-  from: { id: number; lat: number; lon: number; name: string };
-  to: { id: number; lat: number; lon: number; name: string };
+  from: { id: string; lat: number; lon: number; name: string };
+  to: { id: string; lat: number; lon: number; name: string };
   line: string;
 }
 
 export interface TransferSegment {
   type: "transfer";
-  at: { id: number; lat: number; lon: number; name: string };
+  at: { id: string; lat: number; lon: number; name: string };
   fromLine: string;
   toLine: string;
 }
@@ -57,12 +62,12 @@ export type TrainSegment = TrainRouteSegment | TransferSegment;
 
 export interface TrainDrawData {
   polylines: { coords: [number, number][]; color: string; line: string }[];
-  stops: { id: number; lat: number; lon: number; name: string }[];
-  transfers: { at: { id: number; lat: number; lon: number }; fromLine: string; toLine: string }[];
+  stops: { id: string; lat: number; lon: number; name: string }[];
+  transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
 }
 
 export interface TrainPathResult {
-  stationIds: number[];
+  stationIds: string[];
   totalDistM: number;
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
@@ -86,7 +91,9 @@ export const TRAIN_SUN_EXPOSURE: Record<TrainMode, number> = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const TRANSFER_PENALTY_M = 300;
+/** Flat stand-in for a change of line, in metres. Shared with the shard
+ * producer so both price a transfer identically. */
+export const TRANSFER_PENALTY_M = 300;
 const INTERCHANGE_DIST_M = 150;
 // Same-origin proxy (never overpass-api.de directly) — see app/lib/overpass.ts
 // and api/overpass.js for why. Mirror fallback is handled server-side.
@@ -248,6 +255,11 @@ function parseOSMResponse(elements: OSMElement[]): {
   return { nodeIndex, lines };
 }
 
+/** The Overpass producer's namespace, so its ids cannot collide with a shard's. */
+function osmStationId(nodeId: number): string {
+  return `osm:${nodeId}`;
+}
+
 function buildGraph(
   nodeIndex: Map<
     number,
@@ -255,8 +267,8 @@ function buildGraph(
   >,
   lines: LineInfo[]
 ): TrainGraph {
-  const stations = new Map<number, TrainStation>();
-  const adj = new Map<number, TrainGraphEdge[]>();
+  const stations = new Map<string, TrainStation>();
+  const adj = new Map<string, TrainGraphEdge[]>();
   const lineColors = new Map<string, string>();
   const lineNames = new Map<string, string>();
   const lineModes = new Map<string, TrainMode>();
@@ -277,9 +289,10 @@ function buildGraph(
     for (const nodeId of line.stops) {
       const node = nodeIndex.get(nodeId);
       if (!node) continue;
-      if (!stations.has(nodeId)) {
-        stations.set(nodeId, {
-          id: nodeId,
+      const stationId = osmStationId(nodeId);
+      if (!stations.has(stationId)) {
+        stations.set(stationId, {
+          id: stationId,
           lat: node.lat,
           lon: node.lon,
           name:
@@ -294,7 +307,7 @@ function buildGraph(
           lines: [],
         });
       }
-      const station = stations.get(nodeId)!;
+      const station = stations.get(stationId)!;
       if (!station.lines.includes(ref)) station.lines.push(ref);
     }
   }
@@ -305,8 +318,8 @@ function buildGraph(
   // Step 4: Line edges — connect consecutive stations bidirectionally
   for (const line of lines) {
     for (let i = 0; i < line.stops.length - 1; i++) {
-      const fromId = line.stops[i];
-      const toId = line.stops[i + 1];
+      const fromId = osmStationId(line.stops[i]);
+      const toId = osmStationId(line.stops[i + 1]);
       const a = stations.get(fromId);
       const b = stations.get(toId);
       if (!a || !b) continue;
@@ -422,15 +435,15 @@ export async function fetchTrainGraph(
  */
 export function trainDijkstra(
   graph: TrainGraph,
-  startId: number,
-  endId: number
+  startId: string,
+  endId: string
 ): TrainPathResult | null {
   if (startId === endId) return null;
 
-  const dist = new Map<number, number>();
-  const prev = new Map<number, number>();
-  const prevLine = new Map<number, string>();
-  const pq: { id: number; cost: number }[] = [];
+  const dist = new Map<string, number>();
+  const prev = new Map<string, string>();
+  const prevLine = new Map<string, string>();
+  const pq: { id: string; cost: number }[] = [];
 
   dist.set(startId, 0);
   pq.push({ id: startId, cost: 0 });
@@ -459,9 +472,9 @@ export function trainDijkstra(
   if (!dist.has(endId)) return null;
 
   // Reconstruct path backward, collecting edge line refs
-  const stationIds: number[] = [];
+  const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
-  let cur: number | undefined = endId;
+  let cur: string | undefined = endId;
   while (cur !== undefined) {
     stationIds.push(cur);
     const line = prevLine.get(cur);
@@ -517,7 +530,7 @@ export function trainDijkstra(
 
 export function nearestStations(
   coord: [number, number], // [lng, lat]
-  stations: Map<number, TrainStation>,
+  stations: Map<string, TrainStation>,
   n: number,
   maxDistM = 2000
 ): TrainStation[] {
@@ -598,24 +611,48 @@ export function findBestTrainRoute(
 /**
  * Match an OSM entrance node to the nearest train station.
  * Tries name match first, then nearest-centroid fallback within 300m.
+ *
+ * **The name arm is bounded by distance, and must be.** It is a substring test,
+ * so short station names match wildly: `Wall St` is a substring of
+ * `Christopher Street-Stonewall Station` 3 km away, and a station simply named
+ * `Broadway` matches an entrance 9 km up the same street. Unbounded, the first
+ * such hit wins by map order and — because `useRouting` only falls back to a
+ * centroid for stations with *no* entrance — it silently replaces that
+ * station's position with a door in another neighbourhood.
  */
+const NAME_MATCH_MAX_M = 400;
+
 export function matchEntranceToTrainStation(
   entrance: { lat: number; lon: number; name?: string },
-  stations: Map<number, TrainStation>
-): number | null {
+  stations: Map<string, TrainStation>
+): string | null {
   if (entrance.name) {
     const eName = entrance.name.toLowerCase();
+    // Nearest name match, not the first: several stations legitimately share a
+    // name, and only one of them owns this door.
+    let bestNamedId: string | null = null;
+    let bestNamedDist = NAME_MATCH_MAX_M;
     for (const [id, station] of stations) {
       if (
-        eName.includes(station.name.toLowerCase()) ||
-        (station.nameLocal && entrance.name.includes(station.nameLocal))
-      ) {
-        return id;
+        !(
+          eName.includes(station.name.toLowerCase()) ||
+          (station.nameLocal && entrance.name.includes(station.nameLocal))
+        )
+      )
+        continue;
+      const dist = haversineMeters(
+        [entrance.lon, entrance.lat],
+        [station.lon, station.lat]
+      );
+      if (dist < bestNamedDist) {
+        bestNamedDist = dist;
+        bestNamedId = id;
       }
     }
+    if (bestNamedId !== null) return bestNamedId;
   }
 
-  let bestId: number | null = null;
+  let bestId: string | null = null;
   let bestDist = 300;
   for (const [id, station] of stations) {
     const dist = haversineMeters(
@@ -668,7 +705,7 @@ export function buildTrainDrawData(
   }
 
   // Deduplicate stops by id
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const uniqueStops = stops.filter((s) => {
     if (seen.has(s.id)) return false;
     seen.add(s.id);

@@ -25,12 +25,12 @@ import { recordRoutingRun, computeDerivedKpis } from "../lib/metrics";
 import { snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
-  fetchTrainGraph,
   findBestTrainRoute,
   matchEntranceToTrainStation,
   TRAIN_SUN_EXPOSURE,
   buildTrainDrawData,
 } from "../lib/trainGraph";
+import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
 import {
   sampleBuildingMaskBothSidewalks,
   computeSolarIntensity,
@@ -851,7 +851,7 @@ export function useRouting({
                 trainEast,
               });
             const [trainGraph, entrances] = await Promise.all([
-              fetchTrainGraph(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
+              fetchBestTrainGraph(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
               fetchStationEntrances(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
             ]);
             if (import.meta.env.DEV)
@@ -865,7 +865,7 @@ export function useRouting({
 
             if (trainGraph && trainGraph.stations.size >= 2) {
               const stationEntrances = new Map<
-                number,
+                string,
                 { lat: number; lon: number; kind?: "entrance" | "station" }[]
               >();
               for (const entrance of entrances) {

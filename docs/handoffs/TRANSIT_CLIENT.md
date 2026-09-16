@@ -87,10 +87,15 @@ deliberate decision — see *Settled decisions*.
 
 `app/lib/trainGraph.ts` (679 lines) was written against Overpass. The shards do not fit it.
 
-**1. Identity is the wrong type.** `TrainStation.id` and `TrainGraphEdge.to` are `number`
-(OSM node ids); shards use `"subway:127"` / `"bus:300000"` strings. The change ripples through
-`trainDijkstra`, `nearestStations`, `matchEntranceToTrainStation`, `buildTrainDrawData` and
-anything that persisted a station id.
+**1. Identity is the wrong type.** ~~`TrainStation.id` and `TrainGraphEdge.to` are `number`~~
+**Done in S2.** Both are now namespaced strings. The Overpass producer emits `osm:<node id>`,
+so the only place OSM numbers survive is inside `buildGraph`.
+
+On *"anything that persisted a station id"*: nothing needed migrating. A saved route stores a
+whole `RouteOption`, which carries `trainDrawData`, whose stop ids were numbers — but those ids
+are only ever compared against other ids from the **same** `trainDrawData` object
+(`transferIds.has(s.id)` in `MapView.tsx`). An old record stays self-consistent and still
+draws; no id is ever compared across records.
 
 **2. The cost model is in metres.** `TrainGraphEdge.weight` is metres and `trainDijkstra`
 minimises distance, with a flat `TRANSFER_PENALTY_M = 300` standing in for a change of line.
@@ -101,7 +106,9 @@ penalty has to become time, and two real terms appear that the app has never had
 - **headway wait** — from the `headways` table, the thing that makes "how long am I standing
   in the sun at this stop?" answerable at all. It is why this data exists.
 
-**3. `TrainStation.lines` has no shard equivalent.** Derive it by grouping `edges` by `route`.
+**3. `TrainStation.lines` has no shard equivalent.** ~~Derive it by grouping `edges` by
+`route`.~~ **Done in S2** — exactly that. Times Sq-42 St derives `["1","2","3"]` from the real
+shard.
 
 **4. Bus is new surface, not a swap.** `TrainMode` is `subway | light_rail | monorail` and
 `TRAIN_SUN_EXPOSURE` has no bus figure. A bus runs at grade in the sun and a bus stop wait is
@@ -113,6 +120,16 @@ Queens, J/M/Z, much of the outer boroughs) are not underground. Out of scope her
 (`app/lib/overpass.ts:657`) runs alongside the graph fetch in `useRouting.ts`. Shards carry
 station **centroids**, not entrances. Step 6 does not remove the Overpass dependency unless
 entrances are added to the pipeline — decide explicitly, do not discover it late.
+
+*S2 had to fix the matcher to do this safely.* `matchEntranceToTrainStation`'s name arm is a
+**substring** test and was unbounded by distance, which was survivable against a bbox-limited
+Overpass station set and is not against all 496 GTFS-named stations: `Wall St` is a substring of
+`Christopher Street-Stonewall Station` 3 km away, and a station named `Broadway` matched an
+entrance 9.4 km up the same street. Because `useRouting` only supplies a centroid for stations
+with *no* matched entrance, one false positive **replaces** a station's position with a door in
+another neighbourhood. Measured over 822 real OSM entrance nodes in Manhattan against the real
+shard: **12 matches landed beyond 400 m before the fix, 0 after, with the same 816 matched** —
+so bounding the name arm and taking the nearest match costs no true matches.
 
 ---
 
@@ -152,9 +169,22 @@ bbox without downloading it. Subway is one city-wide shard, so kind selection is
 everything S2/S3 route. Per-shard bounds in the manifest are the fix, and they are a pipeline
 change — filed as **#388**, needed before S4 can pick bus shards geographically.
 
-**S2 — adapter, subway only, behind the flag.** Build a `TrainGraph`-shaped object from the
-shards with string ids. Keep the metres cost model for now (use `distM`) so the diff is
-*only* the data source and you can A/B it against Overpass on the same O-D pair.
+**S2 — adapter, subway only, behind the flag. Landed.** `trainGraphAdapter.ts` builds a
+`TrainGraph` from the shards; `trainGraphSource.ts` picks the producer and `useRouting.ts`
+calls that instead of `fetchTrainGraph` directly. Station ids are namespaced strings —
+`osm:123456` from Overpass, `subway:127` from the shards — so the two producers cannot
+collide (mismatch 1), and `lines` is derived by grouping edges by `route` (mismatch 3).
+
+*The dataset is NYC-only and the manifest has no extent*, so the shard graph is accepted only
+once it holds **two or more stations inside the requested bbox**; everywhere else, and on any
+failure, Overpass still answers. Without that check a Tokyo route gets Manhattan stations and
+no transit option at all.
+
+*Finding, and the case for S3:* under the metres model **a transfer can never pay**. `distM` is
+straight-line and the walk legs are priced in the same metres, so riding one more stop can
+never beat walking it, and `TRANSFER_PENALTY_M` is pure surcharge on top. On the toy graph the
+router alights one stop early and walks rather than cross a transfer. That is the cost model,
+not the adapter — and it is why S3 is not optional polish.
 
 **S3 — time-based cost.** Switch `weight` to seconds; `changeSec` and headway wait replace
 `TRANSFER_PENALTY_M`. This is where the routes start differing from today's, and where an
