@@ -9,6 +9,25 @@ routes the NYC subway on them, and prices the graph in seconds. S3b (#391), S4 (
 #388) and the S5 decision are covered below. Overpass is **not** retired and will not be —
 see S5.
 
+**Verified in a browser** (`npm run dev`, real published data, Bryant Park → Madison Sq Park).
+The three r2.dev hops return 200 from `localhost:5173` — which is in the bucket's CORS
+allowlist; `127.0.0.1:4173`, where `npm run e2e` runs, is **not**, so the e2e suite cannot
+exercise this path. The app logs
+`[transit] using published shards: generation nyc-2026-09-16-…, 496 stations`, matches 431
+Overpass entrances, and boards Times Sq-42 St for 23 St. The card renders
+`Via Transit · 27% shadow · 566 m` with `Leg 2: Broadway Local · 4 min · 3 stops`.
+
+Two things the browser found that no test could:
+
+- **The map draws the wrong route in transit mode** — `selectedRouteIndex` indexes
+  `filteredRoutes` in the panel and `navRoutes` in `useRouting`, which differ as soon as the
+  mode filter bites. Measured: the drawn line is pixel-identical in walk and transit mode, and
+  the subway polyline never reaches the canvas at all. **Pre-existing** (G6a, `90b2e48`), filed
+  as **#395**. It means `buildTrainDrawData` has never actually rendered.
+- **The transit card asserts "Underground — no sun"** for every subway leg, which is
+  `TRAIN_SUN_EXPOSURE.subway = 0.0` reaching the user as a claim. #393 is therefore a
+  user-facing honesty bug, not just an internal constant.
+
 **Verified 2026-09-16**, `main` at `55f9c71`. Every claim below has a command next to it.
 If this document disagrees with the code, the code wins — fix the document in the same PR
 as the work, as `docs/tracks/README.md` requires of the briefs.
