@@ -10,6 +10,7 @@ import {
   aggregateBrowserPack,
   browserPackIdentityV2,
   candidateTileIndex,
+  componentLicenceHashes,
   packCandidateDescriptor,
   reconcileBrowserPackShard,
   type PackedBrowserTile,
@@ -36,6 +37,7 @@ const regionInput: RegionLicenceInput = {
     { id: "osm-tree-fallback", kind: "canopy-fallback", licence: "ODbL 1.0", url: "https://example.com/osm" },
   ],
   regionFileSha256: "a".repeat(64),
+  receiptManifestSha256: "b".repeat(64),
 };
 
 const words = (value: number) => {
@@ -105,7 +107,7 @@ async function buildGeneration(directory: string) {
     await output.write(packed.key, bytes);
     entries.push(packed);
   }
-  const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256 } as const;
+  const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
   await reconcileBrowserPackShard(output, entries, identity, 0, 1, repair);
   const reconciliation = await aggregateBrowserPack(output, index, identity, 1, {
     borough: world,

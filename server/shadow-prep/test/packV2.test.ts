@@ -16,6 +16,7 @@ import {
   aggregateBrowserPack,
   browserPackIdentityV2,
   browserPackManifestV2,
+  componentLicenceHashes,
   browserPackShardReceipt,
   candidateTileIndex,
   packCandidateDescriptor,
@@ -43,6 +44,7 @@ const regionInput: RegionLicenceInput = {
     { id: "osm-tree-fallback", kind: "canopy-fallback", licence: "ODbL 1.0", url: "https://example.com/osm" },
   ],
   regionFileSha256: "a".repeat(64),
+  receiptManifestSha256: "b".repeat(64),
 };
 
 const words = (value: number) => {
@@ -208,9 +210,11 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
       if (!prior) await output.write(packed.key, bytes);
       entries.push(packed);
     }
-    const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256 } as const;
+    const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
     const receipt = browserPackShardReceipt(entries, identity, 0, 1, repair);
     assert.ok(receipt.bounds && receipt.repair);
+    assert.equal(receipt.repair.receiptManifestSha256, regionInput.receiptManifestSha256);
+    assert.deepEqual(receipt.repair.licenceHashes, componentLicenceHashes(regionInput));
     assert.equal(receipt.bounds.minG.length, 2);
     const reconciliation = await reconcileBrowserPackShard(output, entries, identity, 0, 1, repair);
     assert.equal(reconciliation.verifiedTiles, 2);
@@ -232,6 +236,28 @@ test("v2 shard receipts, manifest, and generation root assemble on a small set",
     assert.equal(root.availableTileCount, 2);
     assert.equal(root.activationTileCount, 2);
     assert.equal(root.artifacts.manifest.sha256, full.manifestSha256);
+
+    // A receipt can be syntactically valid yet claim a different admitted
+    // manifest. Recompute its receipt digest to prove aggregation catches the
+    // provenance disagreement rather than merely relying on receipt integrity.
+    const receiptKey = `generations/${identity.generation}/shards/000-of-001.json`;
+    const tampered = JSON.parse(new TextDecoder().decode(await output.read(receiptKey))) as Record<string, unknown> & {
+      repair: { receiptManifestSha256: string };
+      sha256: string;
+    };
+    tampered.repair.receiptManifestSha256 = "c".repeat(64);
+    const { sha256: _ignored, ...tamperedBody } = tampered;
+    tampered.sha256 = sha256(new TextEncoder().encode(JSON.stringify(tamperedBody)));
+    await output.write(receiptKey, new TextEncoder().encode(`${JSON.stringify(tampered)}\n`));
+    await assert.rejects(
+      aggregateBrowserPack(output, index, identity, 1, {
+        borough: world,
+        boroughFile: { filename: "test-borough.geojson", sha256: "c".repeat(64) },
+        regionInput,
+      }),
+      /licence provenance diverges/,
+    );
+
     // v2 manifest helper stands alone too.
     const standalone = browserPackManifestV2(entries, identity, {
       coverageSha256: "d".repeat(64),
@@ -306,6 +332,8 @@ test("buried roofs fall back to conservative bounds with a recorded anomaly", as
       policyHash: repairPolicyHash(),
       supportGeometryHash: "b".repeat(64),
       regionFileSha256: regionInput.regionFileSha256,
+      receiptManifestSha256: regionInput.receiptManifestSha256!,
+      licenceHashes: componentLicenceHashes(regionInput),
     });
     assert.deepEqual(receipt.anomalies, [{ tile: buried.tile, reason: "roof-below-terrain" }]);
   } finally {

@@ -233,13 +233,18 @@ docker run --rm -v "$HOME/shade-prep-data:/data" umbra-shadow-prep \
   --support-sha256 <support-pin> --write-dir /tmp/repair-smoke
 # 2. Full run (index is reused, not rebuilt):
 scripts/aws/submit-nyc-browser-pack.sh --execute --v2 \
-  --support-geometry s3:<evidence-bucket>/inputs/support.geojson --support-sha256 <support-pin> \
-  --borough-boundary s3:<evidence-bucket>/inputs/borough.geojson \
-  --admission-manifest /workspace/admission/new-york-city-v1.json
+  --support-geometry s3:<evidence-bucket>:inputs/support.geojson --support-sha256 <support-pin> \
+  --borough-boundary s3:<evidence-bucket>:inputs/borough.geojson \
+  --admission-manifest s3:<evidence-bucket>:evidence/admission/new-york-city-v1.json
 # 3. Verify without writing, then promote explicitly:
 #    pack-full-cli --promote --verify-only [--report promote-verify.json]
 #    pack-full-cli --promote --expected-previous-sha256 03343254... [--report promote.json]
 ```
+
+Batch jobs have no host `/workspace/admission` mount. The AWS launcher supplies
+the retained admission object automatically when `--admission-manifest` is
+omitted; an explicit value must be an S3 object spec. Both the canonical
+`s3:<bucket>:<key>` form and the older `s3:<bucket>/<key>` spelling are accepted.
 
 Budgets enforced by producers and browser parsers: coverage 2 MiB, bounds
 6 MiB, notices 256 KiB, generation root 256 KiB. The aggregate step fails if

@@ -10,10 +10,14 @@ set -euo pipefail
 # building support from hash-pinned geometry at pack time:
 #
 #   $0 --execute --v2 \
-#     --support-geometry s3:<evidence-bucket>/inputs/support.geojson \
+#     --support-geometry s3:<evidence-bucket>:inputs/support.geojson \
 #     --support-sha256 <acquisition-manifest-pin> \
-#     --borough-boundary s3:<evidence-bucket>/inputs/borough.geojson \
-#     --admission-manifest /workspace/admission/new-york-city-v1.json
+#     --borough-boundary s3:<evidence-bucket>:inputs/borough.geojson
+#
+# The admitted manifest is retained by `shadow-prep` under the evidence
+# bucket. The launcher supplies its fully qualified object spec to every
+# child (default: `s3:${EvidenceBucket}:evidence/admission/new-york-city-v1.json`);
+# the image has no host `/workspace/admission` mount.
 #
 # Promotion stays a separate explicit step afterwards (pack-full-cli
 # --promote --verify-only, then --promote --expected-previous-sha256).
@@ -63,8 +67,15 @@ fi
 array_overrides=""
 aggregate_overrides=""
 if [[ "$v2" == 1 ]]; then
-  if [[ -z "$support_geometry" || -z "$support_sha" || -z "$borough" || -z "$admission_manifest" ]]; then
-    echo "v2 needs --support-geometry, --support-sha256, --borough-boundary, and --admission-manifest." >&2
+  evidence_bucket="$(output_value EvidenceBucket)"
+  if [[ -z "$support_geometry" || -z "$support_sha" || -z "$borough" ]]; then
+    echo "v2 needs --support-geometry, --support-sha256, and --borough-boundary." >&2
+    exit 1
+  fi
+  if [[ -z "$admission_manifest" ]]; then
+    admission_manifest="s3:${evidence_bucket}:evidence/admission/new-york-city-v1.json"
+  elif [[ "$admission_manifest" != s3:* ]]; then
+    echo "v2 --admission-manifest must be an s3:<bucket>:<key> object spec; Batch does not mount local admission files." >&2
     exit 1
   fi
   # Container overrides replace the job definition's v1 command for this run

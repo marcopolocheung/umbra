@@ -8,22 +8,24 @@ import {
   aggregateBrowserPack,
   benchmarkCandidatePack,
   browserPackIdentityV2,
+  componentLicenceHashes,
   candidateTileIndex,
   contiguousShard,
   reconcileBrowserPackShard,
   type CandidateTileIndex,
+  type ComponentLicenceHashes,
   type PackedBrowserTile,
   type RepairContext,
 } from "./pack";
 import { verifySupportGeometryTiles, REPAIR_POLICY_VERSION, repairPolicyHash } from "./repair";
 import { loadAdmittedLicenceInput, loadRegionDocument } from "./notices";
-import { r2StoreFromEnvironment, S3Store, isConditionalWriteConflict, type ObjectStore } from "./storage";
+import { parseS3ObjectSpec, r2StoreFromEnvironment, S3Store, isConditionalWriteConflict, type ObjectStore } from "./storage";
 import { supportGeometry } from "./support";
 import { sha256 } from "./util";
 import type { CoverageGeometry } from "../../../app/lib/shadowField/v2/artifacts";
 import { decodeBrowserTileBundle } from "../../../app/lib/shadowField/v2/bundle";
 import { composeTile } from "../../../app/lib/shadowField/v2/compose";
-import { parseGenerationRoot } from "../../../app/lib/shadowField/v2/artifacts";
+import { parseGenerationNotices, parseGenerationRoot } from "../../../app/lib/shadowField/v2/artifacts";
 
 const NORMALIZATION_ID = "70e3507f16d472adf5475b614a60cb16";
 const GENERATION_SUFFIX = "five-borough-v2";
@@ -76,9 +78,7 @@ export async function loadEvidenceBytes(spec: string, expectedHash: string): Pro
   if (!/^[a-f0-9]{64}$/.test(expectedHash)) throw new Error("evidence hash must be a sha256 hex digest");
   let bytes: Uint8Array;
   if (spec.startsWith("s3:")) {
-    const [, bucket, ...rest] = spec.split(":");
-    const key = rest.join(":");
-    if (!bucket || !key) throw new Error(`evidence s3 spec must be s3:<bucket>:<key>: ${spec}`);
+    const { bucket, key } = parseS3ObjectSpec(spec);
     const scratch = await mkdtemp(join(tmpdir(), "shadow-prep-evidence-"));
     const store = new S3Store(bucket);
     const destination = join(scratch, "evidence");
@@ -182,6 +182,8 @@ async function packShard(): Promise<void> {
     policyHash: repairPolicyHash(),
     supportGeometryHash: geometryHash,
     regionFileSha256: regionInput.regionFileSha256,
+    receiptManifestSha256: regionInput.receiptManifestSha256!,
+    licenceHashes: componentLicenceHashes(regionInput),
   });
   await report({ action: "pack-shard", shardIndex, shardCount: count, indexKey: INDEX_KEY, ...benchmark, generation: identity.generation, reconciliation });
 }
@@ -233,6 +235,19 @@ export async function promoteGeneration(
   if (sha256(rootRaw) !== rootMeta.sha256) throw new Error("promotion generation root readback mismatch");
   const root = parseGenerationRoot(JSON.parse(new TextDecoder().decode(rootRaw)));
   if (root.generation !== generation) throw new Error("promotion generation mismatch");
+  // Notices are an independently hash-pinned artifact, but their per-kind
+  // licence bindings are also part of the tile identity contract. Load and
+  // parse them before sampling so every sampled component can be checked
+  // against the exact hashes admitted by the generation root.
+  const noticesRef = root.artifacts.notices;
+  const noticesKey = noticesRef.path.replace(/^\/_shadow\//, "");
+  const noticesRaw = await readVerified(noticesKey, noticesRef.sha256);
+  if (noticesRaw.byteLength !== noticesRef.bytes) throw new Error("promotion notices byte mismatch");
+  const notices = parseGenerationNotices(
+    JSON.parse(new TextDecoder().decode(noticesRaw)),
+    { generation, bytesLength: noticesRaw.byteLength },
+  );
+  const noticeLicenceHashes: ComponentLicenceHashes = notices.licenceHashes;
   // Full pre-promotion verification: HEAD every manifest tile (fail closed on
   // the first bytes/sha256 mismatch), then decode+compose a deterministic
   // sample independently against the root identity. Tiles with stored roofs
@@ -278,6 +293,8 @@ export async function promoteGeneration(
           component.identity.receiverHash !== root.identity.receiverHash
         )
           throw new Error(`promotion sample identity mismatch: ${entry.tile}`);
+        if (component.identity.licenceHash !== noticeLicenceHashes[component.kind])
+          throw new Error(`promotion sample licence identity mismatch: ${entry.tile}`);
       }
       try {
         composeTile(components, { reserve: () => true });

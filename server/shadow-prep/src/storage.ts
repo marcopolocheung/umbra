@@ -60,6 +60,27 @@ function safeKey(key: string): string {
   return cleaned;
 }
 
+/** Parse the object-spec forms used by operator runbooks.  Accept both the
+ * canonical `s3:<bucket>:<key>` form and the historically documented
+ * `s3:<bucket>/<key>` / URI form so an old invocation cannot silently select a
+ * different bucket or key. */
+export function parseS3ObjectSpec(spec: string): { bucket: string; key: string } {
+  if (!spec.startsWith("s3:")) throw new Error(`not an s3 object spec: ${spec}`);
+  const value = spec.slice(3);
+  if (value.startsWith("//")) {
+    const slash = value.indexOf("/", 2);
+    if (slash <= 2 || slash === value.length - 1) throw new Error(`s3 object spec must include bucket and key: ${spec}`);
+    return { bucket: value.slice(2, slash), key: safeKey(value.slice(slash + 1)) };
+  }
+  const colon = value.indexOf(":");
+  if (colon > 0 && colon < value.length - 1)
+    return { bucket: value.slice(0, colon), key: safeKey(value.slice(colon + 1)) };
+  const slash = value.indexOf("/");
+  if (slash > 0 && slash < value.length - 1)
+    return { bucket: value.slice(0, slash), key: safeKey(value.slice(slash + 1)) };
+  throw new Error(`s3 object spec must include bucket and key: ${spec}`);
+}
+
 export class FilesystemStore implements ObjectStore {
   readonly kind = "filesystem" as const;
   constructor(readonly root: string) {}
@@ -153,7 +174,10 @@ export class S3Store implements ObjectStore {
   async head(key: string): Promise<ObjectHead | undefined> {
     try {
       const value = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: this.key(key) }));
-      const etag = value.ETag?.replaceAll('"', "") || undefined;
+      // ETags are opaque entity-tags.  Preserve the quotes returned by
+      // HeadObject: R2 expects the If-Match header value exactly as supplied
+      // (for example, `"29d9..."`), not a stripped digest.
+      const etag = value.ETag || undefined;
       return { bytes: Number(value.ContentLength ?? 0), sha256: value.Metadata?.sha256, ...(etag ? { etag } : {}) };
     } catch (error) {
       const code = (error as { name?: string; $metadata?: { httpStatusCode?: number } }).name;

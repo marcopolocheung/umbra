@@ -4,13 +4,14 @@ import {
   type RegionLicenceInput,
 } from "../../../app/lib/shadowField/v2/artifacts";
 import type { ComponentKind } from "../../../app/lib/shadowField/v2/types";
-import { fileHash } from "./util";
+import { parseS3ObjectSpec, S3Store } from "./storage";
+import { fileHash, sha256 } from "./util";
 
 /**
- * Licence bindings for the v2 recipe, derived from the pinned in-repo region
- * file. The packer hashes these canonical bindings into component
- * licenceHash values, and the aggregate step publishes the same bindings in
- * notices.json — one function feeds both, so hash and notice cannot diverge.
+ * Licence bindings for the v2 recipe. Boundary policy comes from the pinned
+ * in-repo region file; admitted source rights and assets replace its source
+ * intentions before the packer hashes canonical bindings into component
+ * licenceHash values and publishes the same bindings in notices.json.
  */
 export async function loadRegionLicenceInput(regionPath?: string): Promise<RegionLicenceInput> {
   const path =
@@ -47,42 +48,48 @@ export async function loadRegionLicenceInput(regionPath?: string): Promise<Regio
  * installed NGA grid pins come exclusively from the admission evidence.
  */
 export async function loadAdmittedLicenceInput(
-  admissionPath: string,
+  admissionSpec: string,
   regionPath?: string,
 ): Promise<RegionLicenceInput> {
   const base = await loadRegionLicenceInput(regionPath);
-  const raw = await readFile(admissionPath, "utf8");
+  let rawBytes: Uint8Array;
+  if (admissionSpec.startsWith("s3:")) {
+    const { bucket, key } = parseS3ObjectSpec(admissionSpec);
+    rawBytes = await new S3Store(bucket).read(key);
+  } else {
+    rawBytes = new Uint8Array(await readFile(admissionSpec));
+  }
+  const raw = new TextDecoder().decode(rawBytes);
   const manifest = JSON.parse(raw) as {
     receipts?: Array<{ id?: string; role?: string; licence?: string; rights?: string; assets?: Array<{ filename?: string; sha256?: string; publisherUrl?: string; release?: string }> }>;
     datum?: { grids?: string[]; gridHashes?: Record<string, string> };
     blockers?: unknown[];
   };
-  if (!Array.isArray(manifest.receipts) || manifest.blockers?.length) throw new Error(`admission manifest is not admitted: ${admissionPath}`);
+  if (!Array.isArray(manifest.receipts) || (manifest.blockers !== undefined && !Array.isArray(manifest.blockers)) || manifest.blockers?.length)
+    throw new Error(`admission manifest is not admitted: ${admissionSpec}`);
   const required = new Set(["fabdem-v1.2", "overture-buildings", "overture-building-parts", "chmv2-height", "chmv2-validity-mask", "osm-tree-fallback", "usgs-3dep-controls"]);
-  const sources = manifest.receipts
-    .filter((receipt) => required.has(receipt.id ?? ""))
-    .map((receipt) => {
-      if (!receipt.id || !receipt.role || !receipt.licence || !receipt.rights || !Array.isArray(receipt.assets) || !receipt.assets.length)
-        throw new Error(`admission manifest has incomplete receipt ${String(receipt.id)}`);
-      const assets = receipt.assets.map((asset) => {
-        if (!asset.filename || !asset.publisherUrl || !asset.release || !asset.sha256 || !/^[a-f0-9]{64}$/.test(asset.sha256))
-          throw new Error(`admission manifest has incomplete receipt asset ${receipt.id}`);
-        return { filename: asset.filename, publisherUrl: asset.publisherUrl, release: asset.release, sha256: asset.sha256 };
-      });
-      return { id: receipt.id, kind: receipt.role, licence: receipt.licence, url: receipt.rights, rights: receipt.rights, role: receipt.role, assets };
+  const sources = manifest.receipts.map((receipt) => {
+    if (!receipt.id || !receipt.role || !receipt.licence || !receipt.rights || !Array.isArray(receipt.assets) || !receipt.assets.length)
+      throw new Error(`admission manifest has incomplete receipt ${String(receipt.id)}`);
+    const assets = receipt.assets.map((asset) => {
+      if (!asset.filename || !asset.publisherUrl || !asset.release || !asset.sha256 || !/^[a-f0-9]{64}$/.test(asset.sha256))
+        throw new Error(`admission manifest has incomplete receipt asset ${receipt.id}`);
+      return { filename: asset.filename, publisherUrl: asset.publisherUrl, release: asset.release, sha256: asset.sha256 };
     });
-  if (sources.length !== required.size || new Set(sources.map((source) => source.id)).size !== required.size)
+    return { id: receipt.id, kind: receipt.role, licence: receipt.licence, url: receipt.rights, rights: receipt.rights, role: receipt.role, assets };
+  });
+  if (![...required].every((id) => sources.some((source) => source.id === id)) || new Set(sources.map((source) => source.id)).size !== sources.length)
     throw new Error("admission manifest lacks a required notice receipt");
   const grids = manifest.datum?.grids;
   const gridHashes = manifest.datum?.gridHashes;
-  if (!Array.isArray(grids) || !gridHashes || grids.length !== 2)
+  if (!Array.isArray(grids) || !gridHashes || grids.length !== 2 || new Set(grids).size !== grids.length || grids.some((name) => typeof name !== "string" || !name))
     throw new Error("admission manifest lacks installed NGA grid pins");
   const datumGrids = grids.map((name) => {
     const sha256 = gridHashes[name];
     if (!/^[a-f0-9]{64}$/.test(sha256 ?? "")) throw new Error(`admission manifest lacks grid hash ${name}`);
     return { name, sha256 };
   }).sort((a, b) => a.name.localeCompare(b.name));
-  return { ...base, sources, receiptManifestSha256: await fileHash(admissionPath), datumGrids };
+  return { ...base, sources, receiptManifestSha256: sha256(rawBytes), datumGrids };
 }
 
 export function loadRegionDocument(regionPath?: string): Promise<{
