@@ -11,7 +11,6 @@ import {
   loadCalendar,
   loadCalendarDates,
   loadRoutes,
-  loadShapes,
   loadStopTimes,
   loadStops,
   loadTransfers,
@@ -25,15 +24,11 @@ import type {
   HeadwayRow,
   RouteEdge,
   RouteInfo,
-  ShapeMap,
   StopNode,
   TransferEdge,
 } from "./model";
-import { simplifyCapped } from "./simplify";
 
 export const SUBWAY_MAX_KMH = 80;
-export const SUBWAY_SHAPE_EPS_M = 15;
-export const SUBWAY_SHAPE_CAP = 500;
 export const SUBWAY_TRANSFER_FALLBACK_SEC = 180;
 
 export interface SubwayNormalized {
@@ -42,7 +37,6 @@ export interface SubwayNormalized {
   stops: StopNode[];
   edges: RouteEdge[];
   routes: RouteInfo[];
-  shapes: ShapeMap;
   headways: HeadwayRow[];
   transfers: TransferEdge[];
   stats: {
@@ -50,7 +44,6 @@ export interface SubwayNormalized {
     children: number;
     orphanStops: number;
     edges: EdgeStats;
-    shapesKept: number;
     /** Parent stations given a change cost by a self-transfer row. */
     stationsWithChangeCost: number;
     /**
@@ -80,7 +73,6 @@ export async function normalizeSubway(
   const { stopTimes } = loadStopTimes(await read("stop_times.txt"));
   const { calendar } = loadCalendar(await read("calendar.txt"));
   const { dates } = loadCalendarDates(await read("calendar_dates.txt"));
-  const { shapes } = loadShapes(await read("shapes.txt"));
   const { transfers } = loadTransfers(await read("transfers.txt"));
 
   const nodes = new Map<string, StopNode>();
@@ -151,31 +143,6 @@ export async function normalizeSubway(
     });
   }
 
-  // Representative shape per route+direction: the shape_id with most trips.
-  const shapeVotes = new Map<string, Map<string, number>>();
-  for (const trip of trips) {
-    const key = `${trip.routeId}:${trip.direction}`;
-    const votes = shapeVotes.get(key) ?? new Map<string, number>();
-    votes.set(trip.shapeId, (votes.get(trip.shapeId) ?? 0) + 1);
-    shapeVotes.set(key, votes);
-  }
-  const shapeMap: ShapeMap = {};
-  for (const [key, votes] of shapeVotes) {
-    let best = "";
-    let bestVotes = -1;
-    for (const [shapeId, count] of votes) {
-      if (count > bestVotes) {
-        best = shapeId;
-        bestVotes = count;
-      }
-    }
-    const points = shapes.get(best);
-    if (!points) continue;
-    shapeMap[key] = simplifyCapped(points, SUBWAY_SHAPE_EPS_M, SUBWAY_SHAPE_CAP).map(
-      (p) => [p.lon, p.lat],
-    );
-  }
-
   const { headways, representativeDates, unrepresentedServices, sparseBuckets } = computeHeadways({
     trips,
     stopTimes,
@@ -215,7 +182,6 @@ export async function normalizeSubway(
         textColor: route.textColor,
       }))
       .sort((a, b) => (a.id < b.id ? -1 : 1)),
-    shapes: shapeMap,
     headways,
     transfers: transferEdges,
     stats: {
@@ -223,7 +189,6 @@ export async function normalizeSubway(
       children,
       orphanStops: orphans,
       edges: edgeStats,
-      shapesKept: Object.keys(shapeMap).length,
       stationsWithChangeCost,
       multiRouteStationsWithoutChangeCost,
       representativeDates,

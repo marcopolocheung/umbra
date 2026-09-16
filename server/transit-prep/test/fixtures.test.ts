@@ -41,7 +41,6 @@ test("subway normalizes parents, edges, transfers, shapes and headways", async (
   // 0 is real data — a cross-platform change — not a missing value.
   assert.equal(result.stops.find((s) => s.id === "subway:P2")?.changeSec, 0);
   assert.equal(result.stats.stationsWithChangeCost, 2);
-  assert.ok((result.shapes["R1:0"]?.length ?? 0) >= 2);
   const headway = result.headways.find((row) => row.route === "R1" && row.hour === 8);
   assert.deepEqual(
     { medianSec: headway?.medianSec, trips: headway?.trips, dayType: headway?.dayType },

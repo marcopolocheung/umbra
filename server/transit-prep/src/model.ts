@@ -71,9 +71,6 @@ export interface HeadwayRow {
 
 export type DayType = "weekday" | "saturday" | "sunday";
 
-/** Representative simplified shape per "route:direction", points as [lon, lat]. */
-export type ShapeMap = Record<string, [number, number][]>;
-
 export interface TransferEdge {
   from: string;
   to: string;

@@ -14,7 +14,6 @@ export interface ShardLike {
   edges: { from: string; to: string; route: string; medianSec: number }[];
   routes: { id: string }[];
   headways: { route: string; hour: number }[];
-  shapes: Record<string, [number, number][]>;
   transfers?: { from: string; to: string; minSec: number }[];
 }
 
@@ -104,17 +103,6 @@ export function checkShard(key: string, shard: ShardLike): void {
     const used = new Set(shard.edges.map((edge) => edge.route));
     for (const route of shard.routes) {
       if (!used.has(route.id)) fail(`route ${route.id} has no edge in this shard`);
-    }
-    for (const key of Object.keys(shard.shapes)) {
-      const route = key.slice(0, key.lastIndexOf(":"));
-      if (!used.has(route)) fail(`shape ${key} belongs to route ${route}, which has no edge here`);
-    }
-  }
-  for (const [shapeKey, points] of Object.entries(shard.shapes)) {
-    if (points.length < 2) fail(`shape ${shapeKey} has <2 points`);
-    for (const [lon, lat] of points) {
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) fail(`shape ${shapeKey} has non-finite coord`);
-      if (lat < 40 || lat > 42 || lon < -75 || lon > -73) fail(`shape ${shapeKey} outside NYC bbox`);
     }
   }
   for (const transfer of shard.transfers ?? []) {

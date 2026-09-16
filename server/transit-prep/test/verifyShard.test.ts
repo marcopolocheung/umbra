@@ -13,7 +13,6 @@ function shard(overrides: Record<string, unknown> = {}): Parameters<typeof check
     edges: [{ from: "bus:a", to: "bus:b", route: "R1", medianSec: 300 }],
     routes: [{ id: "R1" }],
     headways: [{ route: "R1", hour: 9 }],
-    shapes: { "R1:0": [[-73.9, 40.7], [-73.89, 40.71]] },
     ...overrides,
   } as Parameters<typeof checkShard>[1];
 }
@@ -47,10 +46,3 @@ test("a bus shard may not carry a route none of its edges use", () => {
   );
 });
 
-test("a bus shard may not carry a shape for a route it does not serve", () => {
-  assert.throws(
-    () =>
-      checkShard("bus-x.json", shard({ shapes: { "R2:0": [[-73.9, 40.7], [-73.89, 40.71]] } })),
-    /shape R2:0/,
-  );
-});
