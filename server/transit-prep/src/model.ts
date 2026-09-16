@@ -8,6 +8,23 @@ export interface StopNode {
   lon: number;
   /** Bus only: which borough feeds listed this stop. */
   feeds?: string[];
+  /**
+   * Subway only: seconds to change between lines *inside* this station, from
+   * its `transfers.txt` self-transfer row, taken verbatim.
+   *
+   * Collapsing directional children into one parent node makes the change
+   * invisible in the graph, and the self-transfer row is the only thing that
+   * prices it. The values are graded and meaningful: 0 at cross-platform
+   * interchanges (72 St, Times Sq and 14 St on the 1/2/3; Grand Central and
+   * Union Sq on the 4/5/6), 180 for a typical in-station change, 300 at the
+   * big complexes (Penn Station, Atlantic Av-Barclays, Rockefeller Ctr). 0 is
+   * data, not a missing value, so it is never replaced by a fallback.
+   *
+   * Absent when the feed states nothing — 11 stations, all same-platform pairs
+   * such as 135 St [2,3] and 72 St [N,Q]. Left unstated rather than defaulted,
+   * so no number appears that the agency did not give.
+   */
+  changeSec?: number;
 }
 
 export interface RouteEdge {

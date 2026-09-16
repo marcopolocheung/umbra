@@ -51,6 +51,14 @@ export interface SubwayNormalized {
     orphanStops: number;
     edges: EdgeStats;
     shapesKept: number;
+    /** Parent stations given a change cost by a self-transfer row. */
+    stationsWithChangeCost: number;
+    /**
+     * Stations served by more than one route that the feed prices no change
+     * for. Changing lines there is still free; the count is the honest size of
+     * the remaining gap.
+     */
+    multiRouteStationsWithoutChangeCost: number;
     representativeDates: RepresentativeDates;
     unrepresentedServices: string[];
     sparseHeadwayBuckets: number;
@@ -98,6 +106,20 @@ export async function normalizeSubway(
       childToParent.set(stop.id, stop.id);
     }
   }
+  // Self-transfers (from === to) price a change between lines sharing this
+  // station. They are not edges — both ends are the same node — so without
+  // this they were dropped entirely and every in-station change was free.
+  let stationsWithChangeCost = 0;
+  for (const transfer of transfers) {
+    if (transfer.fromStopId !== transfer.toStopId || transfer.transferType === 3) continue;
+    const parent = childToParent.get(transfer.fromStopId);
+    const node = parent === undefined ? undefined : nodes.get(`subway:${parent}`);
+    if (!node || node.changeSec !== undefined) continue;
+    // Verbatim, including 0: a cross-platform change genuinely costs nothing.
+    node.changeSec = transfer.minTransferSec;
+    stationsWithChangeCost += 1;
+  }
+
   const coords = new Map<string, { lat: number; lon: number }>();
   for (const [id, node] of nodes) coords.set(id, { lat: node.lat, lon: node.lon });
 
@@ -163,6 +185,21 @@ export async function normalizeSubway(
     routeKey,
   });
 
+  const routesAt = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    for (const node of [edge.from, edge.to]) {
+      const seen = routesAt.get(node) ?? new Set<string>();
+      seen.add(edge.route);
+      routesAt.set(node, seen);
+    }
+  }
+  let multiRouteStationsWithoutChangeCost = 0;
+  for (const node of nodes.values()) {
+    if (node.changeSec === undefined && (routesAt.get(node.id)?.size ?? 0) > 1) {
+      multiRouteStationsWithoutChangeCost += 1;
+    }
+  }
+
   return {
     kind: "subway",
     feed,
@@ -187,6 +224,8 @@ export async function normalizeSubway(
       orphanStops: orphans,
       edges: edgeStats,
       shapesKept: Object.keys(shapeMap).length,
+      stationsWithChangeCost,
+      multiRouteStationsWithoutChangeCost,
       representativeDates,
       unrepresentedServices,
       sparseHeadwayBuckets: sparseBuckets,

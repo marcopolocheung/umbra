@@ -32,9 +32,15 @@ test("subway normalizes parents, edges, transfers, shapes and headways", async (
   );
   // The lone Saturday reverse trip is below the sample minimum.
   assert.equal(result.stats.edges.droppedSparse, 1);
+  // Self-transfers price a change between lines sharing one station; they are
+  // not edges, so the transfer list still holds only the P1<->P2 link.
   assert.deepEqual(result.transfers, [
     { from: "subway:P1", to: "subway:P2", minSec: 120, kind: "gtfs" },
   ]);
+  assert.equal(result.stops.find((s) => s.id === "subway:P1")?.changeSec, 180);
+  // 0 is real data — a cross-platform change — not a missing value.
+  assert.equal(result.stops.find((s) => s.id === "subway:P2")?.changeSec, 0);
+  assert.equal(result.stats.stationsWithChangeCost, 2);
   assert.ok((result.shapes["R1:0"]?.length ?? 0) >= 2);
   const headway = result.headways.find((row) => row.route === "R1" && row.hour === 8);
   assert.deepEqual(
@@ -107,4 +113,20 @@ test("spatial stubs link the subway fixture to the shared bus stop", async () =>
     stubs.map((s) => `${s.from}→${s.to}`).sort(),
     ["bus:S1→subway:P1", "subway:P1→bus:S1"],
   );
+});
+
+test("a station the feed gives no self-transfer for carries no change cost", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tp-nochange-"));
+  const fixture = {
+    ...SUBWAY_FIXTURE,
+    // Only P1 is priced. P2 is left unstated rather than defaulted, so the
+    // number never gets invented; 11 real stations are in this position.
+    "transfers.txt":
+      "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nP1,P2,2,120\nP1,P1,2,180\n",
+  };
+  await writeFeed(root, "subway-mini", fixture);
+  const result = await normalizeSubway(root, "subway-mini", subwayFeed, REFERENCE_DATE);
+  assert.equal(result.stops.find((s) => s.id === "subway:P1")?.changeSec, 180);
+  assert.equal(result.stops.find((s) => s.id === "subway:P2")?.changeSec, undefined);
+  assert.equal(result.stats.stationsWithChangeCost, 1);
 });
