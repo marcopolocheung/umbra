@@ -55,7 +55,7 @@ test("validate accepts the seeded feeds with shared-stop dedup", async () => {
   });
   const subway = report.feeds.find((feed) => feed.id === "subway");
   assert.equal(subway?.parentStations, 2);
-  assert.equal(subway?.transfers, 1);
+  assert.equal(subway?.transfers, 3);
   // V1/V2/V3 + X1/X2/X3 union by route_id.
   assert.equal(report.busRouteIds, 6);
   // S1 shared everywhere; A2 in NYCT-A feeds; B2 in NYCT-B feeds; C2 in BusCo.
@@ -210,5 +210,5 @@ test("validate records the transfer types it saw", async () => {
     await assembleReceipts();
     return validate();
   });
-  assert.deepEqual(report.subwayTransferTypes, { 2: 1 });
+  assert.deepEqual(report.subwayTransferTypes, { 2: 3 });
 });

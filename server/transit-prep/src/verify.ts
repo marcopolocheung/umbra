@@ -10,7 +10,7 @@ import { json, requireRoot, sha256 } from "./util";
 
 export interface ShardLike {
   kind?: string;
-  stops: { id: string }[];
+  stops: { id: string; changeSec?: number }[];
   edges: { from: string; to: string; route: string; medianSec: number }[];
   routes: { id: string }[];
   headways: { route: string; hour: number }[];
@@ -72,6 +72,12 @@ export function checkShard(key: string, shard: ShardLike): void {
     throw new Error(`${key}: ${message}`);
   };
   const stopIds = new Set(shard.stops.map((stop) => stop.id));
+  for (const stop of shard.stops) {
+    // 0 is a legitimate cross-platform change; negative or fractional is not.
+    if (stop.changeSec !== undefined && (!Number.isInteger(stop.changeSec) || stop.changeSec < 0)) {
+      fail(`stop ${stop.id} has changeSec ${stop.changeSec}`);
+    }
+  }
   for (let i = 1; i < shard.stops.length; i += 1) {
     if ((shard.stops[i - 1] as { id: string }).id >= (shard.stops[i] as { id: string }).id) {
       fail("stops not strictly sorted by id");

@@ -83,7 +83,8 @@ export const SUBWAY_FIXTURE: Record<string, string> = {
   "calendar.txt": SUBWAY_CALENDAR,
   "calendar_dates.txt": "service_id,date,exception_type\n",
   "shapes.txt": SUBWAY_SHAPES,
-  "transfers.txt": "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nP1,P2,2,120\n",
+  "transfers.txt":
+    "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nP1,P2,2,120\nP1,P1,2,180\nP2,P2,2,0\n",
   "feed_info.txt":
     "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version,feed_contact_url\nMTA,https://example.com,EN,20260101,20261231,test-subway-1,https://example.com\n",
 };

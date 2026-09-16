@@ -66,6 +66,32 @@ generation: ~10.8 MB. Each bus shard carries only the routes its own edges
 use, plus those routes' shapes and headways — see "Shard scope" below. Heap: validate needs 4 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
 
+## In-station line changes
+
+Subway nodes are parent stations, so a change from the 1 to the 3 at Times Sq is
+one node and costs nothing unless something prices it. The only thing that does
+is `transfers.txt`'s self-transfer rows (`from_stop_id == to_stop_id`), 463 of
+its 613 rows — and because both ends resolve to the same node they used to be
+dropped as degenerate. They now land on `StopNode.changeSec`, verbatim:
+
+```
+   0 s  x 57    cross-platform: 72 St / Times Sq / 14 St [1,2,3],
+                Grand Central and Union Sq [4,5,6], Nevins St [2,3,4,5]
+ 180 s  x 400   a typical in-station change
+ 300 s  x 6     Penn Station, Atlantic Av-Barclays, Rockefeller Ctr
+ unset  x 33    the feed prices no change; 11 of them serve >1 route
+```
+
+0 is data, not a missing value, so the `> 0 ? x : 180` fallback used for
+station-to-station transfers is deliberately **not** applied here — it would
+turn every free cross-platform change into a three-minute penalty. Where the
+feed says nothing the field is omitted rather than defaulted, so no number
+appears that the agency did not give; those 11 stations are same-platform pairs
+(135 St [2,3], 72 St [N,Q], 34 St-Hudson Yards [7,7X]) where the real cost is
+near zero anyway. `stats.multiRouteStationsWithoutChangeCost` reports the gap.
+
+How to spend `changeSec` is Step 6's call — cost, penalty, or both.
+
 ## Shard scope
 
 A bus edge belongs to a borough shard when either endpoint stop was listed by

@@ -357,6 +357,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     notes: [
       `Each headway table is one representative date's schedule, chosen as the most common service pattern on or after ${referenceDate} (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.`,
       "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
+      "Subway stops carry changeSec, the feed's own cost for changing lines inside that station (0 at cross-platform interchanges). Stations the feed prices no change for leave it unset rather than defaulted; changing lines there is unpriced.",
       "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
       "Headway hours are service-day hours 0-27, not wall-clock hours: hours 24-27 are the early morning of headwayDates[dataset][dayType].nextDate, whose day type is given as nextDayType. Hours 0-3 and 24-27 are different calendar days and must not be merged.",
     ],
