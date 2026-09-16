@@ -96,7 +96,10 @@ test("build + verify produce checkable shards end to end", async () => {
     assert.ok(shard.bytes < 3_000_000);
   }
   const plan = await withRoot(root, async () => publishPlan(manifest.generation));
-  // 7 shards + manifest.
-  assert.equal(plan.objects.length, 8);
-  assert.ok(plan.objects.every((object) => object.key.includes(manifest.generation)));
+  // 7 shards + manifest + current.json pointer.
+  assert.equal(plan.objects.length, 9);
+  assert.ok(plan.objects.every((object) => object.key.includes(manifest.generation) || object.key.endsWith("current.json")));
+  const pointer = plan.objects.find((object) => object.key.endsWith("current.json"));
+  assert.equal(pointer?.cacheControl, "public, max-age=300");
+  assert.ok((pointer?.bytes ?? 0) > 0);
 });

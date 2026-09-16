@@ -1,7 +1,7 @@
 /**
  * Publish a verified generation to R2 (S3-compatible) under
- * transit/nyc/<generation>/. Dry-run by default; --execute uploads the 8
- * objects (7 shards + manifest) with immutable caching on shards and a
+ * transit/nyc/<generation>/. Dry-run by default; --execute uploads the 9
+ * objects (7 shards + manifest + current.json pointer) with immutable caching on shards and a
  * short cache on the manifest, then reports the public URLs.
  *
  * Env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
@@ -10,9 +10,9 @@
  */
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { json, requireRoot } from "./util";
+import { json, requireRoot, sha256 } from "./util";
 
 interface ManifestRef {
   generation: string;
@@ -33,14 +33,22 @@ function r2Client(): S3Client {
   });
 }
 
+export interface PublishObject {
+  key: string;
+  bytes: number;
+  cacheControl: string;
+  /** Inline body (the current.json pointer); otherwise read from the generation dir. */
+  body?: Uint8Array;
+}
+
 export async function publishPlan(generation: string): Promise<{
   generation: string;
-  objects: { key: string; bytes: number; cacheControl: string }[];
+  objects: PublishObject[];
 }> {
   const root = requireRoot();
   const directory = join(root, "normalized", generation);
   const manifest = await json<ManifestRef>(join(directory, "manifest.json"));
-  const objects: { key: string; bytes: number; cacheControl: string }[] = [];
+  const objects: PublishObject[] = [];
   const prefix = process.env.R2_TRANSIT_PREFIX ?? "transit/nyc";
   for (const shard of manifest.shards) {
     const bytes = await readFile(join(directory, shard.key));
@@ -51,11 +59,31 @@ export async function publishPlan(generation: string): Promise<{
     });
   }
   const manifestBytes = await readFile(join(directory, "manifest.json"));
+  const manifestKey = `${prefix}/${generation}/manifest.json`;
   objects.push({
-    key: `${prefix}/${generation}/manifest.json`,
+    key: manifestKey,
     bytes: manifestBytes.length,
     cacheControl: "public, max-age=300",
   });
+  // Stable pointer (mirrors the bucket-root current.json convention): the
+  // Step-6 client reads this one well-known URL instead of a hardcoded
+  // generation. Paths are bucket-relative; serving routes are Step 6's job.
+  const pointer = {
+    version: 1,
+    dataset: "nyc-transit",
+    generation,
+    manifestPath: manifestKey,
+    manifestSha256: sha256(new Uint8Array(manifestBytes)),
+  };
+  const pointerBytes = new TextEncoder().encode(`${JSON.stringify(pointer, null, 2)}\n`);
+  objects.push({
+    key: `${prefix}/current.json`,
+    bytes: pointerBytes.length,
+    cacheControl: "public, max-age=300",
+    body: pointerBytes,
+  });
+  // Local record of exactly what the pointer said.
+  await writeFile(join(directory, "current.json"), pointerBytes);
   return { generation, objects };
 }
 
@@ -72,8 +100,8 @@ export async function publishExecute(generation: string): Promise<{
   const client = r2Client();
   const uploaded: string[] = [];
   for (const object of plan.objects) {
-    const file = object.key.split("/").pop() as string;
-    const body = await readFile(join(directory, file));
+    const body =
+      object.body ?? (await readFile(join(directory, object.key.split("/").pop() as string)));
     await client.send(
       new PutObjectCommand({
         Bucket: bucket,

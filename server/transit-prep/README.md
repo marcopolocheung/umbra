@@ -56,9 +56,12 @@ generation: ~13 MB. Heap: validate needs 4 GB, normalize/build 6 GB
 
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
 `R2_TRANSIT_BUCKET`, optional `R2_TRANSIT_PREFIX` (default `transit/nyc`),
-`R2_PUBLIC_BASE` (report only). Keys: `<prefix>/<gen>/{shards,manifest.json}`;
-shards immutable (1 y), manifest 5 min. Previous generation is retained for
-rollback; the client pins a generation via the manifest.
+`R2_PUBLIC_BASE` (report only). Keys: `<prefix>/<gen>/{shards,manifest.json}`
+plus the stable `<prefix>/current.json` pointer
+(`{version, dataset: "nyc-transit", generation, manifestPath, manifestSha256}` —
+bucket-relative paths; serving routes are Step 6's job). Previous generations
+stay put for rollback; the client reads the pointer, never a hardcoded
+generation.
 
 ## Freshness
 
