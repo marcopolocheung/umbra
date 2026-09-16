@@ -25,9 +25,10 @@ jobs:
 
       - run: npm ci
 
-      # Root TypeScript discovery includes shadow-prep source files, so its
+      # Root TypeScript discovery includes server/* source files, so their
       # private dependencies must be present before the root typecheck.
       - run: npm --prefix server/shadow-prep ci
+      - run: npm --prefix server/transit-prep ci
 
       - run: npm run lint
 
