@@ -121,6 +121,16 @@ Queens, J/M/Z, much of the outer boroughs) are not underground. Out of scope her
 station **centroids**, not entrances. Step 6 does not remove the Overpass dependency unless
 entrances are added to the pipeline — decide explicitly, do not discover it late.
 
+*S2 had to fix the matcher to do this safely.* `matchEntranceToTrainStation`'s name arm is a
+**substring** test and was unbounded by distance, which was survivable against a bbox-limited
+Overpass station set and is not against all 496 GTFS-named stations: `Wall St` is a substring of
+`Christopher Street-Stonewall Station` 3 km away, and a station named `Broadway` matched an
+entrance 9.4 km up the same street. Because `useRouting` only supplies a centroid for stations
+with *no* matched entrance, one false positive **replaces** a station's position with a door in
+another neighbourhood. Measured over 822 real OSM entrance nodes in Manhattan against the real
+shard: **12 matches landed beyond 400 m before the fix, 0 after, with the same 816 matched** —
+so bounding the name arm and taking the nearest match costs no true matches.
+
 ---
 
 ## Where it plugs in

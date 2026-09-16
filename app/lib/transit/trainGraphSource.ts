@@ -42,10 +42,13 @@ function stationsWithin(
 /**
  * Returns the graph to route on, or `null` when neither source has one.
  *
- * Reaching the shards costs one 1.09 MB download per session — they are
- * immutable, so the browser and the module cache both hold them — and it is
- * spent before the area is known to be covered, because the manifest carries no
- * per-shard extent to check first (#388).
+ * Coverage can only be checked *after* the download, because the manifest
+ * carries no per-shard extent (#388). So a user outside New York pays the full
+ * pointer → manifest → shard round trip (~1 s, 1.09 MB) on their **first**
+ * route calculation, serially, ahead of the Overpass call that actually answers
+ * them — for a graph that is then discarded. Later calculations are cheap: the
+ * shards are immutable and the module cache holds them. Per-shard bounds in the
+ * manifest are what would remove the first hit as well, and that is #388.
  */
 export async function fetchBestTrainGraph(
   south: number,

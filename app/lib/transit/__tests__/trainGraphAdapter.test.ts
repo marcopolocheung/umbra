@@ -132,6 +132,74 @@ describe("buildTrainGraphFromShards", () => {
 });
 
 describe("fetchBestTrainGraph", () => {
+  const base = "https://transit.test";
+
+  async function sha256Hex(bytes: Uint8Array): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  type Handler = (url: string) => Promise<unknown>;
+
+  /** Serves a real pointer/manifest/shard triple, plus an empty Overpass reply. */
+  async function stubPublished(
+    override?: (url: string, fallthrough: Handler) => Promise<unknown> | undefined,
+  ): Promise<string[]> {
+    const gen = "nyc-2026-09-16-f8c5f275d305";
+    const encoder = new TextEncoder();
+    const body = encoder.encode(JSON.stringify(shard()));
+    const manifest = {
+      generation: gen,
+      createdAt: "2026-09-16T18:09:07.605Z",
+      schedulesAsOf: {},
+      headwayDates: { referenceDate: "20260916" },
+      feeds: [],
+      shards: [
+        {
+          key: "subway.json",
+          bytes: body.byteLength,
+          sha256: await sha256Hex(body),
+          stops: shard().stops.length,
+          edges: shard().edges.length,
+          routes: shard().routes.length,
+        },
+      ],
+      budgets: { shardBytes: 3_000_000, totalBytes: 15_000_000 },
+      constants: {},
+      notes: [],
+    };
+    const manifestBytes = encoder.encode(JSON.stringify(manifest));
+    const pointer = {
+      version: 1,
+      dataset: "nyc-transit",
+      generation: gen,
+      manifestPath: `transit/nyc/${gen}/manifest.json`,
+      manifestSha256: await sha256Hex(manifestBytes),
+    };
+    const asBytes = (b: Uint8Array) => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+    });
+
+    const calls: string[] = [];
+    const serve: Handler = async (url) => {
+      if (url.endsWith("/current.json")) return { ok: true, status: 200, json: async () => pointer };
+      if (url.endsWith("/manifest.json")) return asBytes(manifestBytes);
+      if (url.endsWith("subway.json")) return asBytes(body);
+      // Anything else is the Overpass proxy.
+      return { ok: true, status: 200, text: async () => JSON.stringify({ elements: [] }) };
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(String(url));
+        return (override?.(String(url), serve) ?? serve(String(url))) as unknown;
+      }),
+    );
+    return calls;
+  }
+
   beforeEach(() => clearTransitCache());
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -147,5 +215,49 @@ describe("fetchBestTrainGraph", () => {
     const graph = await fetchBestTrainGraph(40.6, -74.1, 40.8, -73.9);
     expect(graph).toBeNull();
     for (const [url] of overpass.mock.calls) expect(String(url)).not.toContain("current.json");
+  });
+
+  it("routes on the shards where they serve the bbox", async () => {
+    vi.stubEnv("VITE_TRANSIT_BASE", base);
+    const calls = await stubPublished();
+    const graph = await fetchBestTrainGraph(40.69, -74.01, 40.72, -73.99);
+    expect([...(graph?.stations.keys() ?? [])]).toContain("subway:A");
+    // Overpass is not consulted when the published data answers.
+    expect(calls.some((u) => u.includes("overpass"))).toBe(false);
+  });
+
+  it("hands a bbox the shards do not cover back to Overpass", async () => {
+    vi.stubEnv("VITE_TRANSIT_BASE", base);
+    const calls = await stubPublished();
+    // Tokyo. Without this gate, an NYC-only dataset would answer with Manhattan
+    // stations, and the user would get no transit option at all.
+    const graph = await fetchBestTrainGraph(35.6, 139.6, 35.8, 139.8);
+    expect(graph).toBeNull();
+    expect(calls.some((u) => u.includes("overpass"))).toBe(true);
+  });
+
+  it("hands a bbox holding a single station back to Overpass too", async () => {
+    vi.stubEnv("VITE_TRANSIT_BASE", base);
+    const calls = await stubPublished();
+    // A transit option needs somewhere to board AND somewhere to alight.
+    const graph = await fetchBestTrainGraph(40.6995, -74.001, 40.7005, -73.999);
+    expect(graph).toBeNull();
+    expect(calls.some((u) => u.includes("overpass"))).toBe(true);
+  });
+
+  it("keeps the walking route when the published data is corrupt", async () => {
+    vi.stubEnv("VITE_TRANSIT_BASE", base);
+    const calls = await stubPublished((url) =>
+      url.endsWith("subway.json")
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => new TextEncoder().encode("[]").buffer,
+          })
+        : undefined,
+    );
+    // A shard that fails its byte contract must cost the walking route nothing.
+    await expect(fetchBestTrainGraph(40.69, -74.01, 40.72, -73.99)).resolves.toBeNull();
+    expect(calls.some((u) => u.includes("overpass"))).toBe(true);
   });
 });

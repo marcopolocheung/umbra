@@ -611,21 +611,45 @@ export function findBestTrainRoute(
 /**
  * Match an OSM entrance node to the nearest train station.
  * Tries name match first, then nearest-centroid fallback within 300m.
+ *
+ * **The name arm is bounded by distance, and must be.** It is a substring test,
+ * so short station names match wildly: `Wall St` is a substring of
+ * `Christopher Street-Stonewall Station` 3 km away, and a station simply named
+ * `Broadway` matches an entrance 9 km up the same street. Unbounded, the first
+ * such hit wins by map order and — because `useRouting` only falls back to a
+ * centroid for stations with *no* entrance — it silently replaces that
+ * station's position with a door in another neighbourhood.
  */
+const NAME_MATCH_MAX_M = 400;
+
 export function matchEntranceToTrainStation(
   entrance: { lat: number; lon: number; name?: string },
   stations: Map<string, TrainStation>
 ): string | null {
   if (entrance.name) {
     const eName = entrance.name.toLowerCase();
+    // Nearest name match, not the first: several stations legitimately share a
+    // name, and only one of them owns this door.
+    let bestNamedId: string | null = null;
+    let bestNamedDist = NAME_MATCH_MAX_M;
     for (const [id, station] of stations) {
       if (
-        eName.includes(station.name.toLowerCase()) ||
-        (station.nameLocal && entrance.name.includes(station.nameLocal))
-      ) {
-        return id;
+        !(
+          eName.includes(station.name.toLowerCase()) ||
+          (station.nameLocal && entrance.name.includes(station.nameLocal))
+        )
+      )
+        continue;
+      const dist = haversineMeters(
+        [entrance.lon, entrance.lat],
+        [station.lon, station.lat]
+      );
+      if (dist < bestNamedDist) {
+        bestNamedDist = dist;
+        bestNamedId = id;
       }
     }
+    if (bestNamedId !== null) return bestNamedId;
   }
 
   let bestId: string | null = null;
