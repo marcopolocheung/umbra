@@ -115,6 +115,9 @@ export async function normalizeSubway(
 
   const transferEdges: TransferEdge[] = [];
   for (const transfer of transfers) {
+    // transfer_type 3 is "not possible". validate throws on it; skipping here
+    // too keeps the guarantee local, since normalize runs without validate.
+    if (transfer.transferType === 3) continue;
     const from = childToParent.get(transfer.fromStopId);
     const to = childToParent.get(transfer.toStopId);
     if (from === undefined || to === undefined || from === to) continue;

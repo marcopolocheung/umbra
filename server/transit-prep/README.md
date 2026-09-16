@@ -26,6 +26,16 @@ Upstream facts the code pins (validate fails on drift):
   (worst observed 147.7 m) — borough coords win, past 150 m is fatal.
 - `stop_times` past midnight use `25:xx:xx` times; shapes carry no distance
   column (edge lengths come from stop coords).
+- Every id `normalizeBus` pools on is pinned, because pooling six feeds by a
+  bare id corrupts silently rather than failing: `trip_id` must be unique
+  across the bus feeds (measured 230,532, zero collisions) and a shared
+  `service_id` must carry identical calendar *and* calendar_dates rows
+  (measured 136, none shared). `shape_id` needs no pin — it is namespaced per
+  feed. A `trip_id` collision would interleave two boroughs' stop_times into
+  one trip.
+- Subway `transfers.txt` is `transfer_type` 2 throughout (613 rows, histogram
+  recorded in the validate evidence). Type 3 means "transfer not possible" and
+  is fatal, rather than quietly becoming a walkable edge.
 
 ## Layout (under TRANSIT_PREP_ROOT, outside git)
 
