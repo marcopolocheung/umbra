@@ -13,6 +13,7 @@ import { buildSpatialStubs, SPATIAL_TRANSFER_CAP_PER_STATION, SPATIAL_TRANSFER_R
 import type { FeedVersion, StopNode, TransferEdge } from "./model";
 import { readReceipts } from "./receipts";
 import { requireRoot, sha256, writeJson } from "./util";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const SHARD_BUDGET_BYTES = 3_000_000;
@@ -62,6 +63,34 @@ export const CURRENT_BASELINE: BaselineCounts = {
 
 function encode(value: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
+}
+
+/**
+ * Content-addressed generation id: `nyc-<date>-<hash12>`. The date orders the
+ * directories for a human; the hash is what discriminates.
+ *
+ * It replaces a 24-character slice of the seven feed_version strings joined
+ * together, which discriminated almost nothing. The subway version alone
+ * ("20260826-X-long-term-supplement-trip-ids") is 40 characters once
+ * punctuation is stripped, so the slice dropped all six bus picks and cut the
+ * subway string mid-word: a quarterly bus pick rebuilt the same day reused the
+ * id, and reusing an id overwrites shards already served
+ * `Cache-Control: immutable`. Hashing the shard bytes as well as the feed
+ * identities means a pipeline change earns a new id too, which a hash over the
+ * upstream inputs alone would not.
+ */
+export function generationId(
+  feeds: FeedVersion[],
+  shards: { key: string; sha256: string }[],
+  at: Date,
+): string {
+  // Sorted so neither receipt order nor shard order can move the hash.
+  const identity = [
+    ...feeds.map((feed) => `feed\t${feed.id}\t${feed.version}\t${feed.sha256}`),
+    ...shards.map((shard) => `shard\t${shard.key}\t${shard.sha256}`),
+  ].sort();
+  const digest = sha256(new TextEncoder().encode(identity.join("\n")));
+  return `nyc-${at.toISOString().slice(0, 10)}-${digest.slice(0, 12)}`;
 }
 
 export async function normalizeAll(options?: NormalizeOptions): Promise<{
@@ -121,11 +150,6 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   const root = requireRoot();
   const { subway, bus, stubs } = await normalizeAll(options);
   const { receipts } = await readReceipts();
-  const generation = `nyc-${new Date().toISOString().slice(0, 10)}-${receipts
-    .map((item) => item.feedVersion.replace(/[^A-Za-z0-9]+/g, ""))
-    .join("")
-    .slice(0, 24)}`;
-  const directory = join(root, "normalized", generation);
 
   const objects: { key: string; value: unknown }[] = [];
   if (subway) {
@@ -190,7 +214,11 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     }
   }
 
+  // Encode and budget-check every shard before anything is written: the
+  // generation id hashes the shard bytes, so the directory it names is not
+  // known until they all exist.
   const shards: ShardRecord[] = [];
+  const encoded: { key: string; bytes: Uint8Array }[] = [];
   let totalBytes = 0;
   for (const { key, value } of objects) {
     const bytes = encode(value);
@@ -198,9 +226,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       throw new Error(`${key}: ${bytes.length} bytes exceeds ${SHARD_BUDGET_BYTES} budget`);
     }
     totalBytes += bytes.length;
-    const { writeFile, mkdir } = await import("node:fs/promises");
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, key), bytes);
+    encoded.push({ key, bytes });
     const recordValue = value as { stops: unknown[]; edges: unknown[]; routes: unknown[] };
     shards.push({
       key,
@@ -215,6 +241,18 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     throw new Error(`total ${totalBytes} bytes exceeds ${TOTAL_BUDGET_BYTES} budget`);
   }
 
+  const feeds: FeedVersion[] = receipts.map((receipt) => ({
+    id: receipt.id,
+    version: receipt.feedVersion,
+    startDate: receipt.feedStartDate,
+    endDate: receipt.feedEndDate,
+    sha256: receipt.sha256,
+  }));
+  const generation = generationId(feeds, shards, new Date());
+  const directory = join(root, "normalized", generation);
+  await mkdir(directory, { recursive: true });
+  for (const { key, bytes } of encoded) await writeFile(join(directory, key), bytes);
+
   const schedulesAsOf: GenerationManifest["schedulesAsOf"] = {};
   for (const receipt of receipts) {
     schedulesAsOf[receipt.id] = {
@@ -227,13 +265,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     generation,
     createdAt: new Date().toISOString(),
     schedulesAsOf,
-    feeds: receipts.map((receipt) => ({
-      id: receipt.id,
-      version: receipt.feedVersion,
-      startDate: receipt.feedStartDate,
-      endDate: receipt.feedEndDate,
-      sha256: receipt.sha256,
-    })),
+    feeds,
     shards,
     budgets: { shardBytes: SHARD_BUDGET_BYTES, totalBytes: TOTAL_BUDGET_BYTES },
     constants: {

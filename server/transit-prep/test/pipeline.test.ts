@@ -103,3 +103,60 @@ test("build + verify produce checkable shards end to end", async () => {
   assert.equal(pointer?.cacheControl, "public, max-age=300");
   assert.ok((pointer?.bytes ?? 0) > 0);
 });
+
+test("a bus-only feed change produces a different generation", async () => {
+  const root = await seedRoot();
+  const generations = await withRoot(root, async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    const first = await (async () => {
+      await assembleReceipts();
+      await validate();
+      return (await buildGeneration({ updateBaseline: true })).generation;
+    })();
+    // A quarterly bus pick: only the last bus feed's version moves. The subway
+    // feed, and therefore any prefix of the joined feed versions, is unchanged.
+    const info = join(root, "gtfs_busco", "feed_info.txt");
+    await writeFile(info, (await readFile(info, "utf8")).replace("test-bus-1", "test-bus-2"));
+    const second = await (async () => {
+      await assembleReceipts();
+      await validate();
+      return (await buildGeneration({ updateBaseline: true })).generation;
+    })();
+    return { first, second };
+  });
+  assert.notEqual(generations.first, generations.second);
+});
+
+test("rebuilding the same inputs reproduces the same generation", async () => {
+  const root = await seedRoot();
+  const { first, second } = await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const a = await buildGeneration({ updateBaseline: true });
+    const b = await buildGeneration({ updateBaseline: true });
+    return { first: a.generation, second: b.generation };
+  });
+  assert.equal(first, second);
+});
+
+test("verify picks the newest generation, not the last one alphabetically", async () => {
+  const root = await seedRoot();
+  const picked = await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const built = await buildGeneration({ updateBaseline: true });
+    // An older generation whose directory name sorts after the new one: what a
+    // rebuild leaves behind, and what publish must not push.
+    const { cp, readFile, writeFile } = await import("node:fs/promises");
+    const stale = "nyc-9999-99-99-zzzzzzzzzzzz";
+    const staleDir = join(root, "normalized", stale);
+    await cp(built.directory, staleDir, { recursive: true });
+    const manifestPath = join(staleDir, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    manifest.generation = stale;
+    manifest.createdAt = "2000-01-01T00:00:00.000Z";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    return { chosen: (await verifyGeneration()).generation, expected: built.generation };
+  });
+  assert.equal(picked.chosen, picked.expected);
+});

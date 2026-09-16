@@ -61,7 +61,10 @@ plus the stable `<prefix>/current.json` pointer
 (`{version, dataset: "nyc-transit", generation, manifestPath, manifestSha256}` —
 bucket-relative paths; serving routes are Step 6's job). Previous generations
 stay put for rollback; the client reads the pointer, never a hardcoded
-generation.
+generation. A generation id is `nyc-<date>-<hash12>`, where the hash covers
+every feed's identity *and* every shard's bytes — so identical inputs rebuild
+to the same id, and any change to either the upstream picks or this pipeline
+earns a new one. That is what makes the shards safe to serve `immutable`.
 
 ## Freshness
 

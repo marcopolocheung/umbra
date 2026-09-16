@@ -19,15 +19,36 @@ interface ShardLike {
 
 interface ManifestLike {
   generation: string;
+  createdAt?: string;
   shards: { key: string; bytes: number; sha256: string }[];
+}
+
+/**
+ * Newest generation by the manifest's own createdAt, not by directory name.
+ * Generation ids end in a content hash, so names sort arbitrarily within a
+ * day — and `publish` publishes whatever this returns.
+ */
+async function latestGeneration(normalized: string): Promise<string | null> {
+  const dated: { name: string; createdAt: string }[] = [];
+  for (const name of await readdir(normalized)) {
+    if (name.startsWith(".")) continue;
+    try {
+      const manifest = await json<ManifestLike>(join(normalized, name, "manifest.json"));
+      dated.push({ name, createdAt: manifest.createdAt ?? "" });
+    } catch {
+      // Not a generation directory (no readable manifest); ignore it.
+    }
+  }
+  dated.sort((a, b) =>
+    a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.name < b.name ? -1 : 1,
+  );
+  return dated.pop()?.name ?? null;
 }
 
 export async function verifyGeneration(generation?: string): Promise<{ generation: string; shards: number }> {
   const root = requireRoot();
   const normalized = join(root, "normalized");
-  const name =
-    generation ??
-    (await readdir(normalized)).filter((entry) => !entry.startsWith(".")).sort().pop();
+  const name = generation ?? (await latestGeneration(normalized));
   if (!name) throw new Error("no generations to verify");
   const directory = join(normalized, name);
   const manifest = await json<ManifestLike>(join(directory, "manifest.json"));
