@@ -10,7 +10,8 @@ import { normalizeBus, type BusNormalized } from "./normalizeBus";
 import { normalizeSubway, type SubwayNormalized } from "./normalizeSubway";
 import { FEED_SOURCES } from "./sources";
 import { buildSpatialStubs, SPATIAL_TRANSFER_CAP_PER_STATION, SPATIAL_TRANSFER_RADIUS_M, SPATIAL_WALK_MPS } from "./transfers";
-import type { FeedVersion, StopNode, TransferEdge } from "./model";
+import type { DayType, FeedVersion, StopNode, TransferEdge } from "./model";
+import type { RepresentativeDates } from "./serviceCalendar";
 import { readReceipts } from "./receipts";
 import { requireRoot, sha256, writeJson } from "./util";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -18,6 +19,11 @@ import { join } from "node:path";
 
 export const SHARD_BUDGET_BYTES = 3_000_000;
 export const TOTAL_BUDGET_BYTES = 15_000_000;
+
+export type RepresentativeSummary = Record<
+  DayType,
+  { date: string; matchingDates: number; candidateDates: number } | null
+>;
 
 export interface ShardRecord {
   key: string;
@@ -33,6 +39,16 @@ export interface GenerationManifest {
   createdAt: string;
   /** Honesty label for the transit card (Step 6 reads this). */
   schedulesAsOf: Record<string, { version: string; startDate: string; endDate: string }>;
+  /**
+   * Which single date each headway table describes, per dataset, and how many
+   * candidate dates of that day type share its service pattern. The transit
+   * card needs this to say "typical weekday" honestly.
+   */
+  headwayDates: {
+    referenceDate: string;
+    subway?: RepresentativeSummary;
+    bus?: RepresentativeSummary;
+  };
   feeds: FeedVersion[];
   shards: ShardRecord[];
   budgets: { shardBytes: number; totalBytes: number };
@@ -49,6 +65,12 @@ export interface GenerationManifest {
 export interface NormalizeOptions {
   only?: "subway" | "bus";
   updateBaseline?: boolean;
+  /**
+   * Where the search for each day type's representative date starts, YYYYMMDD.
+   * Defaults to the build date; the manifest records what was used, so a
+   * generation can be rebuilt exactly.
+   */
+  referenceDate?: string;
 }
 
 export interface BaselineCounts {
@@ -93,10 +115,15 @@ export function generationId(
   return `nyc-${at.toISOString().slice(0, 10)}-${digest.slice(0, 12)}`;
 }
 
+export function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+}
+
 export async function normalizeAll(options?: NormalizeOptions): Promise<{
   subway: SubwayNormalized | null;
   bus: BusNormalized | null;
   stubs: TransferEdge[];
+  referenceDate: string;
 }> {
   const root = requireRoot();
   const { receipts } = await readReceipts();
@@ -115,9 +142,10 @@ export async function normalizeAll(options?: NormalizeOptions): Promise<{
   if (!subwaySource) throw new Error("subway source missing");
   const busSources = FEED_SOURCES.filter((item) => item.kind === "bus");
 
+  const referenceDate = options?.referenceDate ?? todayUtc();
   const subway =
     !options?.only || options.only === "subway"
-      ? await normalizeSubway(root, subwaySource.workDir, versionOf("subway"))
+      ? await normalizeSubway(root, subwaySource.workDir, versionOf("subway"), referenceDate)
       : null;
   const bus =
     !options?.only || options.only === "bus"
@@ -125,6 +153,7 @@ export async function normalizeAll(options?: NormalizeOptions): Promise<{
           root,
           busSources.map((source) => ({ feedId: source.id, dir: source.workDir })),
           busSources.map((source) => versionOf(source.id)),
+          referenceDate,
         )
       : null;
 
@@ -139,7 +168,7 @@ export async function normalizeAll(options?: NormalizeOptions): Promise<{
 
   const stubs =
     subway && bus ? buildSpatialStubs(subway.stops, bus.stops) : [];
-  return { subway, bus, stubs };
+  return { subway, bus, stubs, referenceDate };
 }
 
 export async function buildGeneration(options?: NormalizeOptions): Promise<{
@@ -148,7 +177,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   directory: string;
 }> {
   const root = requireRoot();
-  const { subway, bus, stubs } = await normalizeAll(options);
+  const { subway, bus, stubs, referenceDate } = await normalizeAll(options);
   const { receipts } = await readReceipts();
 
   const objects: { key: string; value: unknown }[] = [];
@@ -253,6 +282,12 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   await mkdir(directory, { recursive: true });
   for (const { key, bytes } of encoded) await writeFile(join(directory, key), bytes);
 
+  const summarize = (dates: RepresentativeDates): RepresentativeSummary => ({
+    weekday: summarizeDay(dates.weekday),
+    saturday: summarizeDay(dates.saturday),
+    sunday: summarizeDay(dates.sunday),
+  });
+
   const schedulesAsOf: GenerationManifest["schedulesAsOf"] = {};
   for (const receipt of receipts) {
     schedulesAsOf[receipt.id] = {
@@ -265,6 +300,11 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     generation,
     createdAt: new Date().toISOString(),
     schedulesAsOf,
+    headwayDates: {
+      referenceDate,
+      ...(subway ? { subway: summarize(subway.stats.representativeDates) } : {}),
+      ...(bus ? { bus: summarize(bus.stats.representativeDates) } : {}),
+    },
     feeds,
     shards,
     budgets: { shardBytes: SHARD_BUDGET_BYTES, totalBytes: TOTAL_BUDGET_BYTES },
@@ -276,11 +316,20 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       busMaxKmh: 60,
     },
     notes: [
-      "Headways are typical-week tables from calendar day columns; calendar_dates holiday exceptions are not modeled.",
+      `Each headway table is one representative date's schedule, chosen as the most common service pattern on or after ${referenceDate} (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.`,
       "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
       "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
+      "Departures after midnight keep the previous service day's hour (24-27), so a 00:30 Saturday trip appears under weekday hour 24.",
     ],
   };
   await writeJson(join(directory, "manifest.json"), manifest);
   return { generation, manifest, directory };
+}
+
+function summarizeDay(
+  chosen: RepresentativeDates[DayType],
+): { date: string; matchingDates: number; candidateDates: number } | null {
+  return chosen
+    ? { date: chosen.date, matchingDates: chosen.matchingDates, candidateDates: chosen.candidateDates }
+    : null;
 }

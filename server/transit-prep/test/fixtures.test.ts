@@ -9,6 +9,9 @@ import { normalizeSubway } from "../src/normalizeSubway";
 import { buildSpatialStubs } from "../src/transfers";
 import { busFixtureA, busFixtureB, SUBWAY_FIXTURE, writeFeed } from "./helpers";
 
+/** Inside every fixture calendar window, so "typical" is unambiguous. */
+const REFERENCE_DATE = "20260101";
+
 const subwayFeed: FeedVersion = {
   id: "subway",
   version: "test-subway-1",
@@ -20,7 +23,7 @@ const subwayFeed: FeedVersion = {
 test("subway normalizes parents, edges, transfers, shapes and headways", async () => {
   const root = await mkdtemp(join(tmpdir(), "tp-subway-"));
   await writeFeed(root, "subway-mini", SUBWAY_FIXTURE);
-  const result = await normalizeSubway(root, "subway-mini", subwayFeed);
+  const result = await normalizeSubway(root, "subway-mini", subwayFeed, REFERENCE_DATE);
   assert.deepEqual(result.stops.map((s) => s.id), ["subway:P1", "subway:P2"]);
   assert.equal(result.edges.length, 1);
   assert.deepEqual(
@@ -58,6 +61,7 @@ test("bus pools feeds, dedupes stops and collapses variants", async () => {
     root,
     [{ feedId: "bus-a", dir: "bus-a" }, { feedId: "bus-b", dir: "bus-b" }],
     feeds,
+    REFERENCE_DATE,
   );
   assert.deepEqual(result.stops.map((s) => s.id), ["bus:A2", "bus:B2", "bus:S1"]);
   const shared = result.stops.find((s) => s.id === "bus:S1");
@@ -79,19 +83,22 @@ test("bus pools feeds, dedupes stops and collapses variants", async () => {
   const headway = result.headways.find((row) => row.route === "B1" && row.hour === 8);
   assert.equal(headway?.medianSec, 720);
   assert.equal(headway?.trips, 5);
-  // The HOL service exists only in calendar_dates (2026-11-26, a Thursday).
-  assert.deepEqual(result.stats.unclassifiedServices, []);
+  // HOL exists only in calendar_dates (2026-11-26, a Thursday). It is a holiday
+  // service, not part of a typical weekday, so its trips stay out of the table.
+  assert.deepEqual(result.stats.unrepresentedServices, ["HOL"]);
+  assert.equal(result.stats.representativeDates.weekday?.services.join(), "WD");
 });
 
 test("spatial stubs link the subway fixture to the shared bus stop", async () => {
   const root = await mkdtemp(join(tmpdir(), "tp-stub-"));
   await writeFeed(root, "subway-mini", SUBWAY_FIXTURE);
   await writeFeed(root, "bus-a", busFixtureA());
-  const subway = await normalizeSubway(root, "subway-mini", subwayFeed);
+  const subway = await normalizeSubway(root, "subway-mini", subwayFeed, REFERENCE_DATE);
   const bus = await normalizeBus(
     root,
     [{ feedId: "bus-a", dir: "bus-a" }],
     [{ id: "bus-a", version: "t", startDate: "20260101", endDate: "20261231", sha256: "x" }],
+    REFERENCE_DATE,
   );
   const stubs = buildSpatialStubs(subway.stops, bus.stops);
   // Only S1 (~140 m from P1) is inside the 200 m radius, both directions.

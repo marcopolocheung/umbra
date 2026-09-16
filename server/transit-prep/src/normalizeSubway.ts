@@ -19,6 +19,7 @@ import {
   type GtfsTrip,
 } from "./gtfs";
 import { computeHeadways } from "./headways";
+import type { RepresentativeDates } from "./serviceCalendar";
 import type {
   FeedVersion,
   HeadwayRow,
@@ -50,7 +51,8 @@ export interface SubwayNormalized {
     orphanStops: number;
     edges: EdgeStats;
     shapesKept: number;
-    unclassifiedServices: string[];
+    representativeDates: RepresentativeDates;
+    unrepresentedServices: string[];
     sparseHeadwayBuckets: number;
   };
 }
@@ -61,6 +63,7 @@ export async function normalizeSubway(
   root: string,
   workDir: string,
   feed: FeedVersion,
+  referenceDate: string,
 ): Promise<SubwayNormalized> {
   const read = (file: string): Promise<string> => readFile(join(root, workDir, file), "utf8");
   const { stops } = loadStops(await read("stops.txt"));
@@ -148,11 +151,12 @@ export async function normalizeSubway(
     );
   }
 
-  const { headways, unclassifiedServices, sparseBuckets } = computeHeadways({
+  const { headways, representativeDates, unrepresentedServices, sparseBuckets } = computeHeadways({
     trips,
     stopTimes,
     calendar,
     dates,
+    referenceDate,
     routeKey,
   });
 
@@ -180,7 +184,8 @@ export async function normalizeSubway(
       orphanStops: orphans,
       edges: edgeStats,
       shapesKept: Object.keys(shapeMap).length,
-      unclassifiedServices,
+      representativeDates,
+      unrepresentedServices,
       sparseHeadwayBuckets: sparseBuckets,
     },
   };

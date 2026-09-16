@@ -23,6 +23,7 @@ import {
   type GtfsTrip,
 } from "./gtfs";
 import { computeHeadways } from "./headways";
+import type { RepresentativeDates } from "./serviceCalendar";
 import type {
   FeedVersion,
   HeadwayRow,
@@ -54,7 +55,8 @@ export interface BusNormalized {
     pooledTrips: number;
     edges: EdgeStats;
     shapesKept: number;
-    unclassifiedServices: string[];
+    representativeDates: RepresentativeDates;
+    unrepresentedServices: string[];
     sparseHeadwayBuckets: number;
   };
 }
@@ -63,6 +65,7 @@ export async function normalizeBus(
   root: string,
   workDirs: { feedId: string; dir: string }[],
   feeds: FeedVersion[],
+  referenceDate: string,
 ): Promise<BusNormalized> {
   const registry = new Map<string, StopNode & { feeds: string[] }>();
   const routeById = new Map<string, { display: string; longName: string; type: number; color: string; textColor: string }>();
@@ -172,11 +175,12 @@ export async function normalizeBus(
     );
   }
 
-  const { headways, unclassifiedServices, sparseBuckets } = computeHeadways({
+  const { headways, representativeDates, unrepresentedServices, sparseBuckets } = computeHeadways({
     trips,
     stopTimes,
     calendar,
     dates,
+    referenceDate,
     routeKey,
   });
 
@@ -215,7 +219,8 @@ export async function normalizeBus(
       pooledTrips: trips.length,
       edges: edgeStats,
       shapesKept: Object.keys(shapeMap).length,
-      unclassifiedServices,
+      representativeDates,
+      unrepresentedServices,
       sparseHeadwayBuckets: sparseBuckets,
     },
   };

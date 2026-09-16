@@ -16,8 +16,11 @@ Upstream facts the code pins (validate fails on drift):
 
 - Bus feeds move on quarterly picks; subway baseline a few times a year.
   Every feed declares its window in `feed_info.txt`.
-- Trips may reference `calendar_dates.txt`-only services (school-holiday
-  variants like `GH_D6-Weekday`); day types infer from active-date weekdays.
+- Several Mon–Fri services run at once — a base pick, the next pick, school
+  variants — and `calendar_dates.txt` removals, not the day columns, decide
+  which one runs on a date (Brooklyn: 728 rows, 700 of them type 2). Headways
+  therefore describe **one representative date** per day type, not the union of
+  everything Mon–Fri. See "Headways" below.
 - BusCo ships different tables (minimal 5-column stops, `route_url` in
   routes) with disjoint route_ids; shared stop_ids may disagree by metres
   (worst observed 147.7 m) — borough coords win, past 150 m is fatal.
@@ -73,6 +76,29 @@ Weekly: `acquire:plan` (bytes-free HEAD) → `acquire` on change → `receipts`
 fail when any feed's `feed_end_date` is <14 days out; alert when a bus feed
 goes >90 days without an upstream change (picks are quarterly). Weekend
 construction reroutes never appear in GTFS Static — that needs GTFS-RT,
-explicitly out of scope. `manifest.json` carries `schedulesAsOf` plus the
-honesty notes the transit card must surface (scheduled-not-traffic bus
-times, unmodeled holiday exceptions, unsheltered-stop wait assumption).
+explicitly out of scope. `manifest.json` carries `schedulesAsOf` and
+`headwayDates` plus the honesty notes the transit card must surface
+(scheduled-not-traffic bus times, which date each headway table describes,
+post-midnight hours 24–27, unsheltered-stop wait assumption).
+
+## Headways
+
+Each day type's table is the schedule of a single date, chosen as the **modal
+active-service pattern** among candidate dates on or after a reference date
+(the build date by default; `manifest.headwayDates.referenceDate` records it,
+so a generation rebuilds exactly). Anchoring on the reference date matters: the
+subway feed spans two Saturday picks and the *expired* one covers more dates,
+so scanning the whole window would publish a timetable that has already ended.
+
+Unioning every Mon–Fri service instead — which is what day columns alone give
+you — roughly halves the headway. Measured over 1,651 Brooklyn weekday buckets
+before this changed: a median 0.57x the true single-day figure, 85% understating
+the wait, 42% at or below half. B1 direction 0 at 13:00 read 180 s where every
+real weekday is 360 or 480.
+
+`manifest.headwayDates` reports, per dataset and day type, the chosen date and
+how many candidate dates share its pattern — 48 of 78 remaining weekdays for
+the bus graph, 33 of 33 for the subway. Dates outside that pattern (holidays,
+school-holiday variants, pick boundaries) genuinely run a different timetable.
+Each shard's `stats.unrepresentedServices` lists services with trips that no
+representative date includes.
