@@ -180,7 +180,7 @@ class InterleavedWinnerStore implements ObjectStore {
   readonly kind = "filesystem" as const;
   private injected = false;
   constructor(
-    readonly delegate: FilesystemStore,
+    readonly delegate: ObjectStore,
     readonly winnerBytes: Uint8Array,
   ) {}
   read(key: string): Promise<Uint8Array> {
@@ -203,20 +203,90 @@ class InterleavedWinnerStore implements ObjectStore {
   ): Promise<void> {
     if (key === "current.json" && !this.injected) {
       this.injected = true;
-      await this.delegate.writeConditional(key, this.winnerBytes, "application/json", { ifNoneMatch: "*" });
+      await this.delegate.writeConditional(key, this.winnerBytes, "application/json", opts);
     }
     return this.delegate.writeConditional(key, value, contentType, opts);
   }
 }
 
-test("promotion refuses an interleaved concurrent promotion (loser loses, winner survives)", async () => {
+class CurrentMetadataStore implements ObjectStore {
+  readonly kind = "filesystem" as const;
+  constructor(
+    readonly delegate: FilesystemStore,
+    readonly currentSha256: string | undefined,
+  ) {}
+  read(key: string): Promise<Uint8Array> { return this.delegate.read(key); }
+  copyToFile(key: string, destination: string): Promise<void> { return this.delegate.copyToFile(key, destination); }
+  write(key: string, value: Uint8Array, contentType?: string): Promise<void> { return this.delegate.write(key, value, contentType); }
+  writeConditional(key: string, value: Uint8Array, contentType?: string, opts?: ConditionalWriteOptions): Promise<void> {
+    return this.delegate.writeConditional(key, value, contentType, opts);
+  }
+  async head(key: string): Promise<ObjectHead | undefined> {
+    const metadata = await this.delegate.head(key);
+    if (key !== "current.json" || !metadata) return metadata;
+    return { bytes: metadata.bytes, etag: metadata.etag, ...(this.currentSha256 ? { sha256: this.currentSha256 } : {}) };
+  }
+}
+
+test("promotion accepts a legacy pointer with an ETag but no sha256 metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pack-v2-promote-legacy-"));
+  try {
+    const { output, identity } = await buildGeneration(directory);
+    const legacyBytes = new TextEncoder().encode('{"version":1,"generation":"nyc-v1"}\n');
+    await output.write("current.json", legacyBytes, "application/json");
+    const legacy = new CurrentMetadataStore(output, undefined);
+    await promoteGeneration(legacy, identity, { verifyOnly: false, expectedPreviousSha256: sha256(legacyBytes) }, () => {});
+    const pointer = JSON.parse(new TextDecoder().decode(await output.read("current.json"))) as { version: number };
+    assert.equal(pointer.version, 2);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("promotion refuses a wrong expected legacy-pointer hash without changing the pointer", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pack-v2-promote-wrong-expected-"));
+  try {
+    const { output, identity } = await buildGeneration(directory);
+    const legacyBytes = new TextEncoder().encode('{"version":1,"generation":"nyc-v1"}\n');
+    await output.write("current.json", legacyBytes, "application/json");
+    const legacy = new CurrentMetadataStore(output, undefined);
+    await assert.rejects(
+      promoteGeneration(legacy, identity, { verifyOnly: false, expectedPreviousSha256: "0".repeat(64) }, () => {}),
+      /current\.json changed/,
+    );
+    assert.deepEqual(await output.read("current.json"), legacyBytes);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("promotion fails closed when current.json sha256 metadata disagrees with its content", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pack-v2-promote-bad-metadata-"));
+  try {
+    const { output, identity } = await buildGeneration(directory);
+    const legacyBytes = new TextEncoder().encode('{"version":1,"generation":"nyc-v1"}\n');
+    await output.write("current.json", legacyBytes, "application/json");
+    const corruptedMetadata = new CurrentMetadataStore(output, "0".repeat(64));
+    await assert.rejects(
+      promoteGeneration(corruptedMetadata, identity, { verifyOnly: false, expectedPreviousSha256: sha256(legacyBytes) }, () => {}),
+      /sha256 metadata does not match/,
+    );
+    assert.deepEqual(await output.read("current.json"), legacyBytes);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("promotion refuses an interleaved concurrent promotion through the existing pointer ETag", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pack-v2-promote-race-"));
   try {
     const { output, identity } = await buildGeneration(directory);
+    const legacyBytes = new TextEncoder().encode('{"version":1,"generation":"nyc-v1"}\n');
+    await output.write("current.json", legacyBytes, "application/json");
     const winnerBytes = new TextEncoder().encode('{"winner":"interleaved"}\n');
-    const racing = new InterleavedWinnerStore(output, winnerBytes);
+    const racing = new InterleavedWinnerStore(new CurrentMetadataStore(output, undefined), winnerBytes);
     await assert.rejects(
-      promoteGeneration(racing, identity, { verifyOnly: false, expectedPreviousSha256: "absent" }, () => {}),
+      promoteGeneration(racing, identity, { verifyOnly: false, expectedPreviousSha256: sha256(legacyBytes) }, () => {}),
       /promotion refused: concurrent promotion/,
     );
     const survivor = await output.read("current.json");
