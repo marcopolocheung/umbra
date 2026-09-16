@@ -4,6 +4,30 @@
 > nothing in the app reads it.** `server/transit-prep` is steps 1–5 of a six-step pipeline.
 > This document is step 6: make the browser route on that data instead of Overpass.
 
+**Status, 2026-09-16.** S1, S2 and S3a are implemented: the app fetches the published shards,
+routes the NYC subway on them, and prices the graph in seconds. S3b (#391), S4 (blocked on
+#388) and the S5 decision are covered below. Overpass is **not** retired and will not be —
+see S5.
+
+**Verified in a browser** (`npm run dev`, real published data, Bryant Park → Madison Sq Park).
+The three r2.dev hops return 200 from `localhost:5173` — which is in the bucket's CORS
+allowlist; `127.0.0.1:4173`, where `npm run e2e` runs, is **not**, so the e2e suite cannot
+exercise this path. The app logs
+`[transit] using published shards: generation nyc-2026-09-16-…, 496 stations`, matches 431
+Overpass entrances, and boards Times Sq-42 St for 23 St. The card renders
+`Via Transit · 27% shadow · 566 m` with `Leg 2: Broadway Local · 4 min · 3 stops`.
+
+Two things the browser found that no test could:
+
+- **The map draws the wrong route in transit mode** — `selectedRouteIndex` indexes
+  `filteredRoutes` in the panel and `navRoutes` in `useRouting`, which differ as soon as the
+  mode filter bites. Measured: the drawn line is pixel-identical in walk and transit mode, and
+  the subway polyline never reaches the canvas at all. **Pre-existing** (G6a, `90b2e48`), filed
+  as **#395**. It means `buildTrainDrawData` has never actually rendered.
+- **The transit card asserts "Underground — no sun"** for every subway leg, which is
+  `TRAIN_SUN_EXPOSURE.subway = 0.0` reaching the user as a claim. #393 is therefore a
+  user-facing honesty bug, not just an internal constant.
+
 **Verified 2026-09-16**, `main` at `55f9c71`. Every claim below has a command next to it.
 If this document disagrees with the code, the code wins — fix the document in the same PR
 as the work, as `docs/tracks/README.md` requires of the briefs.
@@ -116,10 +140,11 @@ fully exposed — that is new modelling, and it is the half that matters most fo
 `TRAIN_SUN_EXPOSURE.subway = 0.0` is already a simplification: NYC's elevated lines (7 in
 Queens, J/M/Z, much of the outer boroughs) are not underground. Out of scope here; worth filing.
 
-**5. Station entrances still come from Overpass.** `fetchStationEntrances`
-(`app/lib/overpass.ts:657`) runs alongside the graph fetch in `useRouting.ts`. Shards carry
-station **centroids**, not entrances. Step 6 does not remove the Overpass dependency unless
-entrances are added to the pipeline — decide explicitly, do not discover it late.
+**5. Station entrances still come from Overpass.** **Decided: they stay there.**
+`fetchStationEntrances` (`app/lib/overpass.ts:657`) runs alongside the graph fetch in
+`useRouting.ts`, and shards carry station **centroids**, not entrances. Entrances are not in
+GTFS, so the pipeline cannot supply them today — and Overpass is needed anyway for every city
+the NYC dataset does not cover. See S5 below.
 
 *S2 had to fix the matcher to do this safely.* `matchEntranceToTrainStation`'s name arm is a
 **substring** test and was unbounded by distance, which was survivable against a bbox-limited
@@ -203,10 +228,45 @@ transfer edge is traversed when you change from the N to the Q inside one statio
 change currently costs nothing — which is why the routes above read as a single ride. Both
 need the search state to be `(station, route boarded)`. Filed as **#391**.
 
-**S4 — bus.** New `TrainMode` member, a sun-exposure figure for at-grade transit, stop-wait
-exposure. Largest and most product-shaped slice.
+**S4 — bus. Blocked on #388, and correctly so.** New `TrainMode` member, a sun-exposure figure
+for at-grade transit, stop-wait exposure.
 
-**S5 — retire the Overpass path**, or decide entrances stay on it and say so in the brief.
+Selecting bus shards needs the per-shard bounds the manifest does not publish. Without them the
+only correct choice is *all six*, which is ~8 MB on a free-tier browser app — and borough names
+cannot stand in, because a shard is self-contained by design (the S53 over the Verrazzano puts
+Staten Island stops in `bus-b`). `selectShardRefs()` already takes `{ bus: true }`; it needs the
+data, not the code. The pipeline change is #388, and republishing is `server/transit-prep`'s
+job, not the client's.
+
+The sun-exposure figure is the other half and is product work, not plumbing:
+`TRAIN_SUN_EXPOSURE` prices a *mode*, and a bus is at grade in full sun while a bus stop wait is
+fully exposed and unsheltered (GTFS carries no shelter geometry). Note the same table already
+calls every NYC subway line underground at 0.0, which the elevated 7 and J/M/Z are not —
+filed separately as **#393**.
+
+**S5 — decided: Overpass stays, and is not going anywhere.** Two independent reasons, either
+one sufficient:
+
+1. **Entrances.** `fetchStationEntrances` is the only source of them. Shards carry station
+   *centroids*, and `useRouting` walks to a door, not a centroid — it falls back to the centroid
+   only when no entrance matches. Retiring Overpass would silently make every NYC transit route
+   board at the middle of the station footprint. Entrances would have to be added to the
+   pipeline first, and they are not in GTFS.
+
+   *Measured, not assumed:* `matchEntranceToTrainStation` tries a **name** match first and only
+   then nearest-centroid within 300 m, and its names now come from GTFS (`Times Sq-42 St`)
+   rather than OSM (`Times Square–42nd Street`). Over 822 real OSM entrance nodes in Manhattan
+   against the real shard, **816 match and none lands beyond 400 m** once the name arm is
+   bounded (see mismatch 5). What is still unverified is what any of this looks like on the map,
+   which needs a browser.
+2. **Everywhere that is not New York.** The published dataset is NYC-only. `trainGraphSource.ts`
+   accepts the shard graph only where it holds two or more stations inside the requested bbox,
+   and Overpass answers everywhere else. Umbra routes transit in any city with OSM route
+   relations; that is not a capability to trade away for one city's timetable.
+
+So the two producers coexist by design. The shards are preferred where they reach because they
+are a timetable rather than geometry; Overpass remains the floor. Nothing in S1-S3a removed an
+Overpass call, and mismatch 5 is resolved as "the dependency stays".
 
 ---
 
@@ -241,7 +301,15 @@ Each was measured; the measurement is in the PR.
 - **54 of 399 display routes ship nowhere** (every edge dropped as sparse or implausibly
   fast). Nothing can route over them; no headway row survives for them.
 - **Subway↔bus transfers are spatial stubs** — every bus stop within 200 m of a station,
-  capped at 10, at 1.4 m/s. Never validated against reality. 5,172 of them.
+  capped at 10, at 1.4 m/s. Never validated against reality. 5,172 of them. The subway-only
+  graph drops all of them, because no loaded edge serves their far end.
+- **The shard graph has no synthesised interchanges, and is right not to.** The Overpass
+  producer invents a transfer between any two same-named stations within 150 m
+  (`INTERCHANGE_DIST_M`); the shard graph uses only the 150 the agency publishes. Measured on
+  the real shard, the heuristic would have added exactly **one** interchange GTFS omits —
+  `Rector St` (1) ↔ `Rector St` (R/W), 49 m apart — and that is *not* a free transfer in
+  reality: you exit and pay again. So this is strictly a correctness gain, not a lost route.
+  (Five further sub-150 m pairs differ in name, so the heuristic never had them either.)
 - **No GTFS-RT.** Weekend construction reroutes are invisible. Scheduled, not traffic-aware.
 - **Bus stop wait assumes an unsheltered stop** (GTFS carries no shelter geometry).
 - **`bus-busco.json` is 72% of its 3 MB shard budget**; the count baselines (496 subway
