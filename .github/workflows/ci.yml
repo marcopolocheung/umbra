@@ -25,9 +25,10 @@ jobs:
 
       - run: npm ci
 
-      # Root TypeScript discovery includes shadow-prep source files, so its
+      # Root TypeScript discovery includes server/* source files, so their
       # private dependencies must be present before the root typecheck.
       - run: npm --prefix server/shadow-prep ci
+      - run: npm --prefix server/transit-prep ci
 
       - run: npm run lint
 
@@ -51,6 +52,10 @@ jobs:
       # This is deliberately independent from root Vitest. It runs the
       # fail-closed NYC admission/preparation unit suite under Node 24.
       - run: npm --prefix server/shadow-prep test
+
+      # Same reason: the GTFS pipeline's suite is hermetic (no network, no env)
+      # but lives outside root Vitest discovery, so it needs its own step.
+      - run: npm --prefix server/transit-prep test
 
       # No secrets needed: Vite inlines absent VITE_* vars as undefined, and the
       # MapTiler key is only read at runtime for tile fetches.

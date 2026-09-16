@@ -1,0 +1,27 @@
+{
+  "name": "@umbra/transit-prep",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "acquire:plan": "tsx src/cli.ts acquire --plan",
+    "acquire": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/cli.ts acquire --execute",
+    "receipts": "tsx src/cli.ts receipts",
+    "validate": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/cli.ts validate",
+    "normalize": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts normalize",
+    "build": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts build",
+    "verify": "tsx src/cli.ts verify",
+    "publish": "tsx src/cli.ts publish",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.864.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2"
+  }
+}
