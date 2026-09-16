@@ -65,7 +65,7 @@ npm test               # tsx --test, hermetic fixtures (no network, no env)
 Budgets (build fails past them): 3 MB/shard, 15 MB total. Current
 generation: ~10.2 MB. Each bus shard carries only the routes its own edges
 use, plus those routes' headways — see "Shard scope" below. Heap: validate
-needs 4 GB, normalize/build 6 GB
+needs 2 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
 
 ## In-station line changes
