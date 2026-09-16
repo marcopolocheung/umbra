@@ -12,13 +12,11 @@ import {
   loadCalendar,
   loadCalendarDates,
   loadRoutes,
-  loadShapes,
   loadStopTimes,
   loadStops,
   loadTrips,
   type GtfsCalendar,
   type GtfsCalendarDate,
-  type GtfsShapePoint,
   type GtfsStopTime,
   type GtfsTrip,
 } from "./gtfs";
@@ -29,14 +27,10 @@ import type {
   HeadwayRow,
   RouteEdge,
   RouteInfo,
-  ShapeMap,
   StopNode,
 } from "./model";
-import { simplifyCapped } from "./simplify";
 
 export const BUS_MAX_KMH = 60;
-export const BUS_SHAPE_EPS_M = 15;
-export const BUS_SHAPE_CAP = 500;
 
 export interface BusNormalized {
   kind: "bus";
@@ -44,7 +38,6 @@ export interface BusNormalized {
   stops: StopNode[];
   edges: RouteEdge[];
   routes: RouteInfo[];
-  shapes: ShapeMap;
   headways: HeadwayRow[];
   stats: {
     uniqueStops: number;
@@ -54,7 +47,6 @@ export interface BusNormalized {
     displayRoutes: number;
     pooledTrips: number;
     edges: EdgeStats;
-    shapesKept: number;
     representativeDates: RepresentativeDates;
     unrepresentedServices: string[];
     sparseHeadwayBuckets: number;
@@ -81,8 +73,6 @@ export async function normalizeBus(
   const stopTimes: GtfsStopTime[] = [];
   const calendar: GtfsCalendar[] = [];
   const dates: GtfsCalendarDate[] = [];
-  const shapePool = new Map<string, GtfsShapePoint[]>();
-  const shapeVotes = new Map<string, Map<string, number>>();
   const tripFeedOf = new Map<string, string>();
 
   for (const { feedId, dir } of ordered) {
@@ -94,7 +84,6 @@ export async function normalizeBus(
       stopTimes: loadStopTimes(await read("stop_times.txt")),
       calendar: loadCalendar(await read("calendar.txt")),
       dates: loadCalendarDates(await read("calendar_dates.txt")),
-      shapes: loadShapes(await read("shapes.txt")),
     };
     // Route tables union by route_id (validate rejects conflicting rows).
     for (const route of loaded.routes.routes) {
@@ -127,11 +116,6 @@ export async function normalizeBus(
     for (const entry of loaded.stopTimes.stopTimes) stopTimes.push(entry);
     for (const service of loaded.calendar.calendar) calendar.push(service);
     for (const date of loaded.dates.dates) dates.push(date);
-    for (const [shapeId, points] of loaded.shapes.shapes) {
-      if (!shapePool.has(`${feedId}\t${shapeId}`)) {
-        shapePool.set(`${feedId}\t${shapeId}`, points);
-      }
-    }
   }
 
   const coords = new Map<string, { lat: number; lon: number }>();
@@ -147,33 +131,6 @@ export async function normalizeBus(
     routeKey,
     maxKmh: BUS_MAX_KMH,
   });
-
-  // Representative shape per display-route+direction across all borough feeds.
-  for (const trip of trips) {
-    const feedId = tripFeedOf.get(trip.tripId);
-    if (!feedId) continue;
-    const key = `${routeKey(trip)}:${trip.direction}`;
-    const votes = shapeVotes.get(key) ?? new Map<string, number>();
-    const poolKey = `${feedId}\t${trip.shapeId}`;
-    votes.set(poolKey, (votes.get(poolKey) ?? 0) + 1);
-    shapeVotes.set(key, votes);
-  }
-  const shapeMap: ShapeMap = {};
-  for (const [key, votes] of shapeVotes) {
-    let best = "";
-    let bestVotes = -1;
-    for (const [poolKey, count] of votes) {
-      if (count > bestVotes) {
-        best = poolKey;
-        bestVotes = count;
-      }
-    }
-    const points = shapePool.get(best);
-    if (!points) continue;
-    shapeMap[key] = simplifyCapped(points, BUS_SHAPE_EPS_M, BUS_SHAPE_CAP).map(
-      (p) => [p.lon, p.lat],
-    );
-  }
 
   const { headways, representativeDates, unrepresentedServices, sparseBuckets } = computeHeadways({
     trips,
@@ -208,7 +165,6 @@ export async function normalizeBus(
       .sort((a, b) => (a.id < b.id ? -1 : 1)),
     edges,
     routes: displayRoutes,
-    shapes: shapeMap,
     headways,
     stats: {
       uniqueStops: registry.size,
@@ -218,7 +174,6 @@ export async function normalizeBus(
       displayRoutes: displayRoutes.length,
       pooledTrips: trips.length,
       edges: edgeStats,
-      shapesKept: Object.keys(shapeMap).length,
       representativeDates,
       unrepresentedServices,
       sparseHeadwayBuckets: sparseBuckets,

@@ -30,9 +30,10 @@ Upstream facts the code pins (validate fails on drift):
   bare id corrupts silently rather than failing: `trip_id` must be unique
   across the bus feeds (measured 230,532, zero collisions) and a shared
   `service_id` must carry identical calendar *and* calendar_dates rows
-  (measured 136, none shared). `shape_id` needs no pin — it is namespaced per
-  feed. A `trip_id` collision would interleave two boroughs' stop_times into
-  one trip.
+  (measured 136, none shared). `shape_id` is not pooled at all any more — no
+  geometry ships — though `validate` still checks every trip references a real
+  one. A `trip_id` collision would interleave two boroughs' stop_times into one
+  trip.
 - Subway `transfers.txt` is `transfer_type` 2 throughout (613 rows, histogram
   recorded in the validate evidence). Type 3 means "transfer not possible" and
   is fatal, rather than quietly becoming a walkable edge.
@@ -62,8 +63,9 @@ npm test               # tsx --test, hermetic fixtures (no network, no env)
 ```
 
 Budgets (build fails past them): 3 MB/shard, 15 MB total. Current
-generation: ~10.8 MB. Each bus shard carries only the routes its own edges
-use, plus those routes' shapes and headways — see "Shard scope" below. Heap: validate needs 4 GB, normalize/build 6 GB
+generation: ~10.2 MB. Each bus shard carries only the routes its own edges
+use, plus those routes' headways — see "Shard scope" below. Heap: validate
+needs 4 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
 
 ## In-station line changes
@@ -95,24 +97,49 @@ How to spend `changeSec` is Step 6's call — cost, penalty, or both.
 ## Shard scope
 
 A bus edge belongs to a borough shard when either endpoint stop was listed by
-that borough's feed, and the shard's `routes`, `shapes` and `headways` are
-scoped to the routes those edges use. `verify` enforces that: a bus shard
-carrying a route with no edge, or a shape for such a route, fails.
+that borough's feed, and the shard's `routes` and `headways` are scoped to the
+routes those edges use. `verify` enforces it: a bus shard carrying a route with
+no edge fails.
 
-Overlap between shards is real and irreducible under per-borough sharding —
-boundary stops put a route in every shard that lists one of its stops, and
-BusCo's express routes (BxM/QM/BM) span the city, so `bus-busco.json` keeps 493
-of the 683 shapes. The six shards hold 1,665 shape entries for 683 distinct
-shapes. What *was* removable was shipping all 683 in all six regardless of use:
-that cost 1.99 MB of the 12.76 MB total.
+Overlap between shards is real and irreducible — a boundary stop puts a route in
+every shard listing one of its stops, and BusCo's express routes span the city.
+Shards stay self-contained: every stop a shard's edges reference ships with it,
+including the far endpoint of a cross-borough hop such as the S53 over the
+Verrazzano.
 
 Routes with no surviving edge anywhere (54 of 399 display routes — every edge
-dropped as sparse or implausibly fast) now appear in no shard. Nothing can
-route over them, and no headway row survives for them either.
+dropped as sparse or implausibly fast) appear in no shard. Nothing can route
+over them and no headway row survives for them.
 
-`bus-busco.json` is still 86% of its 3 MB ceiling, so a pick that adds BusCo
-routes can fail the build. Raising the per-shard budget or splitting that feed
-is an open decision, not something this scoping fixed.
+## Geometry
+
+**No route geometry ships.** A client draws and samples a leg stop-to-stop from
+the edges it routed over.
+
+`shapes.txt` gives one polyline per *pattern* — a distinct stop sequence — and a
+route has many. The A train has 12 in direction 0 alone (Far Rockaway, Lefferts,
+Rockaway Park, short-turns). Shipping one representative polyline per
+`route:direction` meant picking the busiest pattern (166 of ~460 A trips, 36%)
+and discarding the rest, so the line traced a different part of the city for
+every other trip. Measured on the last generation that shipped them: **54 of 56
+subway `route:direction` pairs had more than 10% of their served stations over
+400 m off the line** — the M train 27 of 36, the 5 train 28 of 46 — and 208 of
+289 Brooklyn bus pairs, median 27%.
+
+Per-*pattern* shapes would not fix it either, because an edge is aggregated
+across patterns: `medianSec` is the median over every trip using that stop pair,
+whatever branch it ran. Geometry that matches the graph has to be per-*edge*.
+
+Stop-to-stop is uniform, explainable and close enough. On the four Brooklyn
+routes whose old shape did cover their stations, straight-line stop-to-stop came
+to 93% of the true street path (worst 87.5%): it cuts corners and under-measures
+slightly, in a way that is the same for every route. `distM` is measured the
+same way, so drawn geometry and reported distance agree — they did not before.
+Subway geometry affects only drawing, since `TRAIN_SUN_EXPOSURE.subway` is 0.
+
+Adding per-edge geometry later is additive: a `geom` field on `RouteEdge`
+changes nothing else, and would fix `distM` to along-track distance at the same
+time. Worth doing once a client exists and the angularity can be judged.
 
 ## Publish env
 

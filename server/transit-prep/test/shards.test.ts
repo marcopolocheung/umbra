@@ -51,7 +51,6 @@ function twoBoroughGraph(): BusNormalized {
       edge("bus:q1", "bus:q2", "Q2"),
     ],
     routes: [route("B1"), route("Q1"), route("Q2")],
-    shapes: { "B1:0": [[-73.9, 40.7]], "Q1:0": [[-73.89, 40.72]], "Q2:0": [[-73.86, 40.745]] },
     headways: [headway("B1"), headway("Q1"), headway("Q2")],
     stats: {
       uniqueStops: 4,
@@ -69,7 +68,6 @@ function twoBoroughGraph(): BusNormalized {
         droppedSparse: 0,
         edgesKept: 3,
       },
-      shapesKept: 3,
       representativeDates: { weekday: null, saturday: null, sunday: null },
       unrepresentedServices: [],
       sparseHeadwayBuckets: 0,
@@ -86,7 +84,6 @@ test("a bus shard carries only the routes its own edges use", () => {
   );
   // Q2 runs entirely between two Queens stops, so Brooklyn must not carry it.
   assert.deepEqual(brooklyn.routes.map((r) => r.id), ["B1", "Q1"]);
-  assert.deepEqual(Object.keys(brooklyn.shapes).sort(), ["B1:0", "Q1:0"]);
   assert.deepEqual(brooklyn.headways.map((h) => h.route), ["B1", "Q1"]);
 });
 
@@ -98,17 +95,24 @@ test("a boundary stop's routes reach both shards", () => {
   assert.deepEqual(queens.stops.map((s) => s.id), ["bus:bk1", "bus:hub", "bus:q1", "bus:q2"]);
 });
 
-test("every shard's routes, shapes and headways agree with its edges", () => {
+test("every shard's routes and headways agree with its edges", () => {
   const bus = twoBoroughGraph();
   for (const feedId of ["bus-b", "bus-q"]) {
     const shard = busShard(bus, feedId);
     const used = new Set(shard.edges.map((e) => e.route));
     assert.deepEqual(new Set(shard.routes.map((r) => r.id)), used, `${feedId} routes`);
-    for (const key of Object.keys(shard.shapes)) {
-      assert.ok(used.has(key.slice(0, key.lastIndexOf(":"))), `${feedId} shape ${key}`);
-    }
     for (const row of shard.headways) {
       assert.ok(used.has(row.route), `${feedId} headway ${row.route}`);
     }
   }
+});
+
+test("a shard ships no route geometry", () => {
+  // Route-level shapes were one polyline per route:direction, which cannot
+  // represent a branched route: 54 of 56 subway route:dir pairs had >10% of
+  // their served stations more than 400 m off the shipped line. A client draws
+  // and samples stop-to-stop from the edges instead.
+  const shard = busShard(twoBoroughGraph(), "bus-b") as unknown as Record<string, unknown>;
+  assert.equal("shapes" in shard, false);
+  assert.ok(shard.edges, "edges still carry the geometry a client needs");
 });

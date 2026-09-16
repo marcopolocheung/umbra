@@ -16,7 +16,6 @@ import type {
   HeadwayRow,
   RouteEdge,
   RouteInfo,
-  ShapeMap,
   StopNode,
   TransferEdge,
 } from "./model";
@@ -142,7 +141,6 @@ export interface BusShard {
   stops: StopNode[];
   edges: RouteEdge[];
   routes: RouteInfo[];
-  shapes: ShapeMap;
   headways: HeadwayRow[];
   stats: BusNormalized["stats"];
 }
@@ -153,12 +151,8 @@ export interface BusShard {
  * everything else — routes, shapes, headways — is scoped to the routes those
  * edges actually use.
  *
- * Scoping the routes and shapes is the point. Shipping the city-wide tables in
- * all six shards put 3.07 MB of byte-identical duplication inside a 15 MB
- * budget (559 KB of shapes and 55 KB of routes, six times over) and defeated
- * the sharding it was meant to serve: a client loading one borough downloaded
- * every borough's geometry anyway, and bus-busco.json sat at 94% of its 3 MB
- * ceiling on duplicated bytes.
+ * Scoping the routes is the point: shipping the city-wide table in all six
+ * shards was byte-identical duplication inside a 15 MB budget.
  */
 export function busShard(bus: BusNormalized, feedId: string): BusShard {
   const stopById = new Map(bus.stops.map((stop) => [stop.id, stop]));
@@ -176,11 +170,6 @@ export function busShard(bus: BusNormalized, feedId: string): BusShard {
     if (from) stops.set(from.id, from);
     if (to) stops.set(to.id, to);
   }
-  const shapes: ShapeMap = {};
-  for (const [key, points] of Object.entries(bus.shapes)) {
-    // Shape keys are `<display route>:<direction>`; a route name never has a colon.
-    if (used.has(key.slice(0, key.lastIndexOf(":")))) shapes[key] = points;
-  }
   return {
     kind: "bus-shard",
     feed: feedId,
@@ -188,7 +177,6 @@ export function busShard(bus: BusNormalized, feedId: string): BusShard {
     stops: [...stops.values()].sort((a, b) => (a.id < b.id ? -1 : 1)),
     edges,
     routes: bus.routes.filter((route) => used.has(route.id)),
-    shapes,
     headways: bus.headways.filter((row) => used.has(row.route)),
     stats: bus.stats,
   };
@@ -357,6 +345,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     notes: [
       `Each headway table is one representative date's schedule, chosen as the most common service pattern on or after ${referenceDate} (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.`,
       "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
+      "No route geometry ships. A GTFS route has one shape per stop pattern, and one representative polyline cannot describe a branched route, so a client draws and samples a leg stop-to-stop from its edges. That tracks the street to within about 7% of its true length in the grid, and distM is measured the same way, so drawn geometry and reported distance agree.",
       "Subway stops carry changeSec, the feed's own cost for changing lines inside that station (0 at cross-platform interchanges). Stations the feed prices no change for leave it unset rather than defaulted; changing lines there is unpriced.",
       "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
       "Headway hours are service-day hours 0-27, not wall-clock hours: hours 24-27 are the early morning of headwayDates[dataset][dayType].nextDate, whose day type is given as nextDayType. Hours 0-3 and 24-27 are different calendar days and must not be merged.",
