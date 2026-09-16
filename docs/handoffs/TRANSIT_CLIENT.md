@@ -186,9 +186,22 @@ never beat walking it, and `TRANSFER_PENALTY_M` is pure surcharge on top. On the
 router alights one stop early and walks rather than cross a transfer. That is the cost model,
 not the adapter — and it is why S3 is not optional polish.
 
-**S3 — time-based cost.** Switch `weight` to seconds; `changeSec` and headway wait replace
-`TRANSFER_PENALTY_M`. This is where the routes start differing from today's, and where an
-E2-style derivation note is warranted — see `docs/notes/mode-shadow-weight.md` for the form.
+**S3 — time-based cost.** *Split in two, because `changeSec` and the headway wait turned out
+to need a different search, not just a different number.*
+
+**S3a — seconds. Landed.** `weightSec` replaces `weight` on every edge and both producers emit
+it: `medianSec` from the shards, `distance / TRAIN_SPEED_MPS` from Overpass. A transfer costs
+the agency's published `minSec` (Overpass: `TRANSFER_PENALTY_SEC = 180`, the feed's modal
+`min_transfer_time`). `findBestTrainRoute` converts its walk legs through `travelTimeSeconds`,
+and `useRouting` reads `path.totalSec` instead of re-deriving a duration from distance.
+Derivation note: `docs/notes/transit-cost-seconds.md`. Real feed, door-to-door: Union Sq →
+Barclays Ctr 14.0 min on `N/Q/B`, Columbus Circle → Wall St 15.5 min on `1/2`.
+
+**S3b — the two route-dependent terms. Not started.** `changeSec` and the headway wait both
+depend on *which route you are boarding*, which a path keyed on station alone cannot see. No
+transfer edge is traversed when you change from the N to the Q inside one station, so that
+change currently costs nothing — which is why the routes above read as a single ride. Both
+need the search state to be `(station, route boarded)`. Filed as **#391**.
 
 **S4 — bus.** New `TrainMode` member, a sun-exposure figure for at-grade transit, stop-wait
 exposure. Largest and most product-shaped slice.

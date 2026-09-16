@@ -979,8 +979,7 @@ export function useRouting({
                   const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
                   const sunExposure = TRAIN_SUN_EXPOSURE[lineMode];
 
-                  const TRAIN_SPEED_MS = (30 * 1000) / 3600;
-                  const transitTimeSec = bestTrain.path.totalDistM / TRAIN_SPEED_MS;
+                  const transitTimeSec = bestTrain.path.totalSec;
 
                   const legs: RouteLeg[] = [
                     {
