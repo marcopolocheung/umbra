@@ -679,6 +679,11 @@ export function licenceRecordsFor(kind: ComponentKind, input: RegionLicenceInput
           ["terrain"],
           "FABDEM V1.2-derived terrain (FABDEM contributors), CC BY-NC-SA 4.0. Modified by EGM2008-to-EGM96 datum conversion using the admitted NGA grids, resampling to the shadow lattice, Q64 quantization, and z18 tile/gutter packaging. Attribution, modification notice, ShareAlike and non-commercial terms apply; commercial use requires separate permission.",
         ),
+        ...(input.datumGrids ?? []).map((grid) => ({
+          id: `nga-grid-${grid.name}`,
+          notice: `NGA geoid grid ${grid.name} (SHA-256 ${grid.sha256}) was installed and used for the admitted EGM2008-to-EGM96 datum conversion; retain the grid provenance with terrain derivatives.`,
+          appliesTo: ["terrain"] as ComponentKind[],
+        })),
       ];
     case "buildings":
       return [
