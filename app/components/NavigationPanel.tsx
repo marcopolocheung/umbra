@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
+import { transitSunCardLabel } from "../lib/routeLegSummary";
 
 export interface NavigationPanelProps {
   navMode: boolean;
@@ -745,11 +746,7 @@ export default function NavigationPanel({
                           const stopCount = (tLeg.stops?.length ?? 2) - 1;
                           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
                           const sunExposure = tLeg.sunExposure ?? 0;
-                          const sunLabel = sunExposure < 0.05
-                            ? "Underground — no sun"
-                            : sunExposure < 0.2
-                            ? "Mostly shadowed"
-                            : "Some sun exposure";
+                          const sunLabel = transitSunCardLabel(sunExposure);
                           const sunColorClass = sunExposure < 0.05
                             ? "text-cyan-400/70"
                             : sunExposure < 0.2
