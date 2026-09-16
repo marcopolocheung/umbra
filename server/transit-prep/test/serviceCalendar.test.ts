@@ -83,3 +83,30 @@ test("a reference date past the window falls back to the whole window", () => {
   assert.deepEqual(picked.weekday?.services, ["WD"]);
   assert.equal(picked.saturday, null);
 });
+
+test("a representative date names the day that hours 24-27 spill into", () => {
+  const calendar = buildServiceCalendar(
+    [
+      // Fridays only, so the representative date is a Friday and the late-night
+      // hours belong to a Saturday.
+      { serviceId: "FRI", days: [0, 0, 0, 0, 1, 0, 0], startDate: "20261001", endDate: "20261031" },
+    ],
+    [],
+  );
+  const picked = pickRepresentativeDates(calendar, "20261001");
+  assert.equal(picked.weekday?.date, "20261002");
+  assert.equal(picked.weekday?.nextDate, "20261003");
+  assert.equal(picked.weekday?.nextDayType, "saturday");
+});
+
+test("a midweek representative date spills into another weekday", () => {
+  const calendar = buildServiceCalendar(
+    [{ serviceId: "WD", days: [1, 1, 1, 1, 1, 0, 0], startDate: "20261005", endDate: "20261031" }],
+    [],
+  );
+  const picked = pickRepresentativeDates(calendar, "20261005");
+  // 2026-10-05 is a Monday; its late-night hours are Tuesday morning.
+  assert.equal(picked.weekday?.date, "20261005");
+  assert.equal(picked.weekday?.nextDate, "20261006");
+  assert.equal(picked.weekday?.nextDayType, "weekday");
+});

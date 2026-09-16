@@ -31,7 +31,14 @@ export const TOTAL_BUDGET_BYTES = 15_000_000;
 
 export type RepresentativeSummary = Record<
   DayType,
-  { date: string; matchingDates: number; candidateDates: number } | null
+  {
+    date: string;
+    /** Where this table's hours 24-27 land; see HeadwayRow.hour. */
+    nextDate: string;
+    nextDayType: DayType;
+    matchingDates: number;
+    candidateDates: number;
+  } | null
 >;
 
 export interface ShardRecord {
@@ -351,17 +358,21 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       `Each headway table is one representative date's schedule, chosen as the most common service pattern on or after ${referenceDate} (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.`,
       "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
       "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
-      "Departures after midnight keep the previous service day's hour (24-27), so a 00:30 Saturday trip appears under weekday hour 24.",
+      "Headway hours are service-day hours 0-27, not wall-clock hours: hours 24-27 are the early morning of headwayDates[dataset][dayType].nextDate, whose day type is given as nextDayType. Hours 0-3 and 24-27 are different calendar days and must not be merged.",
     ],
   };
   await writeJson(join(directory, "manifest.json"), manifest);
   return { generation, manifest, directory };
 }
 
-function summarizeDay(
-  chosen: RepresentativeDates[DayType],
-): { date: string; matchingDates: number; candidateDates: number } | null {
+function summarizeDay(chosen: RepresentativeDates[DayType]): RepresentativeSummary[DayType] {
   return chosen
-    ? { date: chosen.date, matchingDates: chosen.matchingDates, candidateDates: chosen.candidateDates }
+    ? {
+        date: chosen.date,
+        nextDate: chosen.nextDate,
+        nextDayType: chosen.nextDayType,
+        matchingDates: chosen.matchingDates,
+        candidateDates: chosen.candidateDates,
+      }
     : null;
 }

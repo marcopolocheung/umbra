@@ -95,6 +95,13 @@ export function buildServiceCalendar(
 export interface RepresentativeDate {
   /** The chosen date, YYYYMMDD. */
   date: string;
+  /**
+   * The day after `date`, which is where this table's hours 24-27 land. A
+   * weekday table is usually followed by another weekday, but a Friday
+   * representative spills into a Saturday, and the service there is different.
+   */
+  nextDate: string;
+  nextDayType: DayType;
   /** Services running that day. */
   services: string[];
   /** Candidate dates whose active set is identical to this one. */
@@ -150,9 +157,12 @@ export function pickRepresentativeDates(
           (group.dates[0] as string) < (best.dates[0] as string));
       if (better) best = group;
     }
-    picked[dayType] = best
+    const chosen = best ? (best.dates[0] as string) : null;
+    picked[dayType] = best && chosen
       ? {
-          date: best.dates[0] as string,
+          date: chosen,
+          nextDate: addDays(chosen, 1),
+          nextDayType: dayTypeOfDate(addDays(chosen, 1)),
           services: best.services,
           matchingDates: best.dates.length,
           candidateDates: candidates.length,

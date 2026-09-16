@@ -129,6 +129,30 @@ before this changed: a median 0.57x the true single-day figure, 85% understating
 the wait, 42% at or below half. B1 direction 0 at 13:00 read 180 s where every
 real weekday is 360 or 480.
 
+### Hours are service-day hours, 0-27
+
+`HeadwayRow.hour` is the hour of the *service day*, not a wall-clock hour of
+`dayType`. GTFS puts a departure after midnight on the previous service day at
+`24:xx`-`27:xx`, so hours 24+ are the early morning of the *following* date —
+which `headwayDates[dataset][dayType].nextDate` and `.nextDayType` name
+outright, because the following day is often a different day type:
+
+```
+saturday  20260919 -> hours 24+ land on 20260920 (sunday)
+sunday    20260927 -> hours 24+ land on 20260928 (weekday)
+```
+
+So Saturday's hour 24 is *Sunday* service. A client reaching for `hour === 0`
+on a Saturday to find the 00:30 bus will find nothing useful: Brooklyn's bus
+tables have no hour 0 or 1 at all, only hours 2-25.
+
+Hours 0-3 and 24-27 both sit around midnight and **must not be merged** — they
+are different calendar days carrying different service. They genuinely coexist:
+9 of the subway's 26 late-night groups also have an early-morning bucket, and
+the 7 train weekday direction 0 ships hour 1 at 1200 s against hour 24 at 570 s.
+Collapsing them would blend a 20-minute headway with a 9.5-minute one and double
+the trip count. `verify` rejects any hour outside 0-27.
+
 `manifest.headwayDates` reports, per dataset and day type, the chosen date and
 how many candidate dates share its pattern — 48 of 78 remaining weekdays for
 the bus graph, 33 of 33 for the subway. Dates outside that pattern (holidays,
