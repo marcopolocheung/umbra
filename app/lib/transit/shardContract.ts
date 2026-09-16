@@ -1,0 +1,458 @@
+/**
+ * The published NYC transit contract, and the parsers that refuse anything else.
+ *
+ * Three hops — pointer → manifest → shard — each bound to the next by a SHA-256
+ * digest, exactly as `shadowField/remoteCatalog.ts` binds the shadow generation.
+ * The parsers here are the only place shard JSON becomes typed: everything
+ * downstream may assume the shapes below and nothing else.
+ *
+ * Produced by `server/transit-prep`. If the pipeline's output and these types
+ * disagree, the published data wins and these move.
+ */
+
+// ─── Pointer ────────────────────────────────────────────────────────────────
+
+/** The small, mutable entry point to an otherwise immutable generation. */
+export interface TransitPointer {
+  version: 1;
+  dataset: "nyc-transit";
+  generation: string;
+  manifestPath: string;
+  manifestSha256: string;
+}
+
+// ─── Manifest ───────────────────────────────────────────────────────────────
+
+export interface TransitFeedRef {
+  id: string;
+  version: string;
+  /** GTFS `YYYYMMDD`, not ISO — the feed's own service window. */
+  startDate: string;
+  endDate: string;
+  sha256: string;
+}
+
+export interface TransitShardRef {
+  key: string;
+  bytes: number;
+  sha256: string;
+  stops: number;
+  edges: number;
+  routes: number;
+}
+
+/**
+ * Which single service date each headway table describes. Not "every weekday":
+ * unioning service patterns halved the headway (#376), so one representative
+ * date is chosen per day type and named here.
+ */
+export interface HeadwayDateInfo {
+  date: string;
+  nextDate: string;
+  nextDayType: DayType;
+  matchingDates: number;
+  candidateDates: number;
+}
+
+export type HeadwayDates = {
+  referenceDate: string;
+} & Record<string, Record<string, HeadwayDateInfo> | string>;
+
+export interface TransitManifest {
+  generation: string;
+  createdAt: string;
+  schedulesAsOf: Record<string, Omit<TransitFeedRef, "id" | "sha256">>;
+  headwayDates: HeadwayDates;
+  feeds: TransitFeedRef[];
+  shards: TransitShardRef[];
+  budgets: { shardBytes: number; totalBytes: number };
+  constants: Record<string, number>;
+  /** The honesty statements the transit card has to surface. Never drop these. */
+  notes: string[];
+}
+
+// ─── Shards ─────────────────────────────────────────────────────────────────
+
+export type DayType = "weekday" | "saturday" | "sunday";
+
+export interface TransitStop {
+  /** Namespaced: `subway:127`, `bus:100587`. Never an OSM node id. */
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  /**
+   * The feed's own cost of changing lines inside this station, in seconds.
+   * **0 is a real value** — 57 cross-platform interchanges price a change at
+   * zero. Absent means the agency priced no change; it is not a zero. (#384)
+   */
+  changeSec?: number;
+  feeds?: string[];
+}
+
+export interface TransitEdge {
+  from: string;
+  to: string;
+  route: string;
+  direction: number;
+  /** Scheduled median run time between the two stops. */
+  medianSec: number;
+  trips: number;
+  /** Straight-line haversine, ~5-7% under true path length. */
+  distM: number;
+}
+
+export interface TransitRoute {
+  id: string;
+  shortName: string;
+  longName: string;
+  /** GTFS route_type: 1 subway, 3 bus. */
+  type: number;
+  /** Bare RRGGBB, no leading `#`. */
+  color: string;
+  textColor: string;
+}
+
+export interface TransitHeadway {
+  route: string;
+  direction: number;
+  dayType: DayType;
+  /**
+   * A **service-day** hour, 0-27 — not a wall-clock hour. Hours 24+ are the
+   * early morning of the *next* date, whose day type the manifest gives as
+   * `nextDayType`; Saturday's hour 24 is Sunday service. Hours 0-3 and 24-27
+   * are different calendar days and must not be merged. (#383)
+   */
+  hour: number;
+  medianSec: number;
+  trips: number;
+  services: number;
+}
+
+export interface TransitTransfer {
+  from: string;
+  to: string;
+  minSec: number;
+  /** `gtfs` is the agency's own transfer; `spatial` is an unvalidated stub. */
+  kind: "gtfs" | "spatial";
+}
+
+export interface TransitShard {
+  /** `subway` or `bus-shard`. */
+  kind: string;
+  stops: TransitStop[];
+  edges: TransitEdge[];
+  routes: TransitRoute[];
+  headways: TransitHeadway[];
+  /** Subway shards only; bus shards ship none. */
+  transfers: TransitTransfer[];
+}
+
+// ─── Budgets ────────────────────────────────────────────────────────────────
+
+/** The manifest is metadata; a megabyte of it means something is wrong. */
+export const MAX_MANIFEST_BYTES = 256_000;
+/** The pipeline's own per-shard budget, enforced again on the way in. */
+export const MAX_SHARD_BYTES = 3_000_000;
+
+const generationPattern = /^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}$/;
+const sha256Pattern = /^[a-f0-9]{64}$/;
+const shardKeyPattern = /^[a-z0-9-]{1,32}\.json$/;
+const dayTypes = new Set<string>(["weekday", "saturday", "sunday"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonNegativeInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+// ─── Pointer parsing ────────────────────────────────────────────────────────
+
+/**
+ * Reject malformed pointers before their paths are used in browser requests.
+ * `manifestPath` is bound to the generation rather than trusted, so a pointer
+ * cannot steer a fetch at an arbitrary key.
+ */
+export function parseTransitPointer(value: unknown): TransitPointer {
+  if (!isRecord(value)) throw new Error("invalid NYC transit pointer");
+  const generation = value.generation;
+  if (
+    value.version !== 1 ||
+    value.dataset !== "nyc-transit" ||
+    typeof generation !== "string" ||
+    !generationPattern.test(generation) ||
+    value.manifestPath !== `transit/nyc/${generation}/manifest.json` ||
+    typeof value.manifestSha256 !== "string" ||
+    !sha256Pattern.test(value.manifestSha256)
+  )
+    throw new Error("invalid NYC transit pointer");
+  return {
+    version: 1,
+    dataset: "nyc-transit",
+    generation,
+    manifestPath: value.manifestPath,
+    manifestSha256: value.manifestSha256,
+  };
+}
+
+// ─── Manifest parsing ───────────────────────────────────────────────────────
+
+function parseFeedRef(value: unknown): TransitFeedRef {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.version !== "string" ||
+    typeof value.startDate !== "string" ||
+    typeof value.endDate !== "string" ||
+    typeof value.sha256 !== "string" ||
+    !sha256Pattern.test(value.sha256)
+  )
+    throw new Error("invalid NYC transit manifest feed");
+  return {
+    id: value.id,
+    version: value.version,
+    startDate: value.startDate,
+    endDate: value.endDate,
+    sha256: value.sha256,
+  };
+}
+
+function parseShardRef(value: unknown): TransitShardRef {
+  if (
+    !isRecord(value) ||
+    typeof value.key !== "string" ||
+    !shardKeyPattern.test(value.key) ||
+    !isNonNegativeInt(value.bytes) ||
+    value.bytes > MAX_SHARD_BYTES ||
+    typeof value.sha256 !== "string" ||
+    !sha256Pattern.test(value.sha256) ||
+    !isNonNegativeInt(value.stops) ||
+    !isNonNegativeInt(value.edges) ||
+    !isNonNegativeInt(value.routes)
+  )
+    throw new Error("invalid NYC transit manifest shard");
+  return {
+    key: value.key,
+    bytes: value.bytes,
+    sha256: value.sha256,
+    stops: value.stops,
+    edges: value.edges,
+    routes: value.routes,
+  };
+}
+
+/** Parses the manifest and checks it describes the generation we asked for. */
+export function parseTransitManifest(value: unknown, generation: string): TransitManifest {
+  if (!isRecord(value)) throw new Error("invalid NYC transit manifest");
+  if (value.generation !== generation) throw new Error("NYC transit generation mismatch");
+  if (
+    typeof value.createdAt !== "string" ||
+    !isRecord(value.schedulesAsOf) ||
+    !isRecord(value.headwayDates) ||
+    !Array.isArray(value.feeds) ||
+    !Array.isArray(value.shards) ||
+    value.shards.length === 0 ||
+    !isRecord(value.budgets) ||
+    !isRecord(value.constants) ||
+    !Array.isArray(value.notes)
+  )
+    throw new Error("invalid NYC transit manifest");
+
+  const budgets = value.budgets;
+  if (!isNonNegativeInt(budgets.shardBytes) || !isNonNegativeInt(budgets.totalBytes))
+    throw new Error("invalid NYC transit manifest");
+
+  const notes: string[] = [];
+  for (const note of value.notes) {
+    if (typeof note !== "string") throw new Error("invalid NYC transit manifest");
+    notes.push(note);
+  }
+
+  const constants: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(value.constants)) {
+    if (!isFiniteNumber(entry)) throw new Error("invalid NYC transit manifest");
+    constants[key] = entry;
+  }
+
+  const shards = value.shards.map(parseShardRef);
+  const keys = new Set(shards.map((shard) => shard.key));
+  if (keys.size !== shards.length) throw new Error("duplicate NYC transit shard key");
+
+  const schedulesAsOf: TransitManifest["schedulesAsOf"] = {};
+  for (const [id, entry] of Object.entries(value.schedulesAsOf)) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.version !== "string" ||
+      typeof entry.startDate !== "string" ||
+      typeof entry.endDate !== "string"
+    )
+      throw new Error("invalid NYC transit manifest");
+    schedulesAsOf[id] = {
+      version: entry.version,
+      startDate: entry.startDate,
+      endDate: entry.endDate,
+    };
+  }
+
+  return {
+    generation,
+    createdAt: value.createdAt,
+    schedulesAsOf,
+    headwayDates: value.headwayDates as HeadwayDates,
+    feeds: value.feeds.map(parseFeedRef),
+    shards,
+    budgets: { shardBytes: budgets.shardBytes, totalBytes: budgets.totalBytes },
+    constants,
+    notes,
+  };
+}
+
+// ─── Shard parsing ──────────────────────────────────────────────────────────
+
+function parseStop(value: unknown): TransitStop {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    !isFiniteNumber(value.lat) ||
+    !isFiniteNumber(value.lon)
+  )
+    throw new Error("invalid NYC transit stop");
+  const stop: TransitStop = {
+    id: value.id,
+    name: value.name,
+    lat: value.lat,
+    lon: value.lon,
+  };
+  // Absent stays absent: a defaulted changeSec would invent a number the
+  // agency never published for the 33 stations that price no change.
+  if (value.changeSec !== undefined) {
+    if (!isNonNegativeInt(value.changeSec)) throw new Error("invalid NYC transit stop");
+    stop.changeSec = value.changeSec;
+  }
+  if (Array.isArray(value.feeds)) stop.feeds = value.feeds.filter((f) => typeof f === "string");
+  return stop;
+}
+
+function parseEdge(value: unknown): TransitEdge {
+  if (
+    !isRecord(value) ||
+    typeof value.from !== "string" ||
+    typeof value.to !== "string" ||
+    typeof value.route !== "string" ||
+    !isNonNegativeInt(value.direction) ||
+    !isNonNegativeInt(value.medianSec) ||
+    !isNonNegativeInt(value.trips) ||
+    !isFiniteNumber(value.distM) ||
+    value.distM < 0
+  )
+    throw new Error("invalid NYC transit edge");
+  return {
+    from: value.from,
+    to: value.to,
+    route: value.route,
+    direction: value.direction,
+    medianSec: value.medianSec,
+    trips: value.trips,
+    distM: value.distM,
+  };
+}
+
+function parseRoute(value: unknown): TransitRoute {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.shortName !== "string" ||
+    typeof value.longName !== "string" ||
+    !isNonNegativeInt(value.type) ||
+    typeof value.color !== "string" ||
+    typeof value.textColor !== "string"
+  )
+    throw new Error("invalid NYC transit route");
+  return {
+    id: value.id,
+    shortName: value.shortName,
+    longName: value.longName,
+    type: value.type,
+    color: value.color,
+    textColor: value.textColor,
+  };
+}
+
+function parseHeadway(value: unknown): TransitHeadway {
+  if (
+    !isRecord(value) ||
+    typeof value.route !== "string" ||
+    !isNonNegativeInt(value.direction) ||
+    typeof value.dayType !== "string" ||
+    !dayTypes.has(value.dayType) ||
+    !isNonNegativeInt(value.hour) ||
+    value.hour > 27 ||
+    !isNonNegativeInt(value.medianSec) ||
+    !isNonNegativeInt(value.trips) ||
+    !isNonNegativeInt(value.services)
+  )
+    throw new Error("invalid NYC transit headway");
+  return {
+    route: value.route,
+    direction: value.direction,
+    dayType: value.dayType as DayType,
+    hour: value.hour,
+    medianSec: value.medianSec,
+    trips: value.trips,
+    services: value.services,
+  };
+}
+
+function parseTransfer(value: unknown): TransitTransfer {
+  if (
+    !isRecord(value) ||
+    typeof value.from !== "string" ||
+    typeof value.to !== "string" ||
+    !isNonNegativeInt(value.minSec) ||
+    (value.kind !== "gtfs" && value.kind !== "spatial")
+  )
+    throw new Error("invalid NYC transit transfer");
+  return { from: value.from, to: value.to, minSec: value.minSec, kind: value.kind };
+}
+
+/**
+ * Parses one shard and checks it against the counts the manifest promised.
+ * The digest already proves the bytes are the ones the pipeline published; the
+ * count check is what catches the pipeline publishing a different contract.
+ */
+export function parseTransitShard(value: unknown, ref: TransitShardRef): TransitShard {
+  if (!isRecord(value) || typeof value.kind !== "string")
+    throw new Error(`invalid NYC transit shard (${ref.key})`);
+  if (
+    !Array.isArray(value.stops) ||
+    !Array.isArray(value.edges) ||
+    !Array.isArray(value.routes) ||
+    !Array.isArray(value.headways)
+  )
+    throw new Error(`invalid NYC transit shard (${ref.key})`);
+  if (value.transfers !== undefined && !Array.isArray(value.transfers))
+    throw new Error(`invalid NYC transit shard (${ref.key})`);
+
+  if (
+    value.stops.length !== ref.stops ||
+    value.edges.length !== ref.edges ||
+    value.routes.length !== ref.routes
+  )
+    throw new Error(`NYC transit shard count mismatch (${ref.key})`);
+
+  return {
+    kind: value.kind,
+    stops: value.stops.map(parseStop),
+    edges: value.edges.map(parseEdge),
+    routes: value.routes.map(parseRoute),
+    headways: value.headways.map(parseHeadway),
+    transfers: (value.transfers ?? []).map(parseTransfer),
+  };
+}

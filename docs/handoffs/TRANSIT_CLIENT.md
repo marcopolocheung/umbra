@@ -52,6 +52,13 @@ client supplies the base URL itself (see *Open decisions*).
 `manifest.json` lists the 7 shards with `bytes`/`sha256` (verify if you like — every hash held
 when checked from the public URL), plus `schedulesAsOf`, `headwayDates`, `constants` and
 `notes`. **Read `notes`.** They are the honesty statements the transit card has to surface.
+A shard ref carries `key`/`bytes`/`sha256`/`stops`/`edges`/`routes` and **no bounding box** —
+see S1's correction below.
+
+The two shard kinds differ more than the sketch above suggests: `subway.json` is
+`kind: "subway"` with an object `feed` and a `transfers` array; `bus-*.json` is
+`kind: "bus-shard"` with a *string* `feed`, an array `feeds`, a `variants` field on each route,
+and **no `transfers` key at all**.
 
 ```jsonc
 // subway.json — keys: kind, feed, stops, edges, routes, headways, transfers, stats
@@ -134,9 +141,16 @@ already exist. You are changing where the graph comes from, not inventing legs.
 
 Each is one PR. Stop after any of them and the app still works.
 
-**S1 — transport.** Fetch pointer → manifest → shards, cache by generation, choose shards by
-bbox. Pure module, no `trainGraph` change. Hermetic tests against a fixture; no network in CI.
-`VITE_TRANSIT_BASE` env var, absent = feature off.
+**S1 — transport. Landed.** `app/lib/transit/` — `shardContract.ts` (types + strict parsers)
+and `remoteTransit.ts` (pointer → manifest → shards, each verified against the previous hop's
+digest, cached by generation). `VITE_TRANSIT_BASE`, absent = feature off. No `trainGraph`
+change. 19 hermetic tests, no network in CI.
+
+*Correction:* shards are chosen **by kind, not by bbox** — the manifest gives each shard byte
+and record counts but **no extent**, so a client cannot tell whether `bus-q.json` covers a
+bbox without downloading it. Subway is one city-wide shard, so kind selection is exact for
+everything S2/S3 route. Per-shard bounds in the manifest are the fix, and they are a pipeline
+change — filed as **#388**, needed before S4 can pick bus shards geographically.
 
 **S2 — adapter, subway only, behind the flag.** Build a `TrainGraph`-shaped object from the
 shards with string ids. Keep the metres cost model for now (use `distM`) so the diff is
