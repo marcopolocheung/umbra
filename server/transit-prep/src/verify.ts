@@ -1,0 +1,79 @@
+/**
+ * Verify a built generation: every shard re-reads, re-hashes against the
+ * manifest, and passes structural checks (sorted ids, edge endpoints
+ * resolve, headway routes resolve, shapes resolve to finite coords).
+ */
+
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { json, requireRoot, sha256 } from "./util";
+
+interface ShardLike {
+  stops: { id: string }[];
+  edges: { from: string; to: string; route: string; medianSec: number }[];
+  routes: { id: string }[];
+  headways: { route: string }[];
+  shapes: Record<string, [number, number][]>;
+  transfers?: { from: string; to: string; minSec: number }[];
+}
+
+interface ManifestLike {
+  generation: string;
+  shards: { key: string; bytes: number; sha256: string }[];
+}
+
+export async function verifyGeneration(generation?: string): Promise<{ generation: string; shards: number }> {
+  const root = requireRoot();
+  const normalized = join(root, "normalized");
+  const name =
+    generation ??
+    (await readdir(normalized)).filter((entry) => !entry.startsWith(".")).sort().pop();
+  if (!name) throw new Error("no generations to verify");
+  const directory = join(normalized, name);
+  const manifest = await json<ManifestLike>(join(directory, "manifest.json"));
+  if (manifest.generation !== name) throw new Error(`manifest generation ${manifest.generation} != directory ${name}`);
+  for (const shard of manifest.shards) {
+    const bytes = await readFile(join(directory, shard.key));
+    if (bytes.length !== shard.bytes) {
+      throw new Error(`${shard.key}: size ${bytes.length} != manifest ${shard.bytes}`);
+    }
+    if (sha256(new Uint8Array(bytes)) !== shard.sha256) {
+      throw new Error(`${shard.key}: hash mismatch`);
+    }
+    checkShard(shard.key, JSON.parse(bytes.toString("utf8")) as ShardLike);
+  }
+  return { generation: name, shards: manifest.shards.length };
+}
+
+function checkShard(key: string, shard: ShardLike): void {
+  const fail = (message: string): never => {
+    throw new Error(`${key}: ${message}`);
+  };
+  const stopIds = new Set(shard.stops.map((stop) => stop.id));
+  for (let i = 1; i < shard.stops.length; i += 1) {
+    if ((shard.stops[i - 1] as { id: string }).id >= (shard.stops[i] as { id: string }).id) {
+      fail("stops not strictly sorted by id");
+    }
+  }
+  const routeIds = new Set(shard.routes.map((route) => route.id));
+  for (const edge of shard.edges) {
+    if (!stopIds.has(edge.from) || !stopIds.has(edge.to)) fail(`edge dangles ${edge.from}→${edge.to}`);
+    if (!(edge.medianSec > 0)) fail(`edge non-positive time ${edge.from}→${edge.to}`);
+    if (!routeIds.has(edge.route)) fail(`edge references unknown route ${edge.route}`);
+  }
+  for (const row of shard.headways) {
+    if (!routeIds.has(row.route)) fail(`headway references unknown route ${row.route}`);
+  }
+  for (const [shapeKey, points] of Object.entries(shard.shapes)) {
+    if (points.length < 2) fail(`shape ${shapeKey} has <2 points`);
+    for (const [lon, lat] of points) {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) fail(`shape ${shapeKey} has non-finite coord`);
+      if (lat < 40 || lat > 42 || lon < -75 || lon > -73) fail(`shape ${shapeKey} outside NYC bbox`);
+    }
+  }
+  for (const transfer of shard.transfers ?? []) {
+    if (!stopIds.has(transfer.from) || !stopIds.has(transfer.to)) {
+      fail(`transfer dangles ${transfer.from}→${transfer.to}`);
+    }
+  }
+}
