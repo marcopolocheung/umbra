@@ -279,7 +279,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
 
   const handleOpenSaveModal = useCallback(
     (routeIndex: number) => {
-      if (seam.current.navRoutes[routeIndex]?.partial) return;
+      if (seam.current.visibleRoutes[routeIndex]?.partial) return;
       setSaveModalRouteIndex(routeIndex);
     },
     [seam],
@@ -288,7 +288,9 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   const handleConfirmSave = useCallback(
     (name: string, folderId: string | null) => {
       if (saveModalRouteIndex === null) return;
-      const route = seam.current.navRoutes[saveModalRouteIndex];
+      // Same list the card came from: in transit mode the unfiltered array
+      // resolves this index to a different route entirely (#395).
+      const route = seam.current.visibleRoutes[saveModalRouteIndex];
       const journey = tripRef.current;
       if (!route || journey.stops.length < 2) return;
       const first = journey.stops[0];

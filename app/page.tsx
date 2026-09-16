@@ -236,7 +236,6 @@ export default function Home() {
     waypointA,
     waypointB,
     dwellMinutes,
-    navRoutes,
     selectedRouteIndex,
     isCalculating,
     routeProgress,
@@ -1184,9 +1183,9 @@ export default function Home() {
       )}
 
       {/* Save route modal */}
-      {saveModalRouteIndex !== null && navRoutes[saveModalRouteIndex] && (
+      {saveModalRouteIndex !== null && filteredRoutes[saveModalRouteIndex] && (
         <SaveRouteModal
-          defaultName={navRoutes[saveModalRouteIndex].label}
+          defaultName={filteredRoutes[saveModalRouteIndex].label}
           onSave={handleConfirmSave}
           onCancel={() => setSaveModalRouteIndex(null)}
         />

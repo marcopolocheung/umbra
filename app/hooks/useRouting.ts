@@ -104,7 +104,28 @@ export interface NavSeam {
   setSketchPoints: React.Dispatch<React.SetStateAction<SketchPoint[]>>;
   setNavWarning: React.Dispatch<React.SetStateAction<string | null>>;
   setSimplifiedWaypoints: React.Dispatch<React.SetStateAction<LatLng[] | null>>;
-  navRoutes: RouteOption[];
+  /**
+   * The routes the panel is actually showing, which is what every index coming
+   * back from the UI refers to. Deliberately not `navRoutes`: in transit mode
+   * the two arrays differ, and resolving a card's index against the unfiltered
+   * list silently picks a different route (#395).
+   */
+  visibleRoutes: RouteOption[];
+}
+
+/**
+ * Whether a route belongs to the walk list or the transit list. The panel shows
+ * one list at a time, so this is also what makes a card's index meaningful.
+ */
+export function isTransitRoute(route: RouteOption): boolean {
+  return !!route.legs?.find((l: RouteLeg) => l.type === "transit");
+}
+
+export function routesForMode(
+  routes: RouteOption[],
+  mode: "walk" | "transit",
+): RouteOption[] {
+  return routes.filter((r) => (mode === "transit") === isTransitRoute(r));
 }
 
 /**
@@ -168,6 +189,11 @@ export function useRouting({
   const [routeSolarIntensity, setRouteSolarIntensity] = useState<number | null>(null);
 
   // Refs for stale-closure avoidance
+  // `calculateRoute` keeps a stable identity by reading volatile values through
+  // refs rather than deps; the mode is one of those, and it decides which list
+  // the finished route is framed against.
+  const routeModeRef = useRef(routeMode);
+  routeModeRef.current = routeMode;
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
   const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
@@ -1110,7 +1136,10 @@ export function useRouting({
         seam.current.setSketchPoints([]);
         seam.current.setNavWarning(partialWarning ? partialRouteNotice(partialWarning) : null);
         seam.current.setSimplifiedWaypoints(null);
-        fitMapToRoute(options[0]);
+        // The panel shows one mode's list, and selection resets to its first
+        // entry — so frame that, not whichever option happens to be first
+        // overall.
+        fitMapToRoute(routesForMode(options, routeModeRef.current)[0] ?? options[0]);
         const metrics = options.map((option) => ({
           label: option.label,
           distanceM: option.distanceM,
@@ -1250,7 +1279,14 @@ export function useRouting({
   }, []);
 
   // Derived values
-  const selectedRoute = navRoutes[selectedRouteIndex];
+  const filteredRoutes = useMemo(
+    () => routesForMode(navRoutes, routeMode),
+    [navRoutes, routeMode],
+  );
+
+  // `selectedRouteIndex` indexes what the panel renders, so it must be resolved
+  // against the same array — see `NavSeam.visibleRoutes`.
+  const selectedRoute = filteredRoutes[selectedRouteIndex];
   const selectedNavRoute =
     routePreview ??
     (selectedRoute?.legs
@@ -1260,16 +1296,9 @@ export function useRouting({
             .filter((l: RouteLeg) => l.type === "walk")
             .map((l: RouteLeg) => l.geojson),
         } as GeoJSON.FeatureCollection)
-      : (navRoutes[selectedRouteIndex]?.geojson ?? null));
+      : (selectedRoute?.geojson ?? null));
   const navTrainDrawData = selectedRoute?.trainDrawData ?? null;
   const navMrtEntrances = selectedRoute?.mrtEntrances ?? null;
-
-  const filteredRoutes = useMemo(() => {
-    if (routeMode === "walk") {
-      return navRoutes.filter((r) => !r.legs?.find((l: RouteLeg) => l.type === "transit"));
-    }
-    return navRoutes.filter((r) => !!r.legs?.find((l: RouteLeg) => l.type === "transit"));
-  }, [navRoutes, routeMode]);
 
   return {
     navRoutes,
