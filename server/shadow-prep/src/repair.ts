@@ -55,11 +55,13 @@ export function supportPlaneHash(words: Uint32Array): string {
 }
 
 /**
- * Fail closed unless the supplied support geometry reproduces the frozen
- * candidate tile set exactly. A wrong or drifted geometry file cannot repair
- * tiles it does not explain. Run once per worker before packing a shard.
+ * Fail closed unless the supplied output-target geometry reproduces the
+ * frozen candidate tile set exactly.  This is deliberately separate from the
+ * wider admitted source-support geometry used to repair support cells: NYC's
+ * candidates cover the five-borough output target, while source acquisition
+ * extends 20 km beyond it. Run once per worker before packing a shard.
  */
-export function verifySupportGeometryTiles(
+export function verifyCandidateTileGeometry(
   geometry: CoverageGeometry,
   tiles: readonly string[],
 ): void {

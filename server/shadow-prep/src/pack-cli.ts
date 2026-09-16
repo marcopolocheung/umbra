@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { candidateDescriptorKey, type CandidateDescriptor } from "./candidates";
 import { benchmarkCandidatePack, browserPackIdentity, browserPackIdentityV2, reconcileBrowserPack, type PackedBrowserTile, type RepairContext } from "./pack";
 import { repairPolicyHash, REPAIR_POLICY_VERSION } from "./repair";
-import { loadRegionLicenceInput } from "./notices";
+import { loadAdmittedLicenceInput } from "./notices";
 import { FilesystemStore, r2StoreFromEnvironment, S3Store } from "./storage";
 import { supportGeometry } from "./support";
 import { sha256 } from "./util";
@@ -61,7 +61,8 @@ async function main(): Promise<void> {
     const geometry = supportGeometry(JSON.parse(new TextDecoder().decode(geometryBytes)));
     // Smoke tiles are a strict subset, so the full index-equality proof cannot
     // run here; the hash pin plus the shard-time proof carry authentication.
-    const regionInput = await loadRegionLicenceInput(optionalValue("--region-file"));
+    const admissionManifest = value("--admission-manifest");
+    const regionInput = await loadAdmittedLicenceInput(admissionManifest, optionalValue("--region-file"));
     repairFor = (descriptor) => {
       const descriptorHash = descriptorHashes.get(descriptor.tile);
       if (!descriptorHash) throw new Error(`missing descriptor hash for ${descriptor.tile}`);

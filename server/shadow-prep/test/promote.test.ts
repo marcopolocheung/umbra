@@ -107,12 +107,13 @@ async function buildGeneration(directory: string) {
     await output.write(packed.key, bytes);
     entries.push(packed);
   }
-  const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
+  const repair = { policy: REPAIR_POLICY_VERSION, policyHash: repairPolicyHash(), supportGeometryHash: "b".repeat(64), candidateTileGeometryHash: "c".repeat(64), regionFileSha256: regionInput.regionFileSha256, receiptManifestSha256: regionInput.receiptManifestSha256!, licenceHashes: componentLicenceHashes(regionInput) } as const;
   await reconcileBrowserPackShard(output, entries, identity, 0, 1, repair);
   const reconciliation = await aggregateBrowserPack(output, index, identity, 1, {
     borough: world,
     boroughFile: { filename: "test-borough.geojson", sha256: "c".repeat(64) },
     regionInput,
+    repairGeometry: repair,
   });
   assert.ok(reconciliation.generationSha256);
   return { output, identity, reconciliation };

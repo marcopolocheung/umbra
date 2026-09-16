@@ -230,16 +230,25 @@ docker run --rm -v "$HOME/shade-prep-data:/data" umbra-shadow-prep \
   server/shadow-prep/src/pack-cli.ts --normalization-id 70e3507f16d472adf5475b614a60cb16 \
   --tiles 18/77196/98516,18/77336/98545 --recipe 2 \
   --support-geometry /data/acquisition/nyc-five-borough-20km-support.geojson \
-  --support-sha256 <support-pin> --write-dir /tmp/repair-smoke
+  --support-sha256 <support-pin> \
+  --admission-manifest /data/admission/new-york-city-v1.json \
+  --write-dir /tmp/repair-smoke
 # 2. Full run (index is reused, not rebuilt):
 scripts/aws/submit-nyc-browser-pack.sh --execute --v2 \
-  --support-geometry s3:<evidence-bucket>:inputs/support.geojson --support-sha256 <support-pin> \
-  --borough-boundary s3:<evidence-bucket>:inputs/borough.geojson \
+  --support-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-20km-support.geojson --support-sha256 <support-pin> \
+  --candidate-tile-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-output-target.geojson \
+  --candidate-tile-sha256 <output-target-pin> \
+  --borough-boundary s3:<raw-bucket>:raw/nyc-borough-boundaries-26b.geojson \
   --admission-manifest s3:<evidence-bucket>:evidence/admission/new-york-city-v1.json
 # 3. Verify without writing, then promote explicitly:
 #    pack-full-cli --promote --verify-only [--report promote-verify.json]
 #    pack-full-cli --promote --expected-previous-sha256 03343254... [--report promote.json]
 ```
+
+The support geometry is the admitted 20 km source-acquisition coverage used to
+derive known/unknown cells. The separate candidate-tile geometry is the
+unbuffered output target and must reproduce the frozen 61,442-tile index
+exactly; substituting either one for the other fails closed.
 
 Batch jobs have no host `/workspace/admission` mount. The AWS launcher supplies
 the retained admission object automatically when `--admission-manifest` is

@@ -10,9 +10,11 @@ set -euo pipefail
 # building support from hash-pinned geometry at pack time:
 #
 #   $0 --execute --v2 \
-#     --support-geometry s3:<evidence-bucket>:inputs/support.geojson \
-#     --support-sha256 <acquisition-manifest-pin> \
-#     --borough-boundary s3:<evidence-bucket>:inputs/borough.geojson
+#     --support-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-20km-support.geojson \
+#     --support-sha256 <support-pin> \
+#     --candidate-tile-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-output-target.geojson \
+#     --candidate-tile-sha256 <output-target-pin> \
+#     --borough-boundary s3:<raw-bucket>:raw/nyc-borough-boundaries-26b.geojson
 #
 # The admitted manifest is retained by `shadow-prep` under the evidence
 # bucket. The launcher supplies its fully qualified object spec to every
@@ -30,6 +32,8 @@ shift
 v2=0
 support_geometry=""
 support_sha=""
+candidate_tile_geometry=""
+candidate_tile_sha=""
 borough=""
 admission_manifest=""
 while [[ $# -gt 0 ]]; do
@@ -37,6 +41,8 @@ while [[ $# -gt 0 ]]; do
     --v2) v2=1; shift ;;
     --support-geometry) support_geometry="${2:-}"; shift 2 ;;
     --support-sha256) support_sha="${2:-}"; shift 2 ;;
+    --candidate-tile-geometry) candidate_tile_geometry="${2:-}"; shift 2 ;;
+    --candidate-tile-sha256) candidate_tile_sha="${2:-}"; shift 2 ;;
     --borough-boundary) borough="${2:-}"; shift 2 ;;
     --admission-manifest) admission_manifest="${2:-}"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -68,8 +74,8 @@ array_overrides=""
 aggregate_overrides=""
 if [[ "$v2" == 1 ]]; then
   evidence_bucket="$(output_value EvidenceBucket)"
-  if [[ -z "$support_geometry" || -z "$support_sha" || -z "$borough" ]]; then
-    echo "v2 needs --support-geometry, --support-sha256, and --borough-boundary." >&2
+  if [[ -z "$support_geometry" || -z "$support_sha" || -z "$candidate_tile_geometry" || -z "$candidate_tile_sha" || -z "$borough" ]]; then
+    echo "v2 needs support geometry/hash, candidate-tile geometry/hash, and --borough-boundary." >&2
     exit 1
   fi
   if [[ -z "$admission_manifest" ]]; then
@@ -80,19 +86,30 @@ if [[ "$v2" == 1 ]]; then
   fi
   # Container overrides replace the job definition's v1 command for this run
   # only; the definitions themselves keep serving the v1 smoke path.
-  array_overrides="$(printf '{"command":["server/shadow-prep/src/pack-full-cli.ts","--pack-shard","--array-shards","%s","--support-geometry","%s","--support-sha256","%s","--admission-manifest","%s"]}' "$array_size" "$support_geometry" "$support_sha" "$admission_manifest")"
-  aggregate_overrides="$(printf '{"command":["server/shadow-prep/src/pack-full-cli.ts","--aggregate","--array-shards","%s","--borough-boundary","%s","--admission-manifest","%s"]}' "$array_size" "$borough" "$admission_manifest")"
+  array_overrides="$(printf '{"command":["server/shadow-prep/src/pack-full-cli.ts","--pack-shard","--array-shards","%s","--support-geometry","%s","--support-sha256","%s","--candidate-tile-geometry","%s","--candidate-tile-sha256","%s","--admission-manifest","%s"]}' "$array_size" "$support_geometry" "$support_sha" "$candidate_tile_geometry" "$candidate_tile_sha" "$admission_manifest")"
+  aggregate_overrides="$(printf '{"command":["server/shadow-prep/src/pack-full-cli.ts","--aggregate","--array-shards","%s","--support-geometry","%s","--support-sha256","%s","--candidate-tile-geometry","%s","--candidate-tile-sha256","%s","--borough-boundary","%s","--admission-manifest","%s"]}' "$array_size" "$support_geometry" "$support_sha" "$candidate_tile_geometry" "$candidate_tile_sha" "$borough" "$admission_manifest")"
 fi
 
 submit_and_wait() {
   local name="$1" definition="$2" array_arg="${3:-}" overrides="${4:-}"
-  local job_id
+  local job_id status
   local submit=(aws batch submit-job --region "$region" --job-name "$name" --job-queue "$queue" --job-definition "$definition")
   if [[ -n "$array_arg" ]]; then submit+=(--array-properties "$array_arg"); fi
   if [[ -n "$overrides" ]]; then submit+=(--container-overrides "$overrides"); fi
   job_id="$("${submit[@]}" --query jobId --output text)"
   echo "$name submitted: $job_id"
-  aws batch wait job-execution-succeeded --region "$region" --jobs "$job_id"
+  while true; do
+    status="$(aws batch describe-jobs --region "$region" --jobs "$job_id" --query 'jobs[0].status' --output text)"
+    case "$status" in
+      SUCCEEDED) break ;;
+      FAILED)
+        aws batch describe-jobs --region "$region" --jobs "$job_id" --output json >&2
+        return 1
+        ;;
+      SUBMITTED|PENDING|RUNNABLE|STARTING|RUNNING) sleep 15 ;;
+      *) echo "Unexpected Batch status for $job_id: $status" >&2; return 1 ;;
+    esac
+  done
   echo "$name succeeded: $job_id"
 }
 
