@@ -6,6 +6,7 @@
  */
 
 import { haversineMeters } from "./routing";
+import { travelTimeSeconds } from "./travelMode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,13 @@ export interface TrainStation {
 
 export interface TrainGraphEdge {
   to: string;
-  weight: number; // meters
+  /**
+   * Seconds. The shards publish a scheduled `medianSec` per stop pair; the
+   * Overpass producer, which has only geometry, divides distance by
+   * `TRAIN_SPEED_MPS`. Both must be seconds, because a transit leg is compared
+   * against a walk and the two are only commensurable in time.
+   */
+  weightSec: number;
   type: "rail" | "transfer";
   line?: string;
 }
@@ -68,7 +75,8 @@ export interface TrainDrawData {
 
 export interface TrainPathResult {
   stationIds: string[];
-  totalDistM: number;
+  /** Scheduled riding and transfer time. Excludes waiting to board. */
+  totalSec: number;
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
 }
@@ -79,7 +87,8 @@ export interface BestTrainRoute {
   path: TrainPathResult;
   walkInDistM: number;
   walkOutDistM: number;
-  totalCostM: number;
+  /** Door-to-door seconds: the two walks plus the ride. */
+  totalCostSec: number;
 }
 
 /** Sun exposure per mode: 0 = underground, 0.25 = windowed surface vehicle */
@@ -91,9 +100,20 @@ export const TRAIN_SUN_EXPOSURE: Record<TrainMode, number> = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-/** Flat stand-in for a change of line, in metres. Shared with the shard
- * producer so both price a transfer identically. */
-export const TRANSFER_PENALTY_M = 300;
+/**
+ * What a change of line costs when nothing better is published, in seconds.
+ * 180 s is the modal `min_transfer_time` in the NYC subway feed, so it is a
+ * measured interchange rather than the flat 300 m it replaces — which was never
+ * a distance anybody walked.
+ */
+export const TRANSFER_PENALTY_SEC = 180;
+
+/**
+ * 30 km/h, the figure `useRouting` already used to turn a transit leg's length
+ * into a duration. It is the Overpass producer's only option: OSM route
+ * relations carry geometry and no timetable.
+ */
+export const TRAIN_SPEED_MPS = (30 * 1000) / 3600;
 const INTERCHANGE_DIST_M = 150;
 // Same-origin proxy (never overpass-api.de directly) — see app/lib/overpass.ts
 // and api/overpass.js for why. Mirror fallback is handled server-side.
@@ -325,13 +345,14 @@ function buildGraph(
       if (!a || !b) continue;
 
       const dist = haversineMeters([a.lon, a.lat], [b.lon, b.lat]);
+      const weightSec = dist / TRAIN_SPEED_MPS;
 
       adj
         .get(fromId)!
-        .push({ to: toId, weight: dist, type: "rail", line: line.ref });
+        .push({ to: toId, weightSec, type: "rail", line: line.ref });
       adj
         .get(toId)!
-        .push({ to: fromId, weight: dist, type: "rail", line: line.ref });
+        .push({ to: fromId, weightSec, type: "rail", line: line.ref });
     }
   }
 
@@ -348,10 +369,10 @@ function buildGraph(
 
       adj
         .get(a.id)!
-        .push({ to: b.id, weight: TRANSFER_PENALTY_M, type: "transfer" });
+        .push({ to: b.id, weightSec: TRANSFER_PENALTY_SEC, type: "transfer" });
       adj
         .get(b.id)!
-        .push({ to: a.id, weight: TRANSFER_PENALTY_M, type: "transfer" });
+        .push({ to: a.id, weightSec: TRANSFER_PENALTY_SEC, type: "transfer" });
 
       // Merge line sets for UI display
       for (const l of b.lines) if (!a.lines.includes(l)) a.lines.push(l);
@@ -430,7 +451,7 @@ export async function fetchTrainGraph(
 // ─── Dijkstra ───────────────────────────────────────────────────────────────
 
 /**
- * Shortest path on the train graph by distance.
+ * Fastest path on the train graph, in seconds.
  * Simple array-scan PQ — fine for metro-scale graphs (~200 stations).
  */
 export function trainDijkstra(
@@ -459,7 +480,7 @@ export function trainDijkstra(
     if (id === endId) break;
 
     for (const edge of graph.adj.get(id) ?? []) {
-      const newCost = cost + edge.weight;
+      const newCost = cost + edge.weightSec;
       if (newCost < (dist.get(edge.to) ?? Infinity)) {
         dist.set(edge.to, newCost);
         prev.set(edge.to, id);
@@ -523,7 +544,7 @@ export function trainDijkstra(
     }
   }
 
-  return { stationIds, totalDistM: dist.get(endId)!, lines, segments };
+  return { stationIds, totalSec: dist.get(endId)!, lines, segments };
 }
 
 // ─── Nearest station lookup ─────────────────────────────────────────────────
@@ -546,7 +567,7 @@ export function nearestStations(
 // ─── Best route finder ──────────────────────────────────────────────────────
 
 /**
- * Finds the optimal Walk → Train → Walk route between two points.
+ * Finds the fastest Walk → Train → Walk route between two points.
  * Tries N nearest entry stations × N nearest exit stations, picks lowest cost.
  * Returns null if no viable train route exists.
  */
@@ -587,7 +608,12 @@ export function findBestTrainRoute(
 
       const walkIn = haversineMeters(a, [entry.lon, entry.lat]);
       const walkOut = haversineMeters([exit.lon, exit.lat], b);
-      const totalCost = walkIn + path.totalDistM + walkOut;
+      // Both walks are straight-line here; the real street paths are routed
+      // once, for the winner. Comparing candidates needs them in seconds,
+      // because the ride is now seconds and the two used to be added as if a
+      // metre walked and a metre ridden cost the same.
+      const totalCost =
+        travelTimeSeconds(walkIn, "walk") + path.totalSec + travelTimeSeconds(walkOut, "walk");
 
       if (totalCost < bestCost) {
         bestCost = totalCost;
@@ -597,7 +623,7 @@ export function findBestTrainRoute(
           path,
           walkInDistM: walkIn,
           walkOutDistM: walkOut,
-          totalCostM: totalCost,
+          totalCostSec: totalCost,
         };
       }
     }

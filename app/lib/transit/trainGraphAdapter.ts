@@ -5,15 +5,14 @@
  * downstream — `trainDijkstra`, `findBestTrainRoute`, `buildTrainDrawData` —
  * consumes the same shape it always has.
  *
- * The cost model stays in **metres** here, using each edge's `distM`, so that
- * switching a route from Overpass to shards changes only where the data came
- * from and the two can be compared on the same O-D pair. The shards' real gift
- * is `medianSec`, `changeSec` and the headway table; spending it is a separate
- * slice, deliberately, so that when routes start differing it is obvious why.
+ * Edges are priced in **seconds**, straight from the feed's scheduled
+ * `medianSec`, and a transfer costs the `minSec` the agency publishes for it.
+ * What is *not* priced here is the wait to board and the cost of changing
+ * lines inside one station: both depend on which route you are boarding, which
+ * a station-keyed shortest path cannot see. That is the next slice.
  */
 
 import type { TrainGraph, TrainGraphEdge, TrainMode, TrainStation } from "../trainGraph";
-import { TRANSFER_PENALTY_M } from "../trainGraph";
 import type { TransitShard } from "./shardContract";
 
 /**
@@ -101,7 +100,7 @@ export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | 
       // pairs that genuinely run one way only.
       adj.get(edge.from)!.push({
         to: edge.to,
-        weight: edge.distM,
+        weightSec: edge.medianSec,
         type: "rail",
         line: edge.route,
       });
@@ -113,9 +112,10 @@ export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | 
       // Spatial transfers land on bus stops that no loaded edge serves, so they
       // drop out here on their own until bus shards load beside this one.
       if (!stations.has(transfer.from) || !stations.has(transfer.to)) continue;
+      // The agency's own published transfer time, not a stand-in.
       adj.get(transfer.from)!.push({
         to: transfer.to,
-        weight: TRANSFER_PENALTY_M,
+        weightSec: transfer.minSec,
         type: "transfer",
       });
     }

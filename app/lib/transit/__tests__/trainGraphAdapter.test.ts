@@ -1,29 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findBestTrainRoute, trainDijkstra, TRANSFER_PENALTY_M } from "../../trainGraph";
+import { findBestTrainRoute, trainDijkstra } from "../../trainGraph";
 import type { TransitShard } from "../shardContract";
 import { buildTrainGraphFromShards } from "../trainGraphAdapter";
 import { fetchBestTrainGraph } from "../trainGraphSource";
 import { clearTransitCache } from "../remoteTransit";
 
 /**
- * A four-stop toy line plus a second line meeting it at a transfer:
+ * A four-stop toy line plus a second line meeting it at a transfer. Stops sit
+ * ~500 m apart and a hop takes 90 s, which is the real shard's own ratio
+ * (subway:101 -> subway:103 is 544 m in 90 s) — so the train genuinely outruns
+ * a walk, as it must for any of these comparisons to mean anything.
  *
- *   A ──100m── B ──100m── C        (route "1")
- *                 │ transfer
- *                 D ──100m── E     (route "2")
+ *   A ──500m/90s── B ──500m/90s── C        (route "1")
+ *                                 │ transfer, 180 s
+ *                                 D ──500m/90s── E     (route "2")
  */
 function shard(overrides: Partial<TransitShard> = {}): TransitShard {
   const stops = [
     { id: "subway:A", name: "Alpha", lat: 40.7, lon: -74.0, changeSec: 180 },
-    { id: "subway:B", name: "Bravo", lat: 40.701, lon: -74.0 },
-    { id: "subway:C", name: "Charlie", lat: 40.702, lon: -74.0, changeSec: 0 },
-    { id: "subway:D", name: "Charlie", lat: 40.7021, lon: -74.0 },
-    { id: "subway:E", name: "Echo", lat: 40.703, lon: -74.0 },
+    { id: "subway:B", name: "Bravo", lat: 40.7045, lon: -74.0 },
+    { id: "subway:C", name: "Charlie", lat: 40.709, lon: -74.0, changeSec: 0 },
+    { id: "subway:D", name: "Charlie", lat: 40.7091, lon: -74.0 },
+    { id: "subway:E", name: "Echo", lat: 40.7136, lon: -74.0 },
     // Carried for a spatial transfer only — no edge serves it.
     { id: "bus:900", name: "Bus stop", lat: 40.7005, lon: -74.0, feeds: ["bus-m"] },
   ];
   const edge = (from: string, to: string, route: string, direction: number) => ({
-    from, to, route, direction, medianSec: 60, trips: 100, distM: 100,
+    from, to, route, direction, medianSec: 90, trips: 100, distM: 500,
   });
   return {
     kind: "subway",
@@ -69,12 +72,14 @@ describe("buildTrainGraphFromShards", () => {
     expect(graph.lineModes.get("1")).toBe("subway");
   });
 
-  it("weights rail edges by published distance and transfers by the shared penalty", () => {
+it("prices edges in the seconds the feed publishes, not in metres", () => {
     const graph = buildTrainGraphFromShards([shard()])!;
     const fromC = graph.adj.get("subway:C")!;
-    expect(fromC.find((e) => e.to === "subway:B")).toMatchObject({ weight: 100, type: "rail" });
+    // The scheduled run time, not distM / an assumed speed.
+    expect(fromC.find((e) => e.to === "subway:B")).toMatchObject({ weightSec: 90, type: "rail" });
+    // The agency's own min_transfer_time, not a stand-in penalty.
     expect(fromC.find((e) => e.to === "subway:D")).toMatchObject({
-      weight: TRANSFER_PENALTY_M,
+      weightSec: 180,
       type: "transfer",
     });
   });
@@ -104,30 +109,30 @@ describe("buildTrainGraphFromShards", () => {
     const path = trainDijkstra(graph, "subway:A", "subway:E")!;
     expect(path.stationIds).toEqual(["subway:A", "subway:B", "subway:C", "subway:D", "subway:E"]);
     expect(path.lines).toEqual(["1", "2"]);
-    // 3 rail hops at 100 m + one transfer penalty.
-    expect(path.totalDistM).toBe(300 + TRANSFER_PENALTY_M);
+    // 3 scheduled hops at 90 s + the published 180 s transfer.
+    expect(path.totalSec).toBe(3 * 90 + 180);
     expect(path.segments.some((s) => s.type === "transfer")).toBe(true);
   });
 
   it("feeds findBestTrainRoute, which picks real entry and exit stations", () => {
     const graph = buildTrainGraphFromShards([shard()])!;
-    const best = findBestTrainRoute([-74.0, 40.7], [-74.0, 40.703], graph)!;
+    const best = findBestTrainRoute([-74.0, 40.7], [-74.0, 40.7136], graph)!;
     expect(best.entryStation.id).toBe("subway:A");
     expect(best.path.stationIds[0]).toBe("subway:A");
     expect(best.walkInDistM).toBeCloseTo(0, 5);
   });
 
-  it("will not pay for a transfer while the cost model is in metres", () => {
-    // `distM` is straight-line, and the walk legs are priced in the same
-    // metres, so riding one more stop can never beat walking it — and the flat
-    // 300 m transfer penalty is pure surcharge on top. The route therefore
-    // alights at Charlie and walks, even though Echo is the exact destination.
-    // This is the metres model showing its seam, not the adapter misbehaving:
-    // S3 puts both sides in seconds, where a train outruns a walk.
+  it("pays for a transfer when riding beats walking the same ground", () => {
+    // The inverse of what the metres model did. Alighting early at Charlie and
+    // walking the last 511 m costs 180 s of riding + 365 s on foot = 545 s;
+    // staying on through the transfer to Echo costs 270 s + 180 s = 450 s. In
+    // metres the walk was free-ish and Charlie always won, which is exactly the
+    // seam this slice closes.
     const graph = buildTrainGraphFromShards([shard()])!;
-    const best = findBestTrainRoute([-74.0, 40.7], [-74.0, 40.703], graph)!;
-    expect(best.exitStation.id).toBe("subway:C");
-    expect(best.path.segments.some((seg) => seg.type === "transfer")).toBe(false);
+    const best = findBestTrainRoute([-74.0, 40.7], [-74.0, 40.7136], graph)!;
+    expect(best.exitStation.id).toBe("subway:E");
+    expect(best.path.segments.some((seg) => seg.type === "transfer")).toBe(true);
+    expect(best.totalCostSec).toBeCloseTo(450, 0);
   });
 });
 
