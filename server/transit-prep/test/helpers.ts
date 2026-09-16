@@ -3,6 +3,21 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+/**
+ * Re-key a fixture's trip_ids with a per-feed tag. Production trip_ids are
+ * unique across the six bus feeds; seeding the same fixture into several
+ * directories without this makes them collide, which normalizeBus pools into
+ * one trip and validate now rejects.
+ */
+export function withFeedTripIds(files: Record<string, string>, tag: string): Record<string, string> {
+  const tagged = { ...files };
+  for (const name of ["trips.txt", "stop_times.txt"]) {
+    const body = tagged[name];
+    if (body) tagged[name] = body.replace(/\b([abc]-\d+)\b/g, `${tag}-$1`);
+  }
+  return tagged;
+}
+
 export async function writeFeed(root: string, dir: string, files: Record<string, string>): Promise<void> {
   await mkdir(join(root, dir), { recursive: true });
   for (const [name, body] of Object.entries(files)) {

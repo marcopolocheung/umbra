@@ -74,6 +74,8 @@ export interface ValidationReport {
   /** Same stop_id, different coords across feeds (warning level, see below). */
   sharedStopConflicts: { stopId: string; feeds: string[]; disagreementM: number }[];
   maxSharedDisagreementM: number;
+  /** transfer_type histogram for the subway feed; drift is visible, 3 is fatal. */
+  subwayTransferTypes: Record<number, number>;
 }
 
 /**
@@ -117,9 +119,16 @@ export async function validate(): Promise<ValidationReport> {
     busStopRows: 0,
     sharedStopConflicts: [],
     maxSharedDisagreementM: 0,
+    subwayTransferTypes: {},
   };
   const busRouteRows = new Map<string, { feed: string; row: string }>();
   const busStopCoords = new Map<string, { lat: number; lon: number; feeds: string[] }>();
+  // normalizeBus concatenates all six feeds and groups by bare id, so every id
+  // it pools on has to be pinned here. stop_id (coords must agree) and route_id
+  // (rows must agree) are below; shape_id is namespaced per feed in
+  // normalizeBus, which leaves trip_id and service_id.
+  const busTripOwner = new Map<string, string>();
+  const busServiceRows = new Map<string, { feed: string; row: string }>();
 
   for (const source of FEED_SOURCES) {
     const dir = source.workDir;
@@ -196,6 +205,15 @@ export async function validate(): Promise<ValidationReport> {
         if (!stopIds.has(transfer.fromStopId) || !stopIds.has(transfer.toStopId)) {
           throw new Error(`${source.id}: transfer references unknown stop`);
         }
+        report.subwayTransferTypes[transfer.transferType] =
+          (report.subwayTransferTypes[transfer.transferType] ?? 0) + 1;
+        // 3 means "transfer not possible". normalizeSubway drops those too, but
+        // a feed that starts publishing them is a routing change worth seeing.
+        if (transfer.transferType === 3) {
+          throw new Error(
+            `${source.id}: transfer_type 3 (not possible) on ${transfer.fromStopId}->${transfer.toStopId} — decide how routing should treat it`,
+          );
+        }
       }
       report.feeds.push({
         id: source.id,
@@ -221,6 +239,34 @@ export async function validate(): Promise<ValidationReport> {
           throw new Error(`route_id ${route.id} differs between ${known.feed} and ${source.id}`);
         }
         if (!known) busRouteRows.set(route.id, { feed: source.id, row });
+      }
+      for (const trip of trips) {
+        const owner = busTripOwner.get(trip.tripId);
+        if (owner && owner !== dir) {
+          throw new Error(
+            `trip_id ${trip.tripId} appears in ${owner} and ${source.id} — pooled stop_times would interleave two feeds into one trip`,
+          );
+        }
+        busTripOwner.set(trip.tripId, dir);
+      }
+      // A shared service_id is only safe while every feed defines it the same
+      // way: normalizeBus keeps one calendar row per id and unions the
+      // exceptions. Signature covers both tables.
+      const exceptionsOf = new Map<string, string[]>();
+      for (const entry of dates) {
+        const list = exceptionsOf.get(entry.serviceId) ?? [];
+        list.push(`${entry.date}:${entry.exceptionType}`);
+        exceptionsOf.set(entry.serviceId, list);
+      }
+      for (const service of calendar) {
+        const row = JSON.stringify([service, (exceptionsOf.get(service.serviceId) ?? []).sort()]);
+        const known = busServiceRows.get(service.serviceId);
+        if (known && known.row !== row) {
+          throw new Error(
+            `service_id ${service.serviceId} differs between ${known.feed} and ${source.id} — pooled calendars keep only one definition`,
+          );
+        }
+        if (!known) busServiceRows.set(service.serviceId, { feed: source.id, row });
       }
       for (const stop of stops) {
         report.busStopRows += 1;

@@ -9,7 +9,7 @@ import { publishPlan } from "../src/publish";
 import { assembleReceipts, checkWorkTrees } from "../src/receipts";
 import { validate } from "../src/validate";
 import { verifyGeneration } from "../src/verify";
-import { busFixtureA, busFixtureB, busFixtureBusco, SUBWAY_FIXTURE, writeFeed } from "./helpers";
+import { busFixtureA, busFixtureB, busFixtureBusco, SUBWAY_FIXTURE, withFeedTripIds, writeFeed } from "./helpers";
 
 const BUS_DIRS = ["gtfs_bx", "gtfs_b", "gtfs_m", "gtfs_q", "gtfs_si", "gtfs_busco"];
 
@@ -19,8 +19,9 @@ async function seedRoot(): Promise<string> {
   for (const [index, dir] of BUS_DIRS.entries()) {
     // Alternate NYCT-shaped fixtures; gtfs_busco gets the BusCo-shaped one
     // (minimal stops, route_url column, disjoint route ids).
-    if (dir === "gtfs_busco") await writeFeed(root, dir, busFixtureBusco());
-    else await writeFeed(root, dir, index % 2 === 0 ? busFixtureA() : busFixtureB());
+    const fixture =
+      dir === "gtfs_busco" ? busFixtureBusco() : index % 2 === 0 ? busFixtureA() : busFixtureB();
+    await writeFeed(root, dir, withFeedTripIds(fixture, dir));
   }
   return root;
 }
@@ -159,4 +160,55 @@ test("verify picks the newest generation, not the last one alphabetically", asyn
     return { chosen: (await verifyGeneration()).generation, expected: built.generation };
   });
   assert.equal(picked.chosen, picked.expected);
+});
+
+test("validate rejects a trip_id that two bus feeds share", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    // Hand gtfs_m one of gtfs_bx's trip_ids. normalizeBus pools stop_times by
+    // bare trip_id, so a collision silently interleaves two boroughs' stops
+    // into one trip rather than failing.
+    for (const file of ["trips.txt", "stop_times.txt"]) {
+      const path = join(root, "gtfs_m", file);
+      await writeFile(path, (await readFile(path, "utf8")).replaceAll("gtfs_m-a-1", "gtfs_bx-a-1"));
+    }
+    await assembleReceipts();
+    await assert.rejects(() => validate(), /trip_id gtfs_bx-a-1 appears in gtfs_bx and bus-m/);
+  });
+});
+
+test("validate rejects a service_id two bus feeds define differently", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    // Sharing a service_id is fine while the definitions agree — normalizeBus
+    // pools calendars by bare id and keeps one. Disagreeing is not.
+    const path = join(root, "gtfs_m", "calendar.txt");
+    await writeFile(path, (await readFile(path, "utf8")).replace("WD,1,1,1,1,1,0,0", "WD,1,1,1,0,0,0,0"));
+    await assembleReceipts();
+    await assert.rejects(() => validate(), /service_id WD differs between/);
+  });
+});
+
+test("validate rejects a transfer the feed marks impossible", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    // transfer_type 3 means "transfer not possible"; the type is parsed and
+    // would otherwise become a walkable edge with the fallback time.
+    const path = join(root, "gtfs_subway", "transfers.txt");
+    await writeFile(path, (await readFile(path, "utf8")).replace("P1,P2,2,120", "P1,P2,3,"));
+    await assembleReceipts();
+    await assert.rejects(() => validate(), /transfer_type 3/);
+  });
+});
+
+test("validate records the transfer types it saw", async () => {
+  const root = await seedRoot();
+  const report = await withRoot(root, async () => {
+    await assembleReceipts();
+    return validate();
+  });
+  assert.deepEqual(report.subwayTransferTypes, { 2: 1 });
 });
