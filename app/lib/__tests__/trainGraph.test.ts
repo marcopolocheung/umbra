@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { matchEntranceToTrainStation, type TrainStation } from "../trainGraph";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  fetchTrainGraph,
+  matchEntranceToTrainStation,
+  TRAIN_SPEED_MPS,
+  TRANSFER_PENALTY_SEC,
+  type TrainStation,
+} from "../trainGraph";
+import { haversineMeters } from "../routing";
 
 function station(id: string, name: string, lat: number, lon: number): TrainStation {
   return { id, name, lat, lon, lines: [] };
@@ -70,5 +77,80 @@ describe("matchEntranceToTrainStation", () => {
     ).toBe("subway:wall");
     // Middle of the Hudson: nothing within the fallback radius.
     expect(matchEntranceToTrainStation({ lat: 40.75, lon: -74.05 }, stations())).toBeNull();
+  });
+});
+
+// ─── The Overpass producer ──────────────────────────────────────────────────
+
+/**
+ * Until `VITE_TRANSIT_BASE` is set this is the only producer that runs, and it
+ * is the only one that runs anywhere but New York. Its seconds are derived from
+ * geometry rather than measured, so they need pinning.
+ */
+describe("fetchTrainGraph (Overpass producer)", () => {
+  const A = { id: 1, lat: 40.7, lon: -74.0 };
+  const B = { id: 2, lat: 40.709, lon: -74.0 }; // ~1 km north of A
+  // Same name as A, 22 m away: an interchange by the producer's own heuristic.
+  const C = { id: 3, lat: 40.7002, lon: -74.0 };
+  const D = { id: 4, lat: 40.69, lon: -74.0 };
+
+  function node(n: { id: number; lat: number; lon: number }, name: string) {
+    return { type: "node", id: n.id, lat: n.lat, lon: n.lon, tags: { name, railway: "station" } };
+  }
+  function relation(id: number, ref: string, members: number[]) {
+    return {
+      type: "relation",
+      id,
+      tags: { type: "route", route: "subway", ref, name: `Line ${ref}`, colour: "#123456" },
+      members: members.map((r) => ({ type: "node", ref: r, role: "stop" })),
+    };
+  }
+
+  function stubOverpass(elements: unknown[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ elements }) })),
+    );
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("prices a rail hop as the time to ride it, not its length", async () => {
+    stubOverpass([node(A, "Alpha"), node(B, "Bravo"), relation(10, "X", [A.id, B.id])]);
+    // A bbox no other test in this file uses — the producer caches by bbox.
+    const graph = (await fetchTrainGraph(40.60, -74.10, 40.80, -73.90))!;
+    const edge = graph.adj.get("osm:1")!.find((e) => e.to === "osm:2")!;
+
+    const metres = haversineMeters([A.lon, A.lat], [B.lon, B.lat]);
+    expect(edge.type).toBe("rail");
+    expect(edge.weightSec).toBeCloseTo(metres / TRAIN_SPEED_MPS, 6);
+    // ~1 km at 30 km/h is about two minutes — not ~1000 of anything.
+    expect(edge.weightSec).toBeGreaterThan(100);
+    expect(edge.weightSec).toBeLessThan(140);
+  });
+
+  it("charges a measured interchange for a transfer, not a distance", async () => {
+    stubOverpass([
+      node(A, "Alpha"),
+      node(B, "Bravo"),
+      node(C, "Alpha"),
+      node(D, "Delta"),
+      relation(10, "X", [A.id, B.id]),
+      relation(11, "Y", [C.id, D.id]),
+    ]);
+    const graph = (await fetchTrainGraph(40.61, -74.11, 40.81, -73.91))!;
+    const transfer = graph.adj.get("osm:1")!.find((e) => e.type === "transfer")!;
+    expect(transfer.to).toBe("osm:3");
+    expect(transfer.weightSec).toBe(TRANSFER_PENALTY_SEC);
+    // The 22 m between the two platforms is not what a change of line costs.
+    expect(transfer.weightSec).toBeGreaterThan(
+      haversineMeters([A.lon, A.lat], [C.lon, C.lat]) / TRAIN_SPEED_MPS,
+    );
+  });
+
+  it("namespaces OSM node ids so they cannot collide with a shard's", async () => {
+    stubOverpass([node(A, "Alpha"), node(B, "Bravo"), relation(10, "X", [A.id, B.id])]);
+    const graph = (await fetchTrainGraph(40.62, -74.12, 40.82, -73.92))!;
+    expect([...graph.stations.keys()].sort()).toEqual(["osm:1", "osm:2"]);
   });
 });
