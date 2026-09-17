@@ -39,6 +39,40 @@ describe("routeLegSummary", () => {
     });
   });
 
+  it("says how much of a ride's quoted time is spent on the platform", () => {
+    // The wait is now inside `travelTimeSec`, so a card that only shows the
+    // total says a five-minute ride takes eleven minutes and never says why.
+    const leg: RouteLeg = {
+      type: "transit",
+      geojson: line,
+      lineName: "Q",
+      travelTimeSec: 620,
+      waitSec: 120,
+      stops: ["A", "B", "C"],
+      sunExposure: 0,
+    };
+
+    expect(routeLegSummary(leg, 1).detail).toBe(
+      "11 min - incl. ~2 min wait - 2 stops - assumed underground",
+    );
+  });
+
+  it("says nothing about a wait the feed never priced", () => {
+    // Overpass has no timetable. A "~0 min wait" would be a claim it cannot
+    // make; silence is the honest rendering of an unpriced term.
+    const leg: RouteLeg = {
+      type: "transit",
+      geojson: line,
+      lineName: "Red Line",
+      travelTimeSec: 620,
+      waitSec: 0,
+      stops: ["A", "B", "C"],
+      sunExposure: 0,
+    };
+
+    expect(routeLegSummary(leg, 1).detail).not.toContain("wait");
+  });
+
   it("does not state undergroundness as fact (#393)", () => {
     // `sunExposure` is TRAIN_SUN_EXPOSURE[mode] — a constant per mode, not a
     // measurement of this track. Every subway line prices at 0.0, and NYC's

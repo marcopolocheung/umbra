@@ -33,6 +33,8 @@ import {
   ENTRANCE_MATCH_MAX_M,
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
+import { utcOffsetMinAt } from "../lib/timezone";
+import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
   sampleBuildingMaskBothSidewalks,
   computeSolarIntensity,
@@ -897,7 +899,24 @@ export function useRouting({
               );
 
             if (trainGraph && trainGraph.stations.size >= 2) {
-              const bestTrain = findBestTrainRoute(a, b, trainGraph);
+              // Which hour's headway gets read is a question about where the
+              // rider boards, not about the browser they planned it in — the
+              // published table is a New York timetable either way. `zoneAt` is
+              // synchronous but empty until its boundary set loads, and this is
+              // an async pipeline, so it can simply be waited for; an unresolved
+              // lookup leaves the wait unpriced rather than reading hour 0 in UTC.
+              await ensureZoneLookup();
+              const boardZone = zoneAt(a[1], a[0]);
+              const departure = boardZone
+                ? {
+                    at: dateRef.current,
+                    utcOffsetMin: utcOffsetMinAt(boardZone, dateRef.current),
+                  }
+                : {};
+              if (import.meta.env.DEV)
+                console.log("[transit] boarding zone:", boardZone ?? "unresolved — wait unpriced");
+
+              const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure);
               if (import.meta.env.DEV)
                 console.log(
                   "[transit] bestTrain:",
@@ -1046,6 +1065,9 @@ export function useRouting({
                   const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
                   const sunExposure = TRAIN_SUN_EXPOSURE[lineMode];
 
+                  // Riding, changing lines, and standing on the platform. The
+                  // wait is carried separately as well so the card can say how
+                  // much of the quoted time it is.
                   const transitTimeSec = bestTrain.path.totalSec;
 
                   const legs: RouteLeg[] = [
@@ -1059,6 +1081,7 @@ export function useRouting({
                       type: "transit",
                       geojson: transitGeoJSON,
                       travelTimeSec: transitTimeSec,
+                      waitSec: bestTrain.path.waitSec,
                       line: primaryLine,
                       lineColor,
                       lineName,

@@ -5,15 +5,15 @@
 > and S3a are merged. This document is everything after it, in the order the dependencies
 > actually allow.
 
-**Verified 2026-09-16**, `main` at `fc5e148`. Green: lint 0 errors (55 warnings / 8 infos, the
+**Verified 2026-09-16**, `main` at `f3ae8c9`. Green: lint 0 errors (55 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1191 tests / 86 files**, build clean.
+error), typecheck 0, **1220 tests / 86 files**, build clean.
 
 **Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
 production genuinely routes on the published data — confirmed against the deployed site, which
-fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. **Phase
-2 is no longer what comes next:** production surfaced two robustness defects in the *Overpass*
-half, and they are Phase 1.5 below.
+fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. Phase
+1.5 followed it (#401, #400, #407) after production surfaced two robustness defects in the
+*Overpass* half. **Phase 2 is now in review** — see its section below. **Phase 3 is next.**
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -40,7 +40,7 @@ Four constraints, and they fully determine the sequence:
 
 0. **Phase 1.5 before Phase 2.** Phase 2 makes transit routes *better*; Phase 1.5 is why a third
    of them do not appear at all. Improving the timetable maths while the option silently
-   vanishes spends effort where nobody can see it.
+   vanishes spends effort where nobody can see it. *(Done — #401, #400, #407.)*
 1. **Nothing transit-shaped is observable until #395 is fixed.** `buildTrainDrawData` had never
    rendered. Any change in Phase 2 or 3 would have to be verified blind. *(Done — #397.)*
 2. **Bus stop-wait exposure *is* headway wait.** Building S4 on a search that cannot price
@@ -352,48 +352,92 @@ suite could not see.
 
 ---
 
-## Phase 2 — #391: spend the data
+## Phase 2 — #391: spend the data — **in review**
 
-This is the reason the dataset exists. Two terms are still unpriced, and both depend on **which
+**Done, one PR, not merged.** Derivation note:
+`docs/notes/transit-wait-and-change-seconds.md`, which carries the measurements. What follows
+is the brief as it was written, then what actually had to change.
+
+This is the reason the dataset exists. Two terms were unpriced, and both depend on **which
 route you are boarding**, which a search keyed on station alone cannot see:
 
 - **`changeSec`** — the feed's own cost for changing lines inside one station. No transfer
-  *edge* is traversed when you change from the N to the Q at one node, so it currently costs
-  nothing. It shows: Union Sq → Atlantic Av-Barclays Ctr prices as one uninterrupted `N/Q/B`
-  ride.
+  *edge* is traversed when you change from the N to the Q at one node, so it cost nothing.
 - **Headway wait** — half a headway is the expected wait for an unsynchronised arrival, charged
   once per boarding. It is what makes *"how long am I standing in the sun at this stop?"*
   answerable, which is the whole product argument for this data.
 
-**The change.** Search state becomes `(station, route boarded)` rather than `station`. The graph
-is small — 496 stations, ~29 routes, 2,099 adjacency edges — so the state space stays in the low
-thousands and the existing array-scan PQ is still fine. On each rail edge charge nothing if the
-incoming edge carried the same `route`; otherwise `changeSec` at that station plus half the
-boarded route's headway. `prevLine` already tracks the incoming route for segment
-reconstruction — it just is not part of the key.
+**The change.** Search state is `(station, what the rider arrived on)` — on foot, over a
+transfer edge, or on a named route — rather than the station alone. On each rail edge it charges
+nothing if the incoming edge carried the same route; otherwise half the boarded route's headway,
+plus `changeSec` when the change happens inside one station node. A change made *over* a
+transfer edge has already paid the agency's `min_transfer_time` in the edge weight, and boarding
+at the origin is not a change at all. 956 (station, route) pairs against 496 stations, and the
+array-scan PQ held: the full candidate sweep is 6–102 ms on the real graph.
 
-**Three traps, all with issues behind them:**
+### The plumbing this document did not mention
 
-- **`changeSec: 0` is a real value**, not a missing one — 57 cross-platform interchanges at Times
-  Sq, Grand Central and Union Sq. 33 stations have no value at all, and the field is *absent*
-  rather than defaulted, so nothing may substitute a number the agency did not publish (#384).
-  `parseTransitShard` already preserves this distinction; do not undo it.
-- **`hour` is a service-day hour, 0–27, not wall-clock** (#383). Hours 24+ are the early morning
-  of `headwayDates[dataset][dayType].nextDate`, whose type is `nextDayType` — **Saturday's hour
-  24 is Sunday service.** Hours 0–3 and 24–27 are different calendar days and must not be
-  merged: the 7 ships hour 1 at 1200 s and hour 24 at 570 s.
-- **Which clock.** `dateRef.current` in `useRouting` is a browser-local `Date`. Someone planning
-  an NYC trip from another timezone must not read the wrong hour's headway. The existing honest
-  way to resolve it is `zoneAt(lat, lng)` in `app/lib/tzLookup.ts` — note it needs
-  `ensureZoneLookup()` to have resolved first, and returns `null` until it has — with
-  `utcOffsetMinAt(zone, at)` in `app/lib/timezone.ts`. E5 hit the same trap and chose to leave
-  the existing zone standing rather than flap to UTC on an unresolved lookup; do the same rather
-  than silently reading hour 0.
+`buildTrainGraphFromShards` dropped **both** inputs before any of the above could run, and
+nothing downstream could reach them:
 
-The Overpass producer has no headways and no `changeSec`, so it charges zero for both and keeps
-behaving as it does today.
+- `TransitStop.changeSec` was not copied onto `TrainStation`.
+- The shard's `headways` array was not carried into `TrainGraph` at all.
+- `TransitEdge.direction` was not carried either — and the headway tables are keyed by it.
+- `headwayDates` lives in the **manifest**, not the shard, so `trainGraphSource` had to pass it
+  down: it is what says which calendar morning each table's hours 24+ describe.
 
-This one warrants a derivation note in the form of `docs/notes/transit-cost-seconds.md`.
+So `TrainStation`, `TrainGraphEdge` and `TrainGraph` all grew fields, and
+`buildTrainGraphFromShards` grew a second parameter. The Overpass producer sets none of them
+and behaves exactly as before.
+
+### The trap that was not in the brief
+
+**Charging nothing where nothing is published is not the safe default.** A zero wait makes an
+unscheduled route the cheapest edge in the graph. Measured on the real feed, a 10 a.m.
+Times Sq → Grand Central trip took the **`7X`** — the peak-only Flushing express, which
+publishes no trips at that hour — over the shuttle, *because* its wait was unpriced. The `FX`
+publishes nothing on a weekday at all and would have won every Queens Boulevard trip for free.
+
+So a missing row is read as the schedule listing no trips and the boarding is refused — but only
+in an hour the tables describe. The distinction between *"the table covers this hour and is
+silent about you"* and *"nothing here reaches this hour"* is load-bearing, and so is where it
+stops: inferring "no service" from the overnight tail stranded **36 of 65 sampled trips with no
+transit option at all** at half past midnight, because the feed lists nine route-directions at
+hour 24 and nothing at 25–27 on a system that runs all night. The negative inference therefore
+stops at hour 23; the small hours price what they publish and refuse nothing.
+
+### The three traps that were
+
+- **`changeSec: 0` is a real value**, not a missing one — 57 cross-platform interchanges. 33
+  stations have no value at all and the field stays *absent* through both hops (#384). An absent
+  change charges nothing because it is unpriced, not because it is free.
+- **`hour` is a service-day hour, 0–27** (#383). 04:00–23:59 reads that day's table at that
+  hour; 00:00–03:59 reads the *previous* service day at hour + 24, and refuses when
+  `nextDayType` says that table describes a different morning — the weekday table's hour 24 is a
+  Thursday morning and cannot price a Saturday one. The tables' own hours 0–3 are never read:
+  both buckets describe the same calendar morning from different service days, and not merging
+  them means reading one.
+- **Which clock.** `zoneAt(origin)` after `ensureZoneLookup()` — the pipeline is already async,
+  so the boundary set is waited for rather than raced — then `utcOffsetMinAt(zone, at)`. An
+  unresolved lookup leaves the wait unpriced rather than reading hour 0 in UTC.
+
+### What it was worth
+
+Sampled over 65 station pairs, weekday 10:00, against the graph the old adapter built: mean line
+changes per trip **2.42 → 1.80 (`changeSec`) → 1.06 (+ wait)**, mean wait 7.0 min, no trip left
+without an option. Union Sq → Atlantic Av-Barclays went from `N`/`Q`/`B` in 14 min — the exact
+symptom `transit-cost-seconds.md` recorded, which was two free changes of line — to the `Q` in
+18 min, 4 of them waiting. Times Sq → 231 St went from `2`/`1` to the `1` alone, 23 stops: a
+change traded for a longer ride on one train, which is the trade a rider actually makes.
+
+### What is still open after it
+
+- The wait is a number of seconds, not an exposure. *Where* the rider stands while they wait is
+  3B, and it is the half that the shade argument needs.
+- 01:00–03:59 maps to hours 25–27, which the feed does not publish. Unpriced, as before.
+- A trip whose only path runs on a line that has stopped for the night now finds no transit
+  option, and says nothing about why. Two of 65 sampled pairs at 23:30. The 1.5C notice fires
+  when a *found* option is dropped, not when none is found.
 
 ---
 
@@ -484,6 +528,15 @@ Each was measured; the measurement is in the PR or the issue.
   the reverse would invent service on the 14 stop pairs that genuinely run one way.
 - **`TRANSFER_PENALTY_SEC = 180`** is the feed's modal `min_transfer_time`, not a conversion of
   the old 300 m — which was worth ~36 s at train speed and was never a distance anyone walked.
+- **A missing headway row is "no trips scheduled", not "unknown"** — but only in an hour the
+  tables describe, and never past hour 23. Both halves were measured: unpriced-means-free sent a
+  10 a.m. trip on the peak-only `7X`, and refusing on the overnight tail stranded 36 of 65
+  sampled trips at 00:30. See `docs/notes/transit-wait-and-change-seconds.md`.
+- **Headways are read per direction.** 144 of the 1,313 published route-hours carry only one
+  direction — the peak-only `6X`/`7X`, the `Z`, the Rockaway `H` — and those are real
+  one-directional services, not gaps to fill from the other platform.
+- **Every boarding on a path is priced at the departure instant**, not at the time the rider
+  would reach that platform. The tables are hourly; a time-dependent search is a different thing.
 
 ---
 
@@ -492,7 +545,7 @@ Each was measured; the measurement is in the PR or the issue.
 ```sh
 npm run dev            # localhost:5173 is in the CORS allowlist; 127.0.0.1 is NOT
 /gates                 # all four, before any PR
-npm run e2e            # the only automated browser check — and it cannot see transit yet (1C)
+npm run e2e            # the only automated browser check; 1C gave it a hermetic transit fixture
 
 # what the app fetches, by hand
 curl -s -A "Mozilla/5.0 Chrome/140" \

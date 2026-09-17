@@ -6,6 +6,7 @@
  */
 
 import { haversineMeters } from "./routing";
+import { toMapLocal } from "./timezone";
 import { travelTimeSeconds } from "./travelMode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -24,6 +25,13 @@ export interface TrainStation {
   name: string;
   nameLocal?: string;
   lines: string[]; // line refs that serve this station
+  /**
+   * The feed's own cost of changing lines inside this station, in seconds.
+   * **Absent is not zero** — 0 is a real value at the 57 cross-platform
+   * interchanges, while 33 stations publish no change cost at all and nothing
+   * may substitute one (#384). The Overpass producer never has it.
+   */
+  changeSec?: number;
 }
 
 export interface TrainGraphEdge {
@@ -37,6 +45,12 @@ export interface TrainGraphEdge {
   weightSec: number;
   type: "rail" | "transfer";
   line?: string;
+  /**
+   * Which direction of `line` this hop runs, as the feed numbers them. It is
+   * what the headway tables are keyed by, because a platform waits for trains
+   * going one way. Absent from the Overpass producer, which has no timetable.
+   */
+  direction?: number;
 }
 
 export interface TrainGraph {
@@ -45,6 +59,8 @@ export interface TrainGraph {
   lineColors: Map<string, string>;
   lineNames: Map<string, string>;
   lineModes: Map<string, TrainMode>;
+  /** Published waits. Absent from the Overpass producer, which prices none. */
+  headways?: TrainHeadways;
 }
 
 // ─── Segment types for route visualization ──────────────────────────────────
@@ -75,8 +91,14 @@ export interface TrainDrawData {
 
 export interface TrainPathResult {
   stationIds: string[];
-  /** Scheduled riding and transfer time. Excludes waiting to board. */
+  /** Scheduled riding, changing lines, and waiting to board. */
   totalSec: number;
+  /**
+   * The waiting half of `totalSec`: half a published headway per boarding. 0
+   * when the feed publishes no headway for what was boarded — which is not a
+   * claim that a train was there, only that the wait went unpriced.
+   */
+  waitSec: number;
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
 }
@@ -132,6 +154,152 @@ const DEFAULT_COLORS = [
   "#84cc16",
   "#f97316",
 ];
+
+// ─── Service day and headways ───────────────────────────────────────────────
+
+/** The three schedules the published headway tables are keyed by. */
+export type TrainDayType = "weekday" | "saturday" | "sunday";
+
+/**
+ * Published waits, as the shards ship them.
+ *
+ * Keyed by the route **and direction** boarded, because a platform waits for
+ * trains going one way and the tables are published that way. A wait is priced
+ * only where the agency published one for that exact key: borrowing the
+ * opposite direction's number, or a neighbouring hour's, would invent a
+ * frequency nobody scheduled, which is the same rule `changeSec` follows.
+ */
+export interface TrainHeadways {
+  /** `route|direction|dayType|hour` → published median headway, in seconds. */
+  medianSec: Map<string, number>;
+  /**
+   * `dayType|hour` for every hour the tables describe at all. It is what makes
+   * a missing row readable: inside a covered hour, no row means the schedule
+   * lists no trips — the Z runs two hours a day and the FX none at all on a
+   * weekday — while an hour with no rows for anyone is an hour the published
+   * data simply does not reach, and says nothing about anybody.
+   */
+  coveredHours: Set<string>;
+  /**
+   * Which day type each table's hours 24+ describe, out of the manifest's
+   * `headwayDates`. Saturday's hour 24 is a Sunday morning; the weekday
+   * table's is a weekday morning, so it cannot price a Saturday one.
+   */
+  nextDayType: Map<TrainDayType, TrainDayType>;
+}
+
+export function headwayKey(
+  route: string,
+  direction: number,
+  dayType: TrainDayType,
+  hour: number
+): string {
+  return `${route}|${direction}|${dayType}|${hour}`;
+}
+
+/** When and where the rider boards, for reading the service-day headway. */
+export interface TrainDepartureOptions {
+  /**
+   * Departure instant. Every boarding on the path is priced at it rather than
+   * at the time the rider would really reach that platform: the tables are
+   * hourly and a subway trip rarely outlives the hour it started in.
+   */
+  at?: Date;
+  /**
+   * Minutes east of UTC **where the rider boards** — `zoneAt` plus
+   * `utcOffsetMinAt`, not the browser's own offset. Planning an NYC trip from
+   * Berlin must not read Berlin's hour off a New York timetable.
+   */
+  utcOffsetMin?: number;
+}
+
+/**
+ * GTFS counts the small hours as the tail of the previous day's service, which
+ * is what hours 24-27 mean. Four in the morning is where the feed's own
+ * patterns change over.
+ */
+const SERVICE_DAY_START_HOUR = 4;
+
+/**
+ * The last hour the published tables describe completely enough to argue *from*.
+ *
+ * Their overnight tail does not. The weekday table lists nine route-directions
+ * at hour 24 and nothing at all at 25-27, while the subway runs all night — so
+ * an hour-24 headway is still the agency's own number and is charged, but its
+ * silence is ignorance rather than a timetable. Inferring "no service" from it
+ * stranded 36 of 65 sampled trips with no transit option at half past midnight.
+ */
+const LAST_COMPLETE_SERVICE_HOUR = 23;
+
+function dayTypeOfWeekday(dow: number): TrainDayType {
+  if (dow === 0) return "sunday";
+  if (dow === 6) return "saturday";
+  return "weekday";
+}
+
+/**
+ * The table and hour that describe an instant, or `null` when none does.
+ *
+ * Two published buckets cover a calendar morning — a table's own hours 0-3, and
+ * the previous service day's hours 24-27 — and they are different service days
+ * that may not be merged (#383). This reads the second, the encoding the
+ * manifest documents and the one NYC's overnight service actually uses (the 7
+ * ships hour 1 at 1200 s against hour 24 at 570 s), and leaves the tables' own
+ * hours 0-3 unread rather than adding them to it.
+ *
+ * It refuses outright when the previous day's table does not describe this
+ * morning: the weekday table's hour 24 is a Thursday morning, so nothing in it
+ * can price a Saturday one.
+ */
+export function serviceDayHour(
+  at: Date,
+  utcOffsetMin: number,
+  nextDayType: Map<TrainDayType, TrainDayType>
+): { dayType: TrainDayType; hour: number } | null {
+  const { hours, year, month, day } = toMapLocal(at, utcOffsetMin);
+  const today = dayTypeOfWeekday(new Date(Date.UTC(year, month, day)).getUTCDay());
+  if (hours >= SERVICE_DAY_START_HOUR) return { dayType: today, hour: hours };
+
+  const yesterday = dayTypeOfWeekday(new Date(Date.UTC(year, month, day - 1)).getUTCDay());
+  if (nextDayType.get(yesterday) !== today) return null;
+  return { dayType: yesterday, hour: hours + 24 };
+}
+
+/**
+ * What the published tables say about boarding a route at an instant.
+ *
+ * `no-service` and `unreadable` are different answers, and collapsing them into
+ * "no wait" is the trap. Charging nothing for a train that is not running makes
+ * it the cheapest edge in the graph, and the router boards it by preference:
+ * measured on the real feed, a 10 a.m. Times Sq → Grand Central trip took the
+ * peak-only `7X` — which publishes no trips at that hour — over the shuttle.
+ */
+export type HeadwayReading =
+  | { kind: "published"; medianSec: number }
+  | { kind: "no-service" }
+  | { kind: "unreadable" };
+
+export function readHeadway(
+  headways: TrainHeadways | undefined,
+  route: string,
+  direction: number | undefined,
+  at: Date,
+  utcOffsetMin: number
+): HeadwayReading {
+  // The Overpass producer ships no timetable, and its rail edges carry no
+  // direction: nothing here can speak for or against boarding one.
+  if (!headways || direction === undefined) return { kind: "unreadable" };
+  const slot = serviceDayHour(at, utcOffsetMin, headways.nextDayType);
+  if (!slot) return { kind: "unreadable" };
+
+  const medianSec = headways.medianSec.get(
+    headwayKey(route, direction, slot.dayType, slot.hour)
+  );
+  if (medianSec !== undefined) return { kind: "published", medianSec };
+  if (slot.hour > LAST_COMPLETE_SERVICE_HOUR) return { kind: "unreadable" };
+  if (!headways.coveredHours.has(`${slot.dayType}|${slot.hour}`)) return { kind: "unreadable" };
+  return { kind: "no-service" };
+}
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
 
@@ -450,54 +618,138 @@ export async function fetchTrainGraph(
 
 // ─── Dijkstra ───────────────────────────────────────────────────────────────
 
+/** Search-state key: station id, this separator, then what the rider arrived on. */
+const STATE_SEP = "\u0000";
+/** On the street, not yet boarded anything. */
+const ARRIVED_ON_FOOT = "";
+/** Arrived over a transfer edge, whose `minSec` already paid for the change. */
+const ARRIVED_BY_TRANSFER = "\u0001";
+
+function stateKey(stationId: string, arrivedOn: string): string {
+  return `${stationId}${STATE_SEP}${arrivedOn}`;
+}
+
+function stationOfState(key: string): string {
+  return key.slice(0, key.indexOf(STATE_SEP));
+}
+
+function arrivalOfState(key: string): string {
+  return key.slice(key.indexOf(STATE_SEP) + 1);
+}
+
+/**
+ * What boarding `edge` costs, having arrived on `arrivedOn`, or `null` when it
+ * cannot be boarded at all because nothing is scheduled to turn up.
+ *
+ * Nothing at all if it is the route already being ridden. Otherwise half a
+ * headway — the expected wait for an unsynchronised arrival at an
+ * unsynchronised service — plus, when the change happens inside one station
+ * node, the feed's own `changeSec` for it. A change made *over* a transfer edge
+ * has already paid the agency's `min_transfer_time` in that edge's weight, and
+ * walking in off the street at the start of the journey is not a change.
+ */
+function boardingCost(
+  graph: TrainGraph,
+  stationId: string,
+  arrivedOn: string,
+  edge: TrainGraphEdge,
+  opts: TrainDepartureOptions
+): { changeSec: number; waitSec: number } | null {
+  if (edge.type !== "rail") return { changeSec: 0, waitSec: 0 };
+  const route = edge.line ?? "";
+  if (arrivedOn === route) return { changeSec: 0, waitSec: 0 };
+
+  const changingLines = arrivedOn !== ARRIVED_ON_FOOT && arrivedOn !== ARRIVED_BY_TRANSFER;
+  // Absent `changeSec` costs nothing here because it is *unpriced*, not free.
+  // The alternative is to make a number up, which is what #384 forbids.
+  const changeSec = changingLines ? (graph.stations.get(stationId)?.changeSec ?? 0) : 0;
+
+  if (!opts.at || opts.utcOffsetMin === undefined) return { changeSec, waitSec: 0 };
+  const reading = readHeadway(graph.headways, route, edge.direction, opts.at, opts.utcOffsetMin);
+  // The schedule reaches this hour and lists nothing: there is no train to get
+  // on, so this is not an edge the rider can use at this time.
+  if (reading.kind === "no-service") return null;
+  // Nothing readable — Overpass, or an hour no published table describes. The
+  // wait goes unpriced, which is where it stood before any of this.
+  if (reading.kind === "unreadable") return { changeSec, waitSec: 0 };
+  return { changeSec, waitSec: reading.medianSec / 2 };
+}
+
 /**
  * Fastest path on the train graph, in seconds.
- * Simple array-scan PQ — fine for metro-scale graphs (~200 stations).
+ *
+ * The state is `(station, what the rider arrived on)`, not the station alone. A
+ * station-keyed search cannot see a change of line made inside one node — no
+ * transfer edge is traversed going from the N to the Q at Union Sq — so it
+ * charged nothing for one, and it could not charge a wait that depends on which
+ * route is boarded either. The states are the (station, route) pairs some edge
+ * actually serves, 956 of them for the published NYC subway against its 496
+ * stations, so the array-scan PQ still holds.
  */
 export function trainDijkstra(
   graph: TrainGraph,
   startId: string,
-  endId: string
+  endId: string,
+  opts: TrainDepartureOptions = {}
 ): TrainPathResult | null {
   if (startId === endId) return null;
 
   const dist = new Map<string, number>();
+  const waitTo = new Map<string, number>();
   const prev = new Map<string, string>();
   const prevLine = new Map<string, string>();
-  const pq: { id: string; cost: number }[] = [];
+  const pq: { key: string; cost: number }[] = [];
 
-  dist.set(startId, 0);
-  pq.push({ id: startId, cost: 0 });
+  const startKey = stateKey(startId, ARRIVED_ON_FOOT);
+  dist.set(startKey, 0);
+  waitTo.set(startKey, 0);
+  pq.push({ key: startKey, cost: 0 });
+
+  let endKey: string | null = null;
 
   while (pq.length > 0) {
     let minIdx = 0;
     for (let i = 1; i < pq.length; i++) {
       if (pq[i].cost < pq[minIdx].cost) minIdx = i;
     }
-    const { id, cost } = pq.splice(minIdx, 1)[0];
+    const { key, cost } = pq.splice(minIdx, 1)[0];
 
-    if (cost > (dist.get(id) ?? Infinity)) continue;
-    if (id === endId) break;
+    if (cost > (dist.get(key) ?? Infinity)) continue;
+    const id = stationOfState(key);
+    // States pop in cost order, so the first one standing at the destination is
+    // the cheapest way to be standing there, whatever it arrived on.
+    if (id === endId) {
+      endKey = key;
+      break;
+    }
+    const arrivedOn = arrivalOfState(key);
 
     for (const edge of graph.adj.get(id) ?? []) {
-      const newCost = cost + edge.weightSec;
-      if (newCost < (dist.get(edge.to) ?? Infinity)) {
-        dist.set(edge.to, newCost);
-        prev.set(edge.to, id);
-        prevLine.set(edge.to, edge.line ?? "");
-        pq.push({ id: edge.to, cost: newCost });
+      const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
+      if (boarding === null) continue;
+      const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
+      const nextKey = stateKey(
+        edge.to,
+        edge.type === "transfer" ? ARRIVED_BY_TRANSFER : (edge.line ?? ARRIVED_ON_FOOT)
+      );
+      if (newCost < (dist.get(nextKey) ?? Infinity)) {
+        dist.set(nextKey, newCost);
+        waitTo.set(nextKey, (waitTo.get(key) ?? 0) + boarding.waitSec);
+        prev.set(nextKey, key);
+        prevLine.set(nextKey, edge.line ?? "");
+        pq.push({ key: nextKey, cost: newCost });
       }
     }
   }
 
-  if (!dist.has(endId)) return null;
+  if (endKey === null) return null;
 
   // Reconstruct path backward, collecting edge line refs
   const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
-  let cur: string | undefined = endId;
+  let cur: string | undefined = endKey;
   while (cur !== undefined) {
-    stationIds.push(cur);
+    stationIds.push(stationOfState(cur));
     const line = prevLine.get(cur);
     if (line !== undefined) edgeLines.push(line); // skip start (no incoming edge)
     cur = prev.get(cur);
@@ -544,7 +796,13 @@ export function trainDijkstra(
     }
   }
 
-  return { stationIds, totalSec: dist.get(endId)!, lines, segments };
+  return {
+    stationIds,
+    totalSec: dist.get(endKey)!,
+    waitSec: waitTo.get(endKey) ?? 0,
+    lines,
+    segments,
+  };
 }
 
 // ─── Nearest station lookup ─────────────────────────────────────────────────
@@ -570,13 +828,18 @@ export function nearestStations(
  * Finds the fastest Walk → Train → Walk route between two points.
  * Tries N nearest entry stations × N nearest exit stations, picks lowest cost.
  * Returns null if no viable train route exists.
+ *
+ * With `opts`, the ride each candidate is judged on includes the wait to board,
+ * so a longer walk to a more frequent line can now win — which is the point of
+ * pricing the wait at all.
  */
 export function findBestTrainRoute(
   a: [number, number], // [lng, lat]
   b: [number, number],
   graph: TrainGraph,
   maxWalkM = 1500,
-  maxCandidates = 5
+  maxCandidates = 5,
+  opts: TrainDepartureOptions = {}
 ): BestTrainRoute | null {
   const entryCandidates = nearestStations(
     a,
@@ -600,7 +863,7 @@ export function findBestTrainRoute(
     for (const exit of exitCandidates) {
       if (entry.id === exit.id) continue;
 
-      const path = trainDijkstra(graph, entry.id, exit.id);
+      const path = trainDijkstra(graph, entry.id, exit.id, opts);
       if (!path) continue;
 
       // Need at least 3 stations (entry + 1 intermediate + exit) to be useful

@@ -92,7 +92,9 @@ export interface RouteLeg {
   type: 'walk' | 'transit';
   geojson: GeoJSON.Feature<GeoJSON.LineString>;
   distanceM?: number;        // walk legs
-  travelTimeSec?: number;    // transit legs
+  travelTimeSec?: number;    // transit legs — riding, changing, and waiting
+  /** Transit legs: the waiting half of `travelTimeSec`, 0 where unpriced. */
+  waitSec?: number;
   shadowCoverage?: number;    // walk legs only (0–1)
   line?: string;             // transit legs: line ref/code
   lineColor?: string;        // transit legs: hex color
