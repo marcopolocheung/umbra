@@ -15,6 +15,7 @@ import {
   sampleBuildingMaskBothSidewalks,
 } from "../../lib/shadowSampling";
 import { useNavigation } from "../useNavigation";
+import { isShadowV2DebugEnabled } from "../../lib/shadowV2Debug/RemoteTileService";
 
 vi.mock("../../lib/nominatim", () => ({
   geocodeReverse: vi.fn(),
@@ -52,6 +53,8 @@ const shadowStub = vi.hoisted(() => ({
   }>,
   sampledBatchSizes: [] as number[],
 }));
+
+afterEach(() => vi.unstubAllEnvs());
 
 vi.mock("../../lib/shadowField/ShadowField", async () => {
   const actual = await vi.importActual<typeof import("../../lib/shadowField/ShadowField")>(
@@ -735,6 +738,28 @@ describe("routing reads the shadow field (A4b)", () => {
     // Fully shadowed sidewalks on the only edge there is, so the route inherits it.
     expect(result.current.navRoutes[0].shadowCoverage).toBe(1);
     expect(result.current.navRoutes[0].shadowSource?.dominant).toBe("tiles");
+  });
+
+  it("keeps renderer-owned readback and route scoring identical with debug on or off", async () => {
+    // The diagnostic is a MapLibre custom layer, never an IShadowLayer. This
+    // checks the actual routing seam: both runs consume only the renderer-owned
+    // readBuildingShadowMask and must produce the same scored route.
+    const score = async (flag: "true" | "false") => {
+      vi.stubEnv("VITE_SHADOW_V2_DEBUG", flag);
+      expect(isShadowV2DebugEnabled(flag)).toBe(flag === "true");
+      resetShadowStub();
+      shadowStub.coverage = { source: "none", confidence: 0 };
+      shadowStub.edgeShadow = [{ left: 0.25, right: 0.75, source: "none", confidence: 0 }];
+      const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+      const result = await runRouteWith(map);
+      return result.current.navRoutes.map((route) => ({
+        distanceM: route.distanceM, shadowCoverage: route.shadowCoverage,
+        longestContinuousShadowM: route.longestContinuousShadowM, shadowSource: route.shadowSource,
+      }));
+    };
+    const off = await score("false");
+    const on = await score("true");
+    expect(on).toEqual(off);
   });
 
   it("falls back to pixels for a weak edge and only that edge", async () => {
