@@ -355,3 +355,62 @@ describe("buildTrainGraphFromShards: the boarding terms", () => {
     expect(timed.waitSec).toBe(30);
   });
 });
+
+// ─── Spatial transfer stubs ─────────────────────────────────────────────────
+
+describe("spatial transfer stubs", () => {
+  /**
+   * The published subway shard carries 150 agency transfers and 5,172 spatial
+   * stubs — every bus stop within 200 m of a station, nearest 10 kept, timed at
+   * 1.4 m/s on a straight line, with nothing checking a walkable path exists.
+   * They are inert today only because no loaded edge serves a bus stop, so they
+   * would all go live in one step when bus shards load.
+   */
+  function withServedStub(): TransitShard {
+    const base = shard();
+    return {
+      ...base,
+      // Give the bus stop an edge of its own, so it becomes a station and the
+      // "no loaded edge serves it" accident no longer hides the stub.
+      edges: [
+        ...base.edges,
+        { from: "bus:900", to: "bus:901", route: "B1", direction: 0, medianSec: 120, trips: 50, distM: 400 },
+        { from: "bus:901", to: "bus:900", route: "B1", direction: 1, medianSec: 120, trips: 50, distM: 400 },
+      ],
+      stops: [...base.stops, { id: "bus:901", name: "Bus stop 2", lat: 40.6975, lon: -74.0, feeds: ["bus-m"] }],
+      routes: [
+        ...base.routes,
+        { id: "B1", shortName: "B1", longName: "Bus One", type: 1, color: "000000", textColor: "FFFFFF" },
+      ],
+    };
+  }
+
+  it("refuses a spatial stub even when both of its endpoints are served", () => {
+    // The point of the test: today they drop out incidentally, and this must
+    // hold for the reason we chose instead — that a straight-line guess is not
+    // something to route a rider across.
+    const graph = buildTrainGraphFromShards([withServedStub()]);
+    expect(graph?.stations.has("bus:900")).toBe(true);
+    const fromB = graph?.adj.get("subway:B") ?? [];
+    expect(fromB.some((e) => e.to === "bus:900")).toBe(false);
+  });
+
+  it("keeps the agency's own transfer, and says where it came from", () => {
+    const graph = buildTrainGraphFromShards([withServedStub()]);
+    const transfer = (graph?.adj.get("subway:C") ?? []).find((e) => e.to === "subway:D");
+    expect(transfer?.type).toBe("transfer");
+    expect(transfer?.weightSec).toBe(180);
+    // Provenance survives to the graph edge; it used to be dropped here, which
+    // left a guess indistinguishable from an agency fact once loaded.
+    expect(transfer?.transferKind).toBe("gtfs");
+  });
+
+  it("still routes over the agency transfer with stubs refused", () => {
+    // Refusing the stubs must not cost the subway network its real interchange.
+    const path = trainDijkstra(buildTrainGraphFromShards([withServedStub()])!, "subway:A", "subway:E");
+    expect(path?.stationIds).toEqual([
+      "subway:A", "subway:B", "subway:C", "subway:D", "subway:E",
+    ]);
+    expect(path?.totalSec).toBe(3 * 90 + 180);
+  });
+});

@@ -68,6 +68,17 @@ export interface TrainGraphEdge {
    * **unknown** — never "underground".
    */
   structure?: TrainEdgeStructure;
+  /**
+   * Where a `transfer` edge came from. `gtfs` is the agency's own published
+   * transfer; `spatial` is an unvalidated straight-line stub.
+   *
+   * Carried because the two are not interchangeable and the distinction was
+   * being thrown away at the adapter boundary: the shard contract keeps `kind`,
+   * but the graph edge used to record only `{ to, weightSec, type }`, so a
+   * guess became indistinguishable from an agency fact the moment it was
+   * loaded. Absent from the Overpass producer, which synthesises no transfers.
+   */
+  transferKind?: "gtfs" | "spatial";
 }
 
 /**
