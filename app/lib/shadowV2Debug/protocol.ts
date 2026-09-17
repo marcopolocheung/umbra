@@ -5,9 +5,12 @@ export const DEBUG_WORKER_BUDGET = 96 * 1024 * 1024;
 export const DEBUG_ZOOM = 20;
 export const DEBUG_TILE_ZOOM = 18;
 
-export type DebugTileStatus = "loading" | "ready" | "incomplete" | "error" | "evicted";
+export type DebugTileStatus = "loading" | "ready" | "incomplete" | "error" | "evicted" | "released";
 
 export interface DebugAccounting {
+  /** Bytes retained in this generation's Cache Storage namespace. */
+  cacheBytes: number;
+  /** A compressed bundle while it is being decoded (not Cache Storage). */
   compressedBytes: number;
   workerBytes: number;
   stagingBytes: number;
@@ -29,7 +32,7 @@ export type DebugWorkerCommand =
 
 export type DebugWorkerEvent =
   | { type: "generationReady"; requestId: number; generation: string; root: GenerationRoot; coverage: CoverageIndex }
-  | { type: "tileLoading" | "tileIncomplete" | "tileError" | "tileEvicted"; requestId: number; generation: string; tile: string; error?: string; cacheSource?: "cache" | "network" }
+  | { type: "tileLoading" | "tileIncomplete" | "tileError" | "tileEvicted" | "tileReleased"; requestId: number; generation: string; tile: string; error?: string; cacheSource?: "cache" | "network" }
   | { type: "tileReady"; requestId: number; generation: string; tile: string; pixels: Uint8Array; complete: boolean; cacheSource: "cache" | "network" }
   | { type: "accounting"; requestId: number; generation?: string; accounting: Omit<DebugAccounting, "stagingBytes" | "gpuBytes"> };
 

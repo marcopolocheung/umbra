@@ -54,7 +54,7 @@ const SHADOW_V2_DEBUG = isShadowV2DebugEnabled();
 // The proxy is intentionally dev-only. Production continues to use the Worker
 // directly, preserving its existing CORS policy.
 const SHADOW_DEBUG_BASE = import.meta.env.DEV ? "/__shadow" : (import.meta.env.VITE_SHADOW_API_BASE ?? "").replace(/\/$/, "");
-const EMPTY_DEBUG_ACCOUNTING: DebugAccounting = { compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
+const EMPTY_DEBUG_ACCOUNTING: DebugAccounting = { cacheBytes: 0, compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
 
 /**
  * Ensure nav overlays stay visible.
@@ -710,6 +710,14 @@ export default function MapView({
         };
         debugService.onTileEvicted = (tile) => {
           debugLayer?.removeTile(tile);
+          map.triggerRepaint();
+        };
+        debugService.onTileReleased = (tile) => {
+          debugLayer?.removeTile(tile);
+          map.triggerRepaint();
+        };
+        debugService.onGenerationReset = () => {
+          debugLayer?.clearTiles();
           map.triggerRepaint();
         };
         debugService.onAccounting = setDebugAccounting;

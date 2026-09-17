@@ -55,6 +55,10 @@ export class DebugFieldLayer implements maplibregl.CustomLayerInterface {
     this.onGpuBytes?.(this.gpuBytes);
   }
 
+  clearTiles() {
+    for (const tile of [...this.tiles.keys()]) this.removeTile(tile);
+  }
+
   render(gl: WebGLRenderingContext | WebGL2RenderingContext, options: maplibregl.CustomRenderMethodInput) {
     if (!this.program || !this.buffer) return;
     // Bracket notation avoids a React-lint false positive on WebGL's `useProgram`.

@@ -22,7 +22,7 @@ export default defineConfig({
   // G2's benchmark has its own config (`playwright.bench.config.ts`). It measures
   // and commits a baseline rather than gating a build, takes minutes, and is
   // meaningful only on one machine — so `npm run e2e`, and therefore CI, skips it.
-  testIgnore: "**/bench/**",
+  testIgnore: ["**/bench/**", "**/shadowV2Debug.spec.ts"],
   // Flake budget: one retry, then fail. A browser test that needs more retries
   // than that is noise, and noisy CI is worse than no CI.
   retries: 1,

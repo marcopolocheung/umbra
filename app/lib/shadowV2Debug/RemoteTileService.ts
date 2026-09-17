@@ -32,7 +32,7 @@ export function debugTilesForViewport(
   });
 }
 
-const emptyAccounting: DebugAccounting = { compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
+const emptyAccounting: DebugAccounting = { cacheBytes: 0, compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
 type CommandWithoutRequestId<T> = T extends unknown ? Omit<T, "requestId"> : never;
 
 export class RemoteTileService {
@@ -46,6 +46,8 @@ export class RemoteTileService {
   onGenerationReady?: (root: GenerationRoot, coverage: CoverageIndex) => void;
   onTileUpdate?: (update: DebugTileUpdate) => void;
   onTileEvicted?: (tile: string) => void;
+  onTileReleased?: (tile: string) => void;
+  onGenerationReset?: () => void;
   onAccounting?: (value: DebugAccounting) => void;
 
   constructor(baseUrl: string) {
@@ -94,6 +96,11 @@ export class RemoteTileService {
     // Each event is correlated to the currently pinned generation. A late response
     // can neither update the debug texture nor alter its visible accounting.
     if (event.type === "generationReady") {
+      if (this.generation && this.generation !== event.generation) {
+        this.staged.clear();
+        this.accounting = { ...emptyAccounting };
+        this.onGenerationReset?.();
+      }
       this.generation = event.generation;
       this.coverage = event.coverage;
       this.onGenerationReady?.(event.root, event.coverage);
@@ -108,10 +115,12 @@ export class RemoteTileService {
       this.publishAccounting();
       return;
     }
-    if (event.type === "tileEvicted") {
+    if (event.type === "tileEvicted" || event.type === "tileReleased") {
       this.staged.delete(`${event.generation}/${event.tile}`);
       this.accounting.stagingBytes = [...this.staged.values()].reduce((sum, bytes) => sum + bytes, 0);
-      this.onTileEvicted?.(event.tile);
+      if (event.type === "tileEvicted") this.onTileEvicted?.(event.tile);
+      else this.onTileReleased?.(event.tile);
+      this.publishAccounting();
     }
     if (event.type === "accounting") {
       this.accounting = { ...this.accounting, ...event.accounting };
