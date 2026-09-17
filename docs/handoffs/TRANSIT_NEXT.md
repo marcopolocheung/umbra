@@ -5,9 +5,15 @@
 > and S3a are merged. This document is everything after it, in the order the dependencies
 > actually allow.
 
-**Verified 2026-09-16**, `main` at `c50eb79`. Green: lint 0 errors (55 warnings / 8 infos, the
+**Verified 2026-09-16**, `main` at `fc5e148`. Green: lint 0 errors (55 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1173 tests / 86 files**, build clean.
+error), typecheck 0, **1175 tests / 86 files**, build clean.
+
+**Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
+production genuinely routes on the published data — confirmed against the deployed site, which
+fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. **Phase
+2 is no longer what comes next:** production surfaced two robustness defects in the *Overpass*
+half, and they are Phase 1.5 below.
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -30,10 +36,13 @@ Verified in a browser on a real NYC route: the three r2.dev hops return 200 from
 
 ## Why this order
 
-Three constraints, and they fully determine the sequence:
+Four constraints, and they fully determine the sequence:
 
-1. **Nothing transit-shaped is observable until #395 is fixed.** `buildTrainDrawData` has never
-   rendered. Any change in Phase 2 or 3 would have to be verified blind.
+0. **Phase 1.5 before Phase 2.** Phase 2 makes transit routes *better*; Phase 1.5 is why a third
+   of them do not appear at all. Improving the timetable maths while the option silently
+   vanishes spends effort where nobody can see it.
+1. **Nothing transit-shaped is observable until #395 is fixed.** `buildTrainDrawData` had never
+   rendered. Any change in Phase 2 or 3 would have to be verified blind. *(Done — #397.)*
 2. **Bus stop-wait exposure *is* headway wait.** Building S4 on a search that cannot price
    waiting means rewriting S4. Phase 2 before Phase 3, for the same reason
    `TRANSIT_CLIENT.md` put step 6 before E6.
@@ -44,8 +53,8 @@ Three constraints, and they fully determine the sequence:
 
 ## Phase 1 — make it visible and honest
 
-**Done, in review: #397 (1A), #398 (1B), #399 (1C).** #399 is stacked on #397 because it
-asserts behaviour #397 creates; #398 is independent. 1D remains, and is an ops step.
+**Done and merged: #397 (1A), #398 (1B), #399 (1C), plus 1D.** Kept below as the record of what
+was wrong and why the order was what it was — the whole phase is complete.
 
 *One correction to the plan below:* 1A turned out to be **two** independent bugs, not one. The
 index mismatch was only half — the train-layer effect also fell back to `map.once("load")`, an
@@ -53,8 +62,8 @@ event that fires when the map first comes up and never again, so the layers were
 all. Fixing either alone leaves the map blank. The Phase 1 ordering held: nothing else was
 diagnosable until the map drew something.
 
-Three small PRs. One session can carry all three; none depends on another, so they can also be
-split. Do **1A first regardless** — it is what lets you see the other two.
+It was three small PRs. None depended on another, except that **1A had to come first** — it is
+what made the other two observable.
 
 ### 1A — #395: the map draws the walk route in transit mode
 
@@ -135,7 +144,7 @@ both needed:
 Adding the e2e origin to the bucket's CORS instead would test the network rather than the
 client; if the real fetch is worth covering, that belongs in a `smoke-live`-shaped project.
 
-### 1D — enable it in production *(ops, not a PR; the only Phase 1 item left)*
+### 1D — enable it in production *(ops, not a PR)* — **done**
 
 Set `VITE_TRANSIT_BASE` in Vercel. Until then all of the above is inert in production —
 `configuredBase()` returns `undefined` and no request is made.
@@ -145,6 +154,124 @@ allowlist, so previews silently fall back to Overpass and will not show you this
 add them or know that only production exercises it.
 
 Do this after 1A, so production does not ship a card that disagrees with the map.
+
+---
+
+## Phase 1.5 — make transit survive Overpass
+
+**Two PRs. Do this before Phase 2.** Reported from production once Phase 1 went live: transit
+routes often failed with *"The map server is busy — try a smaller area and retry"*, and when they
+did succeed the option sometimes simply was not there. Both trace to the **Overpass** half, not
+the published data.
+
+### Settle these first — they are already measured, do not re-investigate
+
+- **The R2 data is fine.** The deployed site fetches `current.json`, `manifest.json` and
+  `subway.json` (all 200) and routes the R from Times Sq-42 St to 23 St. The published half works.
+- **It is not client caching.** `graphCache` and `stationEntranceCache` (`app/lib/overpass.ts:46`,
+  `:290`) and `cached` (`remoteTransit.ts:152`) are plain module-level variables that die on every
+  reload; there is no `localStorage`/IndexedDB caching of API results; and `public/sw.js`'s
+  `shouldHandle()` excludes non-GET, cross-origin, and `/api/`. Incognito reproduces the *working*
+  state. So "it started working after five reloads" was **upstream recovery**, not a warm cache —
+  which means the fragility is entirely intact.
+- **The geometry is fine when entrances resolve.** Across three NYC O-D pairs: subway polylines
+  chain head-to-tail, and the gap between the end of a walk leg and the first subway stop is
+  **28–55 m**. Nothing is misplaced.
+
+### 1.5A — shrink the entrance query (#401)
+
+A transit calculation issues **two** Overpass queries. The second is the problem:
+
+```ts
+const trainPadding = Math.max(padding, 0.015);          // useRouting.ts:866
+…
+fetchStationEntrances(trainSouth, trainWest, trainNorth, trainEast, calcSignal),  // :881
+…
+const bestTrain = findBestTrainRoute(a, b, trainGraph); // :914
+```
+
+`trainPadding` is effectively always `0.015°`, so the box is the route extent plus **~3.3 km in
+each dimension** — a 2 km trip queries roughly 5 km × 5 km of Manhattan. And it runs at `:881`,
+*before* `findBestTrainRoute` at `:914`, so it is fetched before anything knows which two
+stations matter.
+
+**Fix:** move the fetch after `findBestTrainRoute` and ask for two small boxes around the chosen
+entry and exit — Overpass takes both in one query:
+
+```
+(node["railway"="subway_entrance"](bbox1); node["railway"="subway_entrance"](bbox2););
+```
+
+That is one to two orders of magnitude less area, and it helps whichever failure mechanism is
+actually biting.
+
+**Three things not to re-propose** — I suggested all three in #401 before reading the code, and
+two were wrong:
+
+| Idea | Reality |
+|---|---|
+| Cache entrances | **Already exists** — `stationEntranceCache`, 8 entries, bbox-containment. It is the *first* call in an area that pays. |
+| Cache at the proxy (`s-maxage`) | **Impossible** — `server/overpassProxy.js` rejects non-POST, and POST is not CDN-cacheable. |
+| Add retry/failover | **Already exists** — a three-endpoint pool (`overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`) with failover on 429/5xx. |
+
+That last one changes what the error *means*: "map server is busy" implies **all three mirrors
+failed**, not one.
+
+### 1.5B — measure before tuning any budget
+
+There are two candidate mechanisms and they need different fixes: genuine rate limiting, or a
+query merely too slow for `DEFAULT_ATTEMPT_TIMEOUT_MS = 8_000` (three attempts ≈ 24 s against
+`DEFAULT_TOTAL_TIMEOUT_MS = 26_000`, so a slow query can exhaust the pool without any mirror
+refusing it). A 2.4 km × 1.25 km walk-network capture was already **1.78 MB / 3,044 ways**.
+
+**The answer is probably already in the Vercel logs.** `logAttempt` emits
+`"Overpass upstream attempt"` through `options.logger ?? console`, with a `failureClass`:
+
+| value | means |
+|---|---|
+| `retryable_http` (status 429) | genuine rate limiting — shrinking and spacing queries is the fix |
+| `attempt_timeout` | the query is too slow for the 8 s budget — 1.5A helps directly |
+| `total_timeout` | the 26 s pool budget ran out |
+| `network` / `forwarded_http` | neither; look again |
+
+Do not touch the timeouts until that split is known. Raising them trades directly against how
+long a user stares at a spinner.
+
+### 1.5C — stop losing the transit option silently (#400)
+
+Reproduced by stubbing the entrance response to `[]` and varying nothing else:
+
+| O-D | entrances present | entrances `[]` |
+|---|---|---|
+| Bryant Pk → Madison Sq | works | **no transit option** |
+| 40.756,-73.990 → 40.740,-73.985 | works | **no transit option** |
+| 40.757,-73.986 → 40.742,-73.984 | works | works |
+
+Two of three lose it entirely — no card, no layers, no message. Three separable pieces:
+
+1. **`fetchStationEntrances` must distinguish failure from empty.** It returns `[]` for a non-OK
+   status, an HTML body and a thrown error alike (`app/lib/overpass.ts:657`), so a rate-limited
+   Overpass is indistinguishable from "this area has no entrances". One caller
+   (`useRouting.ts:881`), so the signature is cheap to change.
+2. **The centroid fallback has to route.** When no entrance matches, `useRouting` falls back to
+   the station centroid (`:926`/`:931`); `snapToGraph` then lands somewhere `dijkstra` cannot
+   reach from the origin, `walkA` comes back null, and the option is dropped at `:979`. Snap to
+   the nearest node **reachable from the origin**, or keep trying candidates until one routes.
+   This is the actual defect — (1) only makes it legible.
+3. **Say something when a found option is dropped.** `bestTrain` exists and both walks failed;
+   the user sees walking routes with no hint transit was considered.
+
+*I did not pin down the exact snapping failure.* An offline reconstruction of the walk graph
+disagreed with the app's own `snapToGraph` — the centroid looked reachable there and is not in
+the app — so whoever takes this should instrument from inside rather than trust that model.
+
+**Order: 1.5A before 1.5C.** Both land in the same block of `useRouting.ts`, and 1.5A
+restructures the code 1.5C's fallback lives in. Doing 1.5C first means writing it twice.
+
+**Test it where the bug lives.** (2) needs a graph whose nearest node to the centroid sits in a
+component the origin cannot reach — watch it fail first. The e2e fixture from #399 is the natural
+place for an entrances-unavailable variant, since this is a browser-level failure that the unit
+suite could not see.
 
 ---
 

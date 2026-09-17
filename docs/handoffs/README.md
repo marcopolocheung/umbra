@@ -16,12 +16,12 @@ blocks.
 | [`THREAD_SHADOW.md`](THREAD_SHADOW.md) | building the differentiator (G→A→H) | long; one checkpoint per PR |
 | [`THREAD_AGENT.md`](THREAD_AGENT.md) | building the multimodal agent (Track C) | long; one checkpoint per PR |
 | [`TRANSIT_CLIENT.md`](TRANSIT_CLIENT.md) | **done through S3a** — the record of how the client came to route on the published data | history; read before `TRANSIT_NEXT` |
-| [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: making it visible, pricing the wait, then bus | 3 phases; 1 small session, then 2 long |
+| [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: surviving Overpass, pricing the wait, then bus | Phase 1 done; 1.5 is 2 small PRs, then 2 long phases |
 
 **Order.** `WAVE_0` first — it unblocks both threads and its items are hours, not days. Then
-`PUBLICATION`, which is the cheapest signal on the board. `TRANSIT_NEXT`'s Phase 1 is three
-small PRs and one of them (#395) is what makes every other transit change visible at all, so it
-is cheap to take early. The two threads are **independent and
+`PUBLICATION`, which is the cheapest signal on the board. `TRANSIT_NEXT`'s Phase 1 is merged and live;
+its **Phase 1.5** is two small PRs against defects production surfaced, and it comes before the
+larger Phase 2. The two threads are **independent and
 parallel**: Track C owns `app/lib/agent/**` outright and reaches the rest of the app only
 through tool wrappers, so a shadow session and an agent session do not collide.
 
