@@ -42,13 +42,13 @@ function stationsWithin(
 /**
  * Returns the graph to route on, or `null` when neither source has one.
  *
- * Coverage can only be checked *after* the download, because the manifest
- * carries no per-shard extent (#388). So a user outside New York pays the full
- * pointer → manifest → shard round trip (~1 s, 1.09 MB) on their **first**
- * route calculation, serially, ahead of the Overpass call that actually answers
- * them — for a graph that is then discarded. Later calculations are cheap: the
- * shards are immutable and the module cache holds them. Per-shard bounds in the
- * manifest are what would remove the first hit as well, and that is #388.
+ * The bbox goes to shard selection, so a manifest that publishes per-shard
+ * bounds (#388) answers "does this dataset reach here?" from metadata and the
+ * 1.09 MB subway shard is never requested outside New York. Against a manifest
+ * that predates the field, selection falls back to kind and coverage is checked
+ * after the download, as before: `stationsWithin` stays because it is the only
+ * check for that case, and because bounds prove a shard's extent overlaps the
+ * bbox, not that two stations sit inside it.
  */
 export async function fetchBestTrainGraph(
   south: number,
@@ -58,7 +58,11 @@ export async function fetchBestTrainGraph(
   signal?: AbortSignal,
 ): Promise<TrainGraph | null> {
   try {
-    const dataset = await loadTransitDataset({ subway: true }, signal);
+    const dataset = await loadTransitDataset(
+      { subway: true },
+      { south, west, north, east },
+      signal,
+    );
     if (dataset) {
       // The manifest, not just the shards: `headwayDates` is what says which
       // calendar morning each table's hours 24+ describe.

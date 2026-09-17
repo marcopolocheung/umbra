@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { buildGeneration } from "../src/build";
 import { publishPlan } from "../src/publish";
 import { assembleReceipts, checkWorkTrees } from "../src/receipts";
@@ -103,6 +103,48 @@ test("build + verify produce checkable shards end to end", async () => {
   const pointer = plan.objects.find((object) => object.key.endsWith("current.json"));
   assert.equal(pointer?.cacheControl, "public, max-age=300");
   assert.ok((pointer?.bytes ?? 0) > 0);
+});
+
+test("build publishes each shard's computed stop extent", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const { manifest, generation } = await buildGeneration({ updateBaseline: true });
+    const directory = join(root, "normalized", generation);
+    for (const ref of manifest.shards) {
+      const shard = JSON.parse(await readFile(join(directory, ref.key), "utf8")) as {
+        stops: { lat: number; lon: number }[];
+      };
+      assert.ok(shard.stops.length > 0);
+      // The extent of the stops this shard actually ships, not the borough it
+      // is named after: a shard is self-contained, so a route crossing a
+      // boundary carries the far side's stops with it.
+      assert.deepEqual(ref.bounds, {
+        south: Math.min(...shard.stops.map((stop) => stop.lat)),
+        west: Math.min(...shard.stops.map((stop) => stop.lon)),
+        north: Math.max(...shard.stops.map((stop) => stop.lat)),
+        east: Math.max(...shard.stops.map((stop) => stop.lon)),
+      });
+    }
+  });
+});
+
+test("verify rejects bounds that disagree with the shard's stops", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const { generation } = await buildGeneration({ updateBaseline: true });
+    const manifestPath = join(root, "normalized", generation, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    // A plausible-looking extent that excludes stops the shard really ships.
+    // The client skips a download on this, so a wrong one silently drops
+    // transit rather than failing loudly.
+    manifest.shards[0].bounds = { south: 0, west: 0, north: 0.1, east: 0.1 };
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await assert.rejects(() => verifyGeneration(generation), /bounds/);
+  });
 });
 
 test("a bus-only feed change produces a different generation", async () => {

@@ -10,7 +10,7 @@ import { json, requireRoot, sha256 } from "./util";
 
 export interface ShardLike {
   kind?: string;
-  stops: { id: string; changeSec?: number }[];
+  stops: { id: string; lat?: number; lon?: number; changeSec?: number }[];
   edges: { from: string; to: string; route: string; medianSec: number }[];
   routes: { id: string }[];
   headways: { route: string; hour: number }[];
@@ -20,7 +20,12 @@ export interface ShardLike {
 interface ManifestLike {
   generation: string;
   createdAt?: string;
-  shards: { key: string; bytes: number; sha256: string }[];
+  shards: {
+    key: string;
+    bytes: number;
+    sha256: string;
+    bounds?: { south: number; west: number; north: number; east: number };
+  }[];
 }
 
 /**
@@ -61,9 +66,42 @@ export async function verifyGeneration(generation?: string): Promise<{ generatio
     if (sha256(new Uint8Array(bytes)) !== shard.sha256) {
       throw new Error(`${shard.key}: hash mismatch`);
     }
-    checkShard(shard.key, JSON.parse(bytes.toString("utf8")) as ShardLike);
+    const parsed = JSON.parse(bytes.toString("utf8")) as ShardLike;
+    checkShard(shard.key, parsed);
+    checkBounds(shard.key, parsed, shard.bounds);
   }
   return { generation: name, shards: manifest.shards.length };
+}
+
+/**
+ * The manifest's extent must be the one the shard's stops actually describe.
+ *
+ * This is the only check on it: a client skips the download when `bounds` says
+ * a shard cannot reach its bbox, so an extent that is merely plausible drops
+ * transit for real New York routes and looks like the feature being switched
+ * off, not like a bad build.
+ */
+export function checkBounds(
+  key: string,
+  shard: ShardLike,
+  bounds: { south: number; west: number; north: number; east: number } | undefined,
+): void {
+  if (!bounds) throw new Error(`${key}: manifest publishes no bounds`);
+  const lats = shard.stops.map((stop) => stop.lat ?? Number.NaN);
+  const lons = shard.stops.map((stop) => stop.lon ?? Number.NaN);
+  const expected = {
+    south: Math.min(...lats),
+    west: Math.min(...lons),
+    north: Math.max(...lats),
+    east: Math.max(...lons),
+  };
+  for (const [edge, value] of Object.entries(expected)) {
+    if (!Number.isFinite(value) || bounds[edge as keyof typeof expected] !== value) {
+      throw new Error(
+        `${key}: bounds.${edge} is ${bounds[edge as keyof typeof expected]}, stops give ${value}`,
+      );
+    }
+  }
 }
 
 export function checkShard(key: string, shard: ShardLike): void {

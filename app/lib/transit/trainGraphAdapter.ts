@@ -52,8 +52,9 @@ function isDayType(value: unknown): value is TrainDayType {
  * `headwayDates` is what makes hours 24-27 readable at all: it names which day
  * type each table's small hours actually fall on, and without it an overnight
  * boarding goes unpriced rather than being charged some neighbouring morning's
- * frequency. The dataset key is the shard's own `kind` — the manifest publishes
- * one block per dataset, `subway` beside `bus`.
+ * frequency. The manifest publishes one block per *dataset*, `subway` beside
+ * `bus`, which is not quite the shard's `kind`: a bus shard declares
+ * `bus-shard`, and looking that up finds nothing.
  *
  * `coveredHours` is recorded beside the rows because a missing row only means
  * something where the table was looking. The published feed reaches hour 24 and
@@ -74,7 +75,7 @@ function buildHeadways(shards: TransitShard[], headwayDates?: HeadwayDates): Tra
       coveredHours.add(`${headway.dayType}|${headway.hour}`);
     }
 
-    const dates = headwayDates?.[shard.kind];
+    const dates = headwayDates?.[shard.kind === "bus-shard" ? "bus" : shard.kind];
     if (!dates || typeof dates === "string") continue;
     for (const [dayType, info] of Object.entries(dates)) {
       if (isDayType(dayType) && isDayType(info?.nextDayType)) {

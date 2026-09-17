@@ -5,15 +5,16 @@
 > and S3a are merged. This document is everything after it, in the order the dependencies
 > actually allow.
 
-**Verified 2026-09-16**, `main` at `f3ae8c9`. Green: lint 0 errors (55 warnings / 8 infos, the
+**Verified 2026-09-17**, `main` at `50e517b`. Green: lint 0 errors (55 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1220 tests / 86 files**, build clean.
+error), typecheck 0, **1228 tests / 86 files**, build clean.
 
 **Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
 production genuinely routes on the published data — confirmed against the deployed site, which
 fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. Phase
 1.5 followed it (#401, #400, #407) after production surfaced two robustness defects in the
-*Overpass* half. **Phase 2 is now in review** — see its section below. **Phase 3 is next.**
+*Overpass* half. **Phase 2 is merged** (#408). **Phase 3 is under way: 3A is in review; 3B is
+the next thing to settle, and it is a research question before it is a build.**
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -47,7 +48,7 @@ Four constraints, and they fully determine the sequence:
    waiting means rewriting S4. Phase 2 before Phase 3, for the same reason
    `TRANSIT_CLIENT.md` put step 6 before E6.
 3. **#388 is server-side**, so it is the one item that parallelises — start it whenever, it only
-   has to be done before S4.
+   has to be done before S4. *(Done — 3A.)*
 
 ---
 
@@ -446,28 +447,53 @@ change traded for a longer ride on one train, which is the trade a rider actuall
 The half that matters most for shade: a bus runs at grade in full sun, and a stop wait is total
 exposure. Three items, in this order.
 
-### 3A — #388: per-shard `bounds` in the manifest *(server-side; start any time)*
+### 3A — #388: per-shard `bounds` in the manifest *(done, in review)*
 
-A shard ref carries `key`/`bytes`/`sha256`/`stops`/`edges`/`routes` and **no extent**, so a
-client cannot tell whether `bus-q.json` covers a bbox without downloading it. Add the computed
-min/max lat/lon over the stops each shard ships:
+`TransitShardRef` now carries the computed min/max lat/lon over the stops each shard ships, and
+`selectShardRefs()` drops a shard whose extent cannot reach the requested bbox before it is
+fetched. `bounds` is **optional forever** — a manifest without it selects by kind exactly as
+before, which is what let the client half ship independently of the pipeline half.
 
-```jsonc
-{"key": "bus-b.json", …, "bounds": {"south": 40.5, "west": -74.06, "north": 40.74, "east": -73.83}}
+Published and live: generation `nyc-2026-09-17-43b41d7d333d`. The field cost **963 bytes** in a
+7,647-byte `max-age=300` document — stripping `bounds` back out reproduces the previous
+generation's 6,684 bytes exactly.
+
+The extent is computed, never the borough name, and the data says why that mattered: `bus-si`
+reaches `north 40.766314, east -73.96678` — Manhattan — because the Staten Island express routes
+carry their Manhattan stops into their own shard.
+
+| shard | south | west | north | east |
+|---|---|---|---|---|
+| `subway.json` | 40.512443 | -74.251961 | 40.903339 | -73.753476 |
+| `bus-bx.json` | 40.76246 | -73.974456 | 40.917649 | -73.783366 |
+| `bus-b.json` | 40.572635 | -74.069364 | 40.77535 | -73.789588 |
+| `bus-m.json` | 40.603427 | -74.210476 | 40.892236 | -73.781349 |
+| `bus-q.json` | 40.603427 | -74.068996 | 40.844403 | -73.701373 |
+| `bus-si.json` | 40.502981 | -74.252016 | 40.766314 | -73.96678 |
+| `bus-busco.json` | 40.566123 | -74.068996 | 40.933637 | -73.702517 |
+
+**Measured in a browser** against the live bucket, counting requests:
+
+```
+manhattan  (Bryant Park → Union Sq)      pointer 1  manifest 1  subway.json 1   Via Transit ✓
+outside    (Golden Gate Park → Alamo Sq) pointer 1  manifest 1  subway.json 0   Via Transit ✓
 ```
 
-Additive, a few hundred bytes in a `max-age=300` document, and the pipeline already walks every
-stop to produce the counts beside it. It must be the **computed** extent, not the borough name:
-a shard is self-contained by design, so the S53 over the Verrazzano puts Staten Island stops in
-`bus-b`.
+The second line is the whole point: 1.09 MB that used to be downloaded and discarded is now not
+requested at all. The pointer and manifest are still fetched — they are where `bounds` lives, so
+that hop cannot be skipped, and both are small and `max-age=300`. Outside New York the app falls
+through to Overpass as it always did.
 
-Client side, `selectShardRefs()` grows a bbox-intersection filter and keeps the kind filter as
-the fallback for a manifest that predates the field.
+`verify` re-derives each extent from the shard's own stops and fails on a mismatch. That guard is
+load-bearing rather than decorative: the client *skips a download* on the strength of `bounds`, so
+a merely plausible extent would silently drop transit for real New York routes and look like the
+feature being switched off. **Consequence for ops:** `verify` now treats a missing `bounds` as a
+failure, so re-running it against a generation directory built *before* 3A fails by design. Verify
+the current generation, not a retained older one.
 
-It fixes a second thing: today a user **outside** New York pays the full pointer → manifest →
-shard round trip (~1 s, 1.09 MB) on their first route calculation, serially, ahead of the
-Overpass call that answers them — because coverage can only be checked after the download. No
-client-side cache can avoid that first hit; only this can.
+The client is deliberately laxer than `verify` in exactly one place: it treats `"bounds": null` as
+absent rather than malformed, because that is what a serializer emits for an optional it has no
+value for, and it parses today by being ignored.
 
 ### 3B — #393(b): exposure is a property of a segment, not a mode
 
@@ -480,11 +506,24 @@ OSM `tunnel=yes`/`bridge=yes` on the rail ways via Overpass; a per-edge structur
 sampling the shadow canvas along the drawn stop-to-stop line, which samples *building* shadow
 and not the structure shading its own riders.
 
+**Do the research before the build.** The one question that decides 3B is: *is there a free
+source that says whether a given stop-to-stop segment is in a tunnel?* OSM's `tunnel=yes` /
+`bridge=yes` on the rail ways via Overpass is the only candidate named above, and **nobody has
+checked how completely NYC's subway ways are tagged.** That is scoped and checkable — a coverage
+percentage over the ways carrying each route — and until it is answered, every 3B design is a
+guess. It needs neither Phase 2 nor 3A, so it can be picked up cold.
+
 ### 3C — S4: bus
 
-Needs 3A for shard selection and Phase 2 for the stop wait; lands on 3B's model.
-`selectShardRefs()` already takes `{ bus: true }` — it needs the data, not the code. New
+3A and Phase 2 are both in now, so what 3C is waiting on is 3B's model.
+`selectShardRefs()` already takes `{ bus: true }` and now filters the six bus shards
+geographically, so a Queens route no longer has to consider Staten Island's 1.06 MB. New
 `TrainMode` member, a sun-exposure figure for at-grade transit, and stop-wait exposure.
+
+One trap is already defused: `buildHeadways` looked the headway block up under the shard's own
+`kind`, and a bus shard's kind is `bus-shard` while the manifest's block is `bus`, so every bus
+headway date would have gone unread. Fixed in 3A's PR; it is unobservable until a bus shard
+actually loads, which is here.
 
 `buildTrainGraphFromShards` currently **refuses** a bus shard outright rather than defaulting it
 to `subway` (which would claim a bus ride is fully shaded). That guard is deliberate; removing it
@@ -500,10 +539,15 @@ geometry; that is a stated assumption the card has to carry, not a number to qui
 
 ## Running alongside — calendar, not dependency
 
-- **The subway feed expires 2026-10-31.** The freshness guardrail fails at under 14 days out, so
-  the pipeline starts failing around **17 October** regardless of which phase you are in.
-  Rebuilding and republishing is `server/transit-prep`'s job; credentials are in
-  `~/.config/umbra/r2-transit.env`.
+- **The subway feed expires 2026-10-31, and rebuilding does not move it.** The full pipeline was
+  re-run on 2026-09-17 for 3A (acquire → validate → build → verify → publish, all seven feeds
+  re-downloaded). The subway window came back **unchanged at 20260526 → 20261031**: the upstream
+  `gtfs_subway.zip` is still the 27 August baseline, so MTA has not posted a newer one. The
+  freshness guardrail therefore still starts failing around **17 October**, and the fix is not a
+  re-run but *MTA publishing*. Re-check `npm run acquire:plan` — if `lastModified` on
+  `gtfs_subway.zip` has moved past 27 August, a rebuild will clear it; if it has not, nothing in
+  this repo can. Credentials are in `~/.config/umbra/r2-transit.env`.
+  The bus feeds are good to 20270102.
 - **`r2.dev` is rate-limited and wants a custom domain**, with the Cloudflare move (#358/#360).
   Not a correctness blocker; it is a production one. Related: #10 from the review, that the
   shadow pointer uses serving routes and the transit pointer uses bucket keys.
