@@ -14,8 +14,8 @@ production genuinely routes on the published data — confirmed against the depl
 fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. Phase
 1.5 followed it (#401, #400, #407) after production surfaced two robustness defects in the
 *Overpass* half. **Phase 2 is merged** (#408). **Phase 3 is under way: 3A is in review, and 3B
-is next — its data question is now answered (OSM is good enough; see 3B), so what remains is the
-join, in the pipeline.**
+is under way — its data question is answered (OSM is good enough) and 3B-1, the pipeline join,
+is in review; 3B-2 spends it.**
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -560,28 +560,64 @@ Caveat: this is way-count weighting, not length weighting. No geometry was pulle
 untagged way counts the same as a short one. The ground-truth table is robust to that; the 90%
 is not, and would move under length weighting.
 
-#### What 3B actually costs now
+#### 3B-1 — the join, in the pipeline *(done, in review)*
 
-Not the source — **the join.** Shards ship no route geometry by design (#385), so an edge is a
-pair of stop ids with nothing to match against an OSM way. Bridging that means resolving our
-stops to OSM stations and walking the ordered way list in each `type=route` relation between
-consecutive stations. Two things to settle before writing any of it:
+`server/transit-prep/src/structure.ts` joins OSM structure onto every subway edge at build time,
+and the shard ships it as `TransitEdge.structure`. Live as generation
+`nyc-2026-09-17-af01f9ffbdc5`.
 
-- **Do the join in `server/transit-prep`, not the client**, and ship a per-edge structure flag.
-  Computed once at build time, it costs the client nothing and keeps Overpass out of a route
-  calculation entirely.
-- **Use a Geofabrik `new-york-latest.osm.pbf` extract, not Overpass.** The pipeline already
-  downloads 68 MB of GTFS; one more extract is cheaper, more reliable and far more polite than a
-  build-time join hammering a public API. During this measurement `overpass-api.de` and
-  `kumi.systems` both returned 504 on queries of a few hundred KB, and the work only completed by
-  tiling into six requests against `maps.mail.ru`.
+```jsonc
+{"from": "subway:101", "to": "subway:103", "route": "1", …, "structure": {"elevated": 1}}
+{"from": "…", "to": "…", "route": "G", …, "structure": {"underground": 0.86, "elevated": 0.14}}
+```
+
+**Shares, not a label.** The F and G share the Culver Viaduct for part of a run and a single
+label cannot say so. Shares sum to **at most 1**; the shortfall is the part no OSM way matched,
+so the field carries its own uncertainty and needs no confidence number beside it.
+
+**Result: 1,816 of 1,949 edges determined (93.2%)** — 1,228 underground, 457 elevated, 78 at
+grade, 34 open cut, 19 embankment; 690 edges are mixed. `subway.json` grew 1,093,087 → 1,161,442
+bytes (+6.3%).
+
+**Measured error rate: 1.2%.** On the lines documented as underground along their whole revenue
+route (E, C, G, with the Culver Viaduct excluded), 2 of 172 edges get a non-underground dominant
+reading — both directions of the same E segment, 50 St ↔ 7 Av, from one untagged OSM way. The
+error leans towards claiming **sun where there is shade**, which is the conservative direction
+for this app: it under-rates a shaded option rather than promising shade that is not there.
+
+Three decisions worth not re-litigating:
+
+- **Overpass, cached — not a Geofabrik extract.** The earlier note here said Geofabrik; that was
+  wrong on the specifics. The join needs ~3,700 ways, and Overpass answers exactly that question
+  natively in two queries totalling ~5 MB, where a Geofabrik extract means a 400 MB state-wide
+  download plus a `.osm.pbf` parser dependency. The real requirement was *never depending on
+  Overpass during a build*, and **caching** is what satisfies it: `npm run osm` writes
+  `raw/osm/` with a receipt, and `build` reads only that. The mirrors being down does not break a
+  build, it just means you cannot refresh.
+- **Route-relation membership does two jobs.** It attributes a way to a service, which is what
+  stops the 7 (elevated over Queens Boulevard) inheriting the E and F's tunnel underneath it —
+  and it excludes yards, sidings and crossovers for free, since none of them is in a route
+  relation.
 - **An undetermined segment stays undetermined.** Same precedent as `changeSec` (#384): absent is
-  not zero. The ~10% with no determination must not inherit "underground, free shade" — that is
-  precisely the bug 1B was opened for.
+  not zero. An edge with no `structure` is unknown and must not inherit "underground, free
+  shade" — that is precisely the bug 1B was opened for. Note `at_grade` is *not* absence: it
+  means a matched OSM way tagged neither tunnel nor bridge nor cutting nor embankment.
+- **A floor of 50% coverage.** Without one, a single matching sample out of nine yields
+  `{"underground": 0.11}`, which reads as a measurement of a segment that was 89% unseen.
+
+#### 3B-2 — spend it *(next)*
+
+Closes #393. Replace `TRAIN_SUN_EXPOSURE[mode]` with a per-segment figure derived from
+`structure`, and fix the two duplicated label sites (`RouteCard.tsx:189`,
+`NavigationPanel.tsx:749`). This is the half 1B deliberately left: the router still treats an
+elevated ride as free shade, which is the deeper defect behind "Underground — no sun".
+
+Decide there, not here: what an **unknown** segment costs, and how much sun an **open cut** or an
+**embankment** gets. Both are real categories in the published data, and neither is 0 or 1.
 
 ### 3C — S4: bus
 
-3A and Phase 2 are both in now, so what 3C is waiting on is 3B's model.
+3A, Phase 2 and 3B-1 are all in now, so what 3C is waiting on is 3B-2's model.
 `selectShardRefs()` already takes `{ bus: true }` and now filters the six bus shards
 geographically, so a Queens route no longer has to consider Staten Island's 1.06 MB. New
 `TrainMode` member, a sun-exposure figure for at-grade transit, and stop-wait exposure.

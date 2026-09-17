@@ -53,6 +53,7 @@ evidence/<command>-<ts>.json
 export TRANSIT_PREP_ROOT=$HOME/shade-prep-data-nyc-transit   # absolute, outside git
 npm run acquire:plan   # HEAD-check sizes/dates, no writes
 npm run acquire        # download (skip-if-SHA-matches) + refresh work dirs
+npm run osm            # fetch + cache the OSM subway geometry the structure join needs
 npm run receipts       # (re)assemble raw/source-receipts.json
 npm run validate       # schemas, bbox, integrity, cross-feed pins
 npm run normalize      # stats only (also: -- --only subway|bus)
@@ -67,6 +68,29 @@ generation: ~10.2 MB. Each bus shard carries only the routes its own edges
 use, plus those routes' headways — see "Shard scope" below. Heap: validate
 needs 2 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
+
+## Segment structure (tunnel / viaduct / at grade)
+
+GTFS says nothing about whether a ride is underground, and for a shade app that is the
+question. `npm run osm` fetches the NYC subway route relations and their member ways from
+Overpass (two queries, ~5 MB) into `raw/osm/` with a receipt; `build` reads **only** that
+cache, so a build never depends on Overpass being reachable. Refreshing is deliberate.
+
+`src/structure.ts` samples along the straight line between each edge's two stops and takes the
+nearest way *of that same service*, which is what stops the 7 — elevated over Queens Boulevard
+— inheriting the E and F's tunnel underneath it. Route-relation membership also excludes yards,
+sidings and crossovers, which are 43% of `railway=subway` ways and carry no riders.
+
+Edges ship shares, not a label, because the F and G share the Culver Viaduct for part of a run:
+
+```jsonc
+"structure": {"underground": 0.86, "elevated": 0.14}
+```
+
+They sum to at most 1; the shortfall is the part no way matched. An edge with no `structure`
+is **unknown**, which is not `at_grade` — that means a matched way tagged neither tunnel nor
+bridge nor cutting nor embankment. Current generation: 1,816 of 1,949 edges determined (93.2%),
+with a measured 1.2% error rate against lines documented as fully underground.
 
 ## In-station line changes
 

@@ -107,6 +107,18 @@ export interface TransitStop {
   feeds?: string[];
 }
 
+/**
+ * Where a segment runs, joined from OSM by `server/transit-prep` because GTFS
+ * carries no such thing.
+ *
+ * `at_grade` is a matched OSM way tagged neither tunnel nor bridge nor cutting
+ * nor embankment — which under OSM's closed-world convention means at grade.
+ * It is not the same as the whole field being absent, which means unknown.
+ */
+export type EdgeStructure = Partial<
+  Record<"underground" | "elevated" | "open_cut" | "embankment" | "at_grade", number>
+>;
+
 export interface TransitEdge {
   from: string;
   to: string;
@@ -117,6 +129,16 @@ export interface TransitEdge {
   trips: number;
   /** Straight-line haversine, ~5-7% under true path length. */
   distM: number;
+  /**
+   * Share of the segment running in each structure. Sums to **at most** 1 — the
+   * shortfall is the part no OSM way matched, so the field carries its own
+   * uncertainty.
+   *
+   * **Optional forever.** Absent means unknown: a generation built before the
+   * join existed, or one built without the OSM cache. Nothing may read absence
+   * as "underground" — that is the claim #393 was opened for.
+   */
+  structure?: EdgeStructure;
 }
 
 export interface TransitRoute {
@@ -395,6 +417,32 @@ function parseStop(value: unknown): TransitStop {
   return stop;
 }
 
+const STRUCTURES = new Set(["underground", "elevated", "open_cut", "embankment", "at_grade"]);
+
+/**
+ * A segment's structure shares, or `undefined` when the edge publishes none.
+ *
+ * `null` counts as absent for the same reason `bounds` does. Shares must be
+ * fractions and must not sum past 1: they are shares *of the segment*, and a
+ * sum above 1 means the producer is describing something this contract does
+ * not. A small epsilon absorbs the pipeline's two-decimal rounding.
+ */
+function parseStructure(value: unknown): EdgeStructure | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) throw new Error("invalid NYC transit edge");
+  const structure: EdgeStructure = {};
+  let sum = 0;
+  for (const [key, share] of Object.entries(value)) {
+    if (!STRUCTURES.has(key)) throw new Error("invalid NYC transit edge");
+    if (!isFiniteNumber(share) || share <= 0 || share > 1)
+      throw new Error("invalid NYC transit edge");
+    sum += share;
+    structure[key as keyof EdgeStructure] = share;
+  }
+  if (sum > 1.01) throw new Error("invalid NYC transit edge");
+  return Object.keys(structure).length > 0 ? structure : undefined;
+}
+
 function parseEdge(value: unknown): TransitEdge {
   if (
     !isRecord(value) ||
@@ -408,7 +456,7 @@ function parseEdge(value: unknown): TransitEdge {
     value.distM < 0
   )
     throw new Error("invalid NYC transit edge");
-  return {
+  const edge: TransitEdge = {
     from: value.from,
     to: value.to,
     route: value.route,
@@ -417,6 +465,10 @@ function parseEdge(value: unknown): TransitEdge {
     trips: value.trips,
     distM: value.distM,
   };
+  // Absent stays absent, so a consumer can tell "unknown" from "at grade".
+  const structure = parseStructure(value.structure);
+  if (structure) edge.structure = structure;
+  return edge;
 }
 
 function parseRoute(value: unknown): TransitRoute {

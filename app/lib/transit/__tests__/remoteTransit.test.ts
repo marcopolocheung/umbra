@@ -317,6 +317,40 @@ describe("transit shard", () => {
     expect("changeSec" in parsed.stops[2]).toBe(false);
   });
 
+  it("keeps an edge's published structure shares", () => {
+    const shard = subwayShard();
+    (shard.edges[0] as Record<string, unknown>).structure = { underground: 0.7, elevated: 0.3 };
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect(parsed.edges[0].structure).toEqual({ underground: 0.7, elevated: 0.3 });
+  });
+
+  it("leaves structure absent on an edge that publishes none", () => {
+    // Absent means unknown. Nothing may read it as underground — that is the
+    // claim #393 was opened for.
+    const shard = subwayShard();
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect("structure" in parsed.edges[0]).toBe(false);
+    // An explicit null is what a serializer emits for an optional it has no
+    // value for, and must read as absent rather than throwing.
+    const nulled = subwayShard();
+    (nulled.edges[0] as Record<string, unknown>).structure = null;
+    expect("structure" in parseTransitShard(nulled, refFor(nulled)).edges[0]).toBe(false);
+  });
+
+  it("rejects structure that is not a set of shares of one segment", () => {
+    const bad = (structure: unknown) => {
+      const shard = subwayShard();
+      (shard.edges[0] as Record<string, unknown>).structure = structure;
+      return () => parseTransitShard(shard, refFor(shard));
+    };
+    // Shares of a segment cannot sum past the whole segment.
+    expect(bad({ underground: 0.8, elevated: 0.8 })).toThrow(/edge/);
+    expect(bad({ underground: 1.4 })).toThrow(/edge/);
+    expect(bad({ underground: 0 })).toThrow(/edge/);
+    expect(bad({ subterranean: 1 })).toThrow(/edge/);
+    expect(bad({ underground: "yes" })).toThrow(/edge/);
+  });
+
   it("keeps service-day hours past midnight distinct", () => {
     const shard = subwayShard();
     const parsed = parseTransitShard(shard, refFor(shard));

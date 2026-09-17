@@ -1,5 +1,5 @@
 /**
- * transit-prep <acquire --plan|--execute|receipts|validate|normalize|build|verify|publish [--dry-run|--execute]>
+ * transit-prep <acquire --plan|--execute|osm|receipts|validate|normalize|build|verify|publish [--dry-run|--execute]>
  *
  * Steps 1–5 of the GTFS pipeline. Data lives outside git under
  * TRANSIT_PREP_ROOT; every command writes an evidence record.
@@ -9,6 +9,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { acquireExecute, acquirePlan, writeFetchLog } from "./acquire";
 import { buildGeneration, normalizeAll } from "./build";
+import { acquireOsm } from "./osm";
 import { publishExecute, publishPlan } from "./publish";
 import { assembleReceipts, readReceipts } from "./receipts";
 import { requireRoot } from "./util";
@@ -27,7 +28,7 @@ async function evidence(command: string, result: unknown): Promise<void> {
 async function main(): Promise<void> {
   const command = process.argv[2];
   const flag = process.argv[3];
-  const valid = ["acquire", "receipts", "validate", "normalize", "build", "verify", "publish"];
+  const valid = ["acquire", "osm", "receipts", "validate", "normalize", "build", "verify", "publish"];
   if (!valid.includes(command ?? "")) {
     throw new Error(`usage: transit-prep <${valid.join("|")}> [--plan|--dry-run|--execute|--only subway|bus|--update-baseline]`);
   }
@@ -48,6 +49,9 @@ async function main(): Promise<void> {
     }
     result = await acquireExecute(previous);
     await writeFetchLog(result as Parameters<typeof writeFetchLog>[0]);
+  } else if (command === "osm") {
+    // Network step, run deliberately: build reads only the cache this writes.
+    result = await acquireOsm();
   } else if (command === "receipts") {
     result = await assembleReceipts();
   } else if (command === "validate") {
