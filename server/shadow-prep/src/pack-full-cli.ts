@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { candidateDescriptorKey, type CandidateDescriptor } from "./candidates";
 import {
   NYC_FIVE_BOROUGH_TILE_COUNT,
+  activationTilesForBorough,
   aggregateBrowserPack,
   benchmarkCandidatePack,
   browserPackIdentityV2,
@@ -20,7 +21,7 @@ import {
 import { verifyCandidateTileGeometry, REPAIR_POLICY_VERSION, repairPolicyHash } from "./repair";
 import { loadAdmittedLicenceInput, loadRegionDocument } from "./notices";
 import { parseS3ObjectSpec, r2StoreFromEnvironment, S3Store, isConditionalWriteConflict, type ObjectStore } from "./storage";
-import { supportGeometry } from "./support";
+import { boroughGeometry, supportGeometry } from "./support";
 import { sha256 } from "./util";
 import type { CoverageGeometry } from "../../../app/lib/shadowField/v2/artifacts";
 import { decodeBrowserTileBundle } from "../../../app/lib/shadowField/v2/bundle";
@@ -91,7 +92,7 @@ export async function loadEvidenceBytes(spec: string, expectedHash: string): Pro
   return bytes;
 }
 
-async function loadSupportGeometry(): Promise<{ geometry: CoverageGeometry; geometryHash: string }> {
+export async function loadSupportGeometry(): Promise<{ geometry: CoverageGeometry; geometryHash: string }> {
   const spec = optional("--support-geometry");
   const hash = optional("--support-sha256");
   if (!spec || !hash) throw new Error("v2 packing requires --support-geometry and --support-sha256");
@@ -99,7 +100,7 @@ async function loadSupportGeometry(): Promise<{ geometry: CoverageGeometry; geom
   return { geometry: supportGeometry(JSON.parse(new TextDecoder().decode(bytes))), geometryHash: hash };
 }
 
-async function loadCandidateTileGeometry(): Promise<{ geometry: CoverageGeometry; geometryHash: string }> {
+export async function loadCandidateTileGeometry(): Promise<{ geometry: CoverageGeometry; geometryHash: string }> {
   const spec = optional("--candidate-tile-geometry");
   const hash = optional("--candidate-tile-sha256");
   if (!spec || !hash) throw new Error("v2 packing requires --candidate-tile-geometry and --candidate-tile-sha256");
@@ -107,22 +108,39 @@ async function loadCandidateTileGeometry(): Promise<{ geometry: CoverageGeometry
   return { geometry: supportGeometry(JSON.parse(new TextDecoder().decode(bytes))), geometryHash: hash };
 }
 
-async function loadBoroughBoundary(): Promise<{ geometry: CoverageGeometry; file: { filename: string; sha256: string } }> {
+export interface BoroughBoundaryInput {
+  geometry: CoverageGeometry;
+  file: { filename: string; sha256: string };
+  structure: { sourceType: string; featureCount: number; polygonCount: number; ringCount: number };
+}
+
+export async function loadBoroughBoundary(): Promise<BoroughBoundaryInput> {
   const spec = optional("--borough-boundary");
   if (!spec) throw new Error("v2 aggregation requires --borough-boundary");
   const regionPath = optional("--region-file");
   const region = await loadRegionDocument(regionPath);
   const bytes = await loadEvidenceBytes(spec, region.boundarySha256);
+  const document = JSON.parse(new TextDecoder().decode(bytes)) as { type?: unknown; features?: unknown };
+  const featureCount = document.type === "FeatureCollection" && Array.isArray(document.features) ? document.features.length : document.type === "Feature" ? 1 : 0;
+  if (document.type !== "FeatureCollection" || featureCount !== 5)
+    throw new Error(`pinned borough boundary must be a five-feature FeatureCollection; found ${featureCount}`);
+  const geometry = boroughGeometry(document);
   return {
-    geometry: supportGeometry(JSON.parse(new TextDecoder().decode(bytes))),
+    geometry,
     file: { filename: region.boundaryLocalName, sha256: region.boundarySha256 },
+    structure: {
+      sourceType: document.type,
+      featureCount,
+      polygonCount: geometry.coordinates.length,
+      ringCount: geometry.coordinates.reduce((count, polygon) => count + polygon.length, 0),
+    },
   };
 }
 
 /** v2 publication binds notices to a completed admission, never merely to the
  * static region plan.  Operators must pass the evidence artifact they staged
  * with the candidate inputs. */
-async function loadV2LicenceInput() {
+export async function loadV2LicenceInput() {
   const admission = optional("--admission-manifest");
   if (!admission) throw new Error("v2 packing requires --admission-manifest (the admitted source-receipts/acquisition manifest)");
   return loadAdmittedLicenceInput(admission, optional("--region-file"));
@@ -150,8 +168,74 @@ async function buildIndex(): Promise<void> {
   await report({ action: "build-index", indexKey: INDEX_KEY, expectedTiles: index.expectedTiles, indexSha256: index.sha256, listedObjects: keys.length });
 }
 
-async function loadIndex(indexStore: S3Store): Promise<CandidateTileIndex> {
+async function loadIndex(indexStore: Pick<ObjectStore, "read">): Promise<CandidateTileIndex> {
   return parseIndex(await indexStore.read(INDEX_KEY));
+}
+
+export interface V2AggregationInputs {
+  index: CandidateTileIndex;
+  support: { geometry: CoverageGeometry; geometryHash: string };
+  candidateTiles: { geometry: CoverageGeometry; geometryHash: string };
+  borough: BoroughBoundaryInput;
+  regionInput: Awaited<ReturnType<typeof loadV2LicenceInput>>;
+  activationTiles: string[];
+}
+
+/** Load and reconcile every immutable input aggregation consumes. The live
+ * preflight calls this exact function and deliberately has no output-store
+ * argument, so it cannot read or write publication R2. */
+export async function loadV2AggregationInputs(indexStore: Pick<ObjectStore, "read">): Promise<V2AggregationInputs> {
+  const [index, support, candidateTiles, borough, regionInput] = await Promise.all([
+    loadIndex(indexStore),
+    loadSupportGeometry(),
+    loadCandidateTileGeometry(),
+    loadBoroughBoundary(),
+    loadV2LicenceInput(),
+  ]);
+  if (index.tiles.length !== NYC_FIVE_BOROUGH_TILE_COUNT)
+    throw new Error(`candidate index must contain exactly ${NYC_FIVE_BOROUGH_TILE_COUNT} tiles`);
+  verifyCandidateTileGeometry(candidateTiles.geometry, index.tiles);
+  return {
+    index,
+    support,
+    candidateTiles,
+    borough,
+    regionInput,
+    activationTiles: activationTilesForBorough(index.tiles, borough.geometry),
+  };
+}
+
+export function v2InputValidationReport(inputs: V2AggregationInputs) {
+  return {
+    action: "validate-v2-inputs",
+    index: {
+      key: INDEX_KEY,
+      version: inputs.index.version,
+      normalizationId: inputs.index.normalizationId,
+      expectedTiles: inputs.index.expectedTiles,
+      tileCount: inputs.index.tiles.length,
+      sha256: inputs.index.sha256,
+    },
+    hashes: {
+      supportGeometrySha256: inputs.support.geometryHash,
+      candidateTileGeometrySha256: inputs.candidateTiles.geometryHash,
+      boroughBoundarySha256: inputs.borough.file.sha256,
+      admissionManifestSha256: inputs.regionInput.receiptManifestSha256,
+      regionFileSha256: inputs.regionInput.regionFileSha256,
+      repairPolicySha256: repairPolicyHash(),
+      licence: componentLicenceHashes(inputs.regionInput),
+    },
+    activationTileCount: inputs.activationTiles.length,
+    boundary: {
+      filename: inputs.borough.file.filename,
+      ...inputs.borough.structure,
+    },
+  };
+}
+
+async function validateV2Inputs(): Promise<void> {
+  const { indexStore } = await sourceAndIndexStore();
+  await report(v2InputValidationReport(await loadV2AggregationInputs(indexStore)));
 }
 
 async function packShard(): Promise<void> {
@@ -204,12 +288,7 @@ async function aggregate(): Promise<void> {
   const count = Number(optional("--array-shards"));
   if (!Number.isInteger(count) || count < 1) throw new Error("--array-shards must be a positive integer");
   const { indexStore } = await sourceAndIndexStore();
-  const index = await loadIndex(indexStore);
-  const support = await loadSupportGeometry();
-  const candidateTiles = await loadCandidateTileGeometry();
-  verifyCandidateTileGeometry(candidateTiles.geometry, index.tiles);
-  const borough = await loadBoroughBoundary();
-  const regionInput = await loadV2LicenceInput();
+  const { index, support, candidateTiles, borough, regionInput } = await loadV2AggregationInputs(indexStore);
   const identity = browserPackIdentityV2(NORMALIZATION_ID, GENERATION_SUFFIX);
   const reconciliation = await aggregateBrowserPack(r2StoreFromEnvironment(), index, identity, count, {
     borough: borough.geometry,
@@ -402,9 +481,10 @@ async function promote(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const actions = [process.argv.includes("--build-index"), process.argv.includes("--pack-shard"), process.argv.includes("--aggregate"), process.argv.includes("--promote")].filter(Boolean).length;
-  if (actions !== 1) throw new Error("choose exactly one of --build-index, --pack-shard, --aggregate, or --promote");
+  const actions = [process.argv.includes("--build-index"), process.argv.includes("--validate-v2-inputs"), process.argv.includes("--pack-shard"), process.argv.includes("--aggregate"), process.argv.includes("--promote")].filter(Boolean).length;
+  if (actions !== 1) throw new Error("choose exactly one of --build-index, --validate-v2-inputs, --pack-shard, --aggregate, or --promote");
   if (process.argv.includes("--build-index")) return buildIndex();
+  if (process.argv.includes("--validate-v2-inputs")) return validateV2Inputs();
   if (process.argv.includes("--pack-shard")) return packShard();
   if (process.argv.includes("--aggregate")) return aggregate();
   return promote();

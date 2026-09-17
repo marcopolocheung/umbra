@@ -235,6 +235,7 @@ docker run --rm -v "$HOME/shade-prep-data:/data" umbra-shadow-prep \
   --write-dir /tmp/repair-smoke
 # 2. Full run (index is reused, not rebuilt):
 scripts/aws/submit-nyc-browser-pack.sh --execute --v2 \
+  --image-sha <full-reviewed-merge-sha> \
   --support-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-20km-support.geojson --support-sha256 <support-pin> \
   --candidate-tile-geometry s3:<raw-bucket>:acquisition/nyc-five-borough-output-target.geojson \
   --candidate-tile-sha256 <output-target-pin> \
@@ -249,6 +250,15 @@ The support geometry is the admitted 20 km source-acquisition coverage used to
 derive known/unknown cells. The separate candidate-tile geometry is the
 unbuffered output target and must reproduce the frozen 61,442-tile index
 exactly; substituting either one for the other fails closed.
+
+Before the 128-child array starts, the launcher verifies that the index,
+array, and aggregate job definitions all resolve to the exact full merge-SHA
+image, then runs `--validate-v2-inputs` against the live S3 evidence. That
+read-only gate hash-checks and parses every input, reconciles all 61,442
+candidate tiles, and exercises borough activation without accessing R2. If an
+array child fails, the launcher waits for all children to become terminal and
+retries only each failed index once as an ordinary job; any repeated failure
+prevents aggregation.
 
 Batch jobs have no host `/workspace/admission` mount. The AWS launcher supplies
 the retained admission object automatically when `--admission-manifest` is

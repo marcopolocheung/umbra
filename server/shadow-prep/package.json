@@ -20,7 +20,8 @@
     "pack:benchmark": "tsx src/pack-cli.ts",
     "build": "tsx src/cli.ts build",
     "verify": "tsx src/cli.ts verify",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --test test/*.test.ts && npm run test:launcher",
+    "test:launcher": "bash ../../scripts/aws/submit-nyc-browser-pack.test.sh",
     "test:container-smoke": "bash test/container-smoke.sh"
   },
   "devDependencies": {
