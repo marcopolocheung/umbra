@@ -683,8 +683,8 @@ function boardingCost(
  * transfer edge is traversed going from the N to the Q at Union Sq — so it
  * charged nothing for one, and it could not charge a wait that depends on which
  * route is boarded either. The states are the (station, route) pairs some edge
- * actually serves, ~1,300 for the published NYC subway, so the array-scan PQ
- * still holds.
+ * actually serves, 956 of them for the published NYC subway against its 496
+ * stations, so the array-scan PQ still holds.
  */
 export function trainDijkstra(
   graph: TrainGraph,

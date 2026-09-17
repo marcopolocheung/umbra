@@ -21,11 +21,13 @@ all:
   property of the route, not of the platform.
 
 So the state is now `(station, what the rider arrived on)`, where the arrival is
-one of: on foot, over a transfer edge, or on a named route. Three states rather
-than one per station, and in the published NYC graph that is 956 (station,
-route) pairs against 496 stations — the array-scan PQ still holds. Measured, the
-full 5 × 5 candidate sweep in `findBestTrainRoute` costs 6–102 ms on the real
-graph, against an Overpass round trip measured in seconds.
+one of: on foot, over a transfer edge, or on a named route. That is one state
+per route serving a station plus two, and in the published NYC graph the route
+half of it is 956 (station, route) pairs against 496 stations — low thousands,
+and the array-scan PQ still holds. Measured, the full 5 × 5 candidate sweep in
+`findBestTrainRoute` costs 3–102 ms on the real graph, the longest being
+Times Sq → 231 St at 23 stops, against an Overpass round trip measured in
+seconds.
 
 The arrival is what makes the two charges separable:
 
