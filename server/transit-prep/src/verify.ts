@@ -11,7 +11,13 @@ import { json, requireRoot, sha256 } from "./util";
 export interface ShardLike {
   kind?: string;
   stops: { id: string; lat?: number; lon?: number; changeSec?: number }[];
-  edges: { from: string; to: string; route: string; medianSec: number }[];
+  edges: {
+    from: string;
+    to: string;
+    route: string;
+    medianSec: number;
+    structure?: Record<string, number>;
+  }[];
   routes: { id: string }[];
   headways: { route: string; hour: number }[];
   transfers?: { from: string; to: string; minSec: number }[];
@@ -125,6 +131,19 @@ export function checkShard(key: string, shard: ShardLike): void {
     if (!stopIds.has(edge.from) || !stopIds.has(edge.to)) fail(`edge dangles ${edge.from}→${edge.to}`);
     if (!(edge.medianSec > 0)) fail(`edge non-positive time ${edge.from}→${edge.to}`);
     if (!routeIds.has(edge.route)) fail(`edge references unknown route ${edge.route}`);
+  }
+  const STRUCTURES = new Set(["underground", "elevated", "open_cut", "embankment", "at_grade"]);
+  for (const edge of shard.edges) {
+    if (!edge.structure) continue;
+    // Shares of one segment: a sum past 1 means the join is describing more
+    // than the segment it is attached to. 1.01 absorbs two-decimal rounding.
+    let sum = 0;
+    for (const [key, share] of Object.entries(edge.structure)) {
+      if (!STRUCTURES.has(key)) fail(`edge ${edge.from}→${edge.to} has structure ${key}`);
+      if (!(share > 0 && share <= 1)) fail(`edge ${edge.from}→${edge.to} share ${key}=${share}`);
+      sum += share;
+    }
+    if (sum > 1.01) fail(`edge ${edge.from}→${edge.to} structure shares sum to ${sum}`);
   }
   for (const row of shard.headways) {
     if (!routeIds.has(row.route)) fail(`headway references unknown route ${row.route}`);

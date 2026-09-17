@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { buildGeneration } from "../src/build";
+import { writeOsmCache } from "../src/osm";
 import { publishPlan } from "../src/publish";
 import { assembleReceipts, checkWorkTrees } from "../src/receipts";
 import { validate } from "../src/validate";
@@ -144,6 +145,87 @@ test("verify rejects bounds that disagree with the shard's stops", async () => {
     manifest.shards[0].bounds = { south: 0, west: 0, north: 0.1, east: 0.1 };
     await writeFile(manifestPath, JSON.stringify(manifest));
     await assert.rejects(() => verifyGeneration(generation), /bounds/);
+  });
+});
+
+/** Track along the straight line from Station Alpha to Station Beta. */
+function osmCacheFor(tags: Record<string, string>) {
+  const steps = 20;
+  return {
+    relations: [
+      {
+        id: 900,
+        tags: { type: "route", route: "subway", ref: "R1", operator: "New York City Transit Authority" },
+        members: [{ type: "way", ref: 901, role: "" }],
+      },
+    ],
+    ways: [
+      {
+        id: 901,
+        tags: { railway: "subway", ...tags },
+        geometry: Array.from({ length: steps + 1 }, (_, i) => ({
+          lat: 40.75 + (0.01 * i) / steps,
+          lon: -73.99 + (0.01 * i) / steps,
+        })),
+      },
+    ],
+    receipt: {
+      fetchedAt: "2026-09-17T00:00:00.000Z",
+      endpoint: "fixture",
+      bbox: { south: 40.4, west: -74.3, north: 40.95, east: -73.6 },
+      relations: { count: 1, bytes: 0, sha256: "0".repeat(64) },
+      ways: { count: 1, bytes: 0, sha256: "0".repeat(64) },
+    },
+  };
+}
+
+test("build attaches OSM structure to subway edges when the cache is present", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    await writeOsmCache(osmCacheFor({ tunnel: "yes" }));
+    const built = await buildGeneration({ updateBaseline: true });
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { edges: { route: string; structure?: Record<string, number> }[] };
+    const r1 = shard.edges.filter((e) => e.route === "R1");
+    assert.ok(r1.length > 0);
+    for (const e of r1) assert.deepEqual(e.structure, { underground: 1 });
+    assert.equal(built.structure?.determined, r1.length);
+    // The honesty note only appears when there is structure to explain.
+    assert.ok(built.manifest.notes.some((n) => n.includes("joined from OpenStreetMap")));
+  });
+});
+
+test("an elevated line is reported elevated, not defaulted to underground", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    await writeOsmCache(osmCacheFor({ bridge: "yes" }));
+    const built = await buildGeneration({ updateBaseline: true });
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { edges: { route: string; structure?: Record<string, number> }[] };
+    for (const e of shard.edges.filter((x) => x.route === "R1"))
+      assert.deepEqual(e.structure, { elevated: 1 });
+  });
+});
+
+test("build without an OSM cache ships no structure and says nothing about it", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const built = await buildGeneration({ updateBaseline: true });
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { edges: { structure?: unknown }[] };
+    // Additive: absent OSM means the shard it always was, minus one field.
+    assert.ok(shard.edges.every((e) => e.structure === undefined));
+    assert.equal(built.structure, undefined);
+    assert.ok(!built.manifest.notes.some((n) => n.includes("joined from OpenStreetMap")));
   });
 });
 

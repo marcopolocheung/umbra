@@ -21,6 +21,8 @@ import type {
 } from "./model";
 import type { RepresentativeDates } from "./serviceCalendar";
 import { readReceipts } from "./receipts";
+import { readOsm } from "./osm";
+import { attachStructure, buildStructureIndex, type StructureStats } from "./structure";
 import { requireRoot, sha256, writeJson } from "./util";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -274,12 +276,15 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   generation: string;
   manifest: GenerationManifest;
   directory: string;
+  /** Absent when OSM has not been acquired; the shard then ships no structure. */
+  structure?: StructureStats;
 }> {
   const root = requireRoot();
   const { subway, bus, stubs, referenceDate } = await normalizeAll(options);
   const { receipts } = await readReceipts();
 
   const objects: { key: string; value: unknown }[] = [];
+  let structureStats: StructureStats | undefined;
   if (subway) {
     // All spatial stubs touch a subway node by construction; they ship with
     // the subway shard, along with the bus stops they reference, so the
@@ -298,7 +303,31 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       }
     }
     const allSubwayStops = [...subwayStops.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
-    objects.push({ key: "subway.json", value: { ...subway, stops: allSubwayStops, transfers: [...subway.transfers, ...stubs] } });
+
+    // Per-segment structure, where OSM has been acquired. Additive and
+    // optional: without the cache the shard is the same shard it was, minus
+    // one field, and the client already treats its absence as "unknown".
+    const osm = await readOsm();
+    let edges = subway.edges;
+    if (osm) {
+      const attached = attachStructure(
+        subway.edges,
+        allSubwayStops,
+        buildStructureIndex(osm.relations, osm.ways),
+      );
+      edges = attached.edges;
+      structureStats = attached.stats;
+    }
+
+    objects.push({
+      key: "subway.json",
+      value: {
+        ...subway,
+        stops: allSubwayStops,
+        edges,
+        transfers: [...subway.transfers, ...stubs],
+      },
+    });
   }
   if (bus) {
     for (const source of FEED_SOURCES.filter((item) => item.kind === "bus")) {
@@ -386,10 +415,15 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       "Subway stops carry changeSec, the feed's own cost for changing lines inside that station (0 at cross-platform interchanges). Stations the feed prices no change for leave it unset rather than defaulted; changing lines there is unpriced.",
       "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
       "Headway hours are service-day hours 0-27, not wall-clock hours: hours 24-27 are the early morning of headwayDates[dataset][dayType].nextDate, whose day type is given as nextDayType. Hours 0-3 and 24-27 are different calendar days and must not be merged.",
+      ...(structureStats
+        ? [
+            "Subway edge structure is joined from OpenStreetMap, not from GTFS, which carries none. Shares are sampled along the straight line between the two stops and sum to at most 1; the shortfall is the part no OSM way matched. An edge carrying no structure field at all is unknown, which is not the same as at_grade: at_grade means a matched OSM way that is tagged neither tunnel nor bridge nor cutting nor embankment.",
+          ]
+        : []),
     ],
   };
   await writeJson(join(directory, "manifest.json"), manifest);
-  return { generation, manifest, directory };
+  return { generation, manifest, directory, structure: structureStats };
 }
 
 function summarizeDay(chosen: RepresentativeDates[DayType]): RepresentativeSummary[DayType] {
