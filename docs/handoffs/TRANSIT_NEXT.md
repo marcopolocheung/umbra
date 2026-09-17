@@ -595,6 +595,11 @@ actually loads, which is here.
 to `subway` (which would claim a bus ride is fully shaded). That guard is deliberate; removing it
 is part of this item, not a workaround for it.
 
+**Land #410 first.** The manifest's `notes` are parsed and thrown away, so the card already
+states a wait with none of its caveats. 3C adds two more claims that have nowhere to go — the
+unsheltered-stop assumption and the unvalidated transfer stubs below — and bolting three
+unsurfaced claims onto the card inside the bus PR is worse than building the surface first.
+
 Two things that only become real here: the **5,172 spatial subway↔bus transfer stubs** (every bus
 stop within 200 m of a station, capped at 10, at 1.4 m/s, never validated against reality) drop
 out today because no loaded edge serves their far end — they will surface the moment bus shards
