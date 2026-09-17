@@ -80,6 +80,32 @@ function cloneRoutingGraph(graph: RoutingGraph): RoutingGraph {
  * Results are cached by bbox; a cached graph is returned if it fully covers
  * the new request without re-fetching.
  */
+/**
+ * Prints why the upstream pool gave up, to the browser console.
+ *
+ * Deliberately not gated on DEV. "The map server is busy" is the same message
+ * whether every mirror refused the request (rate limiting) or each one merely
+ * ran past its budget (a query too slow) — and those have opposite fixes. The
+ * proxy classifies it per attempt, but that only reached its own logs, which
+ * expire; this is what makes a production failure diagnosable from the browser
+ * that saw it. Never carries the query or any coordinate.
+ */
+async function reportUpstreamFailure(res: Response): Promise<void> {
+  try {
+    const detail = (await res.clone().json()) as {
+      attempts?: { endpoint: string; failureClass: string; durationMs: number; status?: number }[];
+    };
+    if (!detail.attempts?.length) return;
+    const summary = detail.attempts
+      .map((a) => `${a.endpoint} ${a.failureClass}${a.status ? ` ${a.status}` : ""} ${a.durationMs}ms`)
+      .join(" | ");
+    console.warn(`[overpass] upstream unavailable (${res.status}): ${summary}`);
+  } catch {
+    // A body that is missing or unparseable tells us nothing; the thrown
+    // message below is still the user-facing outcome either way.
+  }
+}
+
 export async function fetchRoutingGraph(
   south: number,
   west: number,
@@ -129,6 +155,7 @@ out body geom;
 
   if (!res.ok) {
     if ([429, 502, 503, 504].includes(res.status)) {
+      await reportUpstreamFailure(res);
       throw new Error(
         "The map server is busy — try a smaller area or wait a moment and retry."
       );
