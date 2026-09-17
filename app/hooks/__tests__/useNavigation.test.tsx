@@ -970,7 +970,8 @@ describe("a route index from the panel resolves against the list the panel shows
     expect(result.current.navRoutes.indexOf(result.current.filteredRoutes[0])).toBeGreaterThan(0);
 
     const transitRoute = result.current.filteredRoutes[0];
-    expect(transitRoute.label).toBe("Via Transit");
+    // Named by mode since 3C: subway and bus are offered as separate cards.
+    expect(transitRoute.label).toBe("Via Subway");
     // Resolved against `navRoutes`, all three of these come back for a walk
     // route: null draw data, null entrances, and the wrong geometry.
     expect(result.current.navTrainDrawData).toBe(transitRoute.trainDrawData);
@@ -992,8 +993,9 @@ describe("a route index from the panel resolves against the list the panel shows
 
     expect(downloadBlob).toHaveBeenCalledTimes(1);
     const [, filename] = vi.mocked(downloadBlob).mock.calls[0];
-    expect(String(filename).toLowerCase()).toContain("transit");
-    expect(transitRoute.label).toBe("Via Transit");
+    expect(String(filename).toLowerCase()).toContain("subway");
+    // Named by mode since 3C: subway and bus are offered as separate cards.
+    expect(transitRoute.label).toBe("Via Subway");
   });
 });
 
@@ -1138,7 +1140,7 @@ describe("a transit option is not lost to an unreachable snap (#400)", () => {
     // Snapping to the nearest node lands on 99, the walk leg fails, and the
     // option is discarded — which is what this asserts has stopped happening.
     expect(result.current.filteredRoutes).toHaveLength(1);
-    expect(result.current.filteredRoutes[0].label).toBe("Via Transit");
+    expect(result.current.filteredRoutes[0].label).toBe("Via Subway");
     expect(result.current.navWarning).toBeNull();
   });
 
@@ -1153,7 +1155,7 @@ describe("a transit option is not lost to an unreachable snap (#400)", () => {
 
     const result = await routeOverIslandGraph();
 
-    expect(result.current.filteredRoutes[0]?.label).toBe("Via Transit");
+    expect(result.current.filteredRoutes[0]?.label).toBe("Via Subway");
     expect(result.current.navWarning).toBeNull();
   });
 });

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findBestTrainRoute, headwayKey, trainDijkstra } from "../../trainGraph";
+import {
+  findBestTrainRoute,
+  headwayKey,
+  nearestStations,
+  readHeadway,
+  trainDijkstra,
+  TRAIN_SUN_EXPOSURE,
+} from "../../trainGraph";
 import type { HeadwayDates, TransitShard } from "../shardContract";
 import { buildTrainGraphFromShards } from "../trainGraphAdapter";
 import { fetchBestTrainGraph } from "../trainGraphSource";
@@ -97,11 +104,35 @@ it("prices edges in the seconds the feed publishes, not in metres", () => {
     expect(graph.adj.get("subway:B")!.some((e) => e.to === "subway:A")).toBe(false);
   });
 
-  it("refuses a bus shard rather than pricing it as a train", () => {
-    // TRAIN_SUN_EXPOSURE has no bus figure; defaulting to `subway` would claim
-    // a bus ride is fully shaded.
-    expect(buildTrainGraphFromShards([shard({ kind: "bus-shard" })])).toBeNull();
+  it("builds a graph from a bus shard, at its own exposure", () => {
+    // This used to be refused outright, because defaulting an unpriced mode to
+    // `subway` would have claimed a bus ride is fully shaded. It is priced now.
+    const bus = shard({
+      kind: "bus-shard",
+      routes: [
+        { id: "B1", shortName: "B1", longName: "Bus One", type: 3, color: "00AEEF", textColor: "FFFFFF" },
+      ],
+      edges: [
+        { from: "subway:A", to: "subway:B", route: "B1", direction: 0, medianSec: 120, trips: 90, distM: 400 },
+        { from: "subway:B", to: "subway:A", route: "B1", direction: 1, medianSec: 120, trips: 90, distM: 400 },
+      ],
+      transfers: [],
+    });
+    const graph = buildTrainGraphFromShards([bus]);
+    expect(graph?.lineModes.get("B1")).toBe("bus");
+    expect(graph?.adj.get("subway:A")?.some((e) => e.line === "B1")).toBe(true);
+  });
+
+  it("still refuses a shard of no recognised kind, and an empty set", () => {
+    expect(buildTrainGraphFromShards([shard({ kind: "ferry-shard" })])).toBeNull();
     expect(buildTrainGraphFromShards([])).toBeNull();
+  });
+
+  it("prices a bus ride as a windowed vehicle, never as fully shaded", () => {
+    // The whole reason the refusal existed: TRAIN_SUN_EXPOSURE.subway is 0.0,
+    // so a bus falling through to it would be labelled underground.
+    expect(TRAIN_SUN_EXPOSURE.bus).toBeGreaterThan(0);
+    expect(TRAIN_SUN_EXPOSURE.bus).toBe(TRAIN_SUN_EXPOSURE.light_rail);
   });
 
   it("routes across a transfer with string ids end to end", () => {
@@ -412,5 +443,86 @@ describe("spatial transfer stubs", () => {
       "subway:A", "subway:B", "subway:C", "subway:D", "subway:E",
     ]);
     expect(path?.totalSec).toBe(3 * 90 + 180);
+  });
+});
+
+// ─── Bus beside subway ──────────────────────────────────────────────────────
+
+describe("bus and subway in one graph", () => {
+  /** A bus route whose stops crowd the subway station at subway:A. */
+  function busShard(): TransitShard {
+    const stops = Array.from({ length: 8 }, (_, i) => ({
+      id: `bus:${900 + i}`,
+      name: `Stop ${i}`,
+      // ~17 m apart and packed just south of subway:A at 40.7/-74.0 — the
+      // crowding that makes an unfiltered nearest-station search return
+      // nothing but bus stops, which is what a real Manhattan block looks like.
+      lat: 40.6988 + i * 0.00015,
+      lon: -74.0,
+      feeds: ["bus-m"],
+    }));
+    return {
+      kind: "bus-shard",
+      stops,
+      edges: stops.slice(0, -1).flatMap((s, i) => [
+        { from: s.id, to: stops[i + 1].id, route: "M1", direction: 0, medianSec: 120, trips: 60, distM: 40 },
+        { from: stops[i + 1].id, to: s.id, route: "M1", direction: 1, medianSec: 120, trips: 60, distM: 40 },
+      ]),
+      routes: [
+        { id: "M1", shortName: "M1", longName: "Bus One", type: 3, color: "00AEEF", textColor: "FFFFFF" },
+      ],
+      headways: [],
+      transfers: [],
+    };
+  }
+
+  it("still finds the subway option when bus stops crowd the station", () => {
+    // Unfiltered, the five nearest "stations" to this point are all bus stops
+    // within a block, so every candidate Dijkstra would be a bus one and the
+    // subway would never be offered at all.
+    const graph = buildTrainGraphFromShards([shard(), busShard()])!;
+    // Standing mid-block on the bus chain, ~110 m short of subway:A — close
+    // enough to walk to the station, far enough that five bus stops are nearer.
+    const a: [number, number] = [-74.0, 40.699];
+    const b: [number, number] = [-74.0, 40.7136];
+
+    // The precondition: unfiltered, every candidate is a bus stop.
+    const unfiltered = nearestStations(a, graph.stations, 5, 1500);
+    expect(unfiltered.every((s) => s.id.startsWith("bus:"))).toBe(true);
+
+    // Unfiltered, the result is not a worse option — it is *no option at all*.
+    // Every entry candidate is a bus stop, every exit candidate near the far
+    // end is a subway station, and since the spatial stubs are refused the two
+    // are disconnected components, so all 25 searches fail. Per-mode search is
+    // a correctness requirement here, not a nicer way to show two cards.
+    expect(findBestTrainRoute(a, b, graph, 1500, 5)).toBeNull();
+
+    const subwayRoute = findBestTrainRoute(a, b, graph, 1500, 5, {}, "subway");
+    expect(subwayRoute?.entryStation.id.startsWith("subway:")).toBe(true);
+    expect(subwayRoute?.exitStation.id).toBe("subway:E");
+  });
+
+  it("answers per mode, so the rider can compare them", () => {
+    const graph = buildTrainGraphFromShards([shard(), busShard()])!;
+    const a: [number, number] = [-74.0, 40.6989];
+    const b: [number, number] = [-74.0, 40.6999];
+    const busRoute = findBestTrainRoute(a, b, graph, 1500, 5, {}, "bus");
+    expect(busRoute?.entryStation.id.startsWith("bus:")).toBe(true);
+    expect(busRoute?.path.lines).toEqual(["M1"]);
+  });
+
+  it("does not let one feed's covered hours speak for another's", () => {
+    // The subway tables reach weekday hour 10; the bus tables here do not. A
+    // single shared coveredHours set makes the bus route's silence read as "no
+    // bus is scheduled", and boardingCost then refuses the edge outright.
+    const withSubwayHours = shard({
+      headways: [
+        { route: "1", direction: 0, dayType: "weekday", hour: 10, medianSec: 300, trips: 12, services: 1 },
+      ],
+    });
+    const graph = buildTrainGraphFromShards([withSubwayHours, busShard()])!;
+    const at = new Date("2026-09-17T14:00:00Z"); // 10:00 New York
+    expect(readHeadway(graph.headways, "M1", 0, at, -240).kind).toBe("unreadable");
+    expect(readHeadway(graph.headways, "1", 0, at, -240).kind).toBe("published");
   });
 });

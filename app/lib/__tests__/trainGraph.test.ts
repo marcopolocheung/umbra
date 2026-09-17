@@ -8,6 +8,7 @@ import {
   TRAIN_SPEED_MPS,
   TRANSFER_PENALTY_SEC,
   trainDijkstra,
+  coveredHourKey,
   railExposure,
   RAIL_VEHICLE_EXPOSURE,
   type TrainDayType,
@@ -331,7 +332,7 @@ function headways(
     medianSec: new Map(
       rows.map((r) => [headwayKey(r.route, r.direction ?? 0, r.dayType, r.hour), r.sec]),
     ),
-    coveredHours: new Set(rows.map((r) => `${r.dayType}|${r.hour}`)),
+    coveredHours: new Set(rows.map((r) => coveredHourKey("", r.dayType, r.hour))),
     nextDayType: new Map(nextDayType),
   };
 }
