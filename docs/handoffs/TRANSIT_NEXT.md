@@ -5,17 +5,24 @@
 > and S3a are merged. This document is everything after it, in the order the dependencies
 > actually allow.
 
-**Verified 2026-09-17**, `main` at `50e517b`. Green: lint 0 errors (55 warnings / 8 infos, the
+**Verified 2026-09-17**, `main` at `7a00d71`. Green: lint 0 errors (56 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1228 tests / 86 files**, build clean.
+error), typecheck 0, **1288 tests / 97 files**, build clean. One caveat on that green:
+`RemoteTileController.test.ts` is timing-flaky under full-suite load and fails on `main` itself
+(#421), so a red third gate is worth reproducing in isolation before believing it.
 
-**Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
-production genuinely routes on the published data — confirmed against the deployed site, which
-fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. Phase
-1.5 followed it (#401, #400, #407) after production surfaced two robustness defects in the
-*Overpass* half. **Phase 2 is merged** (#408). **Phase 3 is under way: 3A is in review, and 3B
-is under way — its data question is answered (OSM is good enough) and 3B-1, the pipeline join,
-is in review; 3B-2 spends it.**
+**Subway from R2 is complete.** Phase 1 (#397, #398, #399) made it visible and honest and
+`VITE_TRANSIT_BASE` is set in Vercel, so production has routed on the published data since 1D.
+Phase 1.5 (#401, #400, #407) fixed two robustness defects production surfaced in the *Overpass*
+half. Phase 2 (#408) priced the wait to board and the change of line. Phase 3A (#409) added
+per-shard bounds; 3B-1 (#411) joined OSM structure onto every subway edge and 3B-2 (#414) spent
+it; #415 surfaced the timetable's own caveats on the card. #418 gave the router a heap and #419
+refused the unvalidated transfer stubs.
+
+**Bus is the open edge.** #420 routes on it and is in review. Read
+"[After 3C — what is actually left](#after-3c--what-is-actually-left)" before picking anything
+up: the thing that motivated bus at all, the sun you take standing at the stop, is **not built
+yet**.
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -354,7 +361,7 @@ suite could not see.
 
 ---
 
-## Phase 2 — #391: spend the data — **in review**
+## Phase 2 — #391: spend the data — **merged (#408)**
 
 **Done, one PR, not merged.** Derivation note:
 `docs/notes/transit-wait-and-change-seconds.md`, which carries the measurements. What follows
@@ -448,7 +455,7 @@ change traded for a longer ride on one train, which is the trade a rider actuall
 The half that matters most for shade: a bus runs at grade in full sun, and a stop wait is total
 exposure. Three items, in this order.
 
-### 3A — #388: per-shard `bounds` in the manifest *(done, in review)*
+### 3A — #388: per-shard `bounds` in the manifest *(merged, #409)*
 
 `TransitShardRef` now carries the computed min/max lat/lon over the stops each shard ships, and
 `selectShardRefs()` drops a shard whose extent cannot reach the requested bbox before it is
@@ -560,7 +567,7 @@ Caveat: this is way-count weighting, not length weighting. No geometry was pulle
 untagged way counts the same as a short one. The ground-truth table is robust to that; the 90%
 is not, and would move under length weighting.
 
-#### 3B-1 — the join, in the pipeline *(done, in review)*
+#### 3B-1 — the join, in the pipeline *(merged, #411)*
 
 `server/transit-prep/src/structure.ts` joins OSM structure onto every subway edge at build time,
 and the shard ships it as `TransitEdge.structure`. Live as generation
@@ -605,7 +612,7 @@ Three decisions worth not re-litigating:
 - **A floor of 50% coverage.** Without one, a single matching sample out of nine yields
   `{"underground": 0.11}`, which reads as a measurement of a segment that was 89% unseen.
 
-#### 3B-2 — spend it *(next)*
+#### 3B-2 — spend it *(merged, #414)*
 
 Closes #393. Replace `TRAIN_SUN_EXPOSURE[mode]` with a per-segment figure derived from
 `structure`, and fix the two duplicated label sites (`RouteCard.tsx:189`,
@@ -615,40 +622,158 @@ elevated ride as free shade, which is the deeper defect behind "Underground — 
 Decide there, not here: what an **unknown** segment costs, and how much sun an **open cut** or an
 **embankment** gets. Both are real categories in the published data, and neither is 0 or 1.
 
-### 3C — S4: bus
+### 3C — S4: bus *(#420, in review)*
 
-3A, Phase 2 and 3B-1 are all in now, so what 3C is waiting on is 3B-2's model.
-`selectShardRefs()` already takes `{ bus: true }` and now filters the six bus shards
-geographically, so a Queens route no longer has to consider Staten Island's 1.06 MB. New
-`TrainMode` member, a sun-exposure figure for at-grade transit, and stop-wait exposure.
+**What it does.** `TrainMode` gains `bus` at `TRAIN_SUN_EXPOSURE.bus = 0.25` — the same
+windowed-vehicle figure as `light_rail`, which is physically what a bus is. The shard filter
+accepts `bus-shard`, `route_type` 3 maps to `bus`, and `trainGraphSource` asks for
+`{ subway: true, bus: true }`. Manhattan loads 13,909 stations and 374 lines against 496 and 29.
 
-One trap is already defused: `buildHeadways` looked the headway block up under the shard's own
-`kind`, and a bus shard's kind is `bus-shard` while the manifest's block is `bus`, so every bus
-headway date would have gone unread. Fixed in 3A's PR; it is unobservable until a bus shard
-actually loads, which is here.
+**Subway and bus are searched separately, and that is correctness rather than presentation.** A
+bus stop stands every ~200 m, so the five nearest "stations" to any midtown point are all bus
+stops within a block. One unfiltered search takes bus candidates at one end and subway at the
+other, and since #419 refuses the spatial stubs those are *disconnected components* — so it
+returns **no transit route at all**, not merely a worse one. `findBestTrainRoute` therefore takes
+a mode and filters candidates by the modes each station's own lines serve.
 
-`buildTrainGraphFromShards` currently **refuses** a bus shard outright rather than defaulting it
-to `subway` (which would claim a bus ride is fully shaded). That guard is deliberate; removing it
-is part of this item, not a workaround for it.
+Two silent defaults that would have claimed shade that is not there are now guarded:
 
-**Land #410 first.** The manifest's `notes` are parsed and thrown away, so the card already
-states a wait with none of its caveats. 3C adds two more claims that have nowhere to go — the
-unsheltered-stop assumption and the unvalidated transfer stubs below — and bolting three
-unsurfaced claims onto the card inside the bus PR is worse than building the surface first.
+- `routeTagToMode` (the Overpass producer) returns `"subway"` for anything it does not recognise.
+  Safe only because its query asks for rail modes and nothing else — **do not add bus to that
+  regex** without changing the function first.
+- `coveredHours` was one global set, so the subway feed covering weekday hour 10 made a bus
+  route's silence at hour 10 read as *"no bus is scheduled"* rather than *"this table does not
+  reach here"*, and `boardingCost` refuses a `no-service` edge outright. It is keyed per dataset
+  now, through a shared `coveredHourKey` — the hand-built test table had already drifted from the
+  adapter's, which is how the bug surfaced.
 
-Two things that only become real here: the **5,172 spatial subway↔bus transfer stubs** (every bus
-stop within 200 m of a station, capped at 10, at 1.4 m/s, never validated against reality) drop
-out today because no loaded edge serves their far end — they will surface the moment bus shards
-load. And bus stop wait **assumes an unsheltered stop**, because GTFS carries no shelter
-geometry; that is a stated assumption the card has to carry, not a number to quietly use.
+Entrances are fetched for subway only: a bus stop is its own boarding point and has no OSM
+entrance geometry, so the fetch and its O(entrances × stations) match were pure waste.
+
+**What the browser check found, and no test could.** Bus shards ship **no transfers at all** —
+measured, 0 across all six — and the spatial stubs are refused, so **every bus route is an
+isolated corridor with no change possible anywhere in the network**. A bus answer exists only
+where a single route runs from near the origin to near the destination. Bryant Park → Union
+Square therefore offered the *Pt. Richmond – Manhattan Express*: 29 stops, 75 minutes, an
+18-minute wait, against the subway's 14. Correct, honestly labelled, and a poor thing to offer.
 
 ---
+
+## After 3C — what is actually left
+
+Written 2026-09-17, after #418/#419 merged and with #420 in review. Ordered by what a rider
+would notice, not by what is easiest.
+
+### A. The bus stop wait is not modelled — this is 3B-2's unfinished twin *(the big one)*
+
+**Bus was worth doing because of the wait, and the wait is the part that is missing.** Manhattan
+weekday median headway is 10 minutes, so the expected wait is **5 minutes standing at an
+unsheltered stop**, against 4 on a subway platform that is usually underground. At a bus's
+~9.7 km/h that is a quarter to a third of the journey, entirely unattenuated. Today the bus card
+says *"assumed some sun"* from the per-mode constant — exactly the kind of claim 3B replaced for
+subway.
+
+**Decided, not yet built:** sample the real shadow at the boarding stop rather than assuming full
+sun. A stop in a building's shadow genuinely is shaded; the no-shelter assumption is about
+shelter structures, not buildings, and still has to be stated.
+
+`ShadowField.shadowAt(lng, lat, when)` (`app/lib/shadowField/ShadowField.ts:113`) returns
+`{ shadow, source, confidence }` synchronously and takes an explicit time, so a boarding's own
+clock is expressible. Treat it as an **untried seam — it has no production caller today**:
+
+- it needs geometry preloaded (`ready(bbox)` / `bboxAroundPoint(lng, lat, padM)`). The pipeline
+  already awaits `readyEdges` for the walk graph, so a stop on the walked path is likely covered;
+  **a boarding stop off that path may not be.**
+- gate on `confidence` (`LOW_CONFIDENCE = 0.5`) and fall back to *saying it is unknown*, never to
+  assuming shade.
+
+Plumbing: `trainDijkstra` accumulates only a scalar into `waitTo`, so it must accumulate
+`{ stationId, sec }` pairs for the boarding stop to be knowable at all. `useRouting` around the
+leg assembly is the only place with map context, a resolved `Date` and the stop coordinates.
+Surface it beside `waitSec`, and put the assumption in the `transitSunCaveat` family rather than
+folding it into a percentage — `riderFacingNotes` already passes the manifest's own
+unsheltered-stop note through to the card.
+
+### B. Bus cannot change buses, so its answers are thin and sometimes absurd
+
+Zero transfers published across all six bus shards, and the subway↔bus stubs are refused, so the
+bus network is a set of isolated single-route corridors. That is what produced a 75-minute Staten
+Island express for a 1.9 km midtown trip.
+
+Two separate questions, and they want answering in this order:
+
+1. **Bus-to-bus.** GTFS publishes none, so any would have to be synthesised — the same
+   unvalidated-straight-line problem as the subway↔bus stubs, at far greater volume. Do not
+   synthesise before deciding how to validate.
+2. **Subway↔bus**, which is the 5,172 stubs #419 refused. `server/transit-prep` now downloads OSM
+   for the structure join (#411), so a build-time walkability check has a natural home. Note
+   **271 of 454 stations (60%) sit at the cap of 10**, so *which* stops connect stays arbitrary
+   even after validation — fix the cap or accept it explicitly.
+
+Until one of these lands, a dominated bus option is visible to users. Suppressing an option on a
+time ratio is a product judgement; it was deliberately **not** taken in #420.
+
+### C. A transit card's "% shadow" describes the walk, and nothing else
+
+`shadowCoverage` on a transit `RouteOption` is the distance-weighted mean of the two walking
+legs. The ride and the wait contribute nothing. Worse, `routeExposureMinutes`
+(`app/lib/routeTradeoff.ts`) — the only thing feeding `dose()` — is distance ÷ speed, so it
+reports **zero** sun for the entire ride and wait of every transit route.
+
+So the headline number on a transit card is not wrong so much as about something else. Fixing it
+means deciding whether stationary minutes belong in a dose model built from distance, which is a
+real modelling change and should be its own decision rather than a side effect.
+
+### D. Measure the 9.21 MB first load before optimising it
+
+A Manhattan route now fetches **all seven shards, 9.21 MB**, because every borough's buses
+converge downtown and all seven bounding rectangles overlap there. Parsing and verifying that is
+**87 ms** — 17 ms of SHA-256 and 70 ms of `JSON.parse` — so it is a bandwidth problem, not a CPU
+one, and it is paid once per generation because shards are immutable and cached.
+
+**Measure a real first load on a throttled connection before doing anything about it.** Two fixes
+were considered and deliberately deferred for want of that evidence:
+
+- **A Cloudflare Worker serving a bbox-filtered shard** (#358/#360). Cuts Manhattan to a few
+  hundred KB, and breaks both the integrity chain — every hop is verified against the previous
+  hop's SHA-256, and a per-request response has no pre-publishable digest — and
+  `immutable, max-age=31536000` caching, trading one 9 MB download for a request per calculation.
+- **Resharding by ~5 km grid instead of by borough**, which needs no compute and keeps both. The
+  catch is real: shards are **self-contained by design**, each carrying the far end of every edge
+  it holds, which is why the S53 puts Staten Island stops in `bus-b`. Grid tiles either break that
+  or duplicate boundary stops and inflate.
+
+### E. Small, real, and each one a trap for someone
+
+- **The 500 m transit threshold is three unshared literals** — `useNavigation.ts:390`,
+  `useRouting.ts:865`, `:876` — that must stay in sync, and **nothing tests that transit is
+  withheld below it**. 3C's plan called for extracting a named constant and it was not done.
+- **`at_grade` slivers put a number on a ride that is wholly underground.** Times Sq → Union Sq
+  reads "6% above ground" because a stray untagged OSM way near a station is read as at grade
+  under the closed-world convention. The label threshold is `< 5% above ground → "underground"`,
+  which is a shade too tight against the measured 1.2% error floor. Either raise it to ~10%, or
+  stop reading an untagged match as `at_grade` when the rest of the segment is tunnel — the
+  second attacks the cause and is inference on inference, so measure first.
+- **#421 — `RemoteTileController.test.ts` is timing-flaky** under full-suite load and fails on
+  `main`. It makes the third gate non-deterministic, which trains people to re-run until green.
+- **`buildTrainDrawData` draws stop-to-stop straight chords**, because the shards ship no route
+  geometry by design (#385). Acceptable for an invisible subway, visibly wrong for a bus on a
+  street. The browser check showed no stop-dot caterpillar, so `MapView.tsx` was left alone;
+  anything better needs geometry the shards do not carry.
+
+### What is genuinely done
+
+Subway from R2 is complete and honest: real GTFS graph, scheduled run times, headway wait priced
+per boarding, in-station changes priced from the feed's own `changeSec`, per-segment sun exposure
+measured from OSM at a 1.2% error rate, geographic shard selection, and the timetable's own
+caveats on the card. Nothing in the list above is a defect in that.
 
 ## Running alongside — calendar, not dependency
 
 - **The subway feed expires 2026-10-31, and rebuilding does not move it.** The full pipeline was
-  re-run on 2026-09-17 for 3A (acquire → validate → build → verify → publish, all seven feeds
-  re-downloaded). The subway window came back **unchanged at 20260526 → 20261031**: the upstream
+  re-run on 2026-09-17 for 3A and again for 3B-1; the live generation is
+  **`nyc-2026-09-17-af01f9ffbdc5`**, the one carrying per-shard `bounds` and per-edge
+  `structure`. The subway window came back **unchanged at 20260526 → 20261031**: the upstream
   `gtfs_subway.zip` is still the 27 August baseline, so MTA has not posted a newer one. The
   freshness guardrail therefore still starts failing around **17 October**, and the fix is not a
   re-run but *MTA publishing*. Re-check `npm run acquire:plan` — if `lastModified` on
@@ -679,6 +804,28 @@ Each was measured; the measurement is in the PR or the issue.
   the reverse would invent service on the 14 stop pairs that genuinely run one way.
 - **`TRANSFER_PENALTY_SEC = 180`** is the feed's modal `min_transfer_time`, not a conversion of
   the old 300 m — which was worth ~36 s at train speed and was never a distance anyone walked.
+- **OSM is good enough for track structure.** 90.0% of revenue track carries an explicit
+  determination and every line documented as fully underground is 100% `tunnel`-tagged with zero
+  untagged ways. The three ways a naive count gets this wrong are written up under 3B; do not
+  redo the measurement without reading them.
+- **Only `underground` is enclosed.** An open cut and an embankment are open to the sky, and no
+  constant is invented for them — the shade a retaining wall casts is no more modelled than the
+  buildings beside an elevated line. It overstates sun in a cut, which under-rates a shaded option
+  rather than promising shade that is not there.
+- **A seat is not a pavement.** Above-ground rail exposure is the measured track share times
+  `RAIL_VEHICLE_EXPOSURE = 0.25` — this codebase's own long-standing "windowed surface vehicle"
+  figure, not a new number. The first cut of 3B-2 collapsed the measured fact and the model
+  constant into one number and reported an elevated ride as 1.0; the card states the **track
+  fact** ("75% above ground") precisely so the two stay apart.
+- **Exposure is measured over the determined part, with coverage carried beside it.** Below 60%
+  coverage the card reports how much of the ride is known rather than a percentage derived from
+  the sliver that is.
+- **Spatial transfer stubs are refused in the client, not unpublished.** They stay in the shard;
+  this is only which of them the client will route on, so re-enabling needs no republish.
+- **Subway and bus are searched per mode.** Not a presentation choice — see 3C.
+- **Manifest `notes` are shown verbatim and chosen by subject, not by array index**, and an
+  unrecognised note is *shown*, because a new note is far likelier to be a new caveat than a new
+  contract detail.
 - **A missing headway row is "no trips scheduled", not "unknown"** — but only in an hour the
   tables describe, and never past hour 23. Both halves were measured: unpriced-means-free sent a
   10 a.m. trip on the peak-only `7X`, and refusing on the overnight tail stranded 36 of 65
