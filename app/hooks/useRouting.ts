@@ -45,6 +45,7 @@ import {
   LOW_CONFIDENCE,
   QUERY_PAD_M,
   bboxAroundEdges,
+  bboxAroundPoint,
   createGeometryShadowField,
   edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
@@ -56,6 +57,8 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
+import { waitExposureFromSample } from "../lib/transitWaitExposure";
+import type { TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
@@ -1098,6 +1101,49 @@ export function useRouting({
                     // much of the quoted time it is.
                     const transitTimeSec = bestTrain.path.totalSec;
 
+                    // What the sun is doing where a bus rider stands waiting.
+                    //
+                    // Bus only. A subway wait happens on a platform that is
+                    // usually underground, and sampling the street above it
+                    // would answer a different question; there is nothing
+                    // honest to say there, so nothing is said.
+                    //
+                    // One boarding only. Bus shards publish no transfers, so a
+                    // bus path has exactly one — and if that ever changes, one
+                    // stop's shadow must not be quoted for two waits in two
+                    // places.
+                    let waitExposure: TransitWaitExposure | undefined;
+                    const boarding =
+                      lineMode === "bus" && bestTrain.path.waits.length === 1
+                        ? bestTrain.path.waits[0]
+                        : undefined;
+                    const boardingStop = boarding
+                      ? trainGraph.stations.get(boarding.stationId)
+                      : undefined;
+                    if (boardingStop) {
+                      // Sampled at the departure instant, which is when the
+                      // wait itself is priced — the published tables are
+                      // hourly, and a time-dependent search is a different
+                      // thing entirely.
+                      const when = dateRef.current;
+                      const stopBbox = bboxAroundPoint(
+                        boardingStop.lon,
+                        boardingStop.lat,
+                        QUERY_PAD_M,
+                      );
+                      let sample = field.shadowAt(boardingStop.lon, boardingStop.lat, when);
+                      // The route preload covered the walk corridor, and a
+                      // boarding stop can sit off it. One targeted load of the
+                      // stop's own cell, then ask again; still no answer means
+                      // unknown, never shade.
+                      if (sample.confidence < LOW_CONFIDENCE) {
+                        await field.ready(stopBbox, { signal: calcSignal }).catch(() => {});
+                        if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
+                        sample = field.shadowAt(boardingStop.lon, boardingStop.lat, when);
+                      }
+                      waitExposure = waitExposureFromSample(boardingStop.name, sample);
+                    }
+
                     const legs: RouteLeg[] = [
                       {
                         type: "walk",
@@ -1110,6 +1156,7 @@ export function useRouting({
                         geojson: transitGeoJSON,
                         travelTimeSec: transitTimeSec,
                         waitSec: bestTrain.path.waitSec,
+                        ...(waitExposure ? { waitExposure } : {}),
                         line: primaryLine,
                         lineColor,
                         lineName,

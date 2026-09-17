@@ -138,6 +138,21 @@ export interface TrainDrawData {
   transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
 }
 
+/**
+ * One priced wait: how long, and **where it is spent standing**.
+ *
+ * The stop is the point of this: a rider waiting for a bus stands in the open,
+ * and whether that spot is in a building's shadow is a question about the spot,
+ * not about the mode. A total alone can quote a time and can answer nothing
+ * else, which is why the search now carries the pair.
+ */
+export interface TrainWait {
+  /** The station the boarded edge leaves from — where the rider stands. */
+  stationId: string;
+  /** Half a published headway. Only priced waits appear here. */
+  waitSec: number;
+}
+
 export interface TrainPathResult {
   stationIds: string[];
   /** Scheduled riding, changing lines, and waiting to board. */
@@ -148,6 +163,12 @@ export interface TrainPathResult {
    * claim that a train was there, only that the wait went unpriced.
    */
   waitSec: number;
+  /**
+   * The same seconds, split per boarding and located. Empty where the feed
+   * priced nothing — an unpriced wait is not a zero-second wait at a known
+   * stop, it is nothing to say.
+   */
+  waits: TrainWait[];
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
   /**
@@ -916,7 +937,10 @@ export function trainDijkstra(
   if (startId === endId) return null;
 
   const dist = new Map<string, number>();
-  const waitTo = new Map<string, number>();
+  // The wait paid on the edge that reached this state, not the running total:
+  // the path is reconstructed from `prev` anyway, and a total cannot say where
+  // any of it was spent.
+  const waitOnEdgeTo = new Map<string, number>();
   const prev = new Map<string, string>();
   const prevLine = new Map<string, string>();
   // Ties break on insertion order, which is what the argmin this replaced did.
@@ -927,7 +951,6 @@ export function trainDijkstra(
 
   const startKey = stateKey(startId, ARRIVED_ON_FOOT);
   dist.set(startKey, 0);
-  waitTo.set(startKey, 0);
   pq.push({ key: startKey, cost: 0, seq: seq++ });
 
   let endKey: string | null = null;
@@ -955,7 +978,7 @@ export function trainDijkstra(
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, newCost);
-        waitTo.set(nextKey, (waitTo.get(key) ?? 0) + boarding.waitSec);
+        waitOnEdgeTo.set(nextKey, boarding.waitSec);
         prev.set(nextKey, key);
         prevLine.set(nextKey, edge.line ?? "");
         pq.push({ key: nextKey, cost: newCost, seq: seq++ });
@@ -968,15 +991,24 @@ export function trainDijkstra(
   // Reconstruct path backward, collecting edge line refs
   const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
+  const waits: TrainWait[] = [];
   let cur: string | undefined = endKey;
   while (cur !== undefined) {
     stationIds.push(stationOfState(cur));
     const line = prevLine.get(cur);
     if (line !== undefined) edgeLines.push(line); // skip start (no incoming edge)
-    cur = prev.get(cur);
+    const from = prev.get(cur);
+    const waitSec = waitOnEdgeTo.get(cur) ?? 0;
+    // The wait belongs to the station the edge *left*, which is where the rider
+    // stood, not the one it arrived at.
+    if (from !== undefined && waitSec > 0) {
+      waits.push({ stationId: stationOfState(from), waitSec });
+    }
+    cur = from;
   }
   stationIds.reverse();
   edgeLines.reverse();
+  waits.reverse();
 
   // Unique line refs (non-empty = rail edges)
   const lines: string[] = [];
@@ -1022,7 +1054,8 @@ export function trainDijkstra(
   return {
     stationIds,
     totalSec: dist.get(endKey)!,
-    waitSec: waitTo.get(endKey) ?? 0,
+    waitSec: waits.reduce((sum, wait) => sum + wait.waitSec, 0),
+    waits,
     lines,
     segments,
     ...(exposure ? { exposure } : {}),
