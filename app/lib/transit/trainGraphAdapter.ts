@@ -7,13 +7,22 @@
  *
  * Edges are priced in **seconds**, straight from the feed's scheduled
  * `medianSec`, and a transfer costs the `minSec` the agency publishes for it.
- * What is *not* priced here is the wait to board and the cost of changing
- * lines inside one station: both depend on which route you are boarding, which
- * a station-keyed shortest path cannot see. That is the next slice.
+ * The two terms that depend on which route is being boarded — the wait for it,
+ * and the feed's `changeSec` for changing to it inside one station — are
+ * carried through here and charged by `trainDijkstra`, whose state is
+ * `(station, route)` for exactly that reason.
  */
 
-import type { TrainGraph, TrainGraphEdge, TrainMode, TrainStation } from "../trainGraph";
-import type { TransitShard } from "./shardContract";
+import {
+  headwayKey,
+  type TrainDayType,
+  type TrainGraph,
+  type TrainGraphEdge,
+  type TrainHeadways,
+  type TrainMode,
+  type TrainStation,
+} from "../trainGraph";
+import type { HeadwayDates, TransitShard } from "./shardContract";
 
 /**
  * GTFS `route_type` → the modes the sun-exposure table prices.
@@ -30,6 +39,53 @@ function routeTypeToMode(type: number): TrainMode | null {
   return null;
 }
 
+const DAY_TYPES = new Set<string>(["weekday", "saturday", "sunday"]);
+
+function isDayType(value: unknown): value is TrainDayType {
+  return typeof value === "string" && DAY_TYPES.has(value);
+}
+
+/**
+ * Turns the shards' headway rows and the manifest's `headwayDates` into the
+ * table `trainDijkstra` reads.
+ *
+ * `headwayDates` is what makes hours 24-27 readable at all: it names which day
+ * type each table's small hours actually fall on, and without it an overnight
+ * boarding goes unpriced rather than being charged some neighbouring morning's
+ * frequency. The dataset key is the shard's own `kind` — the manifest publishes
+ * one block per dataset, `subway` beside `bus`.
+ *
+ * `coveredHours` is recorded beside the rows because a missing row only means
+ * something where the table was looking. The published feed reaches hour 24 and
+ * stops, so 1 a.m. is unknown to it, while 10 a.m. is an hour it describes in
+ * full and its silence about a route there is a statement.
+ */
+function buildHeadways(shards: TransitShard[], headwayDates?: HeadwayDates): TrainHeadways {
+  const medianSec = new Map<string, number>();
+  const coveredHours = new Set<string>();
+  const nextDayType = new Map<TrainDayType, TrainDayType>();
+
+  for (const shard of shards) {
+    for (const headway of shard.headways) {
+      medianSec.set(
+        headwayKey(headway.route, headway.direction, headway.dayType, headway.hour),
+        headway.medianSec,
+      );
+      coveredHours.add(`${headway.dayType}|${headway.hour}`);
+    }
+
+    const dates = headwayDates?.[shard.kind];
+    if (!dates || typeof dates === "string") continue;
+    for (const [dayType, info] of Object.entries(dates)) {
+      if (isDayType(dayType) && isDayType(info?.nextDayType)) {
+        nextDayType.set(dayType, info.nextDayType);
+      }
+    }
+  }
+
+  return { medianSec, coveredHours, nextDayType };
+}
+
 /**
  * Builds the graph from every **subway** shard given.
  *
@@ -37,7 +93,10 @@ function routeTypeToMode(type: number): TrainMode | null {
  * contract that transit is a non-critical extra: the caller keeps its walking
  * route either way.
  */
-export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | null {
+export function buildTrainGraphFromShards(
+  shards: TransitShard[],
+  headwayDates?: HeadwayDates,
+): TrainGraph | null {
   const usable = shards.filter((shard) => shard.kind === "subway");
   if (usable.length === 0) return null;
 
@@ -77,6 +136,10 @@ export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | 
       name: stop.name,
       lines: [],
     };
+    // Absent stays absent all the way to the router: 0 is a cross-platform
+    // interchange and the 33 stations without the field priced no change at
+    // all, which is not the same statement (#384).
+    if (stop.changeSec !== undefined) station.changeSec = stop.changeSec;
     stations.set(id, station);
     adj.set(id, []);
     return station;
@@ -103,6 +166,8 @@ export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | 
         weightSec: edge.medianSec,
         type: "rail",
         line: edge.route,
+        // The headway tables are directional, and this is what keys them.
+        direction: edge.direction,
       });
     }
   }
@@ -122,5 +187,12 @@ export function buildTrainGraphFromShards(shards: TransitShard[]): TrainGraph | 
   }
 
   if (stations.size < 2) return null;
-  return { stations, adj, lineColors, lineNames, lineModes };
+  return {
+    stations,
+    adj,
+    lineColors,
+    lineNames,
+    lineModes,
+    headways: buildHeadways(usable, headwayDates),
+  };
 }

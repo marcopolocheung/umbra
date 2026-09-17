@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findBestTrainRoute, trainDijkstra } from "../../trainGraph";
-import type { TransitShard } from "../shardContract";
+import { findBestTrainRoute, headwayKey, trainDijkstra } from "../../trainGraph";
+import type { HeadwayDates, TransitShard } from "../shardContract";
 import { buildTrainGraphFromShards } from "../trainGraphAdapter";
 import { fetchBestTrainGraph } from "../trainGraphSource";
 import { clearTransitCache } from "../remoteTransit";
@@ -264,5 +264,94 @@ describe("fetchBestTrainGraph", () => {
     // A shard that fails its byte contract must cost the walking route nothing.
     await expect(fetchBestTrainGraph(40.69, -74.01, 40.72, -73.99)).resolves.toBeNull();
     expect(calls.some((u) => u.includes("overpass"))).toBe(true);
+  });
+});
+
+// ─── What the router needs and the adapter used to drop ─────────────────────
+
+/**
+ * The manifest's own statement of which morning each table's hours 24+ fall on.
+ * Shaped exactly as the published document: one block per dataset, keyed by the
+ * shard `kind` beside it.
+ */
+const headwayDates = {
+  referenceDate: "20260916",
+  subway: {
+    weekday: {
+      date: "20260916",
+      nextDate: "20260917",
+      nextDayType: "weekday",
+      matchingDates: 33,
+      candidateDates: 33,
+    },
+    saturday: {
+      date: "20260919",
+      nextDate: "20260920",
+      nextDayType: "sunday",
+      matchingDates: 7,
+      candidateDates: 7,
+    },
+  },
+} as unknown as HeadwayDates;
+
+describe("buildTrainGraphFromShards: the boarding terms", () => {
+  it("carries the feed's change cost, and carries its absence as an absence", () => {
+    const graph = buildTrainGraphFromShards([shard()])!;
+    expect(graph.stations.get("subway:A")!.changeSec).toBe(180);
+    // A cross-platform interchange: 0 is a real published value.
+    expect(graph.stations.get("subway:C")!.changeSec).toBe(0);
+    // And a station the feed prices no change for keeps no number at all — the
+    // two are different statements, and only one of them is zero (#384).
+    expect("changeSec" in graph.stations.get("subway:B")!).toBe(false);
+  });
+
+  it("keys each rail edge to the direction it runs", () => {
+    const graph = buildTrainGraphFromShards([shard()])!;
+    expect(graph.adj.get("subway:A")!.find((e) => e.to === "subway:B")!.direction).toBe(0);
+    expect(graph.adj.get("subway:B")!.find((e) => e.to === "subway:A")!.direction).toBe(1);
+  });
+
+  it("builds the headway table out of the shard and the manifest together", () => {
+    const withHeadways = shard({
+      headways: [
+        { route: "1", direction: 0, dayType: "weekday", hour: 10, medianSec: 240, trips: 12, services: 1 },
+      ],
+    });
+    const graph = buildTrainGraphFromShards([withHeadways], headwayDates)!;
+    expect(graph.headways!.medianSec.get(headwayKey("1", 0, "weekday", 10))).toBe(240);
+    // Without `nextDayType` an overnight boarding cannot be priced at all, and
+    // it lives in the manifest rather than the shard.
+    expect(graph.headways!.nextDayType.get("saturday")).toBe("sunday");
+  });
+
+  it("prices no wait at all when the manifest is not passed", () => {
+    const graph = buildTrainGraphFromShards([shard()])!;
+    expect(graph.headways!.nextDayType.size).toBe(0);
+  });
+
+  it("sends a rider to the slower line when it is the one that turns up", () => {
+    // Two ways from A to C: route "1" via B in 180 s, route "3" direct in 200 s.
+    const twoRoutes = shard({
+      edges: [
+        ...shard().edges,
+        { from: "subway:A", to: "subway:C", route: "3", direction: 0, medianSec: 200, trips: 90, distM: 1000 },
+      ],
+      routes: [
+        ...shard().routes,
+        { id: "3", shortName: "3", longName: "Third Line", type: 1, color: "0039A6", textColor: "FFFFFF" },
+      ],
+      headways: [
+        // The 1 every twenty minutes against the 3 every minute.
+        { route: "1", direction: 0, dayType: "weekday", hour: 10, medianSec: 1200, trips: 3, services: 1 },
+        { route: "3", direction: 0, dayType: "weekday", hour: 10, medianSec: 60, trips: 60, services: 1 },
+      ],
+    });
+    const graph = buildTrainGraphFromShards([twoRoutes], headwayDates)!;
+    const at = new Date("2026-09-16T14:00:00Z"); // 10:00 in New York
+
+    expect(trainDijkstra(graph, "subway:A", "subway:C")!.lines).toEqual(["1"]);
+    const timed = trainDijkstra(graph, "subway:A", "subway:C", { at, utcOffsetMin: -240 })!;
+    expect(timed.lines).toEqual(["3"]);
+    expect(timed.waitSec).toBe(30);
   });
 });

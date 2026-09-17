@@ -60,7 +60,12 @@ export async function fetchBestTrainGraph(
   try {
     const dataset = await loadTransitDataset({ subway: true }, signal);
     if (dataset) {
-      const graph = buildTrainGraphFromShards([...dataset.shards.values()]);
+      // The manifest, not just the shards: `headwayDates` is what says which
+      // calendar morning each table's hours 24+ describe.
+      const graph = buildTrainGraphFromShards(
+        [...dataset.shards.values()],
+        dataset.manifest.headwayDates,
+      );
       if (graph && stationsWithin(graph, south, west, north, east) >= 2) {
         if (import.meta.env.DEV)
           console.log(

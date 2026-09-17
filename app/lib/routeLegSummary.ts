@@ -52,6 +52,10 @@ export function routeLegSummary(
     const stopCount = leg.stops ? Math.max(0, leg.stops.length - 1) : null;
     const parts = [
       leg.travelTimeSec != null ? formatMinutes(leg.travelTimeSec) : null,
+      // Named rather than folded in silently: the quoted time now includes the
+      // platform, and half a published median headway is an expectation for an
+      // unsynchronised arrival, not a prediction of this train — hence the "~".
+      leg.waitSec ? `incl. ~${formatMinutes(leg.waitSec)} wait` : null,
       stopCount != null ? `${stopCount} stop${stopCount === 1 ? "" : "s"}` : null,
       transitSunLabel(leg.sunExposure),
     ].filter(Boolean);

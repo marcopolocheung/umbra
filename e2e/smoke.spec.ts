@@ -239,4 +239,22 @@ test("routes on the published transit data and draws the line", async ({ page },
       message: "the transit line never appeared on the map canvas",
     })
     .toBeGreaterThan(0);
+
+  // Half the published headway, on the day type the clock is actually set to.
+  // The fixture ships 600 s for Sunday hour 9 and 300 s for the weekday, and
+  // `SHARE_URL` pins a Sunday — so 5 minutes is also the assertion that the
+  // service day was resolved rather than the first matching row taken. It is
+  // browser-only: the wait depends on the map's zone, which `npm test` has no
+  // map to read.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            document.querySelector('[role="radiogroup"][aria-label="Route options"]')
+              ?.textContent ?? "",
+        ),
+      { timeout: 30_000, message: "the boarding wait never reached the leg breakdown" },
+    )
+    .toContain("incl. ~5 min wait");
 });

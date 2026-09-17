@@ -54,8 +54,15 @@ const shard = {
       textColor: "FFFFFF",
     },
   ],
+  // `SHARE_URL` pins 2026-06-21 at 09:00, which is a **Sunday** — so the Sunday
+  // rows are the ones the router reads, and the weekday row beside them is what
+  // proves it is reading the right day type rather than the first row it finds.
+  // Both directions, because a row missing for the direction being boarded is
+  // read as "no trips scheduled" and refuses the boarding outright.
   headways: [
     { route: "E", direction: 0, dayType: "weekday", hour: 9, medianSec: 300, trips: 12, services: 1 },
+    { route: "E", direction: 0, dayType: "sunday", hour: 9, medianSec: 600, trips: 6, services: 1 },
+    { route: "E", direction: 1, dayType: "sunday", hour: 9, medianSec: 600, trips: 6, services: 1 },
   ],
   transfers: [],
 };
@@ -74,6 +81,13 @@ const manifest = {
       weekday: {
         date: "20260916",
         nextDate: "20260917",
+        nextDayType: "weekday",
+        matchingDates: 1,
+        candidateDates: 1,
+      },
+      sunday: {
+        date: "20260920",
+        nextDate: "20260921",
         nextDayType: "weekday",
         matchingDates: 1,
         candidateDates: 1,
