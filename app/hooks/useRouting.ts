@@ -1147,6 +1147,11 @@ export function useRouting({
                       [alightEntrance.lon, alightEntrance.lat] as [number, number],
                     ],
                     trainDrawData: drawData,
+                    // Absent for the Overpass producer, which makes none of
+                    // these claims and must not borrow them (#410).
+                    ...(trainGraph.provenance
+                      ? { transitProvenance: trainGraph.provenance }
+                      : {}),
                   });
                 }
               }

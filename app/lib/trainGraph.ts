@@ -69,6 +69,25 @@ export interface TrainGraphEdge {
   structure?: TrainEdgeStructure;
 }
 
+/**
+ * What the timetable behind a transit answer actually is.
+ *
+ * The published manifest carries honesty statements and a feed window
+ * explicitly so a client can surface them — `shardContract.ts` calls `notes`
+ * "the honesty statements the transit card has to surface. Never drop these."
+ * They were parsed and thrown away (#410), so the card quoted a wait with none
+ * of its caveats. Absent for the Overpass producer, which publishes no
+ * timetable and therefore makes none of these claims.
+ */
+export interface TransitProvenance {
+  /** Content-addressed generation the answer came from. */
+  generation: string;
+  /** The producer's own statements, verbatim. Never paraphrase these. */
+  notes: string[];
+  /** Per-dataset feed window, GTFS `YYYYMMDD`. */
+  schedulesAsOf: Record<string, { version: string; startDate: string; endDate: string }>;
+}
+
 export interface TrainGraph {
   stations: Map<string, TrainStation>;
   adj: Map<string, TrainGraphEdge[]>;
@@ -77,6 +96,8 @@ export interface TrainGraph {
   lineModes: Map<string, TrainMode>;
   /** Published waits. Absent from the Overpass producer, which prices none. */
   headways?: TrainHeadways;
+  /** Where the timetable came from, for the card to state (#410). */
+  provenance?: TransitProvenance;
 }
 
 // ─── Segment types for route visualization ──────────────────────────────────
