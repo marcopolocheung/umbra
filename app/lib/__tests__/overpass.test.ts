@@ -504,7 +504,7 @@ describe("fetchStationEntranceBoxes — several boxes, one request", () => {
     ]);
     const [s2, w2, n2, e2] = nextBbox();
     const boxB = { south: s2, west: w2, north: n2, east: e2 };
-    const merged = await fetchStationEntranceBoxes([boxA, boxB]);
+    const { entrances: merged } = await fetchStationEntranceBoxes([boxA, boxB]);
 
     expect(second).toHaveBeenCalledTimes(1);
     const body = bodyOf(second);
@@ -521,14 +521,14 @@ describe("fetchStationEntranceBoxes — several boxes, one request", () => {
     const [s, w, n, e] = nextBbox();
     const box = { south: s, west: w, north: n, east: e };
     // The same box twice is the degenerate overlap: one request, one node.
-    const res = await fetchStationEntranceBoxes([box, box]);
+    const { entrances: res } = await fetchStationEntranceBoxes([box, box]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(res.map((x) => x.id)).toEqual([41]);
   });
 
   it("makes no request at all for an empty box list", async () => {
     const fetchMock = stubOnce([]);
-    expect(await fetchStationEntranceBoxes([])).toEqual([]);
+    expect(await fetchStationEntranceBoxes([])).toEqual({ entrances: [], failed: false });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

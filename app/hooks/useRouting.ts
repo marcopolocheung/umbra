@@ -3,7 +3,6 @@ import type maplibregl from "maplibre-gl";
 import { boxAround, fetchRoutingGraph, fetchStationEntranceBoxes } from "../lib/overpass";
 import {
   dijkstra,
-  snapToGraph,
   paretoRoutes,
   graphToGeoJSON,
   haversineMeters,
@@ -12,6 +11,8 @@ import {
   clearVirtualNodes,
   snapRouteStopsToReachableEdges,
   parallelSidewalkEdges,
+  reachableFrom,
+  snapToReachable,
 } from "../lib/routing";
 import type {
   GraphEdge,
@@ -861,6 +862,9 @@ export function useRouting({
               "m <= 500 m",
             );
         }
+        // Set when a transit route was found and then discarded, so the user is
+        // told transit was considered rather than silently shown walking only.
+        let transitNotice: string | null = null;
         if (!forcedPartial && straightLineDistM > 500) {
           try {
             updateProgress({ message: "Checking transit option" });
@@ -913,9 +917,15 @@ export function useRouting({
                 const entranceBoxes = [bestTrain.entryStation, bestTrain.exitStation].map(
                   (station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M),
                 );
-                const entrances = await fetchStationEntranceBoxes(entranceBoxes, calcSignal);
+                const entranceResult = await fetchStationEntranceBoxes(entranceBoxes, calcSignal);
+                const { entrances } = entranceResult;
                 if (import.meta.env.DEV)
-                  console.log("[transit] entrances:", entrances.length, "in 2 station boxes");
+                  console.log(
+                    "[transit] entrances:",
+                    entrances.length,
+                    "in 2 station boxes",
+                    entranceResult.failed ? "(fetch FAILED — list is cache only)" : "",
+                  );
 
                 // Matched against **every** station, not just the two endpoints,
                 // even though only their boxes were fetched. A door inside the
@@ -946,9 +956,23 @@ export function useRouting({
                 ];
                 const alightEntrance = pickClosestEntrance(b, alightCandidates, haversineMeters);
 
-                const boardNodeId = snapToGraph(
+                // Snap to somewhere the walker can actually reach. A station
+                // centroid, and sometimes a real entrance, sits on a fragment of
+                // the pedestrian graph that connects to nothing — station
+                // interiors and service stubs are their own islands. Nearest-node
+                // snapping lands there, the walk leg fails, and the whole transit
+                // option is dropped for a reason nobody can see.
+                //
+                // The walking route from A to B already succeeded, so both ends
+                // share one component; computing it from the start covers the
+                // alight snap too. `walkOpts` pins travel mode to walk, and walk
+                // prohibits no edge, so this set is exactly what dijkstra can
+                // traverse.
+                const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
+                const boardNodeId = snapToReachable(
                   [boardEntrance.lon, boardEntrance.lat],
                   routingGraph,
+                  walkableFromStart,
                   spatialGrid,
                 );
                 const walkA = dijkstra(
@@ -966,9 +990,10 @@ export function useRouting({
                     boardNodeId,
                   );
 
-                const alightNodeId = snapToGraph(
+                const alightNodeId = snapToReachable(
                   [alightEntrance.lon, alightEntrance.lat],
                   routingGraph,
+                  walkableFromStart,
                   spatialGrid,
                 );
                 const walkB = dijkstra(
@@ -993,6 +1018,9 @@ export function useRouting({
                       !walkA ? "walkA=null" : "",
                       !walkB ? "walkB=null" : "",
                     );
+                  transitNotice = entranceResult.failed
+                    ? `No walking route to ${bestTrain.entryStation.name}. Station entrance data could not be loaded — try again in a moment.`
+                    : `Transit via ${bestTrain.entryStation.name} was found but no walking route reaches it, so it is not offered here.`;
                 }
                 if (walkA && walkB) {
                   const walkAGeoJSON = graphToGeoJSON(walkA.nodeIds, routingGraph);
@@ -1147,7 +1175,9 @@ export function useRouting({
         setRouteSolarIntensity(solarIntensity);
         setRoutePreview(null);
         seam.current.setSketchPoints([]);
-        seam.current.setNavWarning(partialWarning ? partialRouteNotice(partialWarning) : null);
+        seam.current.setNavWarning(
+          partialWarning ? partialRouteNotice(partialWarning) : transitNotice,
+        );
         seam.current.setSimplifiedWaypoints(null);
         // The panel shows one mode's list, and selection resets to its first
         // entry — so frame that, not whichever option happens to be first
