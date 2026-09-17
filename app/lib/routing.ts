@@ -99,7 +99,26 @@ export interface RouteLeg {
   line?: string;             // transit legs: line ref/code
   lineColor?: string;        // transit legs: hex color
   lineName?: string;         // transit legs: display name
-  sunExposure?: number;      // transit legs: 0 = underground, 0.25 = surface
+  /**
+   * Transit legs: share of riding time open to the sky. Measured from the
+   * published per-segment structure where there is any, otherwise the per-mode
+   * constant — which `sunExposureCoverage` is what distinguishes.
+   */
+  sunExposure?: number;
+  /**
+   * Share of the ride the figure is actually based on. `undefined` means it is
+   * assumed from the line's mode, not measured; 1 means the whole ride was
+   * determined. Never read a low coverage as shade (#393).
+   */
+  sunExposureCoverage?: number;
+  /**
+   * Transit legs: share of the determined ride whose track is open to the sky.
+   *
+   * The measured fact, kept separate from `sunExposure`, which is this times a
+   * vehicle-attenuation constant. The card states this one, because it is what
+   * a passenger can verify out of the window.
+   */
+  aboveGroundShare?: number;
   stops?: string[];          // transit legs: ordered station names
 }
 

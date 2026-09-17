@@ -1,7 +1,12 @@
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
-import { routeLegSummary, transitSunCardLabel, TRANSIT_SUN_CAVEAT } from "../lib/routeLegSummary";
+import {
+  routeLegSummary,
+  transitSunCardLabel,
+  transitSunCaveat,
+  transitSunTone,
+} from "../lib/routeLegSummary";
 import { routeExposureLine } from "../lib/routeTradeoff";
 import { roughSurfaceLine } from "../lib/travelMode";
 
@@ -185,12 +190,15 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           const stopCount = (tLeg.stops?.length ?? 2) - 1;
           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
           const sunExposure = tLeg.sunExposure ?? 0;
-          const sunLabel = transitSunCardLabel(sunExposure);
-          const sunColor = sunExposure < 0.05
-            ? "#0e7490"
-            : sunExposure < 0.2
-            ? "#15803d"
-            : "#a16207";
+          const sunCoverage = tLeg.sunExposureCoverage;
+          const aboveGround = tLeg.aboveGroundShare;
+          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
+          const sunColor = {
+            enclosed: "#0e7490",
+            shaded: "#15803d",
+            sunny: "#a16207",
+            unknown: "var(--md-on-surface-variant)",
+          }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
           return (
             <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--md-on-surface-variant)" }}>
               <div className="flex items-center gap-1">
@@ -202,7 +210,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               <div className="flex gap-x-2 flex-wrap">
                 <span>{totalMin} min total</span>
                 <span style={{ opacity: 0.4 }}>·</span>
-                <span style={{ color: sunColor }} title={TRANSIT_SUN_CAVEAT}>{sunLabel}</span>
+                <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
               </div>
             </div>
           );

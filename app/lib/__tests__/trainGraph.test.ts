@@ -8,7 +8,10 @@ import {
   TRAIN_SPEED_MPS,
   TRANSFER_PENALTY_SEC,
   trainDijkstra,
+  railExposure,
+  RAIL_VEHICLE_EXPOSURE,
   type TrainDayType,
+  type TrainEdgeStructure,
   type TrainGraph,
   type TrainGraphEdge,
   type TrainHeadways,
@@ -190,6 +193,7 @@ function toyGraph(
     line?: string;
     sec: number;
     direction?: number;
+    structure?: Partial<Record<string, number>>;
   }>,
   headways?: TrainHeadways,
 ): TrainGraph {
@@ -208,6 +212,7 @@ function toyGraph(
       type: "rail",
       line: e.line,
       direction: e.direction ?? 0,
+      ...(e.structure ? { structure: e.structure as TrainEdgeStructure } : {}),
     });
     const from = stationMap.get(e.from)!;
     if (!from.lines.includes(e.line)) from.lines.push(e.line);
@@ -565,5 +570,107 @@ describe("trainDijkstra: the overnight tail prices but does not refuse", () => {
       table,
     );
     expect(trainDijkstra(oneLine, "X", "Z", afterMidnight)!.waitSec).toBe(600);
+  });
+});
+
+// ─── Per-segment sun exposure (#393) ────────────────────────────────────────
+
+describe("railExposure", () => {
+  const a = station("A", "Alpha", 40.75, -73.99);
+  const b = station("B", "Beta", 40.76, -73.98);
+  const c = station("C", "Gamma", 40.77, -73.97);
+
+  it("reports no sun for a ride that is wholly in tunnel", () => {
+    const graph = toyGraph([a, b], [{ from: "A", to: "B", line: "G", sec: 120, structure: { underground: 1 } }]);
+    expect(railExposure(graph, ["A", "B"], ["G"])).toEqual({
+      aboveGroundShare: 0,
+      sunExposure: 0,
+      coverage: 1,
+    });
+  });
+
+  it("does not treat a seat on a viaduct as standing in full sun", () => {
+    // The track is entirely open to the sky, and the rider is still behind
+    // glass, under a roof and moving. Reporting 1.0 would say an elevated ride
+    // is exactly as exposed as walking, which is what the per-mode constant
+    // (light_rail: 0.25, "windowed surface vehicle") always denied.
+    const graph = toyGraph([a, b], [{ from: "A", to: "B", line: "J", sec: 120, structure: { elevated: 1 } }]);
+    expect(railExposure(graph, ["A", "B"], ["J"])).toEqual({
+      aboveGroundShare: 1,
+      sunExposure: RAIL_VEHICLE_EXPOSURE,
+      coverage: 1,
+    });
+  });
+
+  it("counts an open cut and an embankment as open to the sky", () => {
+    // No invented constant: a cut is open above, and the shade its walls cast
+    // is no more modelled than the buildings beside an elevated line.
+    const graph = toyGraph(
+      [a, b],
+      [{ from: "A", to: "B", line: "Q", sec: 100, structure: { open_cut: 0.5, embankment: 0.5 } }],
+    );
+    expect(railExposure(graph, ["A", "B"], ["Q"])?.aboveGroundShare).toBe(1);
+  });
+
+  it("weights by time, so a slow elevated crawl outweighs a fast tunnel run", () => {
+    const graph = toyGraph(
+      [a, b, c],
+      [
+        { from: "A", to: "B", line: "7", sec: 60, structure: { underground: 1 } },
+        { from: "B", to: "C", line: "7", sec: 180, structure: { elevated: 1 } },
+      ],
+    );
+    const result = railExposure(graph, ["A", "B", "C"], ["7", "7"]);
+    // 180 of 240 seconds above ground, not 1 of 2 hops.
+    expect(result?.aboveGroundShare).toBeCloseTo(0.75, 5);
+    expect(result?.sunExposure).toBeCloseTo(0.75 * RAIL_VEHICLE_EXPOSURE, 5);
+    expect(result?.coverage).toBe(1);
+  });
+
+  it("measures exposure over the determined part and reports the coverage", () => {
+    const graph = toyGraph(
+      [a, b, c],
+      [
+        { from: "A", to: "B", line: "A", sec: 100, structure: { underground: 1 } },
+        // Nothing known about this hop at all.
+        { from: "B", to: "C", line: "A", sec: 100 },
+      ],
+    );
+    const result = railExposure(graph, ["A", "B", "C"], ["A", "A"]);
+    // The unknown half must not be counted as shaded, which is the #393 bug,
+    // nor silently as sun. It is excluded and declared.
+    expect(result).toEqual({ aboveGroundShare: 0, sunExposure: 0, coverage: 0.5 });
+  });
+
+  it("treats a partly-determined hop as partly unknown", () => {
+    const graph = toyGraph(
+      [a, b],
+      // Shares sum to 0.8: a fifth of the hop matched no OSM way.
+      [{ from: "A", to: "B", line: "F", sec: 100, structure: { underground: 0.4, elevated: 0.4 } }],
+    );
+    const result = railExposure(graph, ["A", "B"], ["F"]);
+    expect(result?.aboveGroundShare).toBeCloseTo(0.5, 5);
+    expect(result?.coverage).toBeCloseTo(0.8, 5);
+  });
+
+  it("returns null when nothing on the path carries structure", () => {
+    const graph = toyGraph([a, b], [{ from: "A", to: "B", line: "M", sec: 120 }]);
+    // Null, not zero: the caller must fall back to the per-mode constant and
+    // say the figure is assumed, rather than report a measurement of nothing.
+    expect(railExposure(graph, ["A", "B"], ["M"])).toBeNull();
+  });
+
+  it("ignores transfer edges, which are not a ride", () => {
+    const graph = toyGraph(
+      [a, b, c],
+      [
+        { from: "A", to: "B", line: "N", sec: 100, structure: { elevated: 1 } },
+        { from: "B", to: "C", sec: 180 },
+      ],
+    );
+    const result = railExposure(graph, ["A", "B", "C"], ["N", ""]);
+    // The 180 s transfer must not dilute the ride's exposure.
+    expect(result?.aboveGroundShare).toBe(1);
+    expect(result?.coverage).toBe(1);
   });
 });

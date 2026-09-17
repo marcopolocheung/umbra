@@ -1063,7 +1063,13 @@ export function useRouting({
                   const lineColor = trainGraph.lineColors.get(primaryLine) ?? "#0070BD";
                   const lineName = trainGraph.lineNames.get(primaryLine) ?? primaryLine;
                   const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
-                  const sunExposure = TRAIN_SUN_EXPOSURE[lineMode];
+                  // Measured per segment where the shards publish structure;
+                  // the per-mode constant is the fallback, and the absent
+                  // coverage is what tells the card the figure is assumed.
+                  const measured = bestTrain.path.exposure;
+                  const sunExposure = measured?.sunExposure ?? TRAIN_SUN_EXPOSURE[lineMode];
+                  const sunExposureCoverage = measured?.coverage;
+                  const aboveGroundShare = measured?.aboveGroundShare;
 
                   // Riding, changing lines, and standing on the platform. The
                   // wait is carried separately as well so the card can say how
@@ -1086,6 +1092,8 @@ export function useRouting({
                       lineColor,
                       lineName,
                       sunExposure,
+                      ...(sunExposureCoverage != null ? { sunExposureCoverage } : {}),
+                      ...(aboveGroundShare != null ? { aboveGroundShare } : {}),
                       stops: stopNames,
                     },
                     {

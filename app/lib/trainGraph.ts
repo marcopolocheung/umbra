@@ -34,6 +34,16 @@ export interface TrainStation {
   changeSec?: number;
 }
 
+/**
+ * Where a rail hop runs, as shares of the hop that sum to **at most** 1; the
+ * shortfall is the part the producer could not determine. Structurally the
+ * shard's `EdgeStructure`, redeclared here so `trainGraph` stays independent of
+ * the NYC shard contract — the Overpass producer supplies none of it.
+ */
+export type TrainEdgeStructure = Partial<
+  Record<"underground" | "elevated" | "open_cut" | "embankment" | "at_grade", number>
+>;
+
 export interface TrainGraphEdge {
   to: string;
   /**
@@ -51,6 +61,12 @@ export interface TrainGraphEdge {
    * going one way. Absent from the Overpass producer, which has no timetable.
    */
   direction?: number;
+  /**
+   * Published per-segment structure (#393). Absent from the Overpass producer
+   * and from any generation built before the OSM join, and absence means
+   * **unknown** — never "underground".
+   */
+  structure?: TrainEdgeStructure;
 }
 
 export interface TrainGraph {
@@ -101,6 +117,12 @@ export interface TrainPathResult {
   waitSec: number;
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
+  /**
+   * Measured from the published per-segment structure (#393), or absent when
+   * none of the hops carries it — in which case the caller falls back to the
+   * per-mode constant and must say the figure is assumed.
+   */
+  exposure?: RailExposure;
 }
 
 export interface BestTrainRoute {
@@ -113,12 +135,122 @@ export interface BestTrainRoute {
   totalCostSec: number;
 }
 
-/** Sun exposure per mode: 0 = underground, 0.25 = windowed surface vehicle */
+/**
+ * Sun exposure per mode — the **fallback** when no per-segment structure is
+ * published: the Overpass producer, and any generation built before the OSM
+ * join. `subway: 0.0` is exactly the claim #393 was opened against, so it is
+ * used only where nothing better exists, and the label says it is assumed.
+ */
 export const TRAIN_SUN_EXPOSURE: Record<TrainMode, number> = {
   subway: 0.0,
   light_rail: 0.25,
   monorail: 0.1,
 };
+
+/**
+ * Only `underground` is enclosed. An open cut and an embankment are open to the
+ * sky, and no constant is invented for them: we do not model the shade a
+ * retaining wall casts, any more than we model the buildings beside an elevated
+ * line. It overstates sun in a cut, which under-rates a shaded option rather
+ * than promising shade that is not there.
+ */
+function openToSkyShare(structure: TrainEdgeStructure): { open: number; known: number } {
+  let open = 0;
+  let known = 0;
+  for (const [kind, share] of Object.entries(structure)) {
+    known += share;
+    if (kind !== "underground") open += share;
+  }
+  return { open, known };
+}
+
+/**
+ * How much of a pedestrian's sun a seated rail passenger actually takes.
+ *
+ * A viaduct is open to the sky, but the rider is behind glass, under a roof,
+ * moving, and can move within the car. Treating an elevated ride as *equal* to
+ * standing on a pavement in full sun overstates it badly.
+ *
+ * 0.25 is not a new number: it is this codebase's existing
+ * `TRAIN_SUN_EXPOSURE.light_rail`, whose comment has always read "windowed
+ * surface vehicle". The measurement (#393) changed which segments are open to
+ * the sky and how that varies along a ride; it did not change what sitting in a
+ * train car is like, and should not have silently redefined it as 1.0.
+ *
+ * **Not for buses.** A bus rider's exposure is dominated by the wait at an
+ * unsheltered stop, which is unattenuated pedestrian sun and is not a property
+ * of any track. Bus needs its own model, not this constant (3C).
+ */
+export const RAIL_VEHICLE_EXPOSURE = 0.25;
+
+export interface RailExposure {
+  /**
+   * Share of the *determined* riding time whose track is open to the sky.
+   *
+   * A fact about the track, not about the rider — it is what a passenger can
+   * check by looking out of the window, and it is what the card states.
+   */
+  aboveGroundShare: number;
+  /**
+   * Modelled rider exposure: `aboveGroundShare` attenuated by
+   * `RAIL_VEHICLE_EXPOSURE`. A measured fact times a model constant, which is
+   * why the two are kept apart rather than collapsed into one number.
+   */
+  sunExposure: number;
+  /** Share of riding time that had any determination at all. */
+  coverage: number;
+}
+
+/**
+ * Sun exposure over the rail hops of a path, weighted by **time**.
+ *
+ * Time, not distance: a rider's dose is how long they sit in the sun, and a
+ * slow elevated crawl is more exposure than a fast tunnel run of the same
+ * length. `weightSec` is already on every edge.
+ *
+ * Returns `null` when no hop carries structure, so the caller falls back to the
+ * per-mode constant rather than reporting a measurement of nothing. `coverage`
+ * is what the card needs to avoid quoting a figure for a ride it mostly cannot
+ * see.
+ */
+/**
+ * **Rail only — buses must not use this.** A bus rider's exposure is dominated
+ * by the wait at the stop, which is unsheltered pedestrian sun and is not a
+ * property of any track; and a bus is at grade everywhere, so a structure share
+ * would be a constant 1 carrying no information. 3C needs its own model, not a
+ * generalisation of this one.
+ */
+export function railExposure(
+  graph: TrainGraph,
+  stationIds: string[],
+  edgeLines: string[],
+): RailExposure | null {
+  let openSec = 0;
+  let knownSec = 0;
+  let railSec = 0;
+
+  for (let i = 0; i < edgeLines.length; i += 1) {
+    const line = edgeLines[i];
+    if (line === "") continue; // transfer: no ride, no exposure
+    const edge = graph.adj
+      .get(stationIds[i] as string)
+      ?.find((candidate) => candidate.to === stationIds[i + 1] && candidate.line === line);
+    if (!edge) continue;
+    railSec += edge.weightSec;
+    if (!edge.structure) continue;
+    const { open, known } = openToSkyShare(edge.structure);
+    openSec += edge.weightSec * open;
+    knownSec += edge.weightSec * known;
+  }
+
+  if (railSec <= 0 || knownSec <= 0) return null;
+  const aboveGroundShare = openSec / knownSec;
+  return {
+    aboveGroundShare,
+    sunExposure: aboveGroundShare * RAIL_VEHICLE_EXPOSURE,
+    coverage: Math.min(1, knownSec / railSec),
+  };
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -796,12 +928,15 @@ export function trainDijkstra(
     }
   }
 
+  const exposure = railExposure(graph, stationIds, edgeLines);
+
   return {
     stationIds,
     totalSec: dist.get(endKey)!,
     waitSec: waitTo.get(endKey) ?? 0,
     lines,
     segments,
+    ...(exposure ? { exposure } : {}),
   };
 }
 

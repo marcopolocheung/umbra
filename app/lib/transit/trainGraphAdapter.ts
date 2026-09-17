@@ -30,6 +30,11 @@ import type { HeadwayDates, TransitShard } from "./shardContract";
  * Bus (type 3) is deliberately absent. `TRAIN_SUN_EXPOSURE` has no bus figure,
  * and defaulting one to `subway` would claim a bus ride is fully shaded — so
  * bus shards are refused outright until the slice that models them lands.
+ *
+ * When it does (3C), it must **not** reuse `railExposure`: a bus is at grade
+ * everywhere, so track structure carries no information for it, and the
+ * exposure that matters is the unsheltered wait at the stop — full pedestrian
+ * sun, not a windowed vehicle.
  */
 function routeTypeToMode(type: number): TrainMode | null {
   if (type === 0) return "light_rail"; // tram / streetcar / light rail
@@ -169,6 +174,8 @@ export function buildTrainGraphFromShards(
         line: edge.route,
         // The headway tables are directional, and this is what keys them.
         direction: edge.direction,
+        // Absent stays absent: unknown is not "underground" (#393).
+        ...(edge.structure ? { structure: edge.structure } : {}),
       });
     }
   }
