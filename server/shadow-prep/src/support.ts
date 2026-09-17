@@ -5,6 +5,33 @@ import { fileHash, requireRoot } from "./util";
 
 export const SUPPORT_FILENAME = "nyc-five-borough-20km-support.geojson";
 
+type PolygonCoordinates = number[][][];
+type MultiPolygonCoordinates = number[][][][];
+
+function polygonCoordinates(value: unknown, label: string): PolygonCoordinates {
+  if (!Array.isArray(value) || value.length === 0) throw new Error(`${label} has malformed polygon coordinates`);
+  for (const ring of value) {
+    if (!Array.isArray(ring) || ring.length < 4) throw new Error(`${label} has malformed polygon coordinates`);
+    for (const point of ring) {
+      if (!Array.isArray(point) || point.length < 2 || !point.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)))
+        throw new Error(`${label} has malformed polygon coordinates`);
+    }
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) throw new Error(`${label} has malformed polygon coordinates`);
+  }
+  return value as PolygonCoordinates;
+}
+
+function polygonsFromGeometry(value: unknown, label: string): PolygonCoordinates[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must contain polygon geometry`);
+  const geometry = value as { type?: unknown; coordinates?: unknown };
+  if (geometry.type === "Polygon") return [polygonCoordinates(geometry.coordinates, label)];
+  if (geometry.type !== "MultiPolygon" || !Array.isArray(geometry.coordinates) || geometry.coordinates.length === 0)
+    throw new Error(`${label} must contain only Polygon or MultiPolygon geometry`);
+  return geometry.coordinates.map((polygon) => polygonCoordinates(polygon, label));
+}
+
 export function supportGeometry(value: unknown): PolygonalCoverage {
   const document = value as { type?: string; geometry?: unknown; features?: Array<{ geometry?: unknown }> };
   const candidate = document.type === "Feature" ? document.geometry : document.type === "FeatureCollection" && document.features?.length === 1 ? document.features[0].geometry : document;
@@ -13,6 +40,38 @@ export function supportGeometry(value: unknown): PolygonalCoverage {
   const polygons = geometry.type === "Polygon" ? [geometry.coordinates as number[][][]] : geometry.coordinates as number[][][][];
   if (!polygons.length || polygons.some((polygon) => !Array.isArray(polygon) || !polygon.length || polygon.some((ring) => ring.length < 4 || ring.some((point) => !Array.isArray(point) || point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]))))) throw new Error("support has malformed polygon coordinates");
   return geometry;
+}
+
+/**
+ * Parse the pinned borough boundary without broadening the source-support
+ * contract above. NYC DCP publishes one polygonal feature per borough, so
+ * aggregation needs their polygon members flattened into one MultiPolygon.
+ * Ring order and interior rings are retained byte-for-value.
+ */
+export function boroughGeometry(value: unknown): { type: "MultiPolygon"; coordinates: MultiPolygonCoordinates } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("borough boundary must be polygonal GeoJSON");
+  const document = value as { type?: unknown; geometry?: unknown; features?: unknown };
+  let members: unknown[];
+  if (document.type === "FeatureCollection") {
+    if (!Array.isArray(document.features) || document.features.length === 0)
+      throw new Error("borough boundary FeatureCollection must be nonempty");
+    members = document.features.map((feature, index) => {
+      if (!feature || typeof feature !== "object" || Array.isArray(feature) || (feature as { type?: unknown }).type !== "Feature")
+        throw new Error(`borough boundary feature ${index} is malformed`);
+      const geometry = (feature as { geometry?: unknown }).geometry;
+      if (geometry === null || geometry === undefined) throw new Error(`borough boundary feature ${index} has no geometry`);
+      return geometry;
+    });
+  } else if (document.type === "Feature") {
+    if (document.geometry === null || document.geometry === undefined) throw new Error("borough boundary feature has no geometry");
+    members = [document.geometry];
+  } else {
+    members = [document];
+  }
+  return {
+    type: "MultiPolygon",
+    coordinates: members.flatMap((geometry, index) => polygonsFromGeometry(geometry, `borough boundary member ${index}`)),
+  };
 }
 
 export async function loadFrozenSupport(): Promise<{ path: string; hash: string; geometry: PolygonalCoverage }> {

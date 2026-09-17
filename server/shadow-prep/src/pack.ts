@@ -648,6 +648,19 @@ export interface ManifestArtifactBinding {
   noticesSha256: string;
 }
 
+/** Shared borough activation calculation used by publication and its live
+ * input preflight. Keeping this outside artifact writing ensures preflight
+ * exercises the production geometry path without touching R2. */
+export function activationTilesForBorough(
+  tiles: readonly string[],
+  borough: CoverageGeometry,
+): string[] {
+  return tiles.filter((tile) => {
+    const { x, y } = parseZ18Tile(tile);
+    return tileIntersectsCoverage(borough, x, y);
+  });
+}
+
 /** Content-addressable manifest record binding the packed tiles (v2 also binds the compact artifacts). */
 export function browserPackManifestV2(
   entries: PackedBrowserTile[],
@@ -705,10 +718,7 @@ export async function publishGenerationArtifacts(
   const byTile = new Map(entries.map((entry) => [entry.tile, entry]));
 
   // Coverage: availability is the exact packed set; activation clips to the boroughs.
-  const activationTiles = index.tiles.filter((tile) => {
-    const { x, y } = parseZ18Tile(tile);
-    return tileIntersectsCoverage(inputs.borough, x, y);
-  });
+  const activationTiles = activationTilesForBorough(index.tiles, inputs.borough);
   const coverage = buildCoverageIndex({
     generation: identity.generation,
     availableTiles: index.tiles,
