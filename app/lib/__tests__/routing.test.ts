@@ -27,6 +27,8 @@ import {
   type RoutingGraph,
   type OsmNode,
   type GraphEdge,
+  reachableFrom,
+  snapToReachable,
 } from "../routing";
 
 // ── Graph factories ────────────────────────────────────────────────────────────
@@ -1797,5 +1799,56 @@ describe("paretoRoutes — time-normalized detour flat (E2)", () => {
     });
     expect(routes).toHaveLength(2);
     expect(routes.some((r) => r.nodeIds.join(",") === "1,5,6,4")).toBe(true);
+  });
+});
+
+
+// ─── Reachability-aware snapping (#400) ─────────────────────────────────────
+
+/**
+ * A connected pair, plus an island node sitting exactly where the caller wants
+ * to snap. This is the shape that kept dropping transit options: OSM pedestrian
+ * graphs carry station interiors and service stubs that touch nothing.
+ */
+function graphWithIsland() {
+  const node = (id: number, lat: number, lon: number) => [id, { id, lat, lon }] as const;
+  return {
+    nodes: new Map([node(1, 1.3, 103.8), node(2, 1.3, 103.805), node(99, 1.3, 103.803)]),
+    adj: new Map([
+      [1, [{ toId: 2, distanceM: 555 }]],
+      [2, [{ toId: 1, distanceM: 555 }]],
+      [99, []],
+    ]),
+  } as unknown as Parameters<typeof reachableFrom>[0];
+}
+
+describe("reachableFrom", () => {
+  it("returns only what is walkable from the start", () => {
+    expect([...reachableFrom(graphWithIsland(), 1)].sort()).toEqual([1, 2]);
+  });
+
+  it("includes the start even when it has no edges", () => {
+    expect([...reachableFrom(graphWithIsland(), 99)]).toEqual([99]);
+  });
+});
+
+describe("snapToReachable", () => {
+  it("skips a nearer node the walker cannot get to", () => {
+    const graph = graphWithIsland();
+    const target: [number, number] = [103.803, 1.3];
+    // The island sits exactly on the target, so plain snapping picks it and the
+    // route then fails.
+    expect(snapToGraph(target, graph)).toBe(99);
+    expect(snapToReachable(target, graph, reachableFrom(graph, 1))).toBe(2);
+  });
+
+  it("keeps the nearest node when it is reachable", () => {
+    const graph = graphWithIsland();
+    expect(snapToReachable([103.8001, 1.3], graph, reachableFrom(graph, 1))).toBe(1);
+  });
+
+  it("returns -1 when nothing is reachable", () => {
+    const graph = graphWithIsland();
+    expect(snapToReachable([103.803, 1.3], graph, new Set())).toBe(-1);
   });
 });

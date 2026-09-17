@@ -897,7 +897,7 @@ describe("a route index from the panel resolves against the list the panel shows
     resetShadowStub();
     vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
     vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
-    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({ entrances: [], failed: false } as never);
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
   });
 
@@ -978,7 +978,7 @@ describe("entrances are fetched for the chosen stations, not the whole route (#4
     resetShadowStub();
     vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
     vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
-    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({ entrances: [], failed: false } as never);
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
   });
 
@@ -1030,5 +1030,105 @@ describe("entrances are fetched for the chosen stations, not the whole route (#4
 
     // The old route-wide call is gone entirely.
     expect(fetchStationEntrances).not.toHaveBeenCalled();
+  });
+});
+
+
+// ─── #400: a dropped transit option ─────────────────────────────────────────
+
+/**
+ * The corridor, plus an island node sitting exactly on the entry station. OSM
+ * pedestrian graphs are full of these — station interiors and service stubs that
+ * connect to nothing — and the station centroid snaps straight onto one.
+ */
+function corridorGraphWithStationIsland() {
+  const node = (id: number, lon: number) => [id, { id, lat: 1.3, lon }] as const;
+  const hop = (toId: number, distanceM: number) => ({ toId, distanceM });
+  return {
+    nodes: new Map([
+      node(1, 103.8),
+      // Nudged off the station so the island below is strictly the nearest node
+      // — otherwise the tie resolves to this one and the bug never fires.
+      node(2, 103.8035),
+      node(3, 103.807),
+      node(4, 103.81),
+      // Sits exactly on the entry station, and connects to nothing.
+      node(99, 103.803),
+    ]),
+    adj: new Map([
+      [1, [hop(2, 390)]],
+      [2, [hop(1, 390), hop(3, 390)]],
+      [3, [hop(2, 390), hop(4, 334)]],
+      [4, [hop(3, 334)]],
+      [99, []],
+    ]),
+  };
+}
+
+describe("a transit option is not lost to an unreachable snap (#400)", () => {
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
+    // No entrances at all, so the station centroid is the board point — the
+    // production case when Overpass is rate-limited.
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({
+      entrances: [],
+      failed: false,
+    } as never);
+  });
+
+  async function routeOverIslandGraph() {
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(corridorGraphWithStationIsland() as never);
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.81, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+    return result;
+  }
+
+  it("still offers transit when the closest node to the station is an island", async () => {
+    const result = await routeOverIslandGraph();
+
+    // Snapping to the nearest node lands on 99, the walk leg fails, and the
+    // option is discarded — which is what this asserts has stopped happening.
+    expect(result.current.filteredRoutes).toHaveLength(1);
+    expect(result.current.filteredRoutes[0].label).toBe("Via Transit");
+    expect(result.current.navWarning).toBeNull();
+  });
+
+  it("does not cry wolf when the entrance fetch failed but transit still works", async () => {
+    // `failed: true` means the entrance list is cache-only — not that anything
+    // went wrong for the user. The centroid fallback routes fine, so a warning
+    // here would be noise on every rate-limited fetch.
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({
+      entrances: [],
+      failed: true,
+    } as never);
+
+    const result = await routeOverIslandGraph();
+
+    expect(result.current.filteredRoutes[0]?.label).toBe("Via Transit");
+    expect(result.current.navWarning).toBeNull();
   });
 });

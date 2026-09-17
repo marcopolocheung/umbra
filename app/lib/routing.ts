@@ -306,6 +306,62 @@ export function snapToGraph(
 }
 
 /**
+ * Every node walkable from `startId`, by breadth-first search over the
+ * adjacency list.
+ *
+ * A pedestrian graph built from OSM is not one connected piece: station
+ * interiors, service stubs and mapping gaps leave small islands. Snapping to the
+ * nearest node without regard for that lands on an island often enough to
+ * matter — see `snapToReachable`.
+ */
+export function reachableFrom(graph: RoutingGraph, startId: number): Set<number> {
+  const seen = new Set<number>([startId]);
+  const queue: number[] = [startId];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    for (const edge of graph.adj.get(id) ?? []) {
+      if (seen.has(edge.toId)) continue;
+      seen.add(edge.toId);
+      queue.push(edge.toId);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Snaps to the nearest node the walker can actually get to.
+ *
+ * `snapToGraph` answers "what is closest", which is the wrong question when the
+ * closest node sits on a disconnected island: the route then fails and the whole
+ * option is discarded. Returns -1 when `reachable` is empty.
+ *
+ * The common case costs nothing — the grid's answer is usually reachable, and
+ * only a miss pays for the scan.
+ */
+export function snapToReachable(
+  coord: [number, number],
+  graph: RoutingGraph,
+  reachable: Set<number>,
+  grid?: SpatialGrid
+): number {
+  const nearest = snapToGraph(coord, graph, grid);
+  if (nearest !== -1 && reachable.has(nearest)) return nearest;
+
+  let bestId = -1;
+  let bestDist = Infinity;
+  for (const id of reachable) {
+    const node = graph.nodes.get(id);
+    if (!node) continue;
+    const d = haversineMeters(coord, [node.lon, node.lat]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
+
+/**
  * Snaps coord to the nearest point on any graph edge by projecting coord onto
  * each segment (flat-earth approximation — accurate enough for sub-kilometre
  * pedestrian routing). Inserts a virtual node at the projection point using

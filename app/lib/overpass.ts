@@ -661,7 +661,7 @@ export async function fetchStationEntrances(
   east: number,
   signal?: AbortSignal
 ): Promise<StationEntranceNode[]> {
-  return fetchStationEntranceBoxes([{ south, west, north, east }], signal);
+  return (await fetchStationEntranceBoxes([{ south, west, north, east }], signal)).entrances;
 }
 
 /**
@@ -686,11 +686,22 @@ export function boxAround(lat: number, lon: number, radiusM: number): BboxBounds
  * Each box is cached separately, so a later route that reuses one station and
  * not the other still pays for only the new box.
  */
+export interface StationEntranceResult {
+  entrances: StationEntranceNode[];
+  /**
+   * True when the upstream request failed, so `entrances` holds only whatever
+   * was already cached. An empty list then means "not known", not "none here" —
+   * a distinction the caller needs, because a rate-limited Overpass and a
+   * genuinely door-less area used to be indistinguishable.
+   */
+  failed: boolean;
+}
+
 export async function fetchStationEntranceBoxes(
   boxes: BboxBounds[],
   signal?: AbortSignal
-): Promise<StationEntranceNode[]> {
-  if (boxes.length === 0) return [];
+): Promise<StationEntranceResult> {
+  if (boxes.length === 0) return { entrances: [], failed: false };
 
   const cached: StationEntranceNode[] = [];
   const missing: BboxBounds[] = [];
@@ -707,7 +718,7 @@ export async function fetchStationEntranceBoxes(
     return nodes.filter((node) => !seen.has(node.id) && seen.add(node.id));
   };
 
-  if (missing.length === 0) return cloneStationEntrances(dedupe(cached));
+  if (missing.length === 0) return { entrances: cloneStationEntrances(dedupe(cached)), failed: false };
 
   const clauses = missing
     .map(
@@ -727,9 +738,10 @@ out body;`.trim();
 
   try {
     const res = await postOverpass(encodedBody, signal);
-    if (!res.ok) return [];
+    if (!res.ok) return { entrances: cloneStationEntrances(dedupe(cached)), failed: true };
     const text = await res.text();
-    if (text.trimStart().startsWith("<")) return [];
+    if (text.trimStart().startsWith("<"))
+      return { entrances: cloneStationEntrances(dedupe(cached)), failed: true };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const json = JSON.parse(text) as { elements?: any[] };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -755,8 +767,8 @@ out body;`.trim();
         stationEntranceCache.pop();
       }
     }
-    return cloneStationEntrances(dedupe([...cached, ...entrances]));
+    return { entrances: cloneStationEntrances(dedupe([...cached, ...entrances])), failed: false };
   } catch {
-    return [];
+    return { entrances: cloneStationEntrances(dedupe(cached)), failed: true };
   }
 }

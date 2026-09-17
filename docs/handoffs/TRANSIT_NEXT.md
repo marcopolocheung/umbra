@@ -7,7 +7,7 @@
 
 **Verified 2026-09-16**, `main` at `fc5e148`. Green: lint 0 errors (55 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1184 tests / 86 files**, build clean.
+error), typecheck 0, **1191 tests / 86 files**, build clean.
 
 **Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
 production genuinely routes on the published data — confirmed against the deployed site, which
@@ -260,7 +260,33 @@ refusing it). A 2.4 km × 1.25 km walk-network capture was already **1.78 MB / 3
 Do not touch the timeouts until that split is known. Raising them trades directly against how
 long a user stares at a spinner.
 
-### 1.5C — stop losing the transit option silently (#400)
+### 1.5C — stop losing the transit option silently (#400) — **landed**
+
+All three pieces shipped. The one that mattered is the second: `snapToReachable` +
+`reachableFrom` in `routing.ts` snap to the nearest node the walker **can actually get to**,
+rather than the nearest node outright. An OSM pedestrian graph is not one connected piece —
+station interiors and service stubs are their own islands — and the station centroid lands on one
+often enough to have cost two of three routes their transit option.
+
+Re-measured against the original table, with the entrance query returning **503** (harder than
+the empty response first tested):
+
+| O-D | before | after |
+|---|---|---|
+| Bryant Pk → Madison Sq | no transit option | **Via Transit, 634 m** |
+| 40.756,-73.990 → 40.740,-73.985 | no transit option | **Via Transit, 727 m** |
+| 40.757,-73.986 → 40.742,-73.984 | works | works |
+
+`fetchStationEntranceBoxes` now returns `{ entrances, failed }`, so a rate-limited Overpass is
+distinguishable from a door-less area, and a dropped option sets a `navWarning` naming the
+station instead of vanishing.
+
+*Worth knowing:* the notice is now hard to trigger. `walkOpts` pins travel mode to walk, walk
+prohibits no edge, so `reachableFrom` is exactly what `dijkstra` can traverse — a snapped node is
+reachable by construction. It is kept so that an unforeseen failure is legible rather than
+silent, and there is a test that it does **not** fire merely because the entrance fetch failed.
+
+#### The original analysis
 
 Reproduced by stubbing the entrance response to `[]` and varying nothing else:
 
