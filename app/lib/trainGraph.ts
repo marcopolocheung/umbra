@@ -5,6 +5,7 @@
  * Works for any city — no hardcoded station data required.
  */
 
+import { MinHeap } from "./minHeap";
 import { haversineMeters } from "./routing";
 import { toMapLocal } from "./timezone";
 import { travelTimeSeconds } from "./travelMode";
@@ -837,7 +838,20 @@ function boardingCost(
  * charged nothing for one, and it could not charge a wait that depends on which
  * route is boarded either. The states are the (station, route) pairs some edge
  * actually serves, 956 of them for the published NYC subway against its 496
- * stations, so the array-scan PQ still holds.
+ * stations.
+ *
+ * That count is why this used to scan an array for its minimum, and why it no
+ * longer does. Bus shards take the search to 27,662 states, and
+ * `findBestTrainRoute` runs up to 25 of these searches per route calculation —
+ * 5 entry candidates by 5 exit candidates. That is 14.2 s of argmin scanning
+ * per calculation against 563 ms of heap. It now uses the same `MinHeap` the
+ * walking router has always used.
+ *
+ * The heap carries an insertion sequence as its secondary key on purpose. The
+ * old argmin used a strict `<`, so among equal costs it popped the
+ * earliest-inserted state; a bare heap gives no such guarantee, and would have
+ * been free to return a different equal-cost route with nothing in the suite to
+ * notice. The sequence reproduces that order exactly.
  */
 export function trainDijkstra(
   graph: TrainGraph,
@@ -851,21 +865,21 @@ export function trainDijkstra(
   const waitTo = new Map<string, number>();
   const prev = new Map<string, string>();
   const prevLine = new Map<string, string>();
-  const pq: { key: string; cost: number }[] = [];
+  // Ties break on insertion order, which is what the argmin this replaced did.
+  const pq = new MinHeap<{ key: string; cost: number; seq: number }>(
+    (a, b) => a.cost - b.cost || a.seq - b.seq,
+  );
+  let seq = 0;
 
   const startKey = stateKey(startId, ARRIVED_ON_FOOT);
   dist.set(startKey, 0);
   waitTo.set(startKey, 0);
-  pq.push({ key: startKey, cost: 0 });
+  pq.push({ key: startKey, cost: 0, seq: seq++ });
 
   let endKey: string | null = null;
 
-  while (pq.length > 0) {
-    let minIdx = 0;
-    for (let i = 1; i < pq.length; i++) {
-      if (pq[i].cost < pq[minIdx].cost) minIdx = i;
-    }
-    const { key, cost } = pq.splice(minIdx, 1)[0];
+  while (pq.size > 0) {
+    const { key, cost } = pq.pop()!;
 
     if (cost > (dist.get(key) ?? Infinity)) continue;
     const id = stationOfState(key);
@@ -890,7 +904,7 @@ export function trainDijkstra(
         waitTo.set(nextKey, (waitTo.get(key) ?? 0) + boarding.waitSec);
         prev.set(nextKey, key);
         prevLine.set(nextKey, edge.line ?? "");
-        pq.push({ key: nextKey, cost: newCost });
+        pq.push({ key: nextKey, cost: newCost, seq: seq++ });
       }
     }
   }
