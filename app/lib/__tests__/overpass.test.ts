@@ -12,6 +12,8 @@ import {
   fetchCanopyAround,
   fetchRoutingGraph,
   fetchStationEntrances,
+  fetchStationEntranceBoxes,
+  boxAround,
 } from "../overpass";
 
 afterEach(() => {
@@ -450,6 +452,104 @@ describe("fetchRoutingGraph — Overpass query shape", () => {
 });
 
 // ── station entrances tagging ───────────────────────────────────────────────
+
+describe("fetchStationEntranceBoxes — several boxes, one request", () => {
+  function stubOnce(elements: unknown[]) {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => JSON.stringify({ elements }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function bodyOf(fetchMock: ReturnType<typeof vi.fn>, call = 0): string {
+    const init = fetchMock.mock.calls[call][1] as { body: string };
+    return decodeURIComponent(init.body);
+  }
+
+  it("asks for every box in a single Overpass request", async () => {
+    // Two station boxes must not cost two round trips — the whole point of
+    // this path is to reduce what the public API is asked for.
+    const fetchMock = stubOnce([
+      { type: "node", id: 21, lat: 40.75, lon: -73.98, tags: { railway: "subway_entrance" } },
+    ]);
+    const [s1, w1, n1, e1] = nextBbox();
+    const [s2, w2, n2, e2] = nextBbox();
+
+    await fetchStationEntranceBoxes([
+      { south: s1, west: w1, north: n1, east: e1 },
+      { south: s2, west: w2, north: n2, east: e2 },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = bodyOf(fetchMock);
+    expect(body).toContain(`(${s1},${w1},${n1},${e1})`);
+    expect(body).toContain(`(${s2},${w2},${n2},${e2})`);
+  });
+
+  it("only asks for the boxes it has not already cached", async () => {
+    const first = stubOnce([
+      { type: "node", id: 31, lat: 1, lon: 2, tags: { railway: "subway_entrance" } },
+    ]);
+    const [s1, w1, n1, e1] = nextBbox();
+    const boxA = { south: s1, west: w1, north: n1, east: e1 };
+    await fetchStationEntranceBoxes([boxA]);
+    expect(first).toHaveBeenCalledTimes(1);
+
+    const second = stubOnce([
+      { type: "node", id: 32, lat: 3, lon: 4, tags: { railway: "subway_entrance" } },
+    ]);
+    const [s2, w2, n2, e2] = nextBbox();
+    const boxB = { south: s2, west: w2, north: n2, east: e2 };
+    const merged = await fetchStationEntranceBoxes([boxA, boxB]);
+
+    expect(second).toHaveBeenCalledTimes(1);
+    const body = bodyOf(second);
+    expect(body).toContain(`(${s2},${w2},${n2},${e2})`);
+    expect(body).not.toContain(`(${s1},${w1},${n1},${e1})`);
+    // The cached box's nodes still come back, alongside the newly fetched ones.
+    expect(merged.map((n) => n.id).sort()).toEqual([31, 32]);
+  });
+
+  it("returns a node once when boxes overlap", async () => {
+    const fetchMock = stubOnce([
+      { type: "node", id: 41, lat: 5, lon: 6, tags: { railway: "subway_entrance" } },
+    ]);
+    const [s, w, n, e] = nextBbox();
+    const box = { south: s, west: w, north: n, east: e };
+    // The same box twice is the degenerate overlap: one request, one node.
+    const res = await fetchStationEntranceBoxes([box, box]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.map((x) => x.id)).toEqual([41]);
+  });
+
+  it("makes no request at all for an empty box list", async () => {
+    const fetchMock = stubOnce([]);
+    expect(await fetchStationEntranceBoxes([])).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("boxAround", () => {
+  it("keeps the box square in metres, not in degrees", () => {
+    // At NYC's latitude a degree of longitude is ~76% of a degree of latitude,
+    // so an equal-degree box would be narrower on the ground than intended.
+    const box = boxAround(40.75, -73.98, 400);
+    const latSpanDeg = box.north - box.south;
+    const lonSpanDeg = box.east - box.west;
+    expect(lonSpanDeg).toBeGreaterThan(latSpanDeg);
+    expect((latSpanDeg / 2) * 111_320).toBeCloseTo(400, 0);
+  });
+
+  it("does not blow up approaching the poles", () => {
+    const box = boxAround(89.9, 0, 400);
+    expect(Number.isFinite(box.east)).toBe(true);
+    expect(box.east - box.west).toBeLessThan(1);
+  });
+});
 
 describe("fetchStationEntrances — kind tagging", () => {
   it("tags railway=subway_entrance nodes as kind=entrance and station nodes as kind=station", async () => {
