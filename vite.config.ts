@@ -1,6 +1,6 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import path from "path";
+import path from "node:path";
 import { handleOverpassRequest } from "./server/overpassProxy.js";
 
 function overpassDevProxy(): Plugin {
@@ -14,7 +14,10 @@ function overpassDevProxy(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const shadowBase = (env.VITE_SHADOW_API_BASE ?? "").replace(/\/$/, "");
+  return {
   plugins: [overpassDevProxy(), react()],
   // Foursquare Places API does not allow browser CORS from arbitrary origins.
   // During local development, proxy through Vite so requests are same-origin.
@@ -60,6 +63,17 @@ export default defineConfig({
         secure: true,
         rewrite: (path) => path.replace(/^\/__gemini/, ""),
       },
+      // Browser debug requests use a same-origin prefix in local development.
+      // Keep this absent when no Worker origin is configured instead of silently
+      // forwarding to an arbitrary host.
+      ...(shadowBase ? {
+        "/__shadow": {
+          target: shadowBase,
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path: string) => path.replace(/^\/__shadow/, ""),
+        },
+      } : {}),
     },
   },
   resolve: {
@@ -85,4 +99,5 @@ export default defineConfig({
       },
     },
   },
+};
 });

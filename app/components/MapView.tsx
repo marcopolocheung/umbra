@@ -11,6 +11,10 @@ import { createShadowLayer } from "../lib/shadow/createShadowLayer";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle, type CanopyLegendState } from "../lib/canopyRaster/canopyLayer";
 import CanopyLegend from "./CanopyLegend";
+import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
+import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
+import type { DebugAccounting } from "../lib/shadowV2Debug/protocol";
+import { ShadowV2DebugPanel } from "./ShadowV2DebugPanel";
 
 export interface AccumulationOptions {
   enabled: boolean;
@@ -46,6 +50,11 @@ interface MapViewProps {
 }
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? "";
+const SHADOW_V2_DEBUG = isShadowV2DebugEnabled();
+// The proxy is intentionally dev-only. Production continues to use the Worker
+// directly, preserving its existing CORS policy.
+const SHADOW_DEBUG_BASE = import.meta.env.DEV ? "/__shadow" : (import.meta.env.VITE_SHADOW_API_BASE ?? "").replace(/\/$/, "");
+const EMPTY_DEBUG_ACCOUNTING: DebugAccounting = { compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
 
 /**
  * Ensure nav overlays stay visible.
@@ -436,6 +445,9 @@ export default function MapView({
   });
   // Local UI state: whether the estimated-canopy fill is on screen, for its legend.
   const [canopyLegend, setCanopyLegend] = useState<CanopyLegendState | null>(null);
+  const [debugAccounting, setDebugAccounting] = useState<DebugAccounting>(EMPTY_DEBUG_ACCOUNTING);
+  const [debugGeneration, setDebugGeneration] = useState<string>();
+  const [debugCacheSource, setDebugCacheSource] = useState<string>();
   const canopyRef = useRef<CanopyLayerHandle | null>(null);
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
@@ -668,10 +680,41 @@ export default function MapView({
 
     map.on("moveend", refreshSunViz);
 
+    let debugService: RemoteTileService | undefined;
+    let debugLayer: DebugFieldLayer | undefined;
+    const updateDebugViewport = () => {
+      const center = map.getCenter();
+      debugService?.updateViewport({ lng: center.lng, lat: center.lat, zoom: map.getZoom() });
+    };
+
     map.on("load", async () => {
       // Captured first, while the style still holds nothing but the basemap — see
       // `PlaceLabelSlot`.
       const placeLabelSlots = findPlaceLabelSlots(map);
+
+      if (SHADOW_V2_DEBUG && SHADOW_DEBUG_BASE) {
+        debugLayer = new DebugFieldLayer();
+        debugLayer.onGpuBytes = (bytes) => debugService?.setGpuBytes(bytes);
+        map.addLayer(debugLayer);
+        debugService = new RemoteTileService(SHADOW_DEBUG_BASE);
+        debugService.onGenerationReady = (root) => {
+          setDebugGeneration(root.generation);
+          updateDebugViewport();
+        };
+        debugService.onTileUpdate = (update) => {
+          // A service already suppresses stale generations; the layer receives only
+          // cropped 256² staging textures, never decoded source planes or gutters.
+          debugLayer?.setTile(update.tile, update.pixels);
+          setDebugCacheSource(update.complete ? update.cacheSource : "incomplete");
+          map.triggerRepaint();
+        };
+        debugService.onTileEvicted = (tile) => {
+          debugLayer?.removeTile(tile);
+          map.triggerRepaint();
+        };
+        debugService.onAccounting = setDebugAccounting;
+        map.on("moveend", updateDebugViewport);
+      }
 
       // Sketch drawing layer — always present, hidden by default
       map.addSource("sketch-line", {
@@ -813,6 +856,10 @@ export default function MapView({
       markerAlightRef.current?.remove();markerAlightRef.current = null;
       map.off("rotate", rotateHandler);
       map.off("moveend", refreshSunViz);
+      map.off("moveend", updateDebugViewport);
+      debugService?.shutdown();
+      debugService = undefined;
+      debugLayer = undefined;
       document.removeEventListener("pointerdown", onDocPointerDown, true);
       map.remove();
       mapRef.current = null;
@@ -1450,6 +1497,7 @@ export default function MapView({
       <div ref={containerRef} className={`w-full h-full${mapClickActive ? ' cursor-crosshair' : ''}`} />
       <SunCompass sunViz={sunViz} showSunLines={showSunLines} />
       <CanopyLegend state={canopyLegend} />
+      {SHADOW_V2_DEBUG && <ShadowV2DebugPanel generation={debugGeneration} accounting={debugAccounting} cacheSource={debugCacheSource} />}
     </div>
   );
 }
