@@ -164,8 +164,38 @@ function openToSkyShare(structure: TrainEdgeStructure): { open: number; known: n
   return { open, known };
 }
 
+/**
+ * How much of a pedestrian's sun a seated rail passenger actually takes.
+ *
+ * A viaduct is open to the sky, but the rider is behind glass, under a roof,
+ * moving, and can move within the car. Treating an elevated ride as *equal* to
+ * standing on a pavement in full sun overstates it badly.
+ *
+ * 0.25 is not a new number: it is this codebase's existing
+ * `TRAIN_SUN_EXPOSURE.light_rail`, whose comment has always read "windowed
+ * surface vehicle". The measurement (#393) changed which segments are open to
+ * the sky and how that varies along a ride; it did not change what sitting in a
+ * train car is like, and should not have silently redefined it as 1.0.
+ *
+ * **Not for buses.** A bus rider's exposure is dominated by the wait at an
+ * unsheltered stop, which is unattenuated pedestrian sun and is not a property
+ * of any track. Bus needs its own model, not this constant (3C).
+ */
+export const RAIL_VEHICLE_EXPOSURE = 0.25;
+
 export interface RailExposure {
-  /** Share of the *determined* riding time that is open to the sky. */
+  /**
+   * Share of the *determined* riding time whose track is open to the sky.
+   *
+   * A fact about the track, not about the rider — it is what a passenger can
+   * check by looking out of the window, and it is what the card states.
+   */
+  aboveGroundShare: number;
+  /**
+   * Modelled rider exposure: `aboveGroundShare` attenuated by
+   * `RAIL_VEHICLE_EXPOSURE`. A measured fact times a model constant, which is
+   * why the two are kept apart rather than collapsed into one number.
+   */
   sunExposure: number;
   /** Share of riding time that had any determination at all. */
   coverage: number;
@@ -182,6 +212,13 @@ export interface RailExposure {
  * per-mode constant rather than reporting a measurement of nothing. `coverage`
  * is what the card needs to avoid quoting a figure for a ride it mostly cannot
  * see.
+ */
+/**
+ * **Rail only — buses must not use this.** A bus rider's exposure is dominated
+ * by the wait at the stop, which is unsheltered pedestrian sun and is not a
+ * property of any track; and a bus is at grade everywhere, so a structure share
+ * would be a constant 1 carrying no information. 3C needs its own model, not a
+ * generalisation of this one.
  */
 export function railExposure(
   graph: TrainGraph,
@@ -207,7 +244,12 @@ export function railExposure(
   }
 
   if (railSec <= 0 || knownSec <= 0) return null;
-  return { sunExposure: openSec / knownSec, coverage: Math.min(1, knownSec / railSec) };
+  const aboveGroundShare = openSec / knownSec;
+  return {
+    aboveGroundShare,
+    sunExposure: aboveGroundShare * RAIL_VEHICLE_EXPOSURE,
+    coverage: Math.min(1, knownSec / railSec),
+  };
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────

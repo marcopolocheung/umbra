@@ -39,6 +39,7 @@ function sunPercent(sunExposure: number): number {
 export function transitSunLabel(
   sunExposure: number | undefined,
   coverage?: number,
+  aboveGroundShare?: number,
 ): string | null {
   if (sunExposure == null) return null;
   if (coverage == null) {
@@ -48,16 +49,21 @@ export function transitSunLabel(
     return "assumed some sun";
   }
   if (coverage < MIN_REPORTABLE_COVERAGE) {
-    return `sun exposure known for ${sunPercent(coverage)}% of the ride`;
+    return `track known for ${sunPercent(coverage)}% of the ride`;
   }
-  if (sunExposure < 0.05) return "underground";
-  return `${sunPercent(sunExposure)}% of this ride is in sun`;
+  const above = aboveGroundShare ?? 0;
+  if (above < 0.05) return "underground";
+  // The track fact, not the rider's dose: it is what a passenger can check by
+  // looking out of the window, and it does not silently equate a seat on a
+  // viaduct with standing on a pavement.
+  return `${sunPercent(above)}% above ground`;
 }
 
 /** The same judgement, worded for a route card rather than a leg line. */
 export function transitSunCardLabel(
   sunExposure: number | undefined,
   coverage?: number,
+  aboveGroundShare?: number,
 ): string {
   if (sunExposure == null) return "Assumed underground";
   if (coverage == null) {
@@ -65,10 +71,10 @@ export function transitSunCardLabel(
     if (sunExposure >= 0.05) return "Mostly shadowed";
     return "Assumed underground";
   }
-  if (coverage < MIN_REPORTABLE_COVERAGE) return "Sun exposure mostly unknown";
-  if (sunExposure < 0.05) return "Underground";
-  if (sunExposure < 0.2) return "Mostly shadowed";
-  return `${sunPercent(sunExposure)}% in sun`;
+  if (coverage < MIN_REPORTABLE_COVERAGE) return "Track mostly unknown";
+  const above = aboveGroundShare ?? 0;
+  if (above < 0.05) return "Underground";
+  return `${sunPercent(above)}% above ground`;
 }
 
 /**
@@ -78,7 +84,7 @@ export function transitSunCardLabel(
  */
 export function transitSunCaveat(coverage?: number): string {
   if (coverage == null) return TRANSIT_SUN_CAVEAT_ASSUMED;
-  return `Joined from OpenStreetMap track structure and sampled along each stop-to-stop segment; ${sunPercent(coverage)}% of the ride is determined. Only tunnel counts as shade — an open cut or an embankment is open to the sky.`;
+  return `Track structure joined from OpenStreetMap and sampled along each stop-to-stop segment; ${sunPercent(coverage)}% of the ride is determined. Only a tunnel counts as enclosed — an open cut or an embankment is open to the sky. A rider behind glass takes about a quarter of a pedestrian\u2019s sun, so exposure is scaled accordingly.`;
 }
 
 /**
@@ -95,11 +101,16 @@ export type TransitSunTone = "enclosed" | "shaded" | "sunny" | "unknown";
 export function transitSunTone(
   sunExposure: number | undefined,
   coverage?: number,
+  aboveGroundShare?: number,
 ): TransitSunTone {
   if (sunExposure == null) return "enclosed";
   if (coverage != null && coverage < MIN_REPORTABLE_COVERAGE) return "unknown";
-  if (sunExposure < 0.05) return "enclosed";
-  if (sunExposure < 0.2) return "shaded";
+  // Measured: judge on the track fact, whose full 0-1 range the thresholds were
+  // written for. The attenuated dose tops out at RAIL_VEHICLE_EXPOSURE and
+  // would push every ride into "enclosed".
+  const value = coverage != null ? (aboveGroundShare ?? 0) : sunExposure;
+  if (value < 0.05) return "enclosed";
+  if (value < 0.2) return "shaded";
   return "sunny";
 }
 
@@ -127,7 +138,7 @@ export function routeLegSummary(
       // unsynchronised arrival, not a prediction of this train — hence the "~".
       leg.waitSec ? `incl. ~${formatMinutes(leg.waitSec)} wait` : null,
       stopCount != null ? `${stopCount} stop${stopCount === 1 ? "" : "s"}` : null,
-      transitSunLabel(leg.sunExposure, leg.sunExposureCoverage),
+      transitSunLabel(leg.sunExposure, leg.sunExposureCoverage, leg.aboveGroundShare),
     ].filter(Boolean);
 
     return {

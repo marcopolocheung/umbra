@@ -110,17 +110,20 @@ describe("routeLegSummary", () => {
       lineName: "7",
       travelTimeSec: 600,
       stops: ["A", "B"],
-      sunExposure: 0.75,
+      sunExposure: 0.1875,
       sunExposureCoverage: 1,
+      aboveGroundShare: 0.75,
     };
     const { detail } = routeLegSummary(leg, 0);
-    expect(detail).toContain("75% of this ride is in sun");
+    // The track fact, which a passenger can check out of the window — not the
+    // modelled dose, and not a claim that a seat on a viaduct equals a pavement.
+    expect(detail).toContain("75% above ground");
     expect(detail).not.toContain("assumed");
   });
 
   it("calls a measured tunnel ride underground, not assumed underground", () => {
-    expect(transitSunLabel(0, 1)).toBe("underground");
-    expect(transitSunCardLabel(0, 1)).toBe("Underground");
+    expect(transitSunLabel(0, 1, 0)).toBe("underground");
+    expect(transitSunCardLabel(0, 1, 0)).toBe("Underground");
     // Without coverage the same number is only an assumption.
     expect(transitSunLabel(0)).toBe("assumed underground");
   });
@@ -128,23 +131,25 @@ describe("routeLegSummary", () => {
   it("reports coverage instead of a figure when most of the ride is unseen", () => {
     // A percentage derived from 30% of a ride reads as a measurement of the
     // ride. What is honest to report is how much of it is known.
-    expect(transitSunLabel(0.9, 0.3)).toBe("sun exposure known for 30% of the ride");
-    expect(transitSunCardLabel(0.9, 0.3)).toBe("Sun exposure mostly unknown");
-    expect(transitSunTone(0.9, 0.3)).toBe("unknown");
+    expect(transitSunLabel(0.2, 0.3, 0.9)).toBe("track known for 30% of the ride");
+    expect(transitSunCardLabel(0.2, 0.3, 0.9)).toBe("Track mostly unknown");
+    expect(transitSunTone(0.2, 0.3, 0.9)).toBe("unknown");
   });
 
   it("gives both cards the same judgement, so they cannot drift", () => {
     // The two cards duplicated an identical threshold before coverage existed;
     // adding a state to one and not the other is the same defect twice.
-    expect(transitSunTone(0, 1)).toBe("enclosed");
-    expect(transitSunTone(0.1, 1)).toBe("shaded");
-    expect(transitSunTone(0.8, 1)).toBe("sunny");
+    expect(transitSunTone(0, 1, 0)).toBe("enclosed");
+    expect(transitSunTone(0.025, 1, 0.1)).toBe("shaded");
+    expect(transitSunTone(0.2, 1, 0.8)).toBe("sunny");
     expect(transitSunTone(undefined)).toBe("enclosed");
   });
 
   it("names the source when measured and the model when not", () => {
     expect(transitSunCaveat(1)).toMatch(/OpenStreetMap/);
     expect(transitSunCaveat(1)).toMatch(/open cut|embankment/i);
+    // The attenuation is part of the method and has to be stated.
+    expect(transitSunCaveat(1)).toMatch(/quarter|behind glass/i);
     expect(transitSunCaveat()).toBe(TRANSIT_SUN_CAVEAT_ASSUMED);
   });
 

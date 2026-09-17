@@ -191,13 +191,14 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
           const sunExposure = tLeg.sunExposure ?? 0;
           const sunCoverage = tLeg.sunExposureCoverage;
-          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage);
+          const aboveGround = tLeg.aboveGroundShare;
+          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
           const sunColor = {
             enclosed: "#0e7490",
             shaded: "#15803d",
             sunny: "#a16207",
             unknown: "var(--md-on-surface-variant)",
-          }[transitSunTone(sunExposure, sunCoverage)];
+          }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
           return (
             <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--md-on-surface-variant)" }}>
               <div className="flex items-center gap-1">

@@ -9,6 +9,7 @@ import {
   TRANSFER_PENALTY_SEC,
   trainDijkstra,
   railExposure,
+  RAIL_VEHICLE_EXPOSURE,
   type TrainDayType,
   type TrainEdgeStructure,
   type TrainGraph,
@@ -581,12 +582,24 @@ describe("railExposure", () => {
 
   it("reports no sun for a ride that is wholly in tunnel", () => {
     const graph = toyGraph([a, b], [{ from: "A", to: "B", line: "G", sec: 120, structure: { underground: 1 } }]);
-    expect(railExposure(graph, ["A", "B"], ["G"])).toEqual({ sunExposure: 0, coverage: 1 });
+    expect(railExposure(graph, ["A", "B"], ["G"])).toEqual({
+      aboveGroundShare: 0,
+      sunExposure: 0,
+      coverage: 1,
+    });
   });
 
-  it("reports full sun for an elevated ride", () => {
+  it("does not treat a seat on a viaduct as standing in full sun", () => {
+    // The track is entirely open to the sky, and the rider is still behind
+    // glass, under a roof and moving. Reporting 1.0 would say an elevated ride
+    // is exactly as exposed as walking, which is what the per-mode constant
+    // (light_rail: 0.25, "windowed surface vehicle") always denied.
     const graph = toyGraph([a, b], [{ from: "A", to: "B", line: "J", sec: 120, structure: { elevated: 1 } }]);
-    expect(railExposure(graph, ["A", "B"], ["J"])).toEqual({ sunExposure: 1, coverage: 1 });
+    expect(railExposure(graph, ["A", "B"], ["J"])).toEqual({
+      aboveGroundShare: 1,
+      sunExposure: RAIL_VEHICLE_EXPOSURE,
+      coverage: 1,
+    });
   });
 
   it("counts an open cut and an embankment as open to the sky", () => {
@@ -596,7 +609,7 @@ describe("railExposure", () => {
       [a, b],
       [{ from: "A", to: "B", line: "Q", sec: 100, structure: { open_cut: 0.5, embankment: 0.5 } }],
     );
-    expect(railExposure(graph, ["A", "B"], ["Q"])).toEqual({ sunExposure: 1, coverage: 1 });
+    expect(railExposure(graph, ["A", "B"], ["Q"])?.aboveGroundShare).toBe(1);
   });
 
   it("weights by time, so a slow elevated crawl outweighs a fast tunnel run", () => {
@@ -608,8 +621,9 @@ describe("railExposure", () => {
       ],
     );
     const result = railExposure(graph, ["A", "B", "C"], ["7", "7"]);
-    // 180 of 240 seconds in sun, not 1 of 2 hops.
-    expect(result?.sunExposure).toBeCloseTo(0.75, 5);
+    // 180 of 240 seconds above ground, not 1 of 2 hops.
+    expect(result?.aboveGroundShare).toBeCloseTo(0.75, 5);
+    expect(result?.sunExposure).toBeCloseTo(0.75 * RAIL_VEHICLE_EXPOSURE, 5);
     expect(result?.coverage).toBe(1);
   });
 
@@ -625,7 +639,7 @@ describe("railExposure", () => {
     const result = railExposure(graph, ["A", "B", "C"], ["A", "A"]);
     // The unknown half must not be counted as shaded, which is the #393 bug,
     // nor silently as sun. It is excluded and declared.
-    expect(result).toEqual({ sunExposure: 0, coverage: 0.5 });
+    expect(result).toEqual({ aboveGroundShare: 0, sunExposure: 0, coverage: 0.5 });
   });
 
   it("treats a partly-determined hop as partly unknown", () => {
@@ -635,7 +649,7 @@ describe("railExposure", () => {
       [{ from: "A", to: "B", line: "F", sec: 100, structure: { underground: 0.4, elevated: 0.4 } }],
     );
     const result = railExposure(graph, ["A", "B"], ["F"]);
-    expect(result?.sunExposure).toBeCloseTo(0.5, 5);
+    expect(result?.aboveGroundShare).toBeCloseTo(0.5, 5);
     expect(result?.coverage).toBeCloseTo(0.8, 5);
   });
 
@@ -656,6 +670,7 @@ describe("railExposure", () => {
     );
     const result = railExposure(graph, ["A", "B", "C"], ["N", ""]);
     // The 180 s transfer must not dilute the ride's exposure.
-    expect(result).toEqual({ sunExposure: 1, coverage: 1 });
+    expect(result?.aboveGroundShare).toBe(1);
+    expect(result?.coverage).toBe(1);
   });
 });

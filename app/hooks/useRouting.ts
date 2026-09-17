@@ -1069,6 +1069,7 @@ export function useRouting({
                   const measured = bestTrain.path.exposure;
                   const sunExposure = measured?.sunExposure ?? TRAIN_SUN_EXPOSURE[lineMode];
                   const sunExposureCoverage = measured?.coverage;
+                  const aboveGroundShare = measured?.aboveGroundShare;
 
                   // Riding, changing lines, and standing on the platform. The
                   // wait is carried separately as well so the card can say how
@@ -1092,6 +1093,7 @@ export function useRouting({
                       lineName,
                       sunExposure,
                       ...(sunExposureCoverage != null ? { sunExposureCoverage } : {}),
+                      ...(aboveGroundShare != null ? { aboveGroundShare } : {}),
                       stops: stopNames,
                     },
                     {

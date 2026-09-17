@@ -747,13 +747,14 @@ export default function NavigationPanel({
                           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
                           const sunExposure = tLeg.sunExposure ?? 0;
                           const sunCoverage = tLeg.sunExposureCoverage;
-                          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage);
+                          const aboveGround = tLeg.aboveGroundShare;
+                          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
                           const sunColorClass = {
                             enclosed: "text-cyan-400/70",
                             shaded: "text-green-400/70",
                             sunny: "text-yellow-400/70",
                             unknown: "text-white/40",
-                          }[transitSunTone(sunExposure, sunCoverage)];
+                          }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
                           return (
                             <div className="mt-1.5 text-[10px] text-white/50 flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">

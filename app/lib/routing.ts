@@ -111,6 +111,14 @@ export interface RouteLeg {
    * determined. Never read a low coverage as shade (#393).
    */
   sunExposureCoverage?: number;
+  /**
+   * Transit legs: share of the determined ride whose track is open to the sky.
+   *
+   * The measured fact, kept separate from `sunExposure`, which is this times a
+   * vehicle-attenuation constant. The card states this one, because it is what
+   * a passenger can verify out of the window.
+   */
+  aboveGroundShare?: number;
   stops?: string[];          // transit legs: ordered station names
 }
 
