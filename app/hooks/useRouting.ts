@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type maplibregl from "maplibre-gl";
-import { fetchRoutingGraph, fetchStationEntrances } from "../lib/overpass";
+import { boxAround, fetchRoutingGraph, fetchStationEntranceBoxes } from "../lib/overpass";
 import {
   dijkstra,
   snapToGraph,
@@ -29,6 +29,7 @@ import {
   matchEntranceToTrainStation,
   TRAIN_SUN_EXPOSURE,
   buildTrainDrawData,
+  ENTRANCE_MATCH_MAX_M,
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
 import {
@@ -876,10 +877,13 @@ export function useRouting({
                 trainNorth,
                 trainEast,
               });
-            const [trainGraph, entrances] = await Promise.all([
-              fetchBestTrainGraph(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
-              fetchStationEntrances(trainSouth, trainWest, trainNorth, trainEast, calcSignal),
-            ]);
+            const trainGraph = await fetchBestTrainGraph(
+              trainSouth,
+              trainWest,
+              trainNorth,
+              trainEast,
+              calcSignal,
+            );
             if (import.meta.env.DEV)
               console.log(
                 "[transit] trainGraph:",
@@ -887,30 +891,8 @@ export function useRouting({
                   ? `${trainGraph.stations.size} stations, ${trainGraph.lineColors.size} lines`
                   : "null",
               );
-            if (import.meta.env.DEV) console.log("[transit] entrances:", entrances.length);
 
             if (trainGraph && trainGraph.stations.size >= 2) {
-              const stationEntrances = new Map<
-                string,
-                { lat: number; lon: number; kind?: "entrance" | "station" }[]
-              >();
-              for (const entrance of entrances) {
-                const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
-                if (stationId != null) {
-                  if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
-                  stationEntrances
-                    .get(stationId)!
-                    .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
-                }
-              }
-              for (const [id, station] of trainGraph.stations) {
-                if (!stationEntrances.has(id)) {
-                  stationEntrances.set(id, [
-                    { lat: station.lat, lon: station.lon, kind: "station" },
-                  ]);
-                }
-              }
-
               const bestTrain = findBestTrainRoute(a, b, trainGraph);
               if (import.meta.env.DEV)
                 console.log(
@@ -922,6 +904,37 @@ export function useRouting({
 
               if (bestTrain) {
                 const WALK_SHADOW_STRENGTH = 0.5;
+
+                // Entrances are fetched here, and not before, because only now
+                // is it known which two stations matter. Asking Overpass for the
+                // whole route's bbox meant a box the size of the trip plus
+                // ~3.3 km in each direction, for doors within 400 m of two
+                // points.
+                const entranceBoxes = [bestTrain.entryStation, bestTrain.exitStation].map(
+                  (station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M),
+                );
+                const entrances = await fetchStationEntranceBoxes(entranceBoxes, calcSignal);
+                if (import.meta.env.DEV)
+                  console.log("[transit] entrances:", entrances.length, "in 2 station boxes");
+
+                // Matched against **every** station, not just the two endpoints,
+                // even though only their boxes were fetched. A door inside the
+                // entry station's box may really belong to a neighbour 200 m
+                // away; offering the full set is what lets the matcher give it
+                // to that neighbour instead of misattributing it here.
+                const stationEntrances = new Map<
+                  string,
+                  { lat: number; lon: number; kind?: "entrance" | "station" }[]
+                >();
+                for (const entrance of entrances) {
+                  const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
+                  if (stationId != null) {
+                    if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
+                    stationEntrances
+                      .get(stationId)!
+                      .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
+                  }
+                }
 
                 const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [
                   { ...bestTrain.entryStation, kind: "station" },

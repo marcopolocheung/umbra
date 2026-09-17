@@ -36,7 +36,7 @@ interface CacheEntry {
   east: number;
   graph: RoutingGraph;
 }
-interface BboxBounds {
+export interface BboxBounds {
   south: number;
   west: number;
   north: number;
@@ -661,17 +661,65 @@ export async function fetchStationEntrances(
   east: number,
   signal?: AbortSignal
 ): Promise<StationEntranceNode[]> {
-  for (const entry of stationEntranceCache) {
-    if (cacheContains(entry, south, west, north, east)) {
-      return cloneStationEntrances(entry.entrances);
-    }
+  return fetchStationEntranceBoxes([{ south, west, north, east }], signal);
+}
+
+/**
+ * A bounding box of `radiusM` around a point. Longitude degrees shrink with
+ * latitude, so the east-west padding is widened to keep the box square in
+ * metres rather than in degrees.
+ */
+export function boxAround(lat: number, lon: number, radiusM: number): BboxBounds {
+  const latDeg = radiusM / 111_320;
+  const lonDeg = latDeg / Math.max(0.1, Math.cos((lat * Math.PI) / 180));
+  return { south: lat - latDeg, west: lon - lonDeg, north: lat + latDeg, east: lon + lonDeg };
+}
+
+/**
+ * Fetches entrances for several boxes in **one** Overpass request.
+ *
+ * Entrances are only ever needed within a few hundred metres of a station, so
+ * asking for a couple of small boxes costs the API far less than one box drawn
+ * around the whole route — which is what this replaces. Overpass takes any
+ * number of statements in a single union, so N boxes are still one request.
+ *
+ * Each box is cached separately, so a later route that reuses one station and
+ * not the other still pays for only the new box.
+ */
+export async function fetchStationEntranceBoxes(
+  boxes: BboxBounds[],
+  signal?: AbortSignal
+): Promise<StationEntranceNode[]> {
+  if (boxes.length === 0) return [];
+
+  const cached: StationEntranceNode[] = [];
+  const missing: BboxBounds[] = [];
+  for (const box of boxes) {
+    const hit = stationEntranceCache.find((entry) =>
+      cacheContains(entry, box.south, box.west, box.north, box.east)
+    );
+    if (hit) cached.push(...hit.entrances);
+    else missing.push(box);
   }
+
+  const dedupe = (nodes: StationEntranceNode[]): StationEntranceNode[] => {
+    const seen = new Set<number>();
+    return nodes.filter((node) => !seen.has(node.id) && seen.add(node.id));
+  };
+
+  if (missing.length === 0) return cloneStationEntrances(dedupe(cached));
+
+  const clauses = missing
+    .map(
+      (box) => `
+  node["railway"="subway_entrance"](${box.south},${box.west},${box.north},${box.east});
+  node["railway"="station"]["station"="subway"](${box.south},${box.west},${box.north},${box.east});`
+    )
+    .join("");
 
   const query = `
 [out:json][timeout:10];
-(
-  node["railway"="subway_entrance"](${south},${west},${north},${east});
-  node["railway"="station"]["station"="subway"](${south},${west},${north},${east});
+(${clauses}
 );
 out body;`.trim();
 
@@ -697,11 +745,17 @@ out body;`.trim();
         name: e.tags?.name ?? e.tags?.["name:en"] ?? undefined,
         kind: e.tags?.railway === "subway_entrance" ? "entrance" : "station",
       }));
-    stationEntranceCache.unshift({ south, west, north, east, entrances });
-    if (stationEntranceCache.length > STATION_ENTRANCE_CACHE_MAX) {
-      stationEntranceCache.pop();
+    // Each fetched box caches the whole response rather than its own share of
+    // it. Partitioning geometrically would assume Overpass never returns a node
+    // outside the bounds asked for, and buys nothing: the extra entries are at
+    // worst a few distant nodes, which the caller rejects by distance anyway.
+    for (const box of missing) {
+      stationEntranceCache.unshift({ ...box, entrances });
+      if (stationEntranceCache.length > STATION_ENTRANCE_CACHE_MAX) {
+        stationEntranceCache.pop();
+      }
     }
-    return cloneStationEntrances(entrances);
+    return cloneStationEntrances(dedupe([...cached, ...entrances]));
   } catch {
     return [];
   }

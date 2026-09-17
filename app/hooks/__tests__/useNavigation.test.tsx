@@ -5,7 +5,11 @@ import type { RouteOption } from "../../lib/routing";
 import type { SavedRoute } from "../../lib/savedRoutes";
 import { downloadBlob } from "../../lib/exportRoute";
 import { geocodeReverse } from "../../lib/nominatim";
-import { fetchRoutingGraph, fetchStationEntrances } from "../../lib/overpass";
+import {
+  fetchRoutingGraph,
+  fetchStationEntrances,
+  fetchStationEntranceBoxes,
+} from "../../lib/overpass";
 import { fetchBestTrainGraph } from "../../lib/transit/trainGraphSource";
 import {
   sampleBuildingMaskBothSidewalks,
@@ -24,7 +28,12 @@ vi.mock("../../lib/overpass", async () => {
   const actual = await vi.importActual<typeof import("../../lib/overpass")>(
     "../../lib/overpass",
   );
-  return { ...actual, fetchRoutingGraph: vi.fn(), fetchStationEntrances: vi.fn() };
+  return {
+    ...actual,
+    fetchRoutingGraph: vi.fn(),
+    fetchStationEntrances: vi.fn(),
+    fetchStationEntranceBoxes: vi.fn(),
+  };
 });
 
 /**
@@ -888,6 +897,7 @@ describe("a route index from the panel resolves against the list the panel shows
     resetShadowStub();
     vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
     vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue([] as never);
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
   });
 
@@ -959,5 +969,66 @@ describe("a route index from the panel resolves against the list the panel shows
     const [, filename] = vi.mocked(downloadBlob).mock.calls[0];
     expect(String(filename).toLowerCase()).toContain("transit");
     expect(transitRoute.label).toBe("Via Transit");
+  });
+});
+
+
+describe("entrances are fetched for the chosen stations, not the whole route (#401)", () => {
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue([] as never);
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
+  });
+
+  it("asks for two station-sized boxes in one call, after the route is chosen", async () => {
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.81, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+
+    // One request, not one per station.
+    expect(fetchStationEntranceBoxes).toHaveBeenCalledTimes(1);
+    const [boxes] = vi.mocked(fetchStationEntranceBoxes).mock.calls[0] as [
+      { south: number; west: number; north: number; east: number }[],
+    ];
+    expect(boxes).toHaveLength(2);
+
+    // Each box hugs a station. The route itself spans 0.01 degrees and the old
+    // query padded that by 0.015 on every side; anything near that size here
+    // would mean the whole-route box came back.
+    for (const box of boxes) {
+      expect(box.north - box.south).toBeLessThan(0.01);
+      expect(box.east - box.west).toBeLessThan(0.01);
+    }
+    // Centred on the entry and exit stations of the corridor, not the waypoints.
+    const centres = boxes.map((b) => (b.east + b.west) / 2).sort((x, y) => x - y);
+    expect(centres[0]).toBeCloseTo(103.803, 3);
+    expect(centres[1]).toBeCloseTo(103.807, 3);
+
+    // The old route-wide call is gone entirely.
+    expect(fetchStationEntrances).not.toHaveBeenCalled();
   });
 });

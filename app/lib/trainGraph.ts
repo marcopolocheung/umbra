@@ -646,7 +646,12 @@ export function findBestTrainRoute(
  * centroid for stations with *no* entrance — it silently replaces that
  * station's position with a door in another neighbourhood.
  */
-const NAME_MATCH_MAX_M = 400;
+/**
+ * The furthest an entrance can be from its station and still match. Exported
+ * because it also sizes the Overpass box the entrances are fetched in — asking
+ * for a wider box than the matcher will ever accept is waste.
+ */
+export const ENTRANCE_MATCH_MAX_M = 400;
 
 export function matchEntranceToTrainStation(
   entrance: { lat: number; lon: number; name?: string },
@@ -657,7 +662,7 @@ export function matchEntranceToTrainStation(
     // Nearest name match, not the first: several stations legitimately share a
     // name, and only one of them owns this door.
     let bestNamedId: string | null = null;
-    let bestNamedDist = NAME_MATCH_MAX_M;
+    let bestNamedDist = ENTRANCE_MATCH_MAX_M;
     for (const [id, station] of stations) {
       if (
         !(

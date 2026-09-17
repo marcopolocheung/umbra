@@ -7,7 +7,7 @@
 
 **Verified 2026-09-16**, `main` at `fc5e148`. Green: lint 0 errors (55 warnings / 8 infos, the
 known backlog — re-run at `--max-diagnostics=500`, the default cap truncates and can hide a real
-error), typecheck 0, **1175 tests / 86 files**, build clean.
+error), typecheck 0, **1184 tests / 86 files**, build clean.
 
 **Phase 1 is merged and live** (#397, #398, #399), `VITE_TRANSIT_BASE` is set in Vercel, and
 production genuinely routes on the published data — confirmed against the deployed site, which
@@ -178,7 +178,30 @@ the published data.
   chain head-to-tail, and the gap between the end of a walk leg and the first subway stop is
   **28–55 m**. Nothing is misplaced.
 
-### 1.5A — shrink the entrance query (#401)
+### 1.5A — shrink the entrance query (#401) — **landed**
+
+Entrances are now fetched *after* `findBestTrainRoute`, as two boxes of
+`ENTRANCE_MATCH_MAX_M` (400 m) around the chosen entry and exit, in one Overpass request
+(`fetchStationEntranceBoxes`). Measured, rather than the "one to two orders of magnitude" this
+document originally guessed:
+
+| route | old area | new area | |
+|---|---|---|---|
+| 1.3 km | 0.001434 deg² | 0.000136 deg² | **10.5×** |
+| 7 km | 0.005170 deg² | 0.000136 deg² | **37.9×** |
+
+The new box is a fixed size, so the saving grows with the trip. In the browser the same route
+went from **431 entrance nodes to 77**, and produced the identical board node and walk leg
+(`4770624015`, 411 m) — smaller query, same route.
+
+*One trap, worth knowing before touching this again:* entrances must still be matched against
+**every** station, not just the two endpoints, even though only their boxes are fetched.
+Narrowing the station set makes the matcher *more* permissive per station — the 300 m distance
+fallback attributes a neighbour's door to an endpoint, and the walk leg then snaps somewhere
+unroutable, dropping the transit option. Every unit test passed while that was broken; only the
+browser caught it.
+
+#### The original analysis
 
 A transit calculation issues **two** Overpass queries. The second is the problem:
 
