@@ -674,3 +674,51 @@ describe("railExposure", () => {
     expect(result?.coverage).toBe(1);
   });
 });
+
+// ─── Tie-breaking between equal-cost paths ──────────────────────────────────
+
+describe("equal-cost paths", () => {
+  /**
+   * Two routes of identical cost between the same pair of stations. Nothing in
+   * the rest of the suite pins which one wins — every other fixture is built
+   * with a strict cost gap so the winner is unambiguous — which means the
+   * priority queue could start returning the other one and no test would fail.
+   *
+   * The array scan pops the earliest-inserted entry among equal costs, because
+   * its argmin uses a strict `<`. This asserts that order so the container can
+   * be swapped without silently changing which route a rider is shown.
+   */
+  function twinGraph(): TrainGraph {
+    return toyGraph(
+      [
+        station("X", "Start", 40.75, -73.99),
+        station("P1", "Via P", 40.76, -73.99),
+        station("Q1", "Via Q", 40.74, -73.99),
+        station("Z", "End", 40.77, -73.99),
+      ],
+      [
+        // Inserted first, so it is the one the argmin reaches first on a tie.
+        { from: "X", to: "P1", line: "P", sec: 100 },
+        { from: "P1", to: "Z", line: "P", sec: 100 },
+        { from: "X", to: "Q1", line: "Q", sec: 100 },
+        { from: "Q1", to: "Z", line: "Q", sec: 100 },
+      ],
+    );
+  }
+
+  it("returns the same route on every run", () => {
+    const first = trainDijkstra(twinGraph(), "X", "Z");
+    const second = trainDijkstra(twinGraph(), "X", "Z");
+    expect(first?.totalSec).toBe(200);
+    expect(second?.totalSec).toBe(200);
+    expect(second?.stationIds).toEqual(first?.stationIds);
+    expect(second?.lines).toEqual(first?.lines);
+  });
+
+  it("breaks a tie towards the edge declared first", () => {
+    const result = trainDijkstra(twinGraph(), "X", "Z");
+    expect(result?.totalSec).toBe(200);
+    expect(result?.stationIds).toEqual(["X", "P1", "Z"]);
+    expect(result?.lines).toEqual(["P"]);
+  });
+});
