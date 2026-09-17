@@ -15,6 +15,7 @@ import {
   parseTransitManifest,
   parseTransitPointer,
   parseTransitShard,
+  type GeoBounds,
   type TransitManifest,
   type TransitPointer,
   type TransitShard,
@@ -129,23 +130,35 @@ export async function loadTransitShard(
   return parseTransitShard(JSON.parse(new TextDecoder().decode(bytes)), ref);
 }
 
+/** Two rectangles overlap, touching edges included. */
+function boundsIntersect(a: GeoBounds, b: GeoBounds): boolean {
+  return a.south <= b.north && a.north >= b.south && a.west <= b.east && a.east >= b.west;
+}
+
 /**
- * Picks shards by kind, not by bounding box.
+ * Picks shards by kind, then by extent where the manifest publishes one.
  *
- * The manifest gives each shard byte counts and record counts but **no extent**,
- * so a client cannot tell whether `bus-q.json` covers a bbox without
- * downloading it first. Subway is one city-wide shard, which makes kind
- * selection exact for everything routed today; per-shard bounds in the manifest
- * are what would make bus selection geographic, and that is a pipeline change.
+ * Kind is the fallback, not the refinement: a ref without `bounds` is selected
+ * exactly as it was before the field existed, because the manifest deployed in
+ * production predates it and a missing extent says nothing about coverage.
+ * Where bounds *are* published, a shard that cannot reach `bbox` is dropped
+ * before it is fetched — which is the only way a user outside New York avoids
+ * paying for a graph that is then discarded (#388).
  */
 export function selectShardRefs(
   manifest: TransitManifest,
   selection: ShardSelection,
+  bbox?: GeoBounds,
 ): TransitShardRef[] {
   return manifest.shards.filter((ref) => {
-    if (ref.key === SUBWAY_SHARD_KEY) return selection.subway ?? false;
-    if (ref.key.startsWith(BUS_SHARD_PREFIX)) return selection.bus ?? false;
-    return false;
+    const wanted = ref.key === SUBWAY_SHARD_KEY
+      ? (selection.subway ?? false)
+      : ref.key.startsWith(BUS_SHARD_PREFIX)
+        ? (selection.bus ?? false)
+        : false;
+    if (!wanted) return false;
+    if (!bbox || !ref.bounds) return true;
+    return boundsIntersect(ref.bounds, bbox);
   });
 }
 
@@ -155,9 +168,14 @@ let cached: TransitDataset | undefined;
  * Loads the selected shards, reusing anything already held for the same
  * generation. A promoted generation drops the cache wholesale rather than
  * mixing shards across generations — stop ids are only meaningful within one.
+ *
+ * `bbox` narrows the selection to shards whose published extent reaches it, and
+ * returns `null` without fetching any when none does. Omit it to select on kind
+ * alone, as before.
  */
 export async function loadTransitDataset(
   selection: ShardSelection,
+  bbox?: GeoBounds,
   signal?: AbortSignal,
 ): Promise<TransitDataset | null> {
   const pointer = await loadTransitPointer(signal);
@@ -165,7 +183,7 @@ export async function loadTransitDataset(
 
   if (cached && cached.generation !== pointer.generation) cached = undefined;
   const manifest = cached?.manifest ?? (await loadTransitManifest(pointer, signal));
-  const refs = selectShardRefs(manifest, selection);
+  const refs = selectShardRefs(manifest, selection, bbox);
   if (refs.length === 0) return null;
 
   const shards = new Map(cached?.shards ?? []);

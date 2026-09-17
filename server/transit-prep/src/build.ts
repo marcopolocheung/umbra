@@ -40,6 +40,13 @@ export type RepresentativeSummary = Record<
   } | null
 >;
 
+export interface ShardBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
 export interface ShardRecord {
   key: string;
   bytes: number;
@@ -47,6 +54,13 @@ export interface ShardRecord {
   stops: number;
   edges: number;
   routes: number;
+  /**
+   * The extent of the stops this shard ships, so a client can tell whether it
+   * covers a bbox without downloading it (#388). Computed, never the borough
+   * the shard is named after: shards are self-contained, so the S53 over the
+   * Verrazzano puts Staten Island stops in `bus-b`.
+   */
+  bounds: ShardBounds;
 }
 
 export interface GenerationManifest {
@@ -75,6 +89,28 @@ export interface GenerationManifest {
     busMaxKmh: number;
   };
   notes: string[];
+}
+
+/**
+ * The bounding box of a shard's own stops.
+ *
+ * An empty shard throws rather than publishing an infinite or null extent: the
+ * client refuses a malformed `bounds` outright, so it would take the whole
+ * manifest down — and every dataset the pipeline builds has stops.
+ */
+function stopBounds(key: string, stops: StopNode[]): ShardBounds {
+  if (stops.length === 0) throw new Error(`${key}: no stops to compute bounds from`);
+  let south = Infinity;
+  let west = Infinity;
+  let north = -Infinity;
+  let east = -Infinity;
+  for (const stop of stops) {
+    if (stop.lat < south) south = stop.lat;
+    if (stop.lat > north) north = stop.lat;
+    if (stop.lon < west) west = stop.lon;
+    if (stop.lon > east) east = stop.lon;
+  }
+  return { south, west, north, east };
 }
 
 export interface NormalizeOptions {
@@ -283,7 +319,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     }
     totalBytes += bytes.length;
     encoded.push({ key, bytes });
-    const recordValue = value as { stops: unknown[]; edges: unknown[]; routes: unknown[] };
+    const recordValue = value as { stops: StopNode[]; edges: unknown[]; routes: unknown[] };
     shards.push({
       key,
       bytes: bytes.length,
@@ -291,6 +327,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       stops: recordValue.stops.length,
       edges: recordValue.edges.length,
       routes: recordValue.routes.length,
+      bounds: stopBounds(key, recordValue.stops),
     });
   }
   if (totalBytes > TOTAL_BUDGET_BYTES) {

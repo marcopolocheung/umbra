@@ -67,10 +67,27 @@ interface Published {
   bodies: Map<string, Uint8Array>;
 }
 
-/** Builds a self-consistent pointer/manifest/shard set with real digests. */
+/** The extent the pipeline computes over the stops a shard actually ships. */
+function extentOf(stops: { lat: number; lon: number }[]) {
+  return {
+    south: Math.min(...stops.map((s) => s.lat)),
+    west: Math.min(...stops.map((s) => s.lon)),
+    north: Math.max(...stops.map((s) => s.lat)),
+    east: Math.max(...stops.map((s) => s.lon)),
+  };
+}
+
+/**
+ * Builds a self-consistent pointer/manifest/shard set with real digests.
+ *
+ * `withBounds` is off by default so every test that does not ask for it keeps
+ * exercising the manifest shape deployed in production, which predates the
+ * field.
+ */
 async function publish(
   shards: Record<string, ReturnType<typeof subwayShard> | ReturnType<typeof busShard>>,
   gen = generation,
+  withBounds = false,
 ): Promise<Published> {
   const encoder = new TextEncoder();
   const bodies = new Map<string, Uint8Array>();
@@ -85,6 +102,7 @@ async function publish(
       stops: shard.stops.length,
       edges: shard.edges.length,
       routes: shard.routes.length,
+      ...(withBounds ? { bounds: extentOf(shard.stops) } : {}),
     });
   }
   const manifest = {
@@ -203,6 +221,70 @@ describe("transit manifest", () => {
     expect(() => parseTransitManifest(manifest, generation)).toThrow(/duplicate/);
   });
 
+  it("keeps a shard's published bounds", async () => {
+    const { manifestBytes } = await publish({ "subway.json": subwayShard() }, generation, true);
+    const manifest = parseTransitManifest(
+      JSON.parse(new TextDecoder().decode(manifestBytes)),
+      generation,
+    );
+    expect(manifest.shards[0].bounds).toEqual({
+      south: 40.75529,
+      west: -73.987495,
+      north: 40.889248,
+      east: -73.898583,
+    });
+  });
+
+  it("parses a manifest that predates bounds, leaving the field absent", async () => {
+    // The manifest deployed in production has no `bounds`. It must keep
+    // parsing, forever: the field is additive.
+    const { manifestBytes } = await publish({ "subway.json": subwayShard() });
+    const manifest = parseTransitManifest(
+      JSON.parse(new TextDecoder().decode(manifestBytes)),
+      generation,
+    );
+    expect("bounds" in manifest.shards[0]).toBe(false);
+  });
+
+  it("treats an explicitly null bounds as absent", async () => {
+    // `null` for an absent optional is the one realistic serializer artifact,
+    // and it parses today by being ignored. It must keep doing so: throwing
+    // here would take the whole manifest down over a field nothing needs.
+    const { manifestBytes } = await publish({ "subway.json": subwayShard() });
+    const base = JSON.parse(new TextDecoder().decode(manifestBytes));
+    const manifest = parseTransitManifest(
+      { ...base, shards: [{ ...base.shards[0], bounds: null }] },
+      generation,
+    );
+    expect("bounds" in manifest.shards[0]).toBe(false);
+  });
+
+  it("rejects bounds that are not a real extent", async () => {
+    const { manifestBytes } = await publish({ "subway.json": subwayShard() }, generation, true);
+    const base = JSON.parse(new TextDecoder().decode(manifestBytes));
+    const withBounds = (bounds: unknown) => ({
+      ...base,
+      shards: [{ ...base.shards[0], bounds }],
+    });
+
+    expect(() => parseTransitManifest(withBounds({ south: 40.7, west: -74 }), generation)).toThrow(
+      /shard/,
+    );
+    // Inverted: north below south is not an empty extent, it is a broken one.
+    expect(() =>
+      parseTransitManifest(
+        withBounds({ south: 40.8, west: -74, north: 40.7, east: -73.9 }),
+        generation,
+      ),
+    ).toThrow(/shard/);
+    expect(() =>
+      parseTransitManifest(
+        withBounds({ south: 40.7, west: -74, north: 40.8, east: 999 }),
+        generation,
+      ),
+    ).toThrow(/shard/);
+  });
+
   it("keeps the honesty notes", async () => {
     const { manifestBytes } = await publish({ "subway.json": subwayShard() });
     const manifest = parseTransitManifest(
@@ -284,6 +366,64 @@ describe("selectShardRefs", () => {
     expect(selectShardRefs(manifest, { bus: true }).map((r) => r.key)).toEqual(["bus-si.json"]);
     expect(selectShardRefs(manifest, {})).toEqual([]);
   });
+
+  async function boundedManifest() {
+    const { manifestBytes } = await publish(
+      { "subway.json": subwayShard(), "bus-si.json": busShard() },
+      generation,
+      true,
+    );
+    return parseTransitManifest(JSON.parse(new TextDecoder().decode(manifestBytes)), generation);
+  }
+
+  it("drops a shard whose bounds do not reach the requested bbox", async () => {
+    const manifest = await boundedManifest();
+    // Shibuya. The subway shard's extent is upper Manhattan and the Bronx; the
+    // bus shard's is one stop on Staten Island.
+    const tokyo = { south: 35.65, west: 139.68, north: 35.7, east: 139.78 };
+    expect(selectShardRefs(manifest, { subway: true, bus: true }, tokyo)).toEqual([]);
+  });
+
+  it("keeps a shard whose bounds reach the requested bbox", async () => {
+    const manifest = await boundedManifest();
+    const midtown = { south: 40.74, west: -74.0, north: 40.78, east: -73.96 };
+    // Times Sq is in the subway shard; no bus stop is anywhere near midtown.
+    expect(selectShardRefs(manifest, { subway: true, bus: true }, midtown).map((r) => r.key)).toEqual([
+      "subway.json",
+    ]);
+
+    const statenIsland = { south: 40.6, west: -74.2, north: 40.65, east: -74.15 };
+    expect(
+      selectShardRefs(manifest, { subway: true, bus: true }, statenIsland).map((r) => r.key),
+    ).toEqual(["bus-si.json"]);
+  });
+
+  it("keeps a shard whose bounds only touch the requested bbox", async () => {
+    const manifest = await boundedManifest();
+    // The subway shard's northern edge, exactly. Touching is covering: a stop
+    // sits on that line, so dropping the shard would discard a real station.
+    const grazing = { south: 40.889248, west: -73.898583, north: 41.0, east: -73.8 };
+    expect(selectShardRefs(manifest, { subway: true }, grazing).map((r) => r.key)).toEqual([
+      "subway.json",
+    ]);
+  });
+
+  it("selects by kind alone when the manifest predates bounds", async () => {
+    const { manifestBytes } = await publish({
+      "subway.json": subwayShard(),
+      "bus-si.json": busShard(),
+    });
+    const manifest = parseTransitManifest(
+      JSON.parse(new TextDecoder().decode(manifestBytes)),
+      generation,
+    );
+    // No extent to test against, so a bbox on the other side of the world must
+    // not be read as "does not cover" — that is the download-then-check path.
+    const tokyo = { south: 35.65, west: 139.68, north: 35.7, east: 139.78 };
+    expect(selectShardRefs(manifest, { subway: true }, tokyo).map((r) => r.key)).toEqual([
+      "subway.json",
+    ]);
+  });
 });
 
 // ─── Transport ──────────────────────────────────────────────────────────────
@@ -319,6 +459,31 @@ describe("transit transport", () => {
     expect(dataset?.shards.get("subway.json")?.edges[0].medianSec).toBe(90);
     expect(calls.some((u) => u.includes("bus-si.json"))).toBe(false);
     expect(calls[0]).toBe(`${base}/transit/nyc/current.json`);
+  });
+
+  it("skips the shard download entirely for a bbox the bounds exclude", async () => {
+    const published = await publish({ "subway.json": subwayShard() }, generation, true);
+    const calls = stubFetch(published);
+    const tokyo = { south: 35.65, west: 139.68, north: 35.7, east: 139.78 };
+
+    // The point of the field: a user outside New York must not pay 1.09 MB for
+    // a graph that is then discarded.
+    await expect(loadTransitDataset({ subway: true }, tokyo)).resolves.toBeNull();
+    expect(calls.some((u) => u.endsWith("subway.json"))).toBe(false);
+    expect(calls).toEqual([
+      `${base}/transit/nyc/current.json`,
+      `${base}/${manifestPath}`,
+    ]);
+  });
+
+  it("still downloads the shard for a bbox the bounds cover", async () => {
+    const published = await publish({ "subway.json": subwayShard() }, generation, true);
+    const calls = stubFetch(published);
+    const midtown = { south: 40.74, west: -74.0, north: 40.78, east: -73.96 };
+
+    const dataset = await loadTransitDataset({ subway: true }, midtown);
+    expect([...(dataset?.shards.keys() ?? [])]).toEqual(["subway.json"]);
+    expect(calls.filter((u) => u.endsWith("subway.json"))).toHaveLength(1);
   });
 
   it("refuses a manifest whose bytes do not match the pointer digest", async () => {

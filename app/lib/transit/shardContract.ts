@@ -32,6 +32,14 @@ export interface TransitFeedRef {
   sha256: string;
 }
 
+/** A plain lat/lon rectangle. Never crosses the antimeridian — see `parseBounds`. */
+export interface GeoBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
 export interface TransitShardRef {
   key: string;
   bytes: number;
@@ -39,6 +47,15 @@ export interface TransitShardRef {
   stops: number;
   edges: number;
   routes: number;
+  /**
+   * The computed extent of the stops this shard ships — not a borough outline.
+   * A shard is self-contained, so the S53 over the Verrazzano puts Staten
+   * Island stops in `bus-b`.
+   *
+   * **Optional forever.** The field is additive and the manifest deployed in
+   * production predates it; a ref without it selects by kind, as before.
+   */
+  bounds?: GeoBounds;
 }
 
 /**
@@ -223,6 +240,39 @@ function parseFeedRef(value: unknown): TransitFeedRef {
   };
 }
 
+/**
+ * A shard's extent, or `undefined` when the manifest publishes none.
+ *
+ * An inverted or out-of-range rectangle throws rather than being ignored: the
+ * client skips a download on the strength of this, so a wrong extent would drop
+ * transit for real New York routes and look like the feature being off.
+ * `west > east` is rejected on the same grounds — the dataset is NYC-only, so
+ * an antimeridian-crossing shard means the pipeline is publishing something
+ * this contract does not describe.
+ *
+ * `null` counts as absent, not as malformed: it is what a serializer emits for
+ * an optional it has no value for, and it parses today by being ignored.
+ * Throwing on it would take a whole manifest down over a field nothing needs.
+ */
+function parseBounds(value: unknown): GeoBounds | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    !isRecord(value) ||
+    !isFiniteNumber(value.south) ||
+    !isFiniteNumber(value.west) ||
+    !isFiniteNumber(value.north) ||
+    !isFiniteNumber(value.east) ||
+    value.south < -90 ||
+    value.north > 90 ||
+    value.west < -180 ||
+    value.east > 180 ||
+    value.south > value.north ||
+    value.west > value.east
+  )
+    throw new Error("invalid NYC transit manifest shard");
+  return { south: value.south, west: value.west, north: value.north, east: value.east };
+}
+
 function parseShardRef(value: unknown): TransitShardRef {
   if (
     !isRecord(value) ||
@@ -237,7 +287,7 @@ function parseShardRef(value: unknown): TransitShardRef {
     !isNonNegativeInt(value.routes)
   )
     throw new Error("invalid NYC transit manifest shard");
-  return {
+  const ref: TransitShardRef = {
     key: value.key,
     bytes: value.bytes,
     sha256: value.sha256,
@@ -245,6 +295,11 @@ function parseShardRef(value: unknown): TransitShardRef {
     edges: value.edges,
     routes: value.routes,
   };
+  // Absent stays absent: the key must not appear on a ref the pipeline
+  // published without one, or `selectShardRefs` cannot tell the two apart.
+  const bounds = parseBounds(value.bounds);
+  if (bounds) ref.bounds = bounds;
+  return ref;
 }
 
 /** Parses the manifest and checks it describes the generation we asked for. */
