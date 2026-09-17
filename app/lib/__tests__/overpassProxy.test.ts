@@ -309,9 +309,61 @@ describe("api/overpass handler", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(res.statusCode).toBe(503);
     expect(res.headers["Retry-After"]).toBe("30");
-    expect(JSON.parse(res.sentBody)).toEqual({
-      error: "Map data service temporarily unavailable",
+    const body = JSON.parse(res.sentBody);
+    expect(body.error).toBe("Map data service temporarily unavailable");
+    // One entry per mirror, saying why each gave up — the two causes this
+    // distinguishes have opposite fixes, and server logs expire.
+    expect(body.attempts).toHaveLength(3);
+    expect(body.attempts[0]).toMatchObject({
+      endpoint: "overpass-api.de",
+      attempt: 1,
+      status: 503,
+      failureClass: "retryable_http",
     });
+    expect(typeof body.attempts[0].durationMs).toBe("number");
+  });
+
+  it("reports an attempt timeout distinctly from a refusal", async () => {
+    // The whole point of the field: a mirror that is merely slow looks nothing
+    // like one that is rate-limiting, and the two are fixed differently.
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(
+      (_url, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(abortError()));
+        }),
+    );
+
+    const pending = requestOverpass("data=safe", {
+      endpoints: configuredOverpassEndpoints({}),
+      fetchImpl: fetchMock,
+      logger: QUIET_LOGGER,
+      attemptTimeoutMs: 8_000,
+      totalTimeoutMs: 26_000,
+    });
+    await vi.advanceTimersByTimeAsync(26_000);
+    const res = await pending;
+
+    expect(res.status).toBe(503);
+    const classes = JSON.parse(res.body).attempts.map(
+      (a: { failureClass: string }) => a.failureClass,
+    );
+    expect(classes).toContain("attempt_timeout");
+    expect(classes).not.toContain("retryable_http");
+  });
+
+  it("never puts a query or a coordinate in the 503 body", async () => {
+    // The response now leaves the server, so it is held to the same rule the
+    // log line is: endpoint metadata only.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(upstreamResponse(429)));
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    await handler(makeReq(), res);
+
+    expect(res.sentBody).not.toContain("way(");
+    expect(res.sentBody).not.toContain("41.8781");
+    expect(res.sentBody).not.toContain("data=");
   });
 
   it("aborts the in-flight upstream when the request is abandoned", async () => {

@@ -240,7 +240,35 @@ two were wrong:
 That last one changes what the error *means*: "map server is busy" implies **all three mirrors
 failed**, not one.
 
-### 1.5B — measure before tuning any budget
+### 1.5B — measure before tuning any budget — **the signal now reaches the browser**
+
+The 503 body used to be a fixed string, so the `failureClass` split existed only in the proxy's
+own logs — which expire, for a failure that is transient and hard to reproduce on purpose. The
+503 now carries one entry per attempt, and the client prints it:
+
+```
+[overpass] upstream unavailable (503): overpass-api.de attempt_timeout 8001ms | … 429 120ms
+```
+
+So the measurement no longer needs server logs: reproduce it once and read the browser console.
+Same fields as the log line, and the same rule — never the query, never a coordinate, with a
+test pinning that for the response as well as the log.
+
+**Read it like this**, then act:
+
+| what you see | means | what to do |
+|---|---|---|
+| `retryable_http`, `429` on every mirror | genuine rate limiting | ask less often; more mirrors |
+| `attempt_timeout`, `durationMs` ≈ 8000 | too slow for the budget | shrink the **walk** query, or raise the budget |
+| `total_timeout` | the 26 s pool budget ran out | usually downstream of the above |
+| `network` | the endpoint was unreachable | check the endpoint list |
+
+If it is `attempt_timeout`, aim at `fetchRoutingGraph`, not entrances: 1.5A shrank the entrance
+query by 10–38×, so the walk network is now the dominant Overpass cost. Raising
+`DEFAULT_ATTEMPT_TIMEOUT_MS` means raising `DEFAULT_TOTAL_TIMEOUT_MS` with it — three attempts
+must still fit — and it trades directly against how long a spinner sits there.
+
+#### The original analysis
 
 There are two candidate mechanisms and they need different fixes: genuine rate limiting, or a
 query merely too slow for `DEFAULT_ATTEMPT_TIMEOUT_MS = 8_000` (three attempts ≈ 24 s against

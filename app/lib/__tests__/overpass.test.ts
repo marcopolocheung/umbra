@@ -453,6 +453,57 @@ describe("fetchRoutingGraph — Overpass query shape", () => {
 
 // ── station entrances tagging ───────────────────────────────────────────────
 
+describe("upstream failure reporting", () => {
+  it("prints the proxy's per-attempt reason when the pool is exhausted", async () => {
+    // Without this the browser shows "busy" and the reason lives only in server
+    // logs, which expire. Rate limiting and a slow query look identical here and
+    // are fixed differently.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        clone: () => ({
+          json: async () => ({
+            error: "Map data service temporarily unavailable",
+            attempts: [
+              { endpoint: "overpass-api.de", attempt: 1, durationMs: 8001, failureClass: "attempt_timeout" },
+              { endpoint: "overpass.private.coffee", attempt: 2, durationMs: 120, status: 429, failureClass: "retryable_http" },
+            ],
+          }),
+        }),
+      }),
+    );
+
+    await expect(fetchRoutingGraph(...nextBbox())).rejects.toThrow(/map server is busy/i);
+
+    const line = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(line).toContain("attempt_timeout");
+    expect(line).toContain("overpass-api.de");
+    expect(line).toContain("429");
+    warn.mockRestore();
+  });
+
+  it("still reports the user-facing error when the body says nothing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        clone: () => ({ json: async () => { throw new Error("not json"); } }),
+      }),
+    );
+
+    await expect(fetchRoutingGraph(...nextBbox())).rejects.toThrow(/map server is busy/i);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
 describe("fetchStationEntranceBoxes — several boxes, one request", () => {
   function stubOnce(elements: unknown[]) {
     const fetchMock = vi.fn().mockResolvedValue({

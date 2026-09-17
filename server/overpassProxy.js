@@ -61,7 +61,17 @@ function selectedHeaders(headers) {
   return selected;
 }
 
-function unavailableResponse() {
+/**
+ * The 503 carries why the pool gave up, one entry per attempt.
+ *
+ * Without it this is only answerable from server logs, inside their retention
+ * window, for a failure that is transient and hard to reproduce on purpose —
+ * and the two causes it distinguishes (`retryable_http` means rate limiting,
+ * `attempt_timeout` means the query is too slow for the budget) have opposite
+ * fixes. It carries the same fields as the log line and, like the log line,
+ * never the query or any coordinate.
+ */
+function unavailableResponse(attempts = []) {
   return {
     status: 503,
     headers: {
@@ -70,6 +80,7 @@ function unavailableResponse() {
     },
     body: JSON.stringify({
       error: "Map data service temporarily unavailable",
+      attempts,
     }),
   };
 }
@@ -80,8 +91,9 @@ function abortError() {
   return error;
 }
 
-function logAttempt(logger, details) {
+function logAttempt(logger, details, attempts) {
   logger.info?.("Overpass upstream attempt", details);
+  attempts?.push(details);
 }
 
 /**
@@ -93,6 +105,7 @@ function logAttempt(logger, details) {
  */
 export async function requestOverpass(body, options = {}) {
   const env = options.env ?? process.env;
+  const attempts = [];
   const endpoints = options.endpoints ?? configuredOverpassEndpoints(env);
   const attemptTimeoutMs = positiveNumber(
     options.attemptTimeoutMs,
@@ -149,7 +162,7 @@ export async function requestOverpass(body, options = {}) {
           : response.status >= 200 && response.status < 300
             ? "success"
             : "forwarded_http",
-      });
+      }, attempts);
 
       if (!retryable) {
         return {
@@ -165,7 +178,7 @@ export async function requestOverpass(body, options = {}) {
           attempt,
           durationMs: Math.max(0, Math.round(now() - attemptStartedAt)),
           failureClass: "downstream_abort",
-        });
+        }, attempts);
         throw abortError();
       }
 
@@ -179,7 +192,7 @@ export async function requestOverpass(body, options = {}) {
             ? "total_timeout"
             : "attempt_timeout"
           : "network",
-      });
+      }, attempts);
       if (totalExpired) break;
     } finally {
       clearTimeout(timeoutId);
@@ -187,7 +200,7 @@ export async function requestOverpass(body, options = {}) {
     }
   }
 
-  return unavailableResponse();
+  return unavailableResponse(attempts);
 }
 
 function maxBodyBytes(env) {
