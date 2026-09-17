@@ -13,8 +13,9 @@ error), typecheck 0, **1228 tests / 86 files**, build clean.
 production genuinely routes on the published data — confirmed against the deployed site, which
 fetches `current.json`, `manifest.json` and `subway.json` from R2 and draws the R train. Phase
 1.5 followed it (#401, #400, #407) after production surfaced two robustness defects in the
-*Overpass* half. **Phase 2 is merged** (#408). **Phase 3 is under way: 3A is in review; 3B is
-the next thing to settle, and it is a research question before it is a build.**
+*Overpass* half. **Phase 2 is merged** (#408). **Phase 3 is under way: 3A is in review, and 3B
+is next — its data question is now answered (OSM is good enough; see 3B), so what remains is the
+join, in the pipeline.**
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -500,18 +501,83 @@ value for, and it parses today by being ignored.
 Settle this before S4, because bus asks the identical question and answering it twice
 differently would be worse than answering it once. The G is underground; the 7 is both.
 
-The shards carry no structure and no route geometry (#385). Candidate sources, none free:
-OSM `tunnel=yes`/`bridge=yes` on the rail ways via Overpass; a per-edge structure flag added to
+The shards carry no structure and no route geometry (#385). Candidate sources: OSM
+`tunnel=yes`/`bridge=yes` on the rail ways; a per-edge structure flag added to
 `server/transit-prep` (NYC's GTFS has none, so the pipeline would join against OSM itself); or
 sampling the shadow canvas along the drawn stop-to-stop line, which samples *building* shadow
 and not the structure shading its own riders.
 
-**Do the research before the build.** The one question that decides 3B is: *is there a free
-source that says whether a given stop-to-stop segment is in a tunnel?* OSM's `tunnel=yes` /
-`bridge=yes` on the rail ways via Overpass is the only candidate named above, and **nobody has
-checked how completely NYC's subway ways are tagged.** That is scoped and checkable — a coverage
-percentage over the ways carrying each route — and until it is answered, every 3B design is a
-guess. It needs neither Phase 2 nor 3A, so it can be picked up cold.
+#### The data question is answered: OSM is good enough *(measured 2026-09-17)*
+
+The open question was whether NYC's subway ways are tagged completely enough to use. **They
+are.** Measured over every `railway=subway` way in the NYC bbox, via Overpass:
+
+| | ways | |
+|---|---|---|
+| tunnel | 1,433 | 48.7% |
+| bridge | 866 | 29.4% |
+| embankment | 195 | 6.6% |
+| cutting (open cut) | 145 | 4.9% |
+| explicit at-grade | 8 | 0.3% |
+| **no structure tag** | **295** | **10.0%** |
+
+**90.0% of revenue track carries an explicit structure determination.** A first pass said 18.7%
+was untagged, which read as "OSM is too patchy". That number was wrong three times over, and
+every error was ours:
+
+1. **43% of `railway=subway` ways are not revenue track** — 2,229 of 5,210 carry
+   `service=yard|crossover|spur|siding`. Yards and crossovers have no riders.
+2. **PATH is tagged `railway=subway`.** The `Newark - World Trade Center` ways are not in our
+   feed. Staten Island Railway *is* (route `SI` is in `subway.json`), so it stays in.
+3. **Absent `tunnel` means "not a tunnel", not "unknown."** Unlike `changeSec` (#384) this is a
+   closed-world tag, and NYC has real at-grade and open-cut subway that OSM tags *specifically*
+   as `cutting` and `embankment`.
+
+**Coverage alone would not have settled it, so it was checked against lines whose structure is
+documented and unambiguous:**
+
+| line | tunnel | bridge | none | known structure |
+|---|---|---|---|---|
+| IND Crosstown (G) | **100%** | 0% | 0% | underground, entirely |
+| IRT Lexington Av (4/5/6) | **100%** | 0% | 0% | underground in Manhattan |
+| IND Eighth Av (A/C/E) | **100%** | 0% | 0% | underground in Manhattan |
+| IND Sixth Av (B/D/F/M) | **100%** | 0% | 0% | underground in Manhattan |
+| BMT Jamaica (J/M/Z) | 17% | **83%** | 0% | elevated |
+| IRT Jerome Av (4) | 31% | **65%** | 0% | elevated in the Bronx |
+| IRT Flushing (7) | 28% | **67%** | 5% | underground in Manhattan, elevated in Queens |
+| BMT Astoria (N/W) | 32% | **62%** | 0% | elevated |
+
+Every fully-underground line is 100% tunnel-tagged with zero untagged ways, and the elevated
+lines' tunnel fractions are not noise — they match the portion that genuinely runs underground
+before surfacing. OSM answers correctly wherever the answer is independently checkable.
+
+The residual 295 undetermined ways sit where "no tag" is the right answer for at-grade running:
+Staten Island Railway (98), IND Rockaway (42), BMT West End (29), IRT White Plains Road (21).
+**SIR is the one genuinely thin spot** — 98 of its 176 ways carry nothing — and it is in our
+feed, so it needs its own decision rather than being averaged away.
+
+Caveat: this is way-count weighting, not length weighting. No geometry was pulled, so a long
+untagged way counts the same as a short one. The ground-truth table is robust to that; the 90%
+is not, and would move under length weighting.
+
+#### What 3B actually costs now
+
+Not the source — **the join.** Shards ship no route geometry by design (#385), so an edge is a
+pair of stop ids with nothing to match against an OSM way. Bridging that means resolving our
+stops to OSM stations and walking the ordered way list in each `type=route` relation between
+consecutive stations. Two things to settle before writing any of it:
+
+- **Do the join in `server/transit-prep`, not the client**, and ship a per-edge structure flag.
+  Computed once at build time, it costs the client nothing and keeps Overpass out of a route
+  calculation entirely.
+- **Use a Geofabrik `new-york-latest.osm.pbf` extract, not Overpass.** The pipeline already
+  downloads 68 MB of GTFS; one more extract is cheaper, more reliable and far more polite than a
+  build-time join hammering a public API. During this measurement `overpass-api.de` and
+  `kumi.systems` both returned 504 on queries of a few hundred KB, and the work only completed by
+  tiling into six requests against `maps.mail.ru`.
+- **An undetermined segment stays undetermined.** Same precedent as `changeSec` (#384): absent is
+  not zero. The ~10% with no determination must not inherit "underground, free shade" — that is
+  precisely the bug 1B was opened for.
 
 ### 3C — S4: bus
 
