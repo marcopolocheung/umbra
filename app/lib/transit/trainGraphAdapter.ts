@@ -169,6 +169,8 @@ export function buildTrainGraphFromShards(
         line: edge.route,
         // The headway tables are directional, and this is what keys them.
         direction: edge.direction,
+        // Absent stays absent: unknown is not "underground" (#393).
+        ...(edge.structure ? { structure: edge.structure } : {}),
       });
     }
   }

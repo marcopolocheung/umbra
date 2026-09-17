@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
-import { transitSunCardLabel } from "../lib/routeLegSummary";
+import { transitSunCardLabel, transitSunTone } from "../lib/routeLegSummary";
 
 export interface NavigationPanelProps {
   navMode: boolean;
@@ -746,12 +746,14 @@ export default function NavigationPanel({
                           const stopCount = (tLeg.stops?.length ?? 2) - 1;
                           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
                           const sunExposure = tLeg.sunExposure ?? 0;
-                          const sunLabel = transitSunCardLabel(sunExposure);
-                          const sunColorClass = sunExposure < 0.05
-                            ? "text-cyan-400/70"
-                            : sunExposure < 0.2
-                            ? "text-green-400/70"
-                            : "text-yellow-400/70";
+                          const sunCoverage = tLeg.sunExposureCoverage;
+                          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage);
+                          const sunColorClass = {
+                            enclosed: "text-cyan-400/70",
+                            shaded: "text-green-400/70",
+                            sunny: "text-yellow-400/70",
+                            unknown: "text-white/40",
+                          }[transitSunTone(sunExposure, sunCoverage)];
                           return (
                             <div className="mt-1.5 text-[10px] text-white/50 flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">

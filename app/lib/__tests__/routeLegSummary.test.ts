@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { routeLegSummary, transitSunLabel, transitSunCardLabel, TRANSIT_SUN_CAVEAT } from "../routeLegSummary";
+import {
+  routeLegSummary,
+  transitSunLabel,
+  transitSunCardLabel,
+  transitSunCaveat,
+  transitSunTone,
+  TRANSIT_SUN_CAVEAT_ASSUMED,
+} from "../routeLegSummary";
 import type { RouteLeg } from "../routing";
 
 const line: GeoJSON.Feature<GeoJSON.LineString> = {
@@ -91,7 +98,54 @@ describe("routeLegSummary", () => {
     expect(detail).toContain("assumed");
     expect(transitSunLabel(0)).toBe("assumed underground");
     expect(transitSunCardLabel(0)).toBe("Assumed underground");
-    expect(TRANSIT_SUN_CAVEAT).toMatch(/not measured|elevated/i);
+    expect(TRANSIT_SUN_CAVEAT_ASSUMED).toMatch(/not measured|elevated/i);
+  });
+
+  it("states a measured ride as fact, without the assumption hedge (#393)", () => {
+    // With per-segment structure the figure is a measurement, so hedging it as
+    // "assumed" would now understate what is known.
+    const leg: RouteLeg = {
+      type: "transit",
+      geojson: line,
+      lineName: "7",
+      travelTimeSec: 600,
+      stops: ["A", "B"],
+      sunExposure: 0.75,
+      sunExposureCoverage: 1,
+    };
+    const { detail } = routeLegSummary(leg, 0);
+    expect(detail).toContain("75% of this ride is in sun");
+    expect(detail).not.toContain("assumed");
+  });
+
+  it("calls a measured tunnel ride underground, not assumed underground", () => {
+    expect(transitSunLabel(0, 1)).toBe("underground");
+    expect(transitSunCardLabel(0, 1)).toBe("Underground");
+    // Without coverage the same number is only an assumption.
+    expect(transitSunLabel(0)).toBe("assumed underground");
+  });
+
+  it("reports coverage instead of a figure when most of the ride is unseen", () => {
+    // A percentage derived from 30% of a ride reads as a measurement of the
+    // ride. What is honest to report is how much of it is known.
+    expect(transitSunLabel(0.9, 0.3)).toBe("sun exposure known for 30% of the ride");
+    expect(transitSunCardLabel(0.9, 0.3)).toBe("Sun exposure mostly unknown");
+    expect(transitSunTone(0.9, 0.3)).toBe("unknown");
+  });
+
+  it("gives both cards the same judgement, so they cannot drift", () => {
+    // The two cards duplicated an identical threshold before coverage existed;
+    // adding a state to one and not the other is the same defect twice.
+    expect(transitSunTone(0, 1)).toBe("enclosed");
+    expect(transitSunTone(0.1, 1)).toBe("shaded");
+    expect(transitSunTone(0.8, 1)).toBe("sunny");
+    expect(transitSunTone(undefined)).toBe("enclosed");
+  });
+
+  it("names the source when measured and the model when not", () => {
+    expect(transitSunCaveat(1)).toMatch(/OpenStreetMap/);
+    expect(transitSunCaveat(1)).toMatch(/open cut|embankment/i);
+    expect(transitSunCaveat()).toBe(TRANSIT_SUN_CAVEAT_ASSUMED);
   });
 
   it("leaves a leg the model never priced unlabelled", () => {
