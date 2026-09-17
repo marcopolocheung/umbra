@@ -71,6 +71,13 @@ export async function fetchBestTrainGraph(
         dataset.manifest.headwayDates,
       );
       if (graph && stationsWithin(graph, south, west, north, east) >= 2) {
+        // The manifest's own honesty statements travel with the graph, so the
+        // card can say what timetable it is quoting (#410).
+        graph.provenance = {
+          generation: dataset.generation,
+          notes: dataset.manifest.notes,
+          schedulesAsOf: dataset.manifest.schedulesAsOf,
+        };
         if (import.meta.env.DEV)
           console.log(
             "[transit] using published shards:",

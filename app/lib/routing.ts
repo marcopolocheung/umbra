@@ -1,6 +1,6 @@
 // Pure TypeScript routing utilities — no browser dependencies
 import type { PartialRouteInfo } from "./partialRoute";
-import type { TrainDrawData } from "./trainGraph";
+import type { TrainDrawData, TransitProvenance } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
 import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
@@ -148,6 +148,11 @@ export interface RouteOption {
   travelMode?: TravelModeId;
   mrtEntrances?: [[number, number], [number, number]]; // [boardEntrance, alightEntrance] in [lng, lat]
   trainDrawData?: TrainDrawData; // multi-colored polylines, stops, transfers for MapView
+  /**
+   * What timetable this answer came from, for the card to state (#410). Absent
+   * on walk routes and on transit answered by Overpass, which publishes none.
+   */
+  transitProvenance?: TransitProvenance;
   partial?: PartialRouteInfo; // present when only completed legs are shown
   /** Where `shadowCoverage` came from. Absent on sketch and transit routes. */
   shadowSource?: ShadowProvenance;

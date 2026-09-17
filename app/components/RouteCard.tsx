@@ -7,6 +7,11 @@ import {
   transitSunCaveat,
   transitSunTone,
 } from "../lib/routeLegSummary";
+import {
+  isTimetableExpired,
+  riderFacingNotes,
+  transitScheduleLine,
+} from "../lib/transitProvenance";
 import { routeExposureLine } from "../lib/routeTradeoff";
 import { roughSurfaceLine } from "../lib/travelMode";
 
@@ -193,6 +198,9 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           const sunCoverage = tLeg.sunExposureCoverage;
           const aboveGround = tLeg.aboveGroundShare;
           const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
+          const scheduleLine = transitScheduleLine(r.transitProvenance);
+          const notes = riderFacingNotes(r.transitProvenance);
+          const expired = isTimetableExpired(r.transitProvenance);
           const sunColor = {
             enclosed: "#0e7490",
             shaded: "#15803d",
@@ -212,6 +220,26 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
                 <span style={{ opacity: 0.4 }}>·</span>
                 <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
               </div>
+              {scheduleLine && (
+                // The producer publishes these statements so a client states
+                // them; the tooltip carries its words verbatim (#410).
+                <div
+                  className="flex items-start gap-1"
+                  style={{ opacity: 0.75 }}
+                  title={notes.join("\n\n")}
+                >
+                  <span
+                    className="material-symbols-outlined shrink-0"
+                    style={{ fontSize: "11px", lineHeight: "1.3" }}
+                    aria-hidden="true"
+                  >
+                    info
+                  </span>
+                  <span style={expired ? { color: "#b45309" } : undefined}>
+                    {expired ? `${scheduleLine} — this timetable has expired` : scheduleLine}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })()}
