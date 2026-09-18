@@ -182,7 +182,13 @@ async function overpass(query: string, label: string): Promise<{ body: string; e
 async function overpassPatiently(query: string, label: string): Promise<{ body: string; endpoint: string }> {
   for (let round = 1; ; round += 1) {
     try {
-      return await overpass(query, label);
+      const response = await overpass(query, label);
+      // A query that times out partway still answers 200, with what it had and
+      // a `remark` saying so. Pinning that truncated set would be reproducible
+      // and wrong, so it is retried like any other refusal.
+      const remark = JSON.parse(response.body).remark;
+      if (remark) throw new Error(`OSM ${label} came back partial: ${remark}`);
+      return response;
     } catch (error) {
       if (round >= FOOTWAY_ROUNDS) throw error;
       await new Promise((resolve) => setTimeout(resolve, FOOTWAY_PAUSE_MS));

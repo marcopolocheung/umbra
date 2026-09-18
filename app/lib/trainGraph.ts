@@ -1031,12 +1031,18 @@ export function trainDijkstra(
       const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
       if (boarding === null) continue;
       const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
+      // Any other transfer carries "on foot" and "just walked" through
+      // unchanged: nothing has been ridden since, so an agency transfer
+      // between two station nodes must not launder a walked change into a
+      // first move, a second walked change or a journey's last move.
       const nextKey = stateKey(
         edge.to,
         edge.transferKind === "walked"
           ? ARRIVED_BY_WALK
           : edge.type === "transfer"
-            ? ARRIVED_BY_TRANSFER
+            ? arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK
+              ? arrivedOn
+              : ARRIVED_BY_TRANSFER
             : (edge.line ?? ARRIVED_ON_FOOT)
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {

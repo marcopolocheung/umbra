@@ -714,8 +714,10 @@ Two separate questions, and they want answering in this order:
 1. **Bus-to-bus — still open.** GTFS publishes none, so any would have to be synthesised — the
    same unvalidated-straight-line problem as the subway↔bus stubs, at far greater volume. The
    validation below is the thing that was missing; it is not yet applied to bus pairs. The router
-   now refuses two walked changes in a row, so a bus→station→bus hop through a station's doors
-   cannot sneak in as an unvalidated bus-to-bus transfer in the meantime.
+   now refuses two walked changes with no ride between them — an agency transfer between two
+   station nodes does not count as one, since 136 of the 150 published join stations a bus stop
+   can walk into and out of — so a bus→station→bus hop through a station's doors cannot sneak in
+   as an unvalidated bus-to-bus transfer in the meantime.
 2. **Subway↔bus — built in PR_REF.** `server/transit-prep/src/walkability.ts` promotes a
    spatial stub to a third transfer kind, `walked`, when OSM's pedestrian ways connect one of the
    station's own doors (#430; exit-only doors only when leaving) to the bus stop by a routed path
@@ -758,7 +760,8 @@ Two separate questions, and they want answering in this order:
   Overpass. That is why this PR published no generation.
 - **Publishing is what turns mixed journeys on**, and the card was built for one mode. What a
   walked change unlocks is a ride of the searched mode at both ends with the other mode in the
-  middle (the router will not start or end a journey on a walked change, so subway→bus endings
+  middle (the router will not start or end a journey on a walked change, even via an agency
+  transfer, so subway→bus endings
   still need a mixed-mode search — E6). On such a card the walked change's time is in the total,
   but its distance and shade are not in the walk figures; `lineMode` is the *first* line's, so a
   bus-first card samples the street above a subway boarding for wait exposure; and

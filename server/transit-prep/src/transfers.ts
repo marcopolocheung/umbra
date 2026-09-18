@@ -6,7 +6,7 @@
  *
  * Uncapped. The old cap of 10 nearest bound at 53 of 454 stations and decided
  * *which* stops connect by distance rank alone, so a crosstown route 150 m away
- * could lose to ten stops on one avenue. The radius bounds the volume (2,808
+ * could lose to ten stops on one avenue. The radius bounds the volume (2,809
  * pairs against 2,586 capped), and `walkability.ts` gates the quality.
  */
 
