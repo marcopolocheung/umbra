@@ -204,15 +204,23 @@ describe("the wait at a bus stop", () => {
   it("states the sun measured at the boarding stop", () => {
     // The five minutes standing still are a quarter of this journey and were
     // priced from a per-mode constant until now.
-    expect(
-      routeLegSummary(busLeg({ stopName: "1 Av / E 14 St", shadow: 0.8 }), 1).detail,
-    ).toContain("incl. ~5 min wait, stop 80% shadowed");
+    expect(routeLegSummary(busLeg({ shadow: 0.8, coverage: 1, boardings: 1 }), 1).detail).toContain(
+      "incl. ~5 min wait, stop 80% shadowed",
+    );
   });
 
-  it("says the stop's sun is unknown rather than assuming shade (#393)", () => {
-    const detail = routeLegSummary(busLeg({ stopName: "1 Av / E 14 St" }), 1).detail;
-    expect(detail).toContain("incl. ~5 min wait, sun at the stop unknown");
+  it("says the stops' sun is unknown rather than assuming shade (#393)", () => {
+    const detail = routeLegSummary(busLeg({ coverage: 0.2, boardings: 3 }), 1).detail;
+    expect(detail).toContain("incl. ~5 min wait, sun at the stops unknown");
     expect(detail).not.toContain("shadowed");
+  });
+
+  it("speaks of stops, plural, when the rider boards more than once", () => {
+    // A measured midtown trip boards three times; one stop's shadow cannot
+    // stand for the whole quoted wait, and the wording must not imply it does.
+    expect(routeLegSummary(busLeg({ shadow: 0.62, coverage: 1, boardings: 3 }), 1).detail).toContain(
+      "incl. ~5 min wait, stops 62% shadowed",
+    );
   });
 
   it("leaves a wait this app does not model unqualified", () => {

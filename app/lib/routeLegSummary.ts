@@ -125,9 +125,10 @@ export const TRANSIT_SUN_CAVEAT_ASSUMED =
  * Three states, and they have to read differently:
  * - **not modelled** — a subway platform. Say the wait and stop there; adding
  *   "unknown" would imply the stop was looked at and the look failed.
- * - **modelled, no answer** — a bus stop the field could not speak for. Say so.
- *   The one thing this must never do is read as shade (#393).
- * - **measured** — the shadow sampled at that stop at the boarding instant.
+ * - **modelled, too little known** — say so. The one thing this must never do
+ *   is read as shade (#393).
+ * - **measured** — the wait-weighted shadow across the stops the rider boards
+ *   at, which is usually more than one.
  *
  * The unsheltered-stop assumption is deliberately not in here. It is the
  * producer's own note, shown verbatim beside the card by `riderFacingNotes`;
@@ -143,8 +144,9 @@ export function transitWaitLabel(
   // arrival, not a prediction of this bus — hence the "~".
   const wait = `incl. ~${formatMinutes(waitSec)} wait`;
   if (!exposure) return wait;
-  if (exposure.shadow == null) return `${wait}, sun at the stop unknown`;
-  return `${wait}, stop ${Math.round(exposure.shadow * 100)}% shadowed`;
+  const noun = exposure.boardings === 1 ? "stop" : "stops";
+  if (exposure.shadow == null) return `${wait}, sun at the ${noun} unknown`;
+  return `${wait}, ${noun} ${sunPercent(exposure.shadow)}% shadowed`;
 }
 
 export interface RouteLegSummary {

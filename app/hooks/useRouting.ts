@@ -57,8 +57,8 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
-import { waitExposureFromSample } from "../lib/transitWaitExposure";
-import type { TransitWaitExposure } from "../lib/transitWaitExposure";
+import { MAX_STOP_PRELOADS, waitExposureFrom } from "../lib/transitWaitExposure";
+import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
@@ -1107,41 +1107,46 @@ export function useRouting({
                     // usually underground, and sampling the street above it
                     // would answer a different question; there is nothing
                     // honest to say there, so nothing is said.
-                    //
-                    // One boarding only. Bus shards publish no transfers, so a
-                    // bus path has exactly one — and if that ever changes, one
-                    // stop's shadow must not be quoted for two waits in two
-                    // places.
                     let waitExposure: TransitWaitExposure | undefined;
-                    const boarding =
-                      lineMode === "bus" && bestTrain.path.waits.length === 1
-                        ? bestTrain.path.waits[0]
-                        : undefined;
-                    const boardingStop = boarding
-                      ? trainGraph.stations.get(boarding.stationId)
-                      : undefined;
-                    if (boardingStop) {
+                    const boardingStops = bestTrain.path.waits.flatMap((wait) => {
+                      const stop = trainGraph.stations.get(wait.stationId);
+                      return stop ? [{ waitSec: wait.waitSec, stop }] : [];
+                    });
+                    if (lineMode === "bus" && boardingStops.length > 0) {
                       // Sampled at the departure instant, which is when the
-                      // wait itself is priced — the published tables are
+                      // waits themselves are priced — the published tables are
                       // hourly, and a time-dependent search is a different
                       // thing entirely.
                       const when = dateRef.current;
-                      const stopBbox = bboxAroundPoint(
-                        boardingStop.lon,
-                        boardingStop.lat,
-                        QUERY_PAD_M,
-                      );
-                      let sample = field.shadowAt(boardingStop.lon, boardingStop.lat, when);
+                      const sampleAll = (): BoardingSample[] =>
+                        boardingStops.map(({ waitSec, stop }) => ({
+                          waitSec,
+                          sample: field.shadowAt(stop.lon, stop.lat, when),
+                        }));
+                      let samples = sampleAll();
                       // The route preload covered the walk corridor, and a
-                      // boarding stop can sit off it. One targeted load of the
-                      // stop's own cell, then ask again; still no answer means
-                      // unknown, never shade.
-                      if (sample.confidence < LOW_CONFIDENCE) {
-                        await field.ready(stopBbox, { signal: calcSignal }).catch(() => {});
+                      // boarding stop can sit well off it — today's bus answers
+                      // board at stops kilometres apart. Load each unanswered
+                      // stop's own cell: one bbox spanning all of them is the
+                      // size a building provider declines outright, which is
+                      // how the preload came to be useless exactly where it was
+                      // needed. Bounded, because each is an Overpass round trip
+                      // and the busiest few boardings carry most of the wait.
+                      const unresolved = boardingStops
+                        .map((entry, i) => ({ ...entry, i }))
+                        .filter(({ i }) => (samples[i].sample?.confidence ?? 0) < LOW_CONFIDENCE)
+                        .sort((a, b) => b.waitSec - a.waitSec)
+                        .slice(0, MAX_STOP_PRELOADS);
+                      for (const { stop } of unresolved) {
+                        await field
+                          .ready(bboxAroundPoint(stop.lon, stop.lat, QUERY_PAD_M), {
+                            signal: calcSignal,
+                          })
+                          .catch(() => {});
                         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
-                        sample = field.shadowAt(boardingStop.lon, boardingStop.lat, when);
                       }
-                      waitExposure = waitExposureFromSample(boardingStop.name, sample);
+                      if (unresolved.length > 0) samples = sampleAll();
+                      waitExposure = waitExposureFrom(samples);
                     }
 
                     const legs: RouteLeg[] = [
