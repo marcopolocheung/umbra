@@ -1,0 +1,18 @@
+{
+  "name": "@umbra/navigation-prep",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "plan": "tsx src/cli.ts plan",
+    "fixture": "tsx src/cli.ts fixture",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2"
+  }
+}
