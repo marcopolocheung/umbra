@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import RouteConditionsLine, { formatMinuteRange } from "../RouteConditionsLine";
 import type { WeatherHour } from "../../lib/heat/types";
 import type { RouteOption } from "../../lib/routing";
+import type { TransitWaitExposure } from "../../lib/transitWaitExposure";
 
 afterEach(cleanup);
 
@@ -94,6 +95,42 @@ describe("RouteConditionsLine", () => {
 
     expect(container.textContent).not.toMatch(/burn/i);
     expect(container.textContent).toMatch(/blocks the direct beam, not the diffuse sky/);
+  });
+});
+
+describe("RouteConditionsLine on a transit route", () => {
+  const line = route(0, 0).geojson;
+
+  function busRoute(waitExposure: TransitWaitExposure): RouteOption {
+    return {
+      ...route(840, 1),
+      legs: [
+        { type: "walk", geojson: line, distanceM: 420, shadowCoverage: 1 },
+        { type: "transit", geojson: line, travelTimeSec: 1200, waitSec: 360, waitExposure },
+        { type: "walk", geojson: line, distanceM: 420, shadowCoverage: 1 },
+      ],
+    };
+  }
+
+  it("counts the wait in the dose and says the ride is not counted", () => {
+    render(
+      <RouteConditionsLine route={busRoute({ shadow: 0, coverage: 1, boardings: 1 })} weather={HOT} />,
+    );
+
+    expect(screen.getByText(/of full sun/)).toBeTruthy();
+    expect(screen.getByText("Counts the walk and the wait at the stop, not the ride.")).toBeTruthy();
+  });
+
+  it("estimates nothing when too little of the time outdoors is measured", () => {
+    // A 6 min wait at stops the field could not answer for, beside under 2 min
+    // of walking: 22% of the time outdoors is known.
+    const unknown = busRoute({ coverage: 0.2, boardings: 1 });
+    unknown.legs = unknown.legs!.map((leg) => (leg.type === "walk" ? { ...leg, distanceM: 60 } : leg));
+    render(<RouteConditionsLine route={unknown} weather={HOT} />);
+
+    expect(screen.getByText("heat and sun not estimated")).toBeTruthy();
+    expect(screen.queryByText(/heat stress/)).toBeNull();
+    expect(screen.queryByText(/of full sun/)).toBeNull();
   });
 });
 
