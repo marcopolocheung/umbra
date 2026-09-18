@@ -1,7 +1,7 @@
 import { dose } from "../lib/heat/dose";
 import { heatBand, heatScore } from "../lib/heat/score";
 import type { WeatherHour } from "../lib/heat/types";
-import { routeExposureMinutes } from "../lib/routeTradeoff";
+import { routeExposureMinutes, routeExposureScope } from "../lib/routeTradeoff";
 import type { RouteOption } from "../lib/routing";
 import { getTravelModePolicy } from "../lib/travelMode";
 
@@ -52,19 +52,27 @@ export default function RouteConditionsLine({
   baselineRoute,
   weather,
 }: RouteConditionsLineProps) {
+  // Null when too little of a transit trip's time outdoors is measured: a score
+  // or a dose of the sliver that is would read as the whole trip's (#393).
   const exposure = routeExposureMinutes(route);
-  const selected = heatScore(exposure, weather);
-  const baseline =
-    baselineRoute && baselineRoute !== route ? heatScore(routeExposureMinutes(baselineRoute), weather) : null;
+  const selected = exposure ? heatScore(exposure, weather) : null;
+  const baselineExposure =
+    baselineRoute && baselineRoute !== route ? routeExposureMinutes(baselineRoute) : null;
+  const baseline = baselineExposure ? heatScore(baselineExposure, weather) : null;
 
   // Null when the UV index is unknown: an absent forecast is not a safe trip.
-  const uv = dose(exposure, weather?.uvIndex ?? null);
+  const uv = exposure ? dose(exposure, weather?.uvIndex ?? null) : null;
+  const scope = routeExposureScope(route);
 
-  const scored = selected.mode === "felt-temperature";
-  const feltC = Math.round(selected.feltC ?? 0);
+  const scored = selected?.mode === "felt-temperature";
+  const feltC = Math.round(selected?.feltC ?? 0);
   const policy = getTravelModePolicy(route.travelMode ?? "walk");
 
-  const headline = scored ? heatBand(selected.score) : `${selected.score}% of this ${policy.journeyNoun} is in sun`;
+  const headline = !selected
+    ? "heat and sun not estimated"
+    : scored
+      ? heatBand(selected.score)
+      : `${selected.score}% of this ${policy.journeyNoun} is in sun`;
 
   // The heat model estimates felt temperature while walking (heat/score.ts) —
   // cycling airflow is unmodeled (#349) — so a bike route must not label the
@@ -74,14 +82,16 @@ export default function RouteConditionsLine({
       ? `feels about ${feltC} °C walking this`
       : `feels about ${feltC} °C on this ${policy.journeyNoun} (walking-pace estimate)`;
 
-  // Three rungs, three sentences. The middle one exists because a dry-bulb estimate
+  // Three rungs, three sentences, after the unknown one. The middle one exists because a dry-bulb estimate
   // and an apparent-temperature one otherwise render identically, and the difference
   // is humidity and wind being absent from the number entirely.
-  const detail = !scored
-    ? "no weather forecast — heat not scored"
-    : selected.inputs.ambientIsApparent
-      ? feelsLike
-      : `about ${feltC} °C — air temperature only`;
+  const detail = !selected
+    ? "too little of the time outdoors is measured"
+    : !scored
+      ? "no weather forecast — heat not scored"
+      : selected.inputs.ambientIsApparent
+        ? feelsLike
+        : `about ${feltC} °C — air temperature only`;
 
   const secondary = scored
     ? `${baseline ? `Heat ${selected.score} vs ${baseline.score}` : `Heat ${selected.score}`} · ${detail}`
@@ -131,6 +141,12 @@ export default function RouteConditionsLine({
           {formatMinuteRange(uv.fullSunEquivalentMinutes.low, uv.fullSunEquivalentMinutes.high)} of
           full sun ({uv.sed.low.toFixed(1)}–{uv.sed.high.toFixed(1)} SED) · shadow counts toward
           this — it blocks the direct beam, not the diffuse sky.
+        </div>
+      )}
+
+      {selected && scope && (
+        <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+          {scope}
         </div>
       )}
 

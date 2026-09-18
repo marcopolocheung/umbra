@@ -13,7 +13,7 @@ import {
   riderFacingNotes,
   transitScheduleLine,
 } from "../lib/transitProvenance";
-import { routeExposureLine } from "../lib/routeTradeoff";
+import { routeExposureLine, routeExposureMinutes, routeExposureScope, routeShadowLabel } from "../lib/routeTradeoff";
 import { roughSurfaceLine } from "../lib/travelMode";
 
 function formatDist(m: number): string {
@@ -52,6 +52,12 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
       : `${r.shadowTransitions} break${r.shadowTransitions === 1 ? "" : "s"}`;
   const detour = r.detourRatio > 1.05 ? `${r.detourRatio.toFixed(1)}×` : null;
   const shadowPct = rainCard ? rainDryPct(r) : Math.round(r.shadowCoverage * 100);
+  // Null when too little of a transit trip's time outdoors is measured; the
+  // bar is then not drawn, since an empty one reads as full sun (#393).
+  // A rain card has no transit wait, so its figure is always known.
+  const shadowKnown = rainCard || routeExposureMinutes(r) !== null;
+  // What a transit card's sun figures leave out; null on every other route.
+  const exposureScope = rainCard ? null : routeExposureScope(r);
   // Absent on sketch and transit routes, whose shadow was not sampled per sidewalk.
   const shadowSource = rainCard
     ? r.shelterSource
@@ -109,13 +115,19 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             )}
           </span>
           <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-            style={{
-              background: selected ? "var(--md-primary-container)" : "rgba(130,85,0,0.08)",
-              color: selected ? "var(--md-on-surface)" : "var(--md-on-surface-variant)",
-            }}
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+              shadowKnown ? "" : "border border-dashed"
+            }`}
+            style={
+              shadowKnown
+                ? {
+                    background: selected ? "var(--md-primary-container)" : "rgba(130,85,0,0.08)",
+                    color: selected ? "var(--md-on-surface)" : "var(--md-on-surface-variant)",
+                  }
+                : { borderColor: "var(--md-on-surface-variant)", color: "var(--md-on-surface-variant)" }
+            }
           >
-            {shadowPct}%{rainCard ? " dry" : " shadow"}
+            {rainCard ? `${shadowPct}% dry` : routeShadowLabel(r)}
           </span>
         </div>
 
@@ -127,15 +139,22 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
 
         {/* Shadow bar */}
         <div className="mt-2 flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(130,85,0,0.08)" }}>
+          {shadowKnown ? (
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(130,85,0,0.08)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${shadowPct}%`,
+                  background: rainCard ? "rgba(14,116,144,0.55)" : "var(--md-primary-container)",
+                }}
+              />
+            </div>
+          ) : (
             <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${shadowPct}%`,
-                background: rainCard ? "rgba(14,116,144,0.55)" : "var(--md-primary-container)",
-              }}
+              className="flex-1 h-1.5 rounded-full border border-dashed"
+              style={{ borderColor: "var(--md-on-surface-variant)" }}
             />
-          </div>
+          )}
           <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: "var(--md-on-surface-variant)" }}>
             {formatDist(r.distanceM)}
           </span>
@@ -143,6 +162,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
 
         <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
           {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
+          {!rainCard && exposureScope && ` · ${exposureScope}`}
         </div>
 
         {roughLine && (

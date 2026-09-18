@@ -722,7 +722,13 @@ Two separate questions, and they want answering in this order:
 Until one of these lands, a dominated bus option is visible to users. Suppressing an option on a
 time ratio is a product judgement; it was deliberately **not** taken in #420.
 
-### C. A transit card's "% shadow" describes the walk, and nothing else
+### C. A transit card's "% shadow" describes the walk, and nothing else *(decided — `docs/notes/transit-headline-exposure.md`; PR open)*
+
+*Decided: exposure is counted in seconds, and a stationary second counts like a walking one. The
+headline is the shadowed share of the rider's time outdoors — both walks plus a sampled bus-stop
+wait — and reads `N% shadow on foot`, or `shadow unknown` below 60% measured. The ride stays out
+of the headline and the dose, and the card says so in words; so does an unmodelled platform wait.
+Other panels that print `shadowCoverage` do not know the unknown state yet.*
 
 `shadowCoverage` on a transit `RouteOption` is the distance-weighted mean of the two walking
 legs. The ride and the wait contribute nothing. Worse, `routeExposureMinutes`
