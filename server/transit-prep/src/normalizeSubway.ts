@@ -11,6 +11,7 @@ import {
   loadCalendar,
   loadCalendarDates,
   loadRoutes,
+  loadShapes,
   loadStopTimes,
   loadStops,
   loadTransfers,
@@ -74,6 +75,7 @@ export async function normalizeSubway(
   const { calendar } = loadCalendar(await read("calendar.txt"));
   const { dates } = loadCalendarDates(await read("calendar_dates.txt"));
   const { transfers } = loadTransfers(await read("transfers.txt"));
+  const { shapes } = loadShapes(await read("shapes.txt"));
 
   const nodes = new Map<string, StopNode>();
   const childToParent = new Map<string, string>();
@@ -125,6 +127,7 @@ export async function normalizeSubway(
     },
     routeKey,
     maxKmh: SUBWAY_MAX_KMH,
+    shapes,
   });
 
   const transferEdges: TransferEdge[] = [];

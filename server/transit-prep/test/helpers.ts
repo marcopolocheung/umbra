@@ -65,9 +65,18 @@ Saturday,0,0,0,0,0,1,0,20260101,20261231
 Sunday,0,0,0,0,0,0,1,20260101,20261231
 `;
 
+/**
+ * S1 bends away from the P1-P2 chord (the middle point sits ~84 m east of it),
+ * so slicing it produces an interior that is not the straight line and an
+ * along-track distM longer than the chord. A shape that ran down the chord
+ * would ship geometry that proves nothing.
+ *
+ * S1R runs P2 back to P1 in one segment: a slice with an empty interior, the
+ * other case a client has to draw as a chord.
+ */
 const SUBWAY_SHAPES = `shape_id,shape_pt_sequence,shape_pt_lat,shape_pt_lon
 S1,1,40.750000,-73.990000
-S1,2,40.755000,-73.985000
+S1,2,40.756000,-73.983000
 S1,3,40.760000,-73.980000
 S1R,1,40.760000,-73.980000
 S1R,2,40.750000,-73.990000
@@ -134,9 +143,12 @@ a-6,09:04:00,09:04:00,A2,2,0,0,1
 `,
     "calendar.txt": BUS_CALENDAR,
     "calendar_dates.txt": "service_id,date,exception_type\nHOL,20261126,1\n",
+    // Bent, like S1: the middle point is ~50 m off the S1-A2 chord, so this
+    // fixture's bus edge ships geometry rather than a degenerate slice.
     "shapes.txt": `shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence
 BS1,40.751000,-73.989000,1
-BS1,40.752000,-73.988000,2
+BS1,40.751400,-73.988200,2
+BS1,40.752000,-73.988000,3
 `,
     "feed_info.txt":
       "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version,feed_contact_url\nMTA,https://example.com,en,20260101,20261231,test-bus-1,https://example.com\n",

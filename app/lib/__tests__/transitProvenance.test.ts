@@ -12,7 +12,7 @@ import {
 const PUBLISHED_NOTES = [
   "Each headway table is one representative date's schedule, chosen as the most common service pattern on or after 20260917 (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.",
   "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
-  "No route geometry ships. A GTFS route has one shape per stop pattern, and one representative polyline cannot describe a branched route, so a client draws and samples a leg stop-to-stop from its edges.",
+  "Route geometry ships per edge, where the edge could be sliced: `geom` is a Google encoded polyline (precision 5) of the GTFS shape points strictly between the two stops, taken from the shape the trips serving that edge run on. An edge carrying no `geom` either has a shape that doubles back between its stops or has both stops on one shape segment; a client draws the straight chord there. `distM` is the along-track length of the slice where one exists, and the straight-line haversine between the two stops where none does.",
   "Subway stops carry changeSec, the feed's own cost for changing lines inside that station (0 at cross-platform interchanges). Stations the feed prices no change for leave it unset rather than defaulted; changing lines there is unpriced.",
   "Bus stop wait exposure assumes unsheltered stops (GTFS carries no shelter geometry).",
   "Headway hours are service-day hours 0-27, not wall-clock hours: hours 24-27 are the early morning of headwayDates[dataset][dayType].nextDate, whose day type is given as nextDayType. Hours 0-3 and 24-27 are different calendar days and must not be merged.",
@@ -39,7 +39,7 @@ describe("transit provenance", () => {
     expect(notes.some((n) => n.startsWith("Bus stop wait exposure"))).toBe(true);
     expect(notes.some((n) => n.startsWith("Bus travel times are scheduled"))).toBe(true);
     // What only a client author needs.
-    expect(notes.some((n) => n.startsWith("No route geometry ships"))).toBe(false);
+    expect(notes.some((n) => n.startsWith("Route geometry ships per edge"))).toBe(false);
     expect(notes.some((n) => n.startsWith("Headway hours are service-day"))).toBe(false);
     expect(notes).toHaveLength(4);
   });
