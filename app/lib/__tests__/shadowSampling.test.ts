@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { isBlueDominantShadowPixel, sampleBothSidewalks } from "../shadowSampling";
+import { haversineMeters } from "../routing";
+import {
+  isBlueDominantShadowPixel,
+  pickClosestEntrance,
+  sampleBothSidewalks,
+} from "../shadowSampling";
 
 /**
  * Build a uniform ImageData where every pixel is [r,g,b,255].
@@ -57,5 +62,38 @@ describe("isBlueDominantShadowPixel", () => {
     expect(isBlueDominantShadowPixel(70, 81, 102)).toBe(true);
     expect(isBlueDominantShadowPixel(230, 230, 230)).toBe(false);
     expect(isBlueDominantShadowPixel(151, 151, 151)).toBe(false);
+  });
+});
+
+describe("pickClosestEntrance", () => {
+  // Real positions from OSM and the published GTFS: the 7's platform point at
+  // Grand Central (stop 723) and a rider bound for Café Grumpy on Lexington Av.
+  const PLATFORM_7 = { lat: 40.751431, lon: -73.976041 };
+  const CAFE: [number, number] = [-73.975716, 40.752144];
+  // A terminal door into the Lexington Passage: 4 m from the café, 87 m from the train.
+  const TERMINAL_DOOR = { lat: 40.752168, lon: -73.975677, kind: "entrance" };
+  // The MTA street stair on the west sidewalk of Lex: 53 m from the café, 32 m from the train.
+  const STREET_STAIR = { lat: 40.751721, lon: -73.976001, kind: "entrance" };
+
+  it("counts the walk from the platform, not just the walk from the door", () => {
+    // On the street leg alone the terminal door wins by 49 m; the whole trip
+    // through the stair is 7 m shorter.
+    const pick = pickClosestEntrance(CAFE, PLATFORM_7, [TERMINAL_DOOR, STREET_STAIR], haversineMeters);
+    expect(pick).toEqual({ lat: STREET_STAIR.lat, lon: STREET_STAIR.lon });
+  });
+
+  it("still takes a door nearer the destination when the platform is equidistant", () => {
+    const platform = { lat: 40.75, lon: -73.98 };
+    const north = { lat: 40.7505, lon: -73.98, kind: "entrance" };
+    const south = { lat: 40.7495, lon: -73.98, kind: "entrance" };
+    const pick = pickClosestEntrance([-73.98, 40.752], platform, [south, north], haversineMeters);
+    expect(pick).toEqual({ lat: north.lat, lon: north.lon });
+  });
+
+  it("prefers any real door to the station centroid", () => {
+    // The centroid is the platform, so it would always win on distance alone.
+    const centroid = { ...PLATFORM_7, kind: "station" };
+    const pick = pickClosestEntrance(CAFE, PLATFORM_7, [centroid, TERMINAL_DOOR], haversineMeters);
+    expect(pick).toEqual({ lat: TERMINAL_DOOR.lat, lon: TERMINAL_DOOR.lon });
   });
 });

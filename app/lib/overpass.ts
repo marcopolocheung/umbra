@@ -307,6 +307,21 @@ export interface StationEntranceNode {
   name?: string;
   /** "entrance" for railway=subway_entrance, "station" for railway=station */
   kind: "entrance" | "station";
+  /** `entrance=exit`: a way out that is no way in, so never a boarding door. */
+  exitOnly?: true;
+}
+
+/**
+ * A door OSM says a rider cannot use: `access=no|private`, or an emergency
+ * exit — 20 of 7,488 NYC station/direction pairs picked one as the exit before
+ * they were dropped here.
+ *
+ * **Not `open=no`.** All 31 NYC entrances carrying it also carry `door=hinged`
+ * or `door=swinging`: it describes a door kept shut, not a way that is closed,
+ * and at Neck Rd, Ocean Pkwy, Avenue X and 86 St (N) it is the only door.
+ */
+function isUnusableEntrance(tags: Record<string, string> | undefined): boolean {
+  return tags?.access === "no" || tags?.access === "private" || tags?.entrance === "emergency";
 }
 
 interface StationEntranceCacheEntry extends BboxBounds {
@@ -775,14 +790,19 @@ out body;`.trim();
     const elements: any[] = json.elements ?? [];
     const entrances: StationEntranceNode[] = elements
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((e: any) => e.type === "node" && e.lat != null && e.lon != null)
+      .filter(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (e: any) =>
+          e.type === "node" && e.lat != null && e.lon != null && !isUnusableEntrance(e.tags),
+      )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((e: any) => ({
+      .map((e: any): StationEntranceNode => ({
         id: e.id,
         lat: e.lat,
         lon: e.lon,
         name: e.tags?.name ?? e.tags?.["name:en"] ?? undefined,
         kind: e.tags?.railway === "subway_entrance" ? "entrance" : "station",
+        ...(e.tags?.entrance === "exit" ? { exitOnly: true as const } : {}),
       }));
     // Each fetched box caches the whole response rather than its own share of
     // it. Partitioning geometrically would assume Overpass never returns a node
