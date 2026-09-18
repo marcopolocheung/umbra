@@ -143,6 +143,17 @@ export interface TransitEdge {
    * as "underground" — that is the claim #393 was opened for.
    */
   structure?: EdgeStructure;
+  /**
+   * The track between the two stops, as a Google encoded polyline (precision 5)
+   * of the GTFS shape points strictly *between* them — the endpoints are the
+   * stops, which the shard already carries.
+   *
+   * **Optional forever.** Absent means the edge was not sliceable (its shape
+   * doubled back between the stops, or both stops landed on one shape
+   * segment) or the generation predates per-edge geometry; a client draws the
+   * straight chord either way.
+   */
+  geom?: string;
 }
 
 export interface TransitRoute {
@@ -447,6 +458,23 @@ function parseStructure(value: unknown): EdgeStructure | undefined {
   return Object.keys(structure).length > 0 ? structure : undefined;
 }
 
+/**
+ * An edge's sliced track geometry, or `undefined` when the edge publishes none.
+ *
+ * Validation is shape + length, not a full decode: decoding all ~29,000
+ * strings at load would allocate ~330,000 point objects for the ten hops a
+ * route actually draws, so the decode happens lazily per drawn hop. The
+ * encoder emits only chars 63–126 (`?`–`~`); 8192 chars is ~4× the observed
+ * worst case (median 31, p99 517, max 1,983 across the real build's seven
+ * shards). `null` and the empty string count as absent, like `structure`.
+ */
+function parseGeom(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^[?-~]{1,8192}$/.test(value))
+    throw new Error("invalid NYC transit edge");
+  return value;
+}
+
 function parseEdge(value: unknown): TransitEdge {
   if (
     !isRecord(value) ||
@@ -472,6 +500,9 @@ function parseEdge(value: unknown): TransitEdge {
   // Absent stays absent, so a consumer can tell "unknown" from "at grade".
   const structure = parseStructure(value.structure);
   if (structure) edge.structure = structure;
+  // Absent stays absent, so a consumer draws the straight chord there.
+  const geom = parseGeom(value.geom);
+  if (geom) edge.geom = geom;
   return edge;
 }
 
