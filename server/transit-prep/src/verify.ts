@@ -6,7 +6,8 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { json, requireRoot, sha256 } from "./util";
+import { decodePolyline } from "./shapeSlice";
+import { haversineMeters, json, requireRoot, sha256 } from "./util";
 
 export interface ShardLike {
   kind?: string;
@@ -16,6 +17,8 @@ export interface ShardLike {
     to: string;
     route: string;
     medianSec: number;
+    distM?: number;
+    geom?: string;
     structure?: Record<string, number>;
   }[];
   routes: { id: string }[];
@@ -110,6 +113,13 @@ export function checkBounds(
   }
 }
 
+/**
+ * How far the drawn line may sit from the along-track distance before the slice
+ * is wrong rather than merely snapped. The gap either way is bounded by the two
+ * stop-to-shape snaps, whose worst case across the seven NYC feeds is 103 m.
+ */
+const GEOM_SNAP_SLACK_M = 300;
+
 export function checkShard(key: string, shard: ShardLike): void {
   const fail = (message: string): never => {
     throw new Error(`${key}: ${message}`);
@@ -144,6 +154,42 @@ export function checkShard(key: string, shard: ShardLike): void {
       sum += share;
     }
     if (sum > 1.01) fail(`edge ${edge.from}→${edge.to} structure shares sum to ${sum}`);
+  }
+  const coordOf = new Map(
+    shard.stops
+      .filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon))
+      .map((stop) => [stop.id, { lat: stop.lat as number, lon: stop.lon as number }]),
+  );
+  for (const edge of shard.edges) {
+    if (edge.geom === undefined) continue;
+    const from = coordOf.get(edge.from);
+    const to = coordOf.get(edge.to);
+    if (!from || !to || edge.distM === undefined) continue;
+    let interior: { lat: number; lon: number }[] = [];
+    try {
+      interior = decodePolyline(edge.geom);
+    } catch (error) {
+      fail(`edge ${edge.from}→${edge.to} geom does not decode: ${String(error)}`);
+    }
+    if (interior.length === 0) fail(`edge ${edge.from}→${edge.to} ships an empty geom`);
+    // Re-derive rather than re-parse. Drawn from→interior→to, the line must be
+    // about as long as the along-track distM published beside it; the two can
+    // only differ by the stop-to-shape snap at each end, which is 0 m on subway
+    // and ~8 m on bus. A slice taken off by one segment, or out of the wrong
+    // shape, lands somewhere else on the line and shows up here as a length
+    // that no longer agrees with the distance it claims to measure.
+    let drawn = 0;
+    let previous = from;
+    for (const point of [...interior, to]) {
+      if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) {
+        fail(`edge ${edge.from}→${edge.to} geom decodes to a non-finite point`);
+      }
+      drawn += haversineMeters(previous.lat, previous.lon, point.lat, point.lon);
+      previous = point;
+    }
+    if (Math.abs(drawn - edge.distM) > 0.1 * edge.distM + GEOM_SNAP_SLACK_M) {
+      fail(`edge ${edge.from}→${edge.to} draws ${Math.round(drawn)} m but reports distM ${edge.distM}`);
+    }
   }
   for (const row of shard.headways) {
     if (!routeIds.has(row.route)) fail(`headway references unknown route ${row.route}`);

@@ -127,7 +127,11 @@ export interface TransitEdge {
   /** Scheduled median run time between the two stops. */
   medianSec: number;
   trips: number;
-  /** Straight-line haversine, ~5-7% under true path length. */
+  /**
+   * Along the track where the producer could slice the edge out of its GTFS
+   * shape, and the straight-line haversine between the two stops where it
+   * could not — which is ~5-7% under true path length.
+   */
   distM: number;
   /**
    * Share of the segment running in each structure. Sums to **at most** 1 — the

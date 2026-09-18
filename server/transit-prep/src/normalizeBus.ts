@@ -12,11 +12,13 @@ import {
   loadCalendar,
   loadCalendarDates,
   loadRoutes,
+  loadShapes,
   loadStopTimes,
   loadStops,
   loadTrips,
   type GtfsCalendar,
   type GtfsCalendarDate,
+  type GtfsShapePoint,
   type GtfsStopTime,
   type GtfsTrip,
 } from "./gtfs";
@@ -53,6 +55,8 @@ export interface BusNormalized {
   };
 }
 
+const shapeKeyOf = (feedId: string, shapeId: string): string => `${feedId}\t${shapeId}`;
+
 export async function normalizeBus(
   root: string,
   workDirs: { feedId: string; dir: string }[],
@@ -74,6 +78,10 @@ export async function normalizeBus(
   const calendar: GtfsCalendar[] = [];
   const dates: GtfsCalendarDate[] = [];
   const tripFeedOf = new Map<string, string>();
+  // shape_id is unique per feed, not across the six: BusCo numbers its shapes
+  // in the same space Queens does. Pooling them unnamespaced would slice an
+  // edge out of another borough's route.
+  const shapes = new Map<string, GtfsShapePoint[]>();
 
   for (const { feedId, dir } of ordered) {
     const read = (file: string): Promise<string> => readFile(join(root, dir, file), "utf8");
@@ -84,7 +92,11 @@ export async function normalizeBus(
       stopTimes: loadStopTimes(await read("stop_times.txt")),
       calendar: loadCalendar(await read("calendar.txt")),
       dates: loadCalendarDates(await read("calendar_dates.txt")),
+      shapes: loadShapes(await read("shapes.txt")),
     };
+    for (const [shapeId, points] of loaded.shapes.shapes) {
+      shapes.set(shapeKeyOf(feedId, shapeId), points);
+    }
     // Route tables union by route_id (validate rejects conflicting rows).
     for (const route of loaded.routes.routes) {
       if (!routeById.has(route.id)) {
@@ -130,6 +142,8 @@ export async function normalizeBus(
     mapStop: (stopId) => (registry.has(`bus:${stopId}`) ? `bus:${stopId}` : null),
     routeKey,
     maxKmh: BUS_MAX_KMH,
+    shapes,
+    shapeKey: (trip) => shapeKeyOf(tripFeedOf.get(trip.tripId) ?? "", trip.shapeId),
   });
 
   const { headways, representativeDates, unrepresentedServices, sparseBuckets } = computeHeadways({

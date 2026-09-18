@@ -22,7 +22,7 @@
  */
 
 import type { RouteEdge, StopNode } from "./model";
-import { haversineMeters } from "./util";
+import { haversineMeters, projectOnSegment } from "./util";
 
 export interface OsmNodeRef {
   lat: number;
@@ -81,9 +81,10 @@ const MAX_SAMPLES = 60;
 /**
  * How far a sample may sit from a way and still match it.
  *
- * A segment is sampled along the *straight line* between its two stops, because
- * shards ship no route geometry (#385), and real track curves away from that
- * line — by around 100 m on the sharpest revenue curves. Candidates are
+ * A segment is sampled along the *straight line* between its two stops — not
+ * along the edge's own sliced `geom`, which this join does not read — and real
+ * track curves away from that line by around 100 m on the sharpest revenue
+ * curves. Candidates are
  * restricted to ways carrying the same service, so a loose radius mostly just
  * matches the same line further away rather than matching the wrong line: this
  * is what stops the 7, elevated over Queens Boulevard, inheriting the E and F's
@@ -169,31 +170,11 @@ export function buildStructureIndex(
   return index;
 }
 
-/**
- * Distance from a point to a line segment, in metres.
- *
- * Equirectangular rather than spherical: over the tens of metres that matter
- * here the error is far below the match radius, and the segment projection is
- * only meaningful in a plane.
- */
-function distanceToSegment(p: OsmNodeRef, a: OsmNodeRef, b: OsmNodeRef): number {
-  const scale = Math.cos((p.lat * Math.PI) / 180);
-  const px = (p.lon - a.lon) * scale;
-  const py = p.lat - a.lat;
-  const bx = (b.lon - a.lon) * scale;
-  const by = b.lat - a.lat;
-  const lengthSq = bx * bx + by * by;
-  let t = lengthSq === 0 ? 0 : (px * bx + py * by) / lengthSq;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  const nearest = { lat: a.lat + by * t, lon: a.lon + (b.lon - a.lon) * t };
-  return haversineMeters(p.lat, p.lon, nearest.lat, nearest.lon);
-}
-
 function distanceToWay(p: OsmNodeRef, geometry: OsmNodeRef[]): number {
   let best = Number.POSITIVE_INFINITY;
   for (let i = 1; i < geometry.length; i += 1) {
-    const d = distanceToSegment(p, geometry[i - 1] as OsmNodeRef, geometry[i] as OsmNodeRef);
-    if (d < best) best = d;
+    const { distM } = projectOnSegment(p, geometry[i - 1] as OsmNodeRef, geometry[i] as OsmNodeRef);
+    if (distM < best) best = distM;
   }
   return best;
 }
