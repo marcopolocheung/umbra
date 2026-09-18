@@ -229,7 +229,10 @@ test("routes on the published transit data and draws the line", async ({ page },
         ),
       { timeout: 30_000, message: "the transit option never reached the route list" },
     )
-    .toContain("Via Transit");
+    // Not "Via Transit": subway and bus are searched and offered separately, so
+    // the label names the mode. The fixture ships a subway shard, so this also
+    // asserts the answer was labelled as the mode it actually rode.
+    .toContain("Via Subway");
 
   // The fixture line is magenta and nothing else on the map is. Zero here means
   // the card describes a journey the map is not drawing.
