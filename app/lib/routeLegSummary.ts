@@ -1,4 +1,5 @@
 import type { RouteLeg } from "./routing";
+import type { TransitWaitExposure } from "./transitWaitExposure";
 import { getTravelModePolicy } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 
@@ -118,6 +119,36 @@ export function transitSunTone(
 export const TRANSIT_SUN_CAVEAT_ASSUMED =
   "Estimated from the line's mode, not measured along this segment — elevated track is not modelled.";
 
+/**
+ * The wait, and what the sun was doing where it is spent.
+ *
+ * Three states, and they have to read differently:
+ * - **not modelled** — a subway platform. Say the wait and stop there; adding
+ *   "unknown" would imply the stop was looked at and the look failed.
+ * - **modelled, too little known** — say so. The one thing this must never do
+ *   is read as shade (#393).
+ * - **measured** — the wait-weighted shadow across the stops the rider boards
+ *   at, which is usually more than one.
+ *
+ * The unsheltered-stop assumption is deliberately not in here. It is the
+ * producer's own note, shown verbatim beside the card by `riderFacingNotes`;
+ * paraphrasing it into this line, or discounting the percentage by it, is how a
+ * caveat quietly becomes weaker than the thing it qualifies.
+ */
+export function transitWaitLabel(
+  waitSec: number | undefined,
+  exposure?: TransitWaitExposure,
+): string | null {
+  if (!waitSec) return null;
+  // Half a published median headway is an expectation for an unsynchronised
+  // arrival, not a prediction of this bus — hence the "~".
+  const wait = `incl. ~${formatMinutes(waitSec)} wait`;
+  if (!exposure) return wait;
+  const noun = exposure.boardings === 1 ? "stop" : "stops";
+  if (exposure.shadow == null) return `${wait}, sun at the ${noun} unknown`;
+  return `${wait}, ${noun} ${sunPercent(exposure.shadow)}% shadowed`;
+}
+
 export interface RouteLegSummary {
   title: string;
   detail: string;
@@ -133,10 +164,10 @@ export function routeLegSummary(
     const stopCount = leg.stops ? Math.max(0, leg.stops.length - 1) : null;
     const parts = [
       leg.travelTimeSec != null ? formatMinutes(leg.travelTimeSec) : null,
-      // Named rather than folded in silently: the quoted time now includes the
-      // platform, and half a published median headway is an expectation for an
-      // unsynchronised arrival, not a prediction of this train — hence the "~".
-      leg.waitSec ? `incl. ~${formatMinutes(leg.waitSec)} wait` : null,
+      // Named rather than folded in silently: the quoted time includes the
+      // platform, and where the rider stands waiting for a bus it also includes
+      // the sun they stand in.
+      transitWaitLabel(leg.waitSec, leg.waitExposure),
       stopCount != null ? `${stopCount} stop${stopCount === 1 ? "" : "s"}` : null,
       transitSunLabel(leg.sunExposure, leg.sunExposureCoverage, leg.aboveGroundShare),
     ].filter(Boolean);

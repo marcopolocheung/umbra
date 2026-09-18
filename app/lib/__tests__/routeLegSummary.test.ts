@@ -8,6 +8,7 @@ import {
   TRANSIT_SUN_CAVEAT_ASSUMED,
 } from "../routeLegSummary";
 import type { RouteLeg } from "../routing";
+import type { TransitWaitExposure } from "../transitWaitExposure";
 
 const line: GeoJSON.Feature<GeoJSON.LineString> = {
   type: "Feature",
@@ -185,5 +186,49 @@ describe("routeLegSummary", () => {
       title: "Leg 1: Scoot",
       detail: "Riding segment",
     });
+  });
+});
+
+describe("the wait at a bus stop", () => {
+  const busLeg = (waitExposure?: TransitWaitExposure): RouteLeg => ({
+    type: "transit",
+    geojson: line,
+    lineName: "M15",
+    travelTimeSec: 900,
+    waitSec: 300,
+    stops: ["A", "B"],
+    sunExposure: 0.25,
+    ...(waitExposure ? { waitExposure } : {}),
+  });
+
+  it("states the sun measured at the boarding stop", () => {
+    // The five minutes standing still are a quarter of this journey and were
+    // priced from a per-mode constant until now.
+    expect(routeLegSummary(busLeg({ shadow: 0.8, coverage: 1, boardings: 1 }), 1).detail).toContain(
+      "incl. ~5 min wait, stop 80% shadowed",
+    );
+  });
+
+  it("says the stops' sun is unknown rather than assuming shade (#393)", () => {
+    const detail = routeLegSummary(busLeg({ coverage: 0.2, boardings: 3 }), 1).detail;
+    expect(detail).toContain("incl. ~5 min wait, sun at the stops unknown");
+    expect(detail).not.toContain("shadowed");
+  });
+
+  it("speaks of stops, plural, when the rider boards more than once", () => {
+    // A measured midtown trip boards three times; one stop's shadow cannot
+    // stand for the whole quoted wait, and the wording must not imply it does.
+    expect(routeLegSummary(busLeg({ shadow: 0.62, coverage: 1, boardings: 3 }), 1).detail).toContain(
+      "incl. ~5 min wait, stops 62% shadowed",
+    );
+  });
+
+  it("leaves a wait this app does not model unqualified", () => {
+    // A subway platform carries no `waitExposure`: the wait line must not imply
+    // the stop was looked at, nor that looking failed.
+    const detail = routeLegSummary(busLeg(), 1).detail;
+    expect(detail).toContain("incl. ~5 min wait");
+    expect(detail).not.toContain("unknown");
+    expect(detail).not.toContain("stop 0%");
   });
 });

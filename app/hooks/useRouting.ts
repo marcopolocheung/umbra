@@ -45,6 +45,7 @@ import {
   LOW_CONFIDENCE,
   QUERY_PAD_M,
   bboxAroundEdges,
+  bboxAroundPoint,
   createGeometryShadowField,
   edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
@@ -56,6 +57,8 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
+import { MAX_STOP_PRELOADS, waitExposureFrom } from "../lib/transitWaitExposure";
+import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
@@ -1098,6 +1101,54 @@ export function useRouting({
                     // much of the quoted time it is.
                     const transitTimeSec = bestTrain.path.totalSec;
 
+                    // What the sun is doing where a bus rider stands waiting.
+                    //
+                    // Bus only. A subway wait happens on a platform that is
+                    // usually underground, and sampling the street above it
+                    // would answer a different question; there is nothing
+                    // honest to say there, so nothing is said.
+                    let waitExposure: TransitWaitExposure | undefined;
+                    const boardingStops = bestTrain.path.waits.flatMap((wait) => {
+                      const stop = trainGraph.stations.get(wait.stationId);
+                      return stop ? [{ waitSec: wait.waitSec, stop }] : [];
+                    });
+                    if (lineMode === "bus" && boardingStops.length > 0) {
+                      // Sampled at the departure instant, which is when the
+                      // waits themselves are priced — the published tables are
+                      // hourly, and a time-dependent search is a different
+                      // thing entirely.
+                      const when = dateRef.current;
+                      const sampleAll = (): BoardingSample[] =>
+                        boardingStops.map(({ waitSec, stop }) => ({
+                          waitSec,
+                          sample: field.shadowAt(stop.lon, stop.lat, when),
+                        }));
+                      let samples = sampleAll();
+                      // The route preload covered the walk corridor, and a
+                      // boarding stop can sit well off it — today's bus answers
+                      // board at stops kilometres apart. Load each unanswered
+                      // stop's own cell: one bbox spanning all of them is the
+                      // size a building provider declines outright, which is
+                      // how the preload came to be useless exactly where it was
+                      // needed. Bounded, because each is an Overpass round trip
+                      // and the busiest few boardings carry most of the wait.
+                      const unresolved = boardingStops
+                        .map((entry, i) => ({ ...entry, i }))
+                        .filter(({ i }) => (samples[i].sample?.confidence ?? 0) < LOW_CONFIDENCE)
+                        .sort((a, b) => b.waitSec - a.waitSec)
+                        .slice(0, MAX_STOP_PRELOADS);
+                      for (const { stop } of unresolved) {
+                        await field
+                          .ready(bboxAroundPoint(stop.lon, stop.lat, QUERY_PAD_M), {
+                            signal: calcSignal,
+                          })
+                          .catch(() => {});
+                        if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
+                      }
+                      if (unresolved.length > 0) samples = sampleAll();
+                      waitExposure = waitExposureFrom(samples);
+                    }
+
                     const legs: RouteLeg[] = [
                       {
                         type: "walk",
@@ -1110,6 +1161,7 @@ export function useRouting({
                         geojson: transitGeoJSON,
                         travelTimeSec: transitTimeSec,
                         waitSec: bestTrain.path.waitSec,
+                        ...(waitExposure ? { waitExposure } : {}),
                         line: primaryLine,
                         lineColor,
                         lineName,
