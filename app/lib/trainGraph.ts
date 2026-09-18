@@ -34,6 +34,23 @@ export interface TrainStation {
    * may substitute one (#384). The Overpass producer never has it.
    */
   changeSec?: number;
+  /**
+   * The station's own doors as the NYC shards publish them (#430). Empty means
+   * OSM maps none and the station point stands in; absent — the Overpass
+   * producer, a bus stop, an older generation — means unknown, and the router
+   * fetches and matches doors itself.
+   */
+  entrances?: TrainStationEntrance[];
+}
+
+/**
+ * Structurally the shard's `TransitEntrance`, redeclared here so `trainGraph`
+ * stays independent of the NYC shard contract.
+ */
+export interface TrainStationEntrance {
+  lat: number;
+  lon: number;
+  exitOnly?: true;
 }
 
 /**

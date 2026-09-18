@@ -193,6 +193,13 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
 test("routes on the published transit data and draws the line", async ({ page }, testInfo) => {
   const basemap: Basemap = testInfo.project.name === "smoke-live" ? "live" : "fixture";
   await stubNetwork(page, { basemap });
+  // Every fixture station publishes its doors, so none may be looked up live.
+  const entranceQueries: string[] = [];
+  page.on("request", (request) => {
+    const body = decodeURIComponent(request.postData() ?? "");
+    if (request.url().includes("/api/overpass") && body.includes("subway_entrance"))
+      entranceQueries.push(body);
+  });
 
   await page.goto(TRANSIT_SHARE_URL);
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
@@ -233,6 +240,7 @@ test("routes on the published transit data and draws the line", async ({ page },
     // the label names the mode. The fixture ships a subway shard, so this also
     // asserts the answer was labelled as the mode it actually rode.
     .toContain("Via Subway");
+  expect(entranceQueries, "a station's published doors were fetched from Overpass anyway").toEqual([]);
 
   // The fixture line is magenta and nothing else on the map is. Zero here means
   // the card describes a journey the map is not drawing.
