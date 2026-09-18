@@ -978,7 +978,7 @@ export function useRouting({
                   // to that neighbour instead of misattributing it here.
                   const stationEntrances = new Map<
                     string,
-                    { lat: number; lon: number; kind?: "entrance" | "station" }[]
+                    { lat: number; lon: number; kind?: "entrance" | "station"; exitOnly?: true }[]
                   >();
                   for (const entrance of entrances) {
                     const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
@@ -986,19 +986,39 @@ export function useRouting({
                       if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
                       stationEntrances
                         .get(stationId)!
-                        .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
+                        .push({
+                          lat: entrance.lat,
+                          lon: entrance.lon,
+                          kind: entrance.kind,
+                          ...(entrance.exitOnly ? { exitOnly: entrance.exitOnly } : {}),
+                        });
                     }
                   }
 
-                  const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [
-                    { ...bestTrain.entryStation, kind: "station" },
-                  ];
-                  const boardEntrance = pickClosestEntrance(a, boardCandidates, haversineMeters);
+                  // An exit-only door is a way out, never a way in.
+                  const boardDoors = (stationEntrances.get(bestTrain.entryStation.id) ?? []).filter(
+                    (door) => !door.exitOnly,
+                  );
+                  const boardCandidates =
+                    boardDoors.length > 0
+                      ? boardDoors
+                      : [{ ...bestTrain.entryStation, kind: "station" as const }];
+                  const boardEntrance = pickClosestEntrance(
+                    a,
+                    bestTrain.entryStation,
+                    boardCandidates,
+                    haversineMeters,
+                  );
 
                   const alightCandidates = stationEntrances.get(bestTrain.exitStation.id) ?? [
                     { ...bestTrain.exitStation, kind: "station" },
                   ];
-                  const alightEntrance = pickClosestEntrance(b, alightCandidates, haversineMeters);
+                  const alightEntrance = pickClosestEntrance(
+                    b,
+                    bestTrain.exitStation,
+                    alightCandidates,
+                    haversineMeters,
+                  );
 
                   // Snap to somewhere the walker can actually reach. A station
                   // centroid, and sometimes a real entrance, sits on a fragment of

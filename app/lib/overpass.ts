@@ -307,6 +307,23 @@ export interface StationEntranceNode {
   name?: string;
   /** "entrance" for railway=subway_entrance, "station" for railway=station */
   kind: "entrance" | "station";
+  /** `entrance=exit`: a way out that is no way in, so never a boarding door. */
+  exitOnly?: true;
+}
+
+/**
+ * A door OSM says a rider cannot use. `railway=subway_entrance` is on closed
+ * terminal doors (`open=no`) and emergency exits as readily as on street
+ * stairs — 194 of 7,488 NYC station/direction pairs picked one of them as the
+ * exit before they were dropped here.
+ */
+function isUnusableEntrance(tags: Record<string, string> | undefined): boolean {
+  return (
+    tags?.open === "no" ||
+    tags?.access === "no" ||
+    tags?.access === "private" ||
+    tags?.entrance === "emergency"
+  );
 }
 
 interface StationEntranceCacheEntry extends BboxBounds {
@@ -775,14 +792,19 @@ out body;`.trim();
     const elements: any[] = json.elements ?? [];
     const entrances: StationEntranceNode[] = elements
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((e: any) => e.type === "node" && e.lat != null && e.lon != null)
+      .filter(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (e: any) =>
+          e.type === "node" && e.lat != null && e.lon != null && !isUnusableEntrance(e.tags),
+      )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((e: any) => ({
+      .map((e: any): StationEntranceNode => ({
         id: e.id,
         lat: e.lat,
         lon: e.lon,
         name: e.tags?.name ?? e.tags?.["name:en"] ?? undefined,
         kind: e.tags?.railway === "subway_entrance" ? "entrance" : "station",
+        ...(e.tags?.entrance === "exit" ? { exitOnly: true as const } : {}),
       }));
     // Each fetched box caches the whole response rather than its own share of
     // it. Partitioning geometrically would assume Overpass never returns a node
