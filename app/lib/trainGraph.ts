@@ -8,6 +8,7 @@
 import { MinHeap } from "./minHeap";
 import { haversineMeters } from "./routing";
 import { toMapLocal } from "./timezone";
+import { decodePolyline } from "./transit/polyline";
 import { travelTimeSeconds } from "./travelMode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -69,6 +70,13 @@ export interface TrainGraphEdge {
    */
   structure?: TrainEdgeStructure;
   /**
+   * The track between the two stops, as the shard published it: a Google
+   * encoded polyline (precision 5) of the shape points strictly between them.
+   * Absent from the Overpass producer and from any generation built before
+   * per-edge geometry, and absence draws the straight chord.
+   */
+  geom?: string;
+  /**
    * Where a `transfer` edge came from. `gtfs` is the agency's own published
    * transfer; `spatial` is an unvalidated straight-line stub.
    *
@@ -119,6 +127,14 @@ export interface TrainRouteSegment {
   from: { id: string; lat: number; lon: number; name: string };
   to: { id: string; lat: number; lon: number; name: string };
   line: string;
+  /**
+   * The drawn line, as `[lng, lat]` pairs from the edge's decoded `geom` with
+   * the stop endpoints at each end. Absent where the edge published no
+   * geometry, or where it did not decode — the caller draws the chord.
+   * Declared locally, like `TrainEdgeStructure`, so trainGraph stays
+   * independent of the NYC shard contract.
+   */
+  geometry?: [number, number][];
 }
 
 export interface TransferSegment {
@@ -941,6 +957,13 @@ export function trainDijkstra(
   // the path is reconstructed from `prev` anyway, and a total cannot say where
   // any of it was spent.
   const waitOnEdgeTo = new Map<string, number>();
+  // The encoded track geometry of the edge that reached this state. Stored
+  // encoded — no decode happens on the hot path — and read during
+  // reconstruction, following the `waitOnEdgeTo` precedent for exactly this
+  // problem: the segment loop below only sees station ids and line refs, and
+  // re-looking-up the edge there can pick the wrong one where two lines share
+  // a stop pair. Keyed per-state, not accumulated.
+  const geomOnEdgeTo = new Map<string, string>();
   const prev = new Map<string, string>();
   const prevLine = new Map<string, string>();
   // Ties break on insertion order, which is what the argmin this replaced did.
@@ -979,6 +1002,11 @@ export function trainDijkstra(
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, newCost);
         waitOnEdgeTo.set(nextKey, boarding.waitSec);
+        // A cheaper edge reaching an already-won state replaces its geometry
+        // too — two lines sharing a stop pair aside, the stale string would
+        // otherwise survive onto a hop that published none.
+        if (edge.geom) geomOnEdgeTo.set(nextKey, edge.geom);
+        else geomOnEdgeTo.delete(nextKey);
         prev.set(nextKey, key);
         prevLine.set(nextKey, edge.line ?? "");
         pq.push({ key: nextKey, cost: newCost, seq: seq++ });
@@ -991,12 +1019,16 @@ export function trainDijkstra(
   // Reconstruct path backward, collecting edge line refs
   const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
+  const edgeGeoms: (string | undefined)[] = []; // indexed identically to edgeLines
   const waits: TrainWait[] = [];
   let cur: string | undefined = endKey;
   while (cur !== undefined) {
     stationIds.push(stationOfState(cur));
     const line = prevLine.get(cur);
-    if (line !== undefined) edgeLines.push(line); // skip start (no incoming edge)
+    if (line !== undefined) {
+      edgeLines.push(line); // skip start (no incoming edge)
+      edgeGeoms.push(geomOnEdgeTo.get(cur));
+    }
     const from = prev.get(cur);
     const waitSec = waitOnEdgeTo.get(cur) ?? 0;
     // The wait belongs to the station the edge *left*, which is where the rider
@@ -1008,6 +1040,7 @@ export function trainDijkstra(
   }
   stationIds.reverse();
   edgeLines.reverse();
+  edgeGeoms.reverse();
   waits.reverse();
 
   // Unique line refs (non-empty = rail edges)
@@ -1040,11 +1073,25 @@ export function trainDijkstra(
         toLine,
       });
     } else {
+      // About ten decodes per route, at reconstruction time — never on the hot
+      // path. A string that does not decode collapses into the same absent
+      // state the contract defines: the segment draws its chord.
+      const encoded = edgeGeoms[i];
+      const interior = encoded ? decodePolyline(encoded) : null;
       segments.push({
         type: "train",
         from: { id: fromSt.id, lat: fromSt.lat, lon: fromSt.lon, name: fromSt.name },
         to: { id: toSt.id, lat: toSt.lat, lon: toSt.lon, name: toSt.name },
         line,
+        ...(interior
+          ? {
+              geometry: [
+                [fromSt.lon, fromSt.lat] as [number, number],
+                ...interior,
+                [toSt.lon, toSt.lat] as [number, number],
+              ],
+            }
+          : {}),
       });
     }
   }
@@ -1260,7 +1307,8 @@ export function buildTrainDrawData(
   for (const seg of segments) {
     if (seg.type === "train") {
       polylines.push({
-        coords: [
+        // The sliced track where the edge published one, else the chord.
+        coords: seg.geometry ?? [
           [seg.from.lon, seg.from.lat],
           [seg.to.lon, seg.to.lat],
         ],

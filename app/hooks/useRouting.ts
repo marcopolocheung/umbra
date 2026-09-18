@@ -1070,10 +1070,18 @@ export function useRouting({
                     const walkAGeoJSON = graphToGeoJSON(walkA.nodeIds, routingGraph);
                     const walkBGeoJSON = graphToGeoJSON(walkB.nodeIds, routingGraph);
 
-                    const transitCoords: [number, number][] = bestTrain.path.stationIds.map((id) => {
-                      const s = trainGraph.stations.get(id)!;
-                      return [s.lon, s.lat];
-                    });
+                    // Built first: the transit leg's geojson below frames the
+                    // map (via routeBounds), and it must frame the track, not
+                    // the chord. Duplicate join points between consecutive
+                    // polylines are harmless — this feeds a bounding box and
+                    // nothing renders it.
+                    const drawData = buildTrainDrawData(
+                      bestTrain.path.segments,
+                      trainGraph.lineColors,
+                    );
+                    const transitCoords: [number, number][] = drawData.polylines.flatMap(
+                      (pl) => pl.coords,
+                    );
                     const transitGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
                       type: "Feature",
                       properties: {},
@@ -1198,11 +1206,6 @@ export function useRouting({
                         ],
                       },
                     };
-
-                    const drawData = buildTrainDrawData(
-                      bestTrain.path.segments,
-                      trainGraph.lineColors,
-                    );
 
                     options.push({
                       label: transitMode === "bus" ? "Via Bus" : "Via Subway",
