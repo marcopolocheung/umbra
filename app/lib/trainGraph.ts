@@ -1338,3 +1338,24 @@ export function buildTrainDrawData(
 
   return { polylines, stops: uniqueStops, transfers };
 }
+
+/**
+ * The walk inside each station: boarding door to where the drawn ride starts,
+ * and where it ends to the exit door. `[lng, lat]`.
+ *
+ * These replace one straight line from boarding door to exit door, which drew
+ * the whole trip as a chord across the city on top of the ride it duplicated —
+ * and still left the gap between the train and each door undrawn.
+ */
+export function stationConnectors(
+  entrances: [[number, number], [number, number]],
+  drawData: TrainDrawData,
+): [number, number][][] {
+  const first = drawData.polylines[0];
+  const last = drawData.polylines[drawData.polylines.length - 1];
+  if (!first || !last) return [];
+  return [
+    [entrances[0], first.coords[0]],
+    [last.coords[last.coords.length - 1], entrances[1]],
+  ];
+}
