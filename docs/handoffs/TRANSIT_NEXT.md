@@ -664,6 +664,10 @@ Square therefore offered the *Pt. Richmond – Manhattan Express*: 29 stops, 75 
 Written 2026-09-17, after #418/#419 merged and with #420 in review. Ordered by what a rider
 would notice, not by what is easiest.
 
+**The letters are identity, not sequence.** F was added after the first five and is placed where
+it belongs in that order, so reading order still means priority order. Cite an item by its letter;
+do not renumber.
+
 ### A. The bus stop wait is not modelled — this is 3B-2's unfinished twin *(the big one)*
 
 **Bus was worth doing because of the wait, and the wait is the part that is missing.** Manhattan
@@ -724,10 +728,97 @@ So the headline number on a transit card is not wrong so much as about something
 means deciding whether stationary minutes belong in a dose model built from distance, which is a
 real modelling change and should be its own decision rather than a side effect.
 
+### F. A ride is drawn as a straight chord, and one subway hop in five is a block off its track
+
+**Measurements and method: `docs/notes/transit-edge-geometry.md`.** Reproduce with
+`python3 docs/notes/scripts/transit-edge-geometry.py ~/shade-prep-data-nyc-transit/gtfs_subway`.
+
+`buildTrainDrawData` (`app/lib/trainGraph.ts:1261`) emits two points per ride:
+
+```ts
+coords: [
+  [seg.from.lon, seg.from.lat],
+  [seg.to.lon, seg.to.lat],
+],
+```
+
+#385 shipped no geometry deliberately and justified it on **length** — straight-line came to 93%
+of the true street path on the Brooklyn routes it could check. That holds and is not in dispute:
+straight ÷ track length is **0.996–1.000 at the median in all seven feeds**. Length was simply the
+wrong statistic. What a rider sees is *where* the line is, and the chord is often not where the
+track is:
+
+| feed | lateral deviation, median | >100 m | >200 m | worst |
+|---|---|---|---|---|
+| `gtfs_subway` | 16 m | **20.5%** | 10.5% | 1,862 m |
+| `gtfs_busco` | 14 m | 15.5% | 6.5% | 4,659 m |
+| `gtfs_si` | 14 m | 13.8% | 6.1% | 6,165 m |
+| `gtfs_q` | 13 m | 11.5% | 3.5% | 1,242 m |
+| `gtfs_bx` | 12 m | 6.4% | 1.1% | 1,433 m |
+| `gtfs_b` | 9 m | 4.0% | 1.1% | 1,821 m |
+| `gtfs_m` | 9 m | 2.9% | 0.7% | 901 m |
+
+**Both halves of the old item-E bullet were backwards.** It said this was "acceptable for an
+invisible subway, visibly wrong for a bus on a street". Subway is the *worst* feed — the express
+and river-crossing hops (`SI`, `FX`, `6X`) skip stops, so the chord cuts across everything between
+— and Manhattan and Brooklyn buses are the *best*, because a dense grid with ~200 m stop spacing
+leaves a chord nowhere to stray. It is Staten Island, Bus Company and Queens that are as bad as the
+subway. The median edge is fine everywhere: this is a **tail** defect, a visible minority of hops
+drawn badly wrong, not a uniform blur.
+
+#### Three things that were open questions and are now answered
+
+- **The slice is buildable.** `shape_dist_traveled` is **absent from all seven feeds**, so GTFS's
+  easy path is unavailable and it must be done by projecting each stop onto its shape. That costs
+  nothing: **24,354 edges, 32 failures (0.13%)**, snap distance median 0.0 m on subway and ~8 m on
+  bus (the stop is at the kerb, the shape is the centreline).
+- **Per-edge geometry is well defined, and does NOT inherit #385's pattern problem.** Most edges
+  are served by several shapes (74.9% subway, 38.9–59.0% bus) — the same fact that sank per-route
+  geometry. But across 250 sampled multi-shape edges per feed the sliced length was **identical
+  for every shape serving that edge**: median spread 0.0 m in all seven, worst case 0.3 m, nothing
+  above 50 m anywhere. Adjacent stops are joined by the same track whatever pattern the trip ran.
+  #385 killed *one shape per `route:direction`*, which was right; it did not test per-edge, and the
+  closing paragraph of that PR says so.
+- **The wire format is decided by size, and naive JSON fails.** A Manhattan route already fetches
+  9.21 MB (item D). Coordinate arrays at 5 dp add **6.58 MB (+71%)**; Google encoded polyline at
+  precision 5 adds **1.14 MB (+12.4%)**, and `subway.json` grows 1.16 → 1.28 MB. **Ship the
+  polyline.** 1.1 cm of quantisation is far finer than the 8 m the bus stops sit off their own
+  centreline, and this is the difference between an additive field and being blocked on D.
+
+#### What to build
+
+1. **`server/transit-prep`** — slice per edge and publish `TransitEdge.geom` as an encoded
+   polyline of the *interior* points (endpoints are the stops, already published). An edge that
+   does not slice monotonically **ships no `geom`** — 32 of 24,354, shapes that loop past the same
+   point. Same precedent as `changeSec` (#384) and `structure` (#411): **absent means unknown, and
+   the client falls back to the chord.** `verify` should re-derive that the first and last interior
+   points lie between the two stops, not merely that the field parses.
+2. **Fix `distM` in the same pass.** It is straight-line today and its own comment says "~5-7%
+   under true path length"; once the slice exists it can be along-track, and drawn geometry and
+   reported distance will agree for the first time.
+3. **`shardContract.ts` + `trainGraphAdapter.ts`** — carry it onto `TrainGraphEdge`, optional
+   forever, exactly as `structure` is.
+4. **`trainGraph.ts:1261`** — `coords: seg.geometry ?? [[from…], [to…]]`.
+
+**`MapView.tsx` needs no change at all**: `:1560` already maps `pl.coords` into a `LineString` of
+arbitrary length. This checkpoint touches **none of the three contested files** — no
+`useNavigation.ts`, no `page.tsx`, no `MapView.tsx`.
+
+#### What this does and does not earn
+
+It fixes the **drawing**. It does not by itself license a shade claim along the ride: a bus shape
+is the street centreline, and slicing it perfectly still leaves the line ~8 m — about half a
+carriageway — off the pavement, which at a low sun angle is a different place entirely. Subway
+riding exposure comes from `structure` (#411, OSM), not from sampling the drawn line, and is
+unaffected. Anyone who later wants to sample along this geometry owes that question its own answer.
+
 ### D. Measure the 9.21 MB first load before optimising it
 
 A Manhattan route now fetches **all seven shards, 9.21 MB**, because every borough's buses
-converge downtown and all seven bounding rectangles overlap there. Parsing and verifying that is
+converge downtown and all seven bounding rectangles overlap there. **F adds 1.14 MB to this
+figure** (+12.4%), which is why F specifies an encoded polyline rather than coordinate arrays —
+the same field as JSON would have added 6.58 MB and made F wait on this item. Do D before any
+*further* growth. Parsing and verifying that is
 **87 ms** — 17 ms of SHA-256 and 70 ms of `JSON.parse` — so it is a bandwidth problem, not a CPU
 one, and it is paid once per generation because shards are immutable and cached.
 
@@ -756,17 +847,20 @@ were considered and deliberately deferred for want of that evidence:
   second attacks the cause and is inference on inference, so measure first.
 - **#421 — `RemoteTileController.test.ts` is timing-flaky** under full-suite load and fails on
   `main`. It makes the third gate non-deterministic, which trains people to re-run until green.
-- **`buildTrainDrawData` draws stop-to-stop straight chords**, because the shards ship no route
-  geometry by design (#385). Acceptable for an invisible subway, visibly wrong for a bus on a
-  street. The browser check showed no stop-dot caterpillar, so `MapView.tsx` was left alone;
-  anything better needs geometry the shards do not carry.
+- **The straight-chord bullet that used to sit here is now item F**, promoted out of this list and
+  corrected: it is a shard-contract change, and its claim that the subway was the safe case and the
+  bus the visible one is the opposite of what the feeds say.
 
 ### What is genuinely done
 
 Subway from R2 is complete and honest: real GTFS graph, scheduled run times, headway wait priced
 per boarding, in-station changes priced from the feed's own `changeSec`, per-segment sun exposure
 measured from OSM at a 1.2% error rate, geographic shard selection, and the timetable's own
-caveats on the card. Nothing in the list above is a defect in that.
+caveats on the card.
+
+**Every number the subway card states is sound. The line the map draws for it is not** — F, and
+the one correction to make to this paragraph as it was first written. Items A–E are all about what
+transit still cannot answer; F is about a claim it is already making badly, on screen, today.
 
 ## Running alongside — calendar, not dependency
 
@@ -783,6 +877,16 @@ caveats on the card. Nothing in the list above is a defect in that.
 - **`r2.dev` is rate-limited and wants a custom domain**, with the Cloudflare move (#358/#360).
   Not a correctness blocker; it is a production one. Related: #10 from the review, that the
   shadow pointer uses serving routes and the transit pointer uses bucket keys.
+- **`docs/tracks/TRACK_E.md`'s E6 is stale in a way that would undo this work, and a Track E
+  session owns fixing it — not this one.** E6 (Mixed-mode journeys) names `trainGraph.ts` in its
+  Files and its acceptance criterion still reads *"underground legs are 100% shadowed and should
+  say why"*, which is precisely the per-mode claim #393 / 1B / 3B-1 spent three PRs replacing with
+  measured per-segment `structure`. Its "What already exists" block also calls `trainGraph.ts` 679
+  lines (it is 1,166) and describes transit exposure as "0 underground, 0.25 surface". A session
+  taking E6 at face value would re-assert a claim this workstream removed. Worth knowing more
+  generally: **transit has no track.** `docs/ROADMAP.md` does not mention transit, subway, bus or
+  GTFS anywhere, and every PR from #385 to #423 was sequenced from this document. That is why this
+  document is the plan of record, and why it has to stay accurate.
 
 ---
 
@@ -793,6 +897,13 @@ Each was measured; the measurement is in the PR or the issue.
 - **Overpass stays.** Entrances are not in GTFS and the dataset is NYC-only (#394). The two
   producers coexist by design; shards are preferred only where they hold ≥2 stations inside the
   requested bbox.
+- **#385 settled *one shape per `route:direction`*, and nothing wider.** Publishing a route's
+  busiest pattern as its geometry was measured wrong — 54 of 56 subway `route:dir` pairs had >10%
+  of their stations more than 400 m off the line — and that stays settled. It is **not** a finding
+  against route geometry as such: an edge is aggregated across patterns, so geometry that matches
+  the graph has to be per-*edge*, which #385's own closing paragraph says. Per-edge was never
+  tested there; it has been now, and it holds (item F, `docs/notes/transit-edge-geometry.md`).
+  Read #385 as "not per-route", not as "not at all".
 - **The entrance name match is bounded to 400 m and takes the nearest match.** It is a substring
   test: unbounded, `Wall St` matched `Christopher Street-Stonewall Station` 3 km away and
   `Broadway` matched an entrance 9.4 km up the street. Measured over 822 real OSM entrance nodes:
