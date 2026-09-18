@@ -53,7 +53,7 @@ evidence/<command>-<ts>.json
 export TRANSIT_PREP_ROOT=$HOME/shade-prep-data-nyc-transit   # absolute, outside git
 npm run acquire:plan   # HEAD-check sizes/dates, no writes
 npm run acquire        # download (skip-if-SHA-matches) + refresh work dirs
-npm run osm            # fetch + cache the OSM subway geometry the structure join needs
+npm run osm            # fetch + cache the OSM subway geometry and stop areas the structure and entrance joins need
 npm run receipts       # (re)assemble raw/source-receipts.json
 npm run validate       # schemas, bbox, integrity, cross-feed pins
 npm run normalize      # stats only (also: -- --only subway|bus)
@@ -69,11 +69,29 @@ use, plus those routes' headways — see "Shard scope" below. Heap: validate
 needs 2 GB, normalize/build 6 GB
 (Brooklyn `stop_times` is 155 MB / ~2.4 M rows; loaders stream + intern ids).
 
+## Station entrances
+
+GTFS publishes no NYC entrances. Each subway stop ships `entrances: [{lat, lon, exitOnly?}]`,
+the doors listed in the OSM `public_transport=stop_area` that holds a platform of a line
+stopping there (`src/entrances.ts`). A door belongs to the station OSM groups it with, not to
+whichever station is nearest: at Grand Central the 7, the 4/5/6, the S and the Metro-North
+terminal are separate stop areas, and only the 7's doors reach the 7. One platform picks the
+stop area: its own `gtfs:stop_id` where tagged (138 stations), else the nearest serving
+platform within 250 m.
+
+476 of 496 stations resolve. An empty list means OSM maps no door there (the 18 Staten Island
+Railway stations, Newkirk Plaza, Canarsie–Rockaway Pkwy), and the client uses the station
+point; no field at all means a cache from before stop areas, which is unknown. `access=no|private`
+and `entrance=emergency` are dropped and `entrance=exit` is marked `exitOnly`. `open=no` is
+**not** a closure here: all 31 NYC entrances with it are `door=hinged|swinging`, a door kept
+shut, and at four stations it is the only door.
+
 ## Segment structure (tunnel / viaduct / at grade)
 
 GTFS says nothing about whether a ride is underground, and for a shade app that is the
 question. `npm run osm` fetches the NYC subway route relations and their member ways from
-Overpass (two queries, ~5 MB) into `raw/osm/` with a receipt; `build` reads **only** that
+Overpass (two queries, ~5 MB) into `raw/osm/` with a receipt, plus the stop areas the entrance
+join below reads (a third, ~2.7 MB); `build` reads **only** that
 cache, so a build never depends on Overpass being reachable. Refreshing is deliberate.
 
 `src/structure.ts` samples along the straight line between each edge's two stops and takes the

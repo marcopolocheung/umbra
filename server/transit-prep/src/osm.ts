@@ -1,5 +1,6 @@
 /**
- * Acquires the OSM subway geometry the structure join needs, and caches it.
+ * Acquires the OSM subway geometry the structure join needs, and the station
+ * groupings the entrance join needs, and caches both.
  *
  * Two Overpass queries, about 5 MB together: the subway route relations (which
  * service runs over which way) and the geometry and tags of the ways those
@@ -22,6 +23,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { OsmNode } from "./entrances";
 import type { OsmRelation, OsmWay } from "./structure";
 import { json, requireRoot, sha256, writeJson } from "./util";
 
@@ -44,6 +46,13 @@ const RELATIONS_QL = () =>
   `[out:json][timeout:240];rel["type"="route"]["route"="subway"](${bbox()});out body;`;
 const WAYS_QL = () =>
   `[out:json][timeout:240];rel["type"="route"]["route"="subway"](${bbox()});way(r);out tags geom;`;
+/**
+ * Every stop area and the subway doors it lists, in one answer: the relations
+ * say which platforms and doors form a station, the nodes say where each door
+ * is and whether it is usable.
+ */
+const STOP_AREAS_QL = () =>
+  `[out:json][timeout:240];rel["public_transport"="stop_area"](${bbox()})->.s;.s out body;node(r.s)["railway"="subway_entrance"];out body;`;
 
 export interface OsmReceipt {
   fetchedAt: string;
@@ -51,11 +60,20 @@ export interface OsmReceipt {
   bbox: typeof NYC_BBOX;
   relations: { count: number; bytes: number; sha256: string };
   ways: { count: number; bytes: number; sha256: string };
+  /** Absent from a cache acquired before the entrance join existed. */
+  stopAreas?: { count: number; entrances: number; bytes: number; sha256: string };
 }
 
 export interface OsmCache {
   relations: OsmRelation[];
   ways: OsmWay[];
+  /**
+   * `public_transport=stop_area` relations and the `railway=subway_entrance`
+   * nodes they list. Both absent from an older cache, which still serves the
+   * structure join; the build then publishes no entrances at all.
+   */
+  stopAreas?: OsmRelation[];
+  entrances?: OsmNode[];
   receipt: OsmReceipt;
 }
 
@@ -114,6 +132,7 @@ export async function acquireOsm(): Promise<OsmReceipt> {
 
   const relationsResponse = await overpass(RELATIONS_QL(), "relations");
   const waysResponse = await overpass(WAYS_QL(), "ways");
+  const stopAreasResponse = await overpass(STOP_AREAS_QL(), "stop areas");
 
   const relations = (JSON.parse(relationsResponse.body).elements ?? []).filter(
     (element: { type: string }) => element.type === "relation",
@@ -122,8 +141,18 @@ export async function acquireOsm(): Promise<OsmReceipt> {
     (element: { type: string }) => element.type === "way",
   ) as OsmWay[];
 
+  const stopAreaElements = JSON.parse(stopAreasResponse.body).elements ?? [];
+  const stopAreas = stopAreaElements.filter(
+    (element: { type: string }) => element.type === "relation",
+  ) as OsmRelation[];
+  const entrances = stopAreaElements.filter(
+    (element: { type: string }) => element.type === "node",
+  ) as OsmNode[];
+
   if (relations.length === 0) throw new Error("OSM returned no subway route relations");
   if (ways.length === 0) throw new Error("OSM returned no subway ways");
+  if (stopAreas.length === 0) throw new Error("OSM returned no stop areas");
+  if (entrances.length === 0) throw new Error("OSM returned no subway entrances");
 
   const encoder = new TextEncoder();
   const receipt: OsmReceipt = {
@@ -140,10 +169,18 @@ export async function acquireOsm(): Promise<OsmReceipt> {
       bytes: waysResponse.body.length,
       sha256: sha256(encoder.encode(waysResponse.body)),
     },
+    stopAreas: {
+      count: stopAreas.length,
+      entrances: entrances.length,
+      bytes: stopAreasResponse.body.length,
+      sha256: sha256(encoder.encode(stopAreasResponse.body)),
+    },
   };
 
   await writeJson(join(directory, "relations.json"), relations);
   await writeJson(join(directory, "ways.json"), ways);
+  await writeJson(join(directory, "stop_areas.json"), stopAreas);
+  await writeJson(join(directory, "entrances.json"), entrances);
   await writeJson(join(directory, "receipt.json"), receipt);
   return receipt;
 }
@@ -164,7 +201,20 @@ export async function readOsm(): Promise<OsmCache | null> {
       json<OsmWay[]>(join(directory, "ways.json")),
       json<OsmReceipt>(join(directory, "receipt.json")),
     ]);
-    return { relations, ways, receipt };
+    const cache: OsmCache = { relations, ways, receipt };
+    // Optional on its own: a cache from before the entrance join is still a
+    // cache, and the structure join must not lose it.
+    try {
+      const [stopAreas, entrances] = await Promise.all([
+        json<OsmRelation[]>(join(directory, "stop_areas.json")),
+        json<OsmNode[]>(join(directory, "entrances.json")),
+      ]);
+      cache.stopAreas = stopAreas;
+      cache.entrances = entrances;
+    } catch {
+      // Acquired before stop areas were; build publishes no entrances.
+    }
+    return cache;
   } catch {
     return null;
   }
@@ -176,5 +226,9 @@ export async function writeOsmCache(cache: OsmCache): Promise<void> {
   await mkdir(directory, { recursive: true });
   await writeJson(join(directory, "relations.json"), cache.relations);
   await writeJson(join(directory, "ways.json"), cache.ways);
+  if (cache.stopAreas && cache.entrances) {
+    await writeJson(join(directory, "stop_areas.json"), cache.stopAreas);
+    await writeJson(join(directory, "entrances.json"), cache.entrances);
+  }
   await writeJson(join(directory, "receipt.json"), cache.receipt);
 }

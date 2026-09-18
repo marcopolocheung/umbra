@@ -71,7 +71,7 @@ const OSM_REF: Record<string, string> = {
  * feed**. Excluded by operator rather than by `ref` so that a renamed service
  * still goes.
  */
-const EXCLUDED_OPERATOR = /Port Authority/i;
+export const EXCLUDED_OPERATOR = /Port Authority/i;
 
 /** Metres between samples along a segment, and the bounds on how many. */
 const SAMPLE_SPACING_M = 50;

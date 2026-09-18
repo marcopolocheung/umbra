@@ -25,6 +25,13 @@ export interface StopNode {
    * so no number appears that the agency did not give.
    */
   changeSec?: number;
+  /**
+   * Subway only: the doors OSM lists in this station's stop area, joined by
+   * `entrances.ts`. **Empty is a finding** — OSM maps no door here, and a
+   * client uses the station point. Absent means the generation was built
+   * without the join (no stop areas in the OSM cache), which is unknown.
+   */
+  entrances?: { lat: number; lon: number; exitOnly?: true }[];
 }
 
 export interface RouteEdge {
