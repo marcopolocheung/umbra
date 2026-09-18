@@ -19,10 +19,12 @@ per-shard bounds; 3B-1 (#411) joined OSM structure onto every subway edge and 3B
 it; #415 surfaced the timetable's own caveats on the card. #418 gave the router a heap and #419
 refused the unvalidated transfer stubs.
 
-**Bus is the open edge.** #420 routes on it and is in review. Read
+**Bus routes too** (#420), and the sun at the boarding stop is sampled rather than assumed
+(#423) — item A. The map draws each ride along its track (#426, #427) — item F. Each subway
+station now publishes its own doors from OSM stop areas (#430, #431), chosen by the whole walk
+(#428) and linked to the train on the map (#429). Read
 "[After 3C — what is actually left](#after-3c--what-is-actually-left)" before picking anything
-up: the thing that motivated bus at all, the sun you take standing at the stop, is **not built
-yet**.
+up: B–E are still open.
 If this document disagrees with the code, the code wins — fix the document in the same PR as the
 work, as `docs/tracks/README.md` requires of the briefs' state blocks.
 
@@ -668,7 +670,10 @@ would notice, not by what is easiest.
 it belongs in that order, so reading order still means priority order. Cite an item by its letter;
 do not renumber.
 
-### A. The bus stop wait is not modelled — this is 3B-2's unfinished twin *(the big one)*
+### A. The bus stop wait is not modelled — this is 3B-2's unfinished twin *(done — #423)*
+
+*Built as decided below: the boarding stop's own shadow is sampled; the no-shelter assumption is
+still stated.*
 
 **Bus was worth doing because of the wait, and the wait is the part that is missing.** Manhattan
 weekday median headway is 10 minutes, so the expected wait is **5 minutes standing at an
@@ -728,7 +733,10 @@ So the headline number on a transit card is not wrong so much as about something
 means deciding whether stationary minutes belong in a dose model built from distance, which is a
 real modelling change and should be its own decision rather than a side effect.
 
-### F. A ride is drawn as a straight chord, and one subway hop in five is a block off its track
+### F. A ride is drawn as a straight chord, and one subway hop in five is a block off its track *(done — #426, #427)*
+
+*Built as specified below: the producer ships `geom` per edge and the client draws it, falling
+back to the chord where an edge has none. Live since generation `nyc-2026-09-18-aaa4294853fb`.*
 
 **Measurements and method: `docs/notes/transit-edge-geometry.md`.** Reproduce with
 `python3 docs/notes/scripts/transit-edge-geometry.py ~/shade-prep-data-nyc-transit/gtfs_subway`.
@@ -814,7 +822,8 @@ unaffected. Anyone who later wants to sample along this geometry owes that quest
 
 ### D. Measure the 9.21 MB first load before optimising it
 
-A Manhattan route now fetches **all seven shards, 9.21 MB**, because every borough's buses
+A Manhattan route now fetches **all seven shards** — 9.21 MB when this was written, **11.06 MB**
+in generation `nyc-2026-09-18-cced8384c90f` after F's geometry and the station doors — because every borough's buses
 converge downtown and all seven bounding rectangles overlap there. **F adds 1.14 MB to this
 figure** (+12.4%), which is why F specifies an encoded polyline rather than coordinate arrays —
 the same field as JSON would have added 6.58 MB and made F wait on this item. Do D before any
@@ -858,9 +867,12 @@ per boarding, in-station changes priced from the feed's own `changeSec`, per-seg
 measured from OSM at a 1.2% error rate, geographic shard selection, and the timetable's own
 caveats on the card.
 
-**Every number the subway card states is sound. The line the map draws for it is not** — F, and
-the one correction to make to this paragraph as it was first written. Items A–E are all about what
-transit still cannot answer; F is about a claim it is already making badly, on screen, today.
+**Every number the subway card states is sound, and since F so is the line the map draws for
+it.** The doors are the station's own: `entrances` on each subway stop comes from the OSM
+`public_transport=stop_area` holding that station's platform (476 of 496 stations; an empty
+list means OSM maps none, e.g. the Staten Island Railway), so the router no longer asks
+Overpass for doors and no longer hands one station's doors — Grand Central Terminal's — to
+another's line. Items B–E are what transit still cannot answer.
 
 ## Running alongside — calendar, not dependency
 
