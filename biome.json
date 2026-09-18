@@ -1,7 +1,15 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
   "files": {
-    "includes": ["app/**", "api/**", "e2e/**", "server/transit-prep/**", "*.ts", "*.mjs"]
+    "includes": [
+      "app/**",
+      "api/**",
+      "e2e/**",
+      "server/transit-prep/**",
+      "server/navigation-prep/**",
+      "*.ts",
+      "*.mjs"
+    ]
   },
   "linter": {
     "enabled": true,
