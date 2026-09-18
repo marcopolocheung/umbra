@@ -67,6 +67,8 @@ function twoBoroughGraph(): BusNormalized {
         droppedFast: 0,
         droppedSparse: 0,
         edgesKept: 3,
+        geomShipped: 0,
+        geomUnsliced: 0,
       },
       representativeDates: { weekday: null, saturday: null, sunday: null },
       unrepresentedServices: [],
@@ -107,12 +109,12 @@ test("every shard's routes and headways agree with its edges", () => {
   }
 });
 
-test("a shard ships no route geometry", () => {
+test("a shard ships no route-level shape table", () => {
   // Route-level shapes were one polyline per route:direction, which cannot
   // represent a branched route: 54 of 56 subway route:dir pairs had >10% of
-  // their served stations more than 400 m off the shipped line. A client draws
-  // and samples stop-to-stop from the edges instead.
+  // their served stations more than 400 m off the shipped line. Geometry lives
+  // on the edge instead, sliced per stop pair, so there is still no shape table.
   const shard = busShard(twoBoroughGraph(), "bus-b") as unknown as Record<string, unknown>;
   assert.equal("shapes" in shard, false);
-  assert.ok(shard.edges, "edges still carry the geometry a client needs");
+  assert.ok(shard.edges, "edges carry the geometry a client needs");
 });

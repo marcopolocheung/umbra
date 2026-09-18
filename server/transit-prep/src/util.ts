@@ -105,3 +105,55 @@ export function haversineMeters(
     Math.cos(latA * toRad) * Math.cos(latB * toRad) * Math.sin(dLon / 2) ** 2;
   return 2 * r * Math.asin(Math.sqrt(a));
 }
+
+export interface LatLon {
+  lat: number;
+  lon: number;
+}
+
+/**
+ * Clamped projection of `p` onto the segment `a`-`b`, with the along-segment
+ * fraction that located it.
+ *
+ * Equirectangular rather than spherical: over the tens of metres a shape
+ * segment or an OSM way segment spans, the error is far below anything either
+ * caller decides on, and a projection is only meaningful in a plane. The frame
+ * is scaled at `a`, not at `p` — it belongs to the segment, so the same segment
+ * answers every query in the same frame.
+ *
+ * `t` is what makes this more than a distance: linear referencing along a
+ * polyline needs to know *where* on the segment the foot of the perpendicular
+ * landed, not just how far away it was.
+ */
+export function projectOnSegment(
+  p: LatLon,
+  a: LatLon,
+  b: LatLon,
+): { point: LatLon; t: number; distM: number } {
+  const scale = Math.cos((a.lat * Math.PI) / 180);
+  const vx = b.lat - a.lat;
+  const vy = (b.lon - a.lon) * scale;
+  const wx = p.lat - a.lat;
+  const wy = (p.lon - a.lon) * scale;
+  const lengthSq = vx * vx + vy * vy;
+  const raw = lengthSq === 0 ? 0 : (wx * vx + wy * vy) / lengthSq;
+  const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+  const point = { lat: a.lat + vx * t, lon: a.lon + (b.lon - a.lon) * t };
+  return { point, t, distM: haversineMeters(p.lat, p.lon, point.lat, point.lon) };
+}
+
+/**
+ * Distance from the first point to each point of a polyline, along it.
+ *
+ * `cum[i]` is the length of `points[0..i]`, so `cum[n-1]` is the whole line.
+ * Built once per shape and reused: NYC shapes serve thousands of edges each.
+ */
+export function cumulativeMeters(points: LatLon[]): number[] {
+  const cum = [0];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1] as LatLon;
+    const curr = points[i] as LatLon;
+    cum.push((cum[i - 1] as number) + haversineMeters(prev.lat, prev.lon, curr.lat, curr.lon));
+  }
+  return cum;
+}

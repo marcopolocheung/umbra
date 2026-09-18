@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { encodePolyline } from "../src/shapeSlice";
 import { checkShard } from "../src/verify";
+import { cumulativeMeters, haversineMeters } from "../src/util";
 
 /** Minimal shard that passes every structural check. */
 function shard(overrides: Record<string, unknown> = {}): Parameters<typeof checkShard>[1] {
@@ -46,3 +48,77 @@ test("a bus shard may not carry a route none of its edges use", () => {
   );
 });
 
+/** The corner of an L from bus:a north to it, then east to bus:b. */
+const CORNER = { lat: 40.76, lon: -73.99 };
+const GEOM_SHARD = {
+  stops: [
+    { id: "bus:a", lat: 40.75, lon: -73.99 },
+    { id: "bus:b", lat: 40.76, lon: -73.98 },
+  ],
+  alongTrackM: Math.round(
+    cumulativeMeters([{ lat: 40.75, lon: -73.99 }, CORNER, { lat: 40.76, lon: -73.98 }]).pop() ?? 0,
+  ),
+};
+
+function geomEdge(overrides: Record<string, unknown> = {}) {
+  return {
+    from: "bus:a",
+    to: "bus:b",
+    route: "R1",
+    medianSec: 300,
+    distM: GEOM_SHARD.alongTrackM,
+    geom: encodePolyline([CORNER]),
+    ...overrides,
+  };
+}
+
+test("a shard whose geometry re-derives its own distance passes", () => {
+  assert.doesNotThrow(() =>
+    checkShard("bus-x.json", shard({ stops: GEOM_SHARD.stops, edges: [geomEdge()] })),
+  );
+});
+
+test("geometry that does not re-derive the distance beside it is rejected", () => {
+  // The check that matters is not "does it parse" but "is it the same line the
+  // distance was measured along". A slice taken a segment early, or out of the
+  // wrong shape, lands somewhere else and stops agreeing with distM.
+  assert.throws(
+    () =>
+      checkShard(
+        "bus-x.json",
+        shard({
+          stops: GEOM_SHARD.stops,
+          edges: [geomEdge({ geom: encodePolyline([{ lat: 41.5, lon: -73.0 }]) })],
+        }),
+      ),
+    /reports distM/,
+  );
+  // The straight chord is ~1.4 km against the L's ~2.0 km: right line, wrong
+  // distance, and the client would draw one and quote the other.
+  assert.throws(
+    () =>
+      checkShard(
+        "bus-x.json",
+        shard({
+          stops: GEOM_SHARD.stops,
+          edges: [geomEdge({ distM: Math.round(haversineMeters(40.75, -73.99, 40.76, -73.98)) })],
+        }),
+      ),
+    /reports distM/,
+  );
+});
+
+test("a geom that does not decode is rejected rather than ignored", () => {
+  assert.throws(
+    () =>
+      checkShard(
+        "bus-x.json",
+        shard({ stops: GEOM_SHARD.stops, edges: [geomEdge({ geom: "not a polyline" })] }),
+      ),
+    /does not decode|reports distM/,
+  );
+  assert.throws(
+    () => checkShard("bus-x.json", shard({ stops: GEOM_SHARD.stops, edges: [geomEdge({ geom: "" })] })),
+    /empty geom/,
+  );
+});

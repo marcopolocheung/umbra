@@ -35,7 +35,23 @@ export interface RouteEdge {
   direction: number;
   medianSec: number;
   trips: number;
+  /**
+   * Distance between the two stops: along the track when `geom` was sliced,
+   * the straight-line haversine between the node coordinates otherwise.
+   */
   distM: number;
+  /**
+   * The track between the two stops, as a Google encoded polyline (precision 5)
+   * of the GTFS shape points strictly *between* them — the endpoints are the
+   * stops, which the shard already carries.
+   *
+   * Absent means one of two things, and neither is a licence to guess: the
+   * shape doubled back between the stops so no sub-path between them exists
+   * (32 of 24,354 NYC edges), or both stops landed on one shape segment so
+   * there is nothing between them. A client draws the straight chord either
+   * way. See `docs/notes/transit-edge-geometry.md`.
+   */
+  geom?: string;
 }
 
 export interface RouteInfo {

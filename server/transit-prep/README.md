@@ -137,8 +137,7 @@ over them and no headway row survives for them.
 
 ## Geometry
 
-**No route geometry ships.** A client draws and samples a leg stop-to-stop from
-the edges it routed over.
+**Route geometry ships per edge**, as a Google encoded polyline in `RouteEdge.geom`.
 
 `shapes.txt` gives one polyline per *pattern* — a distinct stop sequence — and a
 route has many. The A train has 12 in direction 0 alone (Far Rockaway, Lefferts,
@@ -154,16 +153,45 @@ Per-*pattern* shapes would not fix it either, because an edge is aggregated
 across patterns: `medianSec` is the median over every trip using that stop pair,
 whatever branch it ran. Geometry that matches the graph has to be per-*edge*.
 
-Stop-to-stop is uniform, explainable and close enough. On the four Brooklyn
-routes whose old shape did cover their stations, straight-line stop-to-stop came
-to 93% of the true street path (worst 87.5%): it cuts corners and under-measures
-slightly, in a way that is the same for every route. `distM` is measured the
-same way, so drawn geometry and reported distance agree — they did not before.
-Subway geometry affects only drawing, since `TRAIN_SUN_EXPOSURE.subway` is 0.
+So each edge is sliced out of the shape its own trips run on: both stops are
+projected onto the shape, and the shape points strictly between the two feet are
+published. The endpoints are the stops, which the shard already carries. Most
+edges are served by several shapes (74.9% subway, 38.9-59.0% bus) — the same
+fact that sank per-route geometry — but between two *adjacent* stops every
+pattern runs the same track: over 250 multi-shape edges per feed the sliced
+length was identical for every shape serving the edge, median spread 0.0 m in
+all seven, worst 0.3 m. The lowest `shape_id` is taken, so the build reproduces.
 
-Adding per-edge geometry later is additive: a `geom` field on `RouteEdge`
-changes nothing else, and would fix `distM` to along-track distance at the same
-time. Worth doing once a client exists and the angularity can be judged.
+`shape_dist_traveled` is absent from all seven feeds, so the slice is by
+projection rather than by published distance. That costs nothing: the snap is
+0.0 m at the median on subway and ~8 m on bus, where the stop is at the kerb and
+the shape is the street centreline.
+
+**Absence is a stated fallback, not a fix.** 32 of 24,354 edges (0.13%) run on a
+shape that doubles back between the two stops, so no sub-path between them
+exists; an edge whose stops land on one segment has nothing between them at all.
+Neither ships a `geom` and a client draws the straight chord. `distM` is the
+along-track length of the slice where there is one, and the straight-line
+haversine between the two stops where there is not.
+
+The wire format was decided on size. As JSON coordinate arrays at 5 dp the seven
+shards' geometry adds 6.58 MB (+71%) to a first load that already fetches
+9.21 MB; encoded it adds 1.14 MB (+12.4%), and `subway.json` grows 1.16 MB to
+1.28 MB. The 1.1 cm the quantisation costs is far finer than the ~8 m a bus stop
+already sits off its own centreline.
+
+The straight chord this replaces was justified on *length*, and on length it
+held up — straight over track is 0.996-1.000 at the median in all seven feeds.
+Length was the wrong statistic. One subway edge in five was drawn more than
+100 m off the track it claimed to be (worst 1,862 m), because express and
+river-crossing hops skip stops and the chord cuts across everything between;
+Staten Island, Bus Company and Queens buses are as bad. The measurement is
+`docs/notes/transit-edge-geometry.md`.
+
+Subway geometry affects only drawing, since `TRAIN_SUN_EXPOSURE.subway` is 0. A
+bus shape is the street centreline, about half a carriageway off the pavement a
+rider walks, so slicing it fixes the *drawing* and does not by itself earn a
+shade claim sampled along the ride.
 
 ## Publish env
 

@@ -15,8 +15,8 @@
  * client is how a caveat quietly becomes weaker than the thing it qualifies.
  *
  * **Which notes are rider-facing is decided by shape, not by index.** Two of the
- * six describe the wire format for whoever writes a client — that no route
- * geometry ships, and that headway hours run 0-27 — and mean nothing to someone
+ * six describe the wire format for whoever writes a client — how route geometry
+ * ships, and that headway hours run 0-27 — and mean nothing to someone
  * deciding whether to wait for a train. Matching them by position in the array
  * would break silently the first time the pipeline adds a note, so they are
  * matched on their own subject matter and the default is to **show** a note we
@@ -30,7 +30,7 @@ import type { TransitProvenance } from "./trainGraph";
  * Notes about the wire format rather than about the ride. Deliberately narrow:
  * anything unmatched is shown.
  */
-const CLIENT_CONTRACT_NOTE = /^(No route geometry ships|Headway hours are service-day hours)/;
+const CLIENT_CONTRACT_NOTE = /^(Route geometry ships per edge|Headway hours are service-day hours)/;
 
 /** `YYYYMMDD` → `31 Oct 2026`. Returns null on anything else. */
 export function formatFeedDate(yyyymmdd: string): string | null {

@@ -3,12 +3,15 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { buildGeneration } from "../src/build";
 import { writeOsmCache } from "../src/osm";
 import { publishPlan } from "../src/publish";
 import { assembleReceipts, checkWorkTrees } from "../src/receipts";
 import { validate } from "../src/validate";
+import { decodePolyline } from "../src/shapeSlice";
+import { haversineMeters } from "../src/util";
 import { verifyGeneration } from "../src/verify";
 import { busFixtureA, busFixtureB, busFixtureBusco, SUBWAY_FIXTURE, withFeedTripIds, writeFeed } from "./helpers";
 
@@ -335,4 +338,57 @@ test("validate records the transfer types it saw", async () => {
     return validate();
   });
   assert.deepEqual(report.subwayTransferTypes, { 2: 3 });
+});
+
+test("build ships each edge's sliced geometry and measures distM along it", async () => {
+  const root = await seedRoot();
+  const { manifest, generation } = await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const built = await buildGeneration({ updateBaseline: true });
+    // verify re-derives the drawn line against the distance beside it.
+    await verifyGeneration(built.generation);
+    return built;
+  });
+  const directory = join(root, "normalized", generation);
+  const subway = JSON.parse(
+    await readFile(join(directory, "subway.json"), "utf8"),
+  ) as { edges: { from: string; to: string; distM: number; geom?: string }[] };
+  const edge = subway.edges.find((e) => e.from === "subway:P1" && e.to === "subway:P2");
+  assert.ok(edge, "the fixture's weekday edge");
+  // S1 bends ~67 m east of the P1-P2 chord; the interior is that one bend.
+  assert.deepEqual(decodePolyline(edge.geom ?? ""), [{ lat: 40.756, lon: -73.983 }]);
+  // distM follows the track, so it is longer than the chord it replaced.
+  assert.ok(edge.distM > Math.round(haversineMeters(40.75, -73.99, 40.76, -73.98)));
+  assert.ok(
+    manifest.notes.some((note) => note.startsWith("Route geometry ships per edge")),
+    "the manifest says how geometry ships",
+  );
+});
+
+test("verify rejects a shard whose geometry was edited after the build", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    const { generation, manifest } = await buildGeneration({ updateBaseline: true });
+    const directory = join(root, "normalized", generation);
+    const path = join(directory, "subway.json");
+    const shard = JSON.parse(await readFile(path, "utf8")) as {
+      edges: { geom?: string }[];
+    };
+    const target = shard.edges.find((edge) => edge.geom !== undefined);
+    assert.ok(target, "a subway edge ships geometry");
+    // Same shape of value, somewhere else entirely: a check that only parsed
+    // the string would wave this through.
+    target.geom = "_p~iF~ps|U";
+    const bytes = new TextEncoder().encode(JSON.stringify(shard));
+    await writeFile(path, bytes);
+    const ref = manifest.shards.find((entry) => entry.key === "subway.json");
+    assert.ok(ref);
+    ref.bytes = bytes.length;
+    ref.sha256 = createHash("sha256").update(bytes).digest("hex");
+    await writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    await assert.rejects(() => verifyGeneration(generation), /reports distM/);
+  });
 });

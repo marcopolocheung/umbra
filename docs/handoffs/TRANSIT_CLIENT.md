@@ -107,8 +107,9 @@ Sizes: subway 1.09 MB (2,737 stops / 1,949 edges / 5,322 transfers); bus shards 
 A shard is **self-contained** — every stop its edges reference ships with it, including the far
 end of a cross-borough hop (the S53 over the Verrazzano puts Staten Island stops in `bus-b`).
 
-**There is no route geometry.** Draw and sample a leg stop-to-stop from its edges. That was a
-deliberate decision — see *Settled decisions*.
+**Route geometry ships per edge**, as an encoded polyline in `edge.geom`; an edge without one
+is drawn stop-to-stop. Sampling along a bus line is a separate question the geometry does not
+settle — see *Settled decisions*.
 
 ---
 
@@ -291,12 +292,17 @@ Each was measured; the measurement is in the PR.
   (Times Sq, Grand Central, Union Sq) where you step across one platform. Do not treat 0 as
   missing. 33 stations have no value — 11 of them multi-route, all same-platform pairs; the
   field is absent rather than defaulted, so no number appears the agency did not give. (#384)
-- **No route geometry ships.** One polyline per `route:direction` cannot describe a branched
-  route: 54 of 56 subway pairs had >10% of their stations >400 m off the line (M train 27/36).
-  Straight-line stop-to-stop measured 93% of true street path, and `distM` is measured the same
-  way, so drawn geometry and reported distance agree. Per-**edge** geometry is the upgrade
-  path and is additive. (#385)
-- **`distM` is straight-line haversine**, ~5–7% under true path length.
+- **Route geometry ships per edge**, as a Google encoded polyline (precision 5) in
+  `edge.geom`: the shape points strictly *between* the two stops, endpoints excluded because
+  the shard already carries the stops. One polyline per `route:direction` could not describe a
+  branched route — 54 of 56 subway pairs had >10% of their stations >400 m off the line — but
+  an edge slice can, because between two adjacent stops every pattern runs the same track.
+  (#385, item F)
+- **An edge with no `geom` is drawn as the straight chord.** Either its shape doubles back
+  between the two stops (32 of 24,354, 0.13%) or both stops land on one shape segment.
+  Absence is not a licence to guess, the same precedent as `changeSec` and `structure`.
+- **`distM` is along-track** where the edge carries geometry, and straight-line haversine
+  (~5–7% under true path length) where it does not.
 - **Generation ids are content-addressed** — identical inputs and code rebuild to the same id.
 
 ---
