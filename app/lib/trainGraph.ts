@@ -359,6 +359,19 @@ export function railExposure(
 export const TRANSFER_PENALTY_SEC = 180;
 
 /**
+ * Straight-line distance between the trip's ends at or under which transit is
+ * neither offered (the mode is disabled as "Too close for transit") nor
+ * computed. Three sites read it — `useNavigation`'s `canTransit` and
+ * `useRouting`'s skip log and gate — and they must agree, or the picker offers a
+ * mode the pipeline never computes.
+ *
+ * The figure predates any recorded reason. What holds it up: 500 m is about six
+ * minutes' walk at 1.4 m/s, and a ride cannot beat that once it adds a walk to
+ * and from two stations and a wait for the train.
+ */
+export const MIN_TRANSIT_DISTANCE_M = 500;
+
+/**
  * 30 km/h, the figure `useRouting` already used to turn a transit leg's length
  * into a duration. It is the Overpass producer's only option: OSM route
  * relations carry geometry and no timetable.
