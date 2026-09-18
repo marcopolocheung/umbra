@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, memo } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { TrainDrawData } from "../lib/trainGraph";
+import { stationConnectors, type TrainDrawData } from "../lib/trainGraph";
 import type { LatLng, SketchPoint } from "../lib/routing";
 import SunCalc from "suncalc";
 import { sunriseSunset } from "../lib/sunTimes";
@@ -1465,7 +1465,8 @@ export default function MapView({
       .setLngLat(navMrtEntrances[1])
       .addTo(map);
 
-    // Dotted connector — only add once style is loaded (it's decorative, not critical)
+    // Dotted door-to-train links — only add once style is loaded (decorative, not critical)
+    const connectors = navTrainDrawData ? stationConnectors(navMrtEntrances, navTrainDrawData) : [];
     const addConnector = () => {
       if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
       if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
@@ -1473,10 +1474,9 @@ export default function MapView({
         type: "geojson",
         data: {
           type: "FeatureCollection",
-          features: [{ type: "Feature", properties: {}, geometry: {
-            type: "LineString",
-            coordinates: [navMrtEntrances[0], navMrtEntrances[1]],
-          }}],
+          features: connectors.map((coordinates) => ({
+            type: "Feature", properties: {}, geometry: { type: "LineString", coordinates },
+          })),
         },
       });
       map.addLayer({
@@ -1495,7 +1495,7 @@ export default function MapView({
     } else {
       map.once("styledata", addConnector);
     }
-  }, [navMrtEntrances]);
+  }, [navMrtEntrances, navTrainDrawData]);
 
   // -------------------------------------------------------------------------
   // Render
