@@ -105,6 +105,21 @@ export interface TransitStop {
    */
   changeSec?: number;
   feeds?: string[];
+  /**
+   * Subway only: the doors OSM groups with this station in its
+   * `public_transport=stop_area`, joined by `server/transit-prep` (#430).
+   * **Empty is a finding** — OSM maps no door here, so the station point is
+   * used. Absent is unknown: a generation built before the join, which the
+   * client answers by fetching and matching doors itself.
+   */
+  entrances?: TransitEntrance[];
+}
+
+export interface TransitEntrance {
+  lat: number;
+  lon: number;
+  /** `entrance=exit`: a way out that is no way in. */
+  exitOnly?: true;
 }
 
 /**
@@ -212,6 +227,8 @@ export const MAX_SHARD_BYTES = 3_000_000;
 const generationPattern = /^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const shardKeyPattern = /^[a-z0-9-]{1,32}\.json$/;
+/** The producer's own cap per station; the most any NYC station has is 24. */
+const MAX_STATION_ENTRANCES = 64;
 const dayTypes = new Set<string>(["weekday", "saturday", "sunday"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -429,7 +446,31 @@ function parseStop(value: unknown): TransitStop {
     stop.changeSec = value.changeSec;
   }
   if (Array.isArray(value.feeds)) stop.feeds = value.feeds.filter((f) => typeof f === "string");
+  // `[]` is kept: "OSM maps no door" is not "unknown", and only the second
+  // sends the client back to Overpass.
+  const entrances = parseEntrances(value.entrances);
+  if (entrances) stop.entrances = entrances;
   return stop;
+}
+
+/**
+ * A station's published doors, or `undefined` when it publishes none. `null`
+ * counts as absent, as it does for `structure`.
+ */
+function parseEntrances(value: unknown): TransitEntrance[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_STATION_ENTRANCES)
+    throw new Error("invalid NYC transit stop");
+  return value.map((door) => {
+    if (
+      !isRecord(door) ||
+      !isFiniteNumber(door.lat) ||
+      !isFiniteNumber(door.lon) ||
+      (door.exitOnly !== undefined && door.exitOnly !== true)
+    )
+      throw new Error("invalid NYC transit stop");
+    return { lat: door.lat, lon: door.lon, ...(door.exitOnly ? { exitOnly: true as const } : {}) };
+  });
 }
 
 const STRUCTURES = new Set(["underground", "elevated", "open_cut", "embankment", "at_grade"]);

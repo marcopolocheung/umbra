@@ -951,15 +951,21 @@ export function useRouting({
                   // whole route's bbox meant a box the size of the trip plus
                   // ~3.3 km in each direction, for doors within 400 m of two
                   // points.
-                  const entranceBoxes = [bestTrain.entryStation, bestTrain.exitStation].map(
-                    (station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M),
-                  );
+                  //
+                  // Only for a station that publishes no doors of its own. The
+                  // NYC shards carry each station's doors as OSM groups them
+                  // (#430); fetching and matching by name or nearest point is
+                  // what gave the Metro-North terminal's doors to the 7.
+                  const endpoints = [bestTrain.entryStation, bestTrain.exitStation];
+                  const entranceBoxes = endpoints
+                    .filter((station) => station.entrances === undefined)
+                    .map((station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M));
                   // Bus stops have no entrance geometry in OSM and need none —
                   // the stop *is* the boarding point — so the fetch and the
                   // O(entrances x stations) match are pure waste for bus. The
                   // candidate fallback below already resolves to the stop.
                   const entranceResult =
-                    transitMode === "subway"
+                    transitMode === "subway" && entranceBoxes.length > 0
                       ? await fetchStationEntranceBoxes(entranceBoxes, calcSignal)
                       : { entrances: [], failed: false };
                   const { entrances } = entranceResult;
@@ -967,7 +973,7 @@ export function useRouting({
                     console.log(
                       "[transit] entrances:",
                       entrances.length,
-                      "in 2 station boxes",
+                      `in ${entranceBoxes.length} station boxes`,
                       entranceResult.failed ? "(fetch FAILED — list is cache only)" : "",
                     );
 
@@ -993,6 +999,18 @@ export function useRouting({
                           ...(entrance.exitOnly ? { exitOnly: entrance.exitOnly } : {}),
                         });
                     }
+                  }
+
+                  // Published doors win over anything the matcher attributed. An
+                  // empty list means OSM maps no door, so the station point is used.
+                  for (const station of endpoints) {
+                    if (station.entrances === undefined) continue;
+                    if (station.entrances.length === 0) stationEntrances.delete(station.id);
+                    else
+                      stationEntrances.set(
+                        station.id,
+                        station.entrances.map((door) => ({ ...door, kind: "entrance" as const })),
+                      );
                   }
 
                   // An exit-only door is a way out, never a way in.

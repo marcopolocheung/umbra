@@ -159,6 +159,8 @@ export function buildTrainGraphFromShards(
     // interchange and the 33 stations without the field priced no change at
     // all, which is not the same statement (#384).
     if (stop.changeSec !== undefined) station.changeSec = stop.changeSec;
+    // `[]` too: OSM mapping no door here is an answer, not a reason to fetch.
+    if (stop.entrances) station.entrances = stop.entrances;
     stations.set(id, station);
     adj.set(id, []);
     return station;

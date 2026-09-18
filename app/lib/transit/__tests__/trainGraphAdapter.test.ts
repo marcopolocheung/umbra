@@ -336,6 +336,23 @@ describe("buildTrainGraphFromShards: the boarding terms", () => {
     expect("changeSec" in graph.stations.get("subway:B")!).toBe(false);
   });
 
+  it("carries a station's published doors, an empty list included", () => {
+    const base = shard();
+    const stops = base.stops.map((stop) =>
+      stop.id === "subway:A"
+        ? { ...stop, entrances: [{ lat: 40.7002, lon: -74.0003, exitOnly: true as const }] }
+        : stop.id === "subway:C"
+          ? { ...stop, entrances: [] }
+          : stop,
+    );
+    const graph = buildTrainGraphFromShards([shard({ stops })])!;
+    expect(graph.stations.get("subway:A")!.entrances).toEqual([
+      { lat: 40.7002, lon: -74.0003, exitOnly: true },
+    ]);
+    expect(graph.stations.get("subway:C")!.entrances).toEqual([]);
+    expect("entrances" in graph.stations.get("subway:B")!).toBe(false);
+  });
+
   it("keys each rail edge to the direction it runs", () => {
     const graph = buildTrainGraphFromShards([shard()])!;
     expect(graph.adj.get("subway:A")!.find((e) => e.to === "subway:B")!.direction).toBe(0);
