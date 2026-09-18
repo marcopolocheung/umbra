@@ -11,7 +11,13 @@ import { haversineMeters, json, requireRoot, sha256 } from "./util";
 
 export interface ShardLike {
   kind?: string;
-  stops: { id: string; lat?: number; lon?: number; changeSec?: number }[];
+  stops: {
+    id: string;
+    lat?: number;
+    lon?: number;
+    changeSec?: number;
+    entrances?: { lat: number; lon: number; exitOnly?: unknown }[];
+  }[];
   edges: {
     from: string;
     to: string;
@@ -120,6 +126,9 @@ export function checkBounds(
  */
 const GEOM_SNAP_SLACK_M = 300;
 
+/** Most doors any one station may publish: the most measured is 24. */
+export const MAX_STATION_ENTRANCES = 64;
+
 export function checkShard(key: string, shard: ShardLike): void {
   const fail = (message: string): never => {
     throw new Error(`${key}: ${message}`);
@@ -129,6 +138,16 @@ export function checkShard(key: string, shard: ShardLike): void {
     // 0 is a legitimate cross-platform change; negative or fractional is not.
     if (stop.changeSec !== undefined && (!Number.isInteger(stop.changeSec) || stop.changeSec < 0)) {
       fail(`stop ${stop.id} has changeSec ${stop.changeSec}`);
+    }
+    if (stop.entrances !== undefined) {
+      if (!Array.isArray(stop.entrances) || stop.entrances.length > MAX_STATION_ENTRANCES)
+        fail(`stop ${stop.id} entrances is not a list of at most ${MAX_STATION_ENTRANCES}`);
+      for (const door of stop.entrances) {
+        if (!Number.isFinite(door.lat) || !Number.isFinite(door.lon))
+          fail(`stop ${stop.id} has a door at a non-finite point`);
+        if (door.exitOnly !== undefined && door.exitOnly !== true)
+          fail(`stop ${stop.id} has a door with exitOnly ${String(door.exitOnly)}`);
+      }
     }
   }
   for (let i = 1; i < shard.stops.length; i += 1) {

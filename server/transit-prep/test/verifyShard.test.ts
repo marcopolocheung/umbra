@@ -41,6 +41,19 @@ test("headway hours outside 0-27 are rejected", () => {
   );
 });
 
+test("published doors must be finite points, with exitOnly true or absent", () => {
+  const withDoors = (entrances: unknown) =>
+    shard({ stops: [{ id: "bus:a", entrances }, { id: "bus:b" }] });
+  assert.doesNotThrow(() => checkShard("s.json", withDoors([])));
+  assert.doesNotThrow(() => checkShard("s.json", withDoors([{ lat: 40.75, lon: -73.98, exitOnly: true }])));
+  assert.throws(() => checkShard("s.json", withDoors([{ lat: Number.NaN, lon: -73.98 }])), /non-finite/);
+  assert.throws(() => checkShard("s.json", withDoors([{ lat: 40.75, lon: -73.98, exitOnly: false }])), /exitOnly/);
+  assert.throws(
+    () => checkShard("s.json", withDoors(Array.from({ length: 65 }, () => ({ lat: 40.75, lon: -73.98 })))),
+    /at most 64/,
+  );
+});
+
 test("a bus shard may not carry a route none of its edges use", () => {
   assert.throws(
     () => checkShard("bus-x.json", shard({ routes: [{ id: "R1" }, { id: "R2" }] })),

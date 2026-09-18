@@ -21,6 +21,7 @@ import type {
 } from "./model";
 import type { RepresentativeDates } from "./serviceCalendar";
 import { readReceipts } from "./receipts";
+import { attachEntrances, type EntranceStats } from "./entrances";
 import { readOsm } from "./osm";
 import { attachStructure, buildStructureIndex, type StructureStats } from "./structure";
 import { requireRoot, sha256, writeJson } from "./util";
@@ -278,6 +279,8 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   directory: string;
   /** Absent when OSM has not been acquired; the shard then ships no structure. */
   structure?: StructureStats;
+  /** Absent when the OSM cache predates stop areas; the shard then ships no entrances. */
+  entrances?: EntranceStats;
 }> {
   const root = requireRoot();
   const { subway, bus, stubs, referenceDate } = await normalizeAll(options);
@@ -285,6 +288,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
 
   const objects: { key: string; value: unknown }[] = [];
   let structureStats: StructureStats | undefined;
+  let entranceStats: EntranceStats | undefined;
   if (subway) {
     // All spatial stubs touch a subway node by construction; they ship with
     // the subway shard, along with the bus stops they reference, so the
@@ -302,7 +306,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
         }
       }
     }
-    const allSubwayStops = [...subwayStops.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
+    let allSubwayStops = [...subwayStops.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
 
     // Per-segment structure, where OSM has been acquired. Additive and
     // optional: without the cache the shard is the same shard it was, minus
@@ -317,6 +321,25 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       );
       edges = attached.edges;
       structureStats = attached.stats;
+      // Each station's own doors, where the cache has the stop areas to say so.
+      if (osm.stopAreas && osm.entrances) {
+        const routesByStop = new Map<string, Set<string>>();
+        for (const edge of subway.edges) {
+          for (const id of [edge.from, edge.to]) {
+            const routes = routesByStop.get(id) ?? new Set<string>();
+            routes.add(edge.route);
+            routesByStop.set(id, routes);
+          }
+        }
+        const joined = attachEntrances(allSubwayStops, routesByStop, {
+          relations: osm.relations,
+          ways: osm.ways,
+          stopAreas: osm.stopAreas,
+          entrances: osm.entrances,
+        });
+        allSubwayStops = joined.stops;
+        entranceStats = joined.stats;
+      }
     }
 
     objects.push({
@@ -420,10 +443,21 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
             "Subway edge structure is joined from OpenStreetMap, not from GTFS, which carries none. Shares are sampled along the straight line between the two stops and sum to at most 1; the shortfall is the part no OSM way matched. An edge carrying no structure field at all is unknown, which is not the same as at_grade: at_grade means a matched OSM way that is tagged neither tunnel nor bridge nor cutting nor embankment.",
           ]
         : []),
+      ...(entranceStats
+        ? [
+            "Subway stops carry entrances, joined from OpenStreetMap, not from GTFS, which publishes none: the doors listed in the public_transport=stop_area that holds a platform of a line stopping there, so a door belongs to the station OSM groups it with rather than to whichever station is nearest. Doors tagged access=no/private or entrance=emergency are left out, and exitOnly marks entrance=exit. An empty list means OSM maps no door at that station, not that it has none.",
+          ]
+        : []),
     ],
   };
   await writeJson(join(directory, "manifest.json"), manifest);
-  return { generation, manifest, directory, structure: structureStats };
+  return {
+    generation,
+    manifest,
+    directory,
+    structure: structureStats,
+    ...(entranceStats ? { entrances: entranceStats } : {}),
+  };
 }
 
 function summarizeDay(chosen: RepresentativeDates[DayType]): RepresentativeSummary[DayType] {

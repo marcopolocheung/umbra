@@ -201,6 +201,85 @@ test("build attaches OSM structure to subway edges when the cache is present", a
   });
 });
 
+/**
+ * `osmCacheFor`, plus one stop area: a platform of R1 at Station Alpha and the
+ * door it lists. Station Beta has a platform in no stop area, so no door.
+ */
+function osmCacheWithStopAreas() {
+  const base = osmCacheFor({ tunnel: "yes" });
+  const platform = (id: number, lat: number, lon: number) => ({
+    id,
+    tags: { railway: "platform" },
+    geometry: [
+      { lat: lat - 0.0002, lon },
+      { lat: lat + 0.0002, lon },
+    ],
+  });
+  return {
+    ...base,
+    relations: [
+      {
+        ...base.relations[0],
+        members: [
+          ...base.relations[0].members,
+          { type: "way", ref: 911, role: "platform" },
+          { type: "way", ref: 912, role: "platform" },
+        ],
+      },
+    ],
+    ways: [...base.ways, platform(911, 40.75, -73.99), platform(912, 40.76, -73.98)],
+    stopAreas: [
+      {
+        id: 920,
+        tags: { public_transport: "stop_area" },
+        members: [
+          { type: "way", ref: 911, role: "platform" },
+          { type: "node", ref: 930, role: "" },
+        ],
+      },
+    ],
+    entrances: [{ id: 930, lat: 40.7502, lon: -73.9902, tags: { railway: "subway_entrance" } }],
+  };
+}
+
+test("build publishes each subway station's own doors when the cache has stop areas", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    await writeOsmCache(osmCacheWithStopAreas());
+    const built = await buildGeneration({ updateBaseline: true });
+    await verifyGeneration(built.generation);
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { stops: { id: string; entrances?: unknown }[] };
+    const byId = new Map(shard.stops.map((s) => [s.id, s]));
+    assert.deepEqual(byId.get("subway:P1")?.entrances, [{ lat: 40.7502, lon: -73.9902 }]);
+    // No stop area, so no door: published as a finding, not left unknown.
+    assert.deepEqual(byId.get("subway:P2")?.entrances, []);
+    assert.equal(built.entrances?.resolved, 1);
+    assert.ok(built.manifest.notes.some((n) => n.includes("stop_area")));
+  });
+});
+
+test("a cache from before stop areas still joins structure and publishes no doors", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    await writeOsmCache(osmCacheFor({ tunnel: "yes" }));
+    const built = await buildGeneration({ updateBaseline: true });
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { stops: { entrances?: unknown }[]; edges: { structure?: unknown }[] };
+    assert.ok(shard.edges.some((e) => e.structure !== undefined));
+    // Absent, not empty: unknown is a different statement from "OSM maps none".
+    assert.ok(shard.stops.every((s) => s.entrances === undefined));
+    assert.equal(built.entrances, undefined);
+    assert.ok(!built.manifest.notes.some((n) => n.includes("stop_area")));
+  });
+});
+
 test("an elevated line is reported elevated, not defaulted to underground", async () => {
   const root = await seedRoot();
   await withRoot(root, async () => {
