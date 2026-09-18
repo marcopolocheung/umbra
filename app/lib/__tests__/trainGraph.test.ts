@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildTrainDrawData,
   fetchTrainGraph,
+  stationConnectors,
+  type TrainDrawData,
   findBestTrainRoute,
   headwayKey,
   matchEntranceToTrainStation,
@@ -852,5 +854,40 @@ describe("trainDijkstra: per-edge track geometry", () => {
     expect(drawData.polylines[0]?.coords).toHaveLength(3);
     expect(drawData.polylines[1]?.coords).toHaveLength(2);
     expect(drawData.polylines[2]?.coords).toHaveLength(3);
+  });
+});
+
+describe("stationConnectors", () => {
+  const BOARD_DOOR: [number, number] = [-74.0017, 40.7556];
+  const EXIT_DOOR: [number, number] = [-73.976, 40.7517];
+  const ride = (...polylines: [number, number][][]): TrainDrawData => ({
+    polylines: polylines.map((coords) => ({ coords, color: "#B933AD", line: "7" })),
+    stops: [],
+    transfers: [],
+  });
+
+  it("links each door to its own end of the ride, not the doors to each other", () => {
+    const links = stationConnectors(
+      [BOARD_DOOR, EXIT_DOOR],
+      ride(
+        [
+          [-74.0019, 40.7559],
+          [-73.9950, 40.7540],
+          [-73.9877, 40.7555],
+        ],
+        [
+          [-73.9877, 40.7555],
+          [-73.9760, 40.7514],
+        ],
+      ),
+    );
+    expect(links).toEqual([
+      [BOARD_DOOR, [-74.0019, 40.7559]],
+      [[-73.976, 40.7514], EXIT_DOOR],
+    ]);
+  });
+
+  it("draws nothing when there is no ride to link to", () => {
+    expect(stationConnectors([BOARD_DOOR, EXIT_DOOR], ride())).toEqual([]);
   });
 });
