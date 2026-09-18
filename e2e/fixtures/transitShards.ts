@@ -24,7 +24,7 @@ const stops = [
   { id: "subway:E3", name: "Grid North", lat: 40.7561, lon: -73.9811 },
 ];
 
-const edge = (from: string, to: string, direction: number) => ({
+const edge = (from: string, to: string, direction: number, geom?: string) => ({
   from,
   to,
   route: "E",
@@ -32,14 +32,22 @@ const edge = (from: string, to: string, direction: number) => ({
   medianSec: 90,
   trips: 100,
   distM: 400,
+  ...(geom ? { geom } : {}),
 });
+
+// A deliberate dogleg on the southbound first hop: one interior point pushed
+// ~200 m off the E1→E2 chord. Encoded once with the producer's precision-5
+// encoder; pasted as a literal. It proves the client decode path runs in a
+// real browser without throwing and the line still paints — the smoke test
+// only counts magenta pixels, so shape is not what it guards.
+const E1_E2_DOGLEG = "ktvwFz{pbM"; // (40.7535, -73.9835)
 
 const shard = {
   kind: "subway",
   feed: { id: "subway", version: "e2e", startDate: "20260101", endDate: "20270101" },
   stops,
   edges: [
-    edge("subway:E1", "subway:E2", 0),
+    edge("subway:E1", "subway:E2", 0, E1_E2_DOGLEG),
     edge("subway:E2", "subway:E1", 1),
     edge("subway:E2", "subway:E3", 0),
     edge("subway:E3", "subway:E2", 1),
