@@ -158,7 +158,7 @@ export function computeSolarIntensity(date: Date, latDeg: number, lngDeg: number
  * destination, however far along the complex from the train: at Grand Central
  * it put the 7's exit on a terminal door 87 m from the platform over a street
  * stair 32 m away. Over NYC it cut the median door-to-platform distance from 58
- * to 41 m and the worst from 351 to 275 m.
+ * to 40 m and the worst from 351 to 275 m.
  */
 export function pickClosestEntrance(
   from: [number, number], // [lng, lat]

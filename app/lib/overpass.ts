@@ -312,18 +312,16 @@ export interface StationEntranceNode {
 }
 
 /**
- * A door OSM says a rider cannot use. `railway=subway_entrance` is on closed
- * terminal doors (`open=no`) and emergency exits as readily as on street
- * stairs — 194 of 7,488 NYC station/direction pairs picked one of them as the
- * exit before they were dropped here.
+ * A door OSM says a rider cannot use: `access=no|private`, or an emergency
+ * exit — 20 of 7,488 NYC station/direction pairs picked one as the exit before
+ * they were dropped here.
+ *
+ * **Not `open=no`.** All 31 NYC entrances carrying it also carry `door=hinged`
+ * or `door=swinging`: it describes a door kept shut, not a way that is closed,
+ * and at Neck Rd, Ocean Pkwy, Avenue X and 86 St (N) it is the only door.
  */
 function isUnusableEntrance(tags: Record<string, string> | undefined): boolean {
-  return (
-    tags?.open === "no" ||
-    tags?.access === "no" ||
-    tags?.access === "private" ||
-    tags?.entrance === "emergency"
-  );
+  return tags?.access === "no" || tags?.access === "private" || tags?.entrance === "emergency";
 }
 
 interface StationEntranceCacheEntry extends BboxBounds {
