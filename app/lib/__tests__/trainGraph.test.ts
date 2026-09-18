@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildTrainDrawData,
   fetchTrainGraph,
   findBestTrainRoute,
   headwayKey,
@@ -17,6 +18,8 @@ import {
   type TrainGraphEdge,
   type TrainHeadways,
   type TrainMode,
+  type TrainRouteSegment,
+  type TrainSegment,
   type TrainStation,
 } from "../trainGraph";
 import { haversineMeters } from "../routing";
@@ -195,6 +198,7 @@ function toyGraph(
     sec: number;
     direction?: number;
     structure?: Partial<Record<string, number>>;
+    geom?: string;
   }>,
   headways?: TrainHeadways,
 ): TrainGraph {
@@ -214,6 +218,7 @@ function toyGraph(
       line: e.line,
       direction: e.direction ?? 0,
       ...(e.structure ? { structure: e.structure as TrainEdgeStructure } : {}),
+      ...(e.geom ? { geom: e.geom } : {}),
     });
     const from = stationMap.get(e.from)!;
     if (!from.lines.includes(e.line)) from.lines.push(e.line);
@@ -767,5 +772,85 @@ describe("trainDijkstra: where the rider waits", () => {
     const path = trainDijkstra(frequencyGraph(table), "X", "Z")!;
     expect(path.waits).toEqual([]);
     expect(path.waitSec).toBe(0);
+  });
+});
+
+// ─── Per-edge track geometry (item F) ─────────────────────────────────────────
+
+describe("trainDijkstra: per-edge track geometry", () => {
+  // One encoded interior point between X and M: (40.703, -74.0), due north of
+  // both stops, so the drawn line bends visibly off the chord. Produced once
+  // by the producer's encoder; pasted as a literal like the polyline vectors.
+  const X_M_GEOM = "wxlwF~btbM";
+  const stations = [toyStation("X", 40.7), toyStation("M", 40.706), toyStation("Z", 40.712)];
+
+  function trainSegmentsOf(path: { segments: TrainSegment[] }): TrainRouteSegment[] {
+    return path.segments.filter((s): s is TrainRouteSegment => s.type === "train");
+  }
+
+  it("carries a published slice onto the segment, between the stop endpoints", () => {
+    const path = trainDijkstra(
+      toyGraph(stations, [
+        { from: "X", to: "M", line: "G", sec: 60, geom: X_M_GEOM },
+        { from: "M", to: "Z", line: "G", sec: 60 },
+      ]),
+      "X",
+      "Z",
+    )!;
+    const [first, second] = trainSegmentsOf(path);
+    // Interior point from the slice, framed by the stops the shard carries.
+    expect(first.geometry?.length).toBe(3);
+    expect(first.geometry?.[0]).toEqual([-74, 40.7]);
+    expect(first.geometry?.[1]?.[1]).toBeCloseTo(40.703, 5);
+    expect(first.geometry?.[1]?.[0]).toBeCloseTo(-74, 5);
+    expect(first.geometry?.[2]).toEqual([-74, 40.706]);
+    // No slice published: no geometry key at all, and the chord is drawn.
+    expect("geometry" in second).toBe(false);
+    const drawData = buildTrainDrawData(path.segments, new Map());
+    expect(drawData.polylines[0]?.coords).toEqual(first.geometry);
+    expect(drawData.polylines[1]?.coords).toEqual([
+      [-74, 40.706],
+      [-74, 40.712],
+    ]);
+  });
+
+  it("draws the chord when the slice does not decode", () => {
+    const path = trainDijkstra(
+      toyGraph(stations, [
+        { from: "X", to: "M", line: "G", sec: 60, geom: "truncated" },
+        { from: "M", to: "Z", line: "G", sec: 60 },
+      ]),
+      "X",
+      "Z",
+    )!;
+    // "truncated" passes the contract regex but is not a decodable pair
+    // sequence — it collapses into absent geometry, not a throw.
+    const [first] = trainSegmentsOf(path);
+    expect("geometry" in first).toBe(false);
+    const drawData = buildTrainDrawData(path.segments, new Map());
+    expect(drawData.polylines[0]?.coords).toEqual([
+      [-74, 40.7],
+      [-74, 40.706],
+    ]);
+  });
+
+  it("draws each hop of a mixed path the right way", () => {
+    const path = trainDijkstra(
+      toyGraph(
+        [...stations, toyStation("W", 40.718)],
+        [
+          { from: "X", to: "M", line: "G", sec: 60, geom: X_M_GEOM },
+          { from: "M", to: "Z", line: "G", sec: 60 },
+          { from: "Z", to: "W", line: "G", sec: 60, geom: X_M_GEOM },
+        ],
+      ),
+      "X",
+      "W",
+    )!;
+    const drawData = buildTrainDrawData(path.segments, new Map());
+    expect(drawData.polylines).toHaveLength(3);
+    expect(drawData.polylines[0]?.coords).toHaveLength(3);
+    expect(drawData.polylines[1]?.coords).toHaveLength(2);
+    expect(drawData.polylines[2]?.coords).toHaveLength(3);
   });
 });

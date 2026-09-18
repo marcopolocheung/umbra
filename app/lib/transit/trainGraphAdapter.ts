@@ -189,6 +189,9 @@ export function buildTrainGraphFromShards(
         direction: edge.direction,
         // Absent stays absent: unknown is not "underground" (#393).
         ...(edge.structure ? { structure: edge.structure } : {}),
+        // Absent stays absent: the chord is drawn where no slice was published.
+        // The encoded string travels untouched; no mapping, no normalisation.
+        ...(edge.geom ? { geom: edge.geom } : {}),
       });
     }
   }

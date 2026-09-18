@@ -351,6 +351,44 @@ describe("transit shard", () => {
     expect(bad({ underground: "yes" })).toThrow(/edge/);
   });
 
+  it("keeps an edge's published track geometry", () => {
+    const shard = subwayShard();
+    (shard.edges[0] as Record<string, unknown>).geom = "_}wwFndrbM";
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect(parsed.edges[0].geom).toBe("_}wwFndrbM");
+  });
+
+  it("leaves geom absent on an edge that publishes none", () => {
+    // Absent means the edge was not sliceable (or the generation predates
+    // per-edge geometry): the client draws the straight chord there.
+    const shard = subwayShard();
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect("geom" in parsed.edges[0]).toBe(false);
+    // An explicit null is what a serializer emits for an optional it has no
+    // value for, and must read as absent rather than throwing — the house idiom.
+    const nulled = subwayShard();
+    (nulled.edges[0] as Record<string, unknown>).geom = null;
+    expect("geom" in parseTransitShard(nulled, refFor(nulled)).edges[0]).toBe(false);
+    // So does the empty string: the producer omits the key, but an empty
+    // encoding carries no points either way.
+    const emptied = subwayShard();
+    (emptied.edges[0] as Record<string, unknown>).geom = "";
+    expect("geom" in parseTransitShard(emptied, refFor(emptied)).edges[0]).toBe(false);
+  });
+
+  it("rejects geom that is not a bounded polyline-shaped string", () => {
+    const bad = (geom: unknown) => {
+      const shard = subwayShard();
+      (shard.edges[0] as Record<string, unknown>).geom = geom;
+      return () => parseTransitShard(shard, refFor(shard));
+    };
+    // Outside the encoder's 63–126 charset, and past ~4× the observed worst case.
+    expect(bad("has a space")).toThrow(/edge/);
+    expect(bad("\u007f_}wwFndrbM")).toThrow(/edge/);
+    expect(bad("?".repeat(8193))).toThrow(/edge/);
+    expect(bad(42)).toThrow(/edge/);
+  });
+
   it("keeps service-day hours past midnight distinct", () => {
     const shard = subwayShard();
     const parsed = parseTransitShard(shard, refFor(shard));
