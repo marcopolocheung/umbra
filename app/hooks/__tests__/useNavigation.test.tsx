@@ -1061,6 +1061,56 @@ describe("entrances are fetched for the chosen stations, not the whole route (#4
 });
 
 
+describe("the boarding door is one a rider can enter by", () => {
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
+  });
+
+  it("never boards through an exit-only door, however well placed", async () => {
+    // Both doors belong to Alpha (103.803). The exit-only one sits between the
+    // start and the platform, so it is the shortest way in on distance alone.
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({
+      entrances: [
+        { id: 1, lat: 1.3, lon: 103.8025, kind: "entrance", exitOnly: true },
+        { id: 2, lat: 1.3, lon: 103.8034, kind: "entrance" },
+      ],
+      failed: false,
+    } as never);
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.81, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+
+    const transitRoute = result.current.filteredRoutes[0];
+    expect(transitRoute.label).toBe("Via Subway");
+    expect(transitRoute.mrtEntrances?.[0]).toEqual([103.8034, 1.3]);
+  });
+});
+
 // ─── #400: a dropped transit option ─────────────────────────────────────────
 
 /**

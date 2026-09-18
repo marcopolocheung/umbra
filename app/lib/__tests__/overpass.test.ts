@@ -577,6 +577,32 @@ describe("fetchStationEntranceBoxes — several boxes, one request", () => {
     expect(res.map((x) => x.id)).toEqual([41]);
   });
 
+  it("drops doors OSM marks closed or emergency-only", async () => {
+    // All tagged railway=subway_entrance; 53-55 let no rider through. 52 is a
+    // hinged door kept shut, which is still a door.
+    stubOnce([
+      { type: "node", id: 51, lat: 1, lon: 1, tags: { railway: "subway_entrance" } },
+      { type: "node", id: 52, lat: 1, lon: 1, tags: { railway: "subway_entrance", open: "no", door: "hinged" } },
+      { type: "node", id: 53, lat: 1, lon: 1, tags: { railway: "subway_entrance", access: "no" } },
+      { type: "node", id: 54, lat: 1, lon: 1, tags: { railway: "subway_entrance", access: "private" } },
+      { type: "node", id: 55, lat: 1, lon: 1, tags: { railway: "subway_entrance", entrance: "emergency" } },
+    ]);
+    const [s, w, n, e] = nextBbox();
+    const { entrances } = await fetchStationEntranceBoxes([{ south: s, west: w, north: n, east: e }]);
+    expect(entrances.map((x) => x.id)).toEqual([51, 52]);
+  });
+
+  it("marks an exit-only door, and only that one", async () => {
+    stubOnce([
+      { type: "node", id: 61, lat: 1, lon: 1, tags: { railway: "subway_entrance", entrance: "exit" } },
+      { type: "node", id: 62, lat: 1, lon: 1, tags: { railway: "subway_entrance", entrance: "yes" } },
+    ]);
+    const [s, w, n, e] = nextBbox();
+    const { entrances } = await fetchStationEntranceBoxes([{ south: s, west: w, north: n, east: e }]);
+    expect(entrances.find((x) => x.id === 61)?.exitOnly).toBe(true);
+    expect("exitOnly" in entrances.find((x) => x.id === 62)!).toBe(false);
+  });
+
   it("makes no request at all for an empty box list", async () => {
     const fetchMock = stubOnce([]);
     expect(await fetchStationEntranceBoxes([])).toEqual({ entrances: [], failed: false });
