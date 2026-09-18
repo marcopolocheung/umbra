@@ -121,6 +121,12 @@ export interface NavSeam {
  * Whether a route belongs to the walk list or the transit list. The panel shows
  * one list at a time, so this is also what makes a card's index meaningful.
  */
+/**
+ * The transit modes answered separately, in the order their cards appear.
+ * Subway first: it is usually both faster and shadier in Manhattan.
+ */
+const TRANSIT_MODES = ["subway", "bus"] as const;
+
 export function isTransitRoute(route: RouteOption): boolean {
   return !!route.legs?.find((l: RouteLeg) => l.type === "transit");
 }
@@ -916,243 +922,260 @@ export function useRouting({
               if (import.meta.env.DEV)
                 console.log("[transit] boarding zone:", boardZone ?? "unresolved — wait unpriced");
 
-              const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure);
-              if (import.meta.env.DEV)
-                console.log(
-                  "[transit] bestTrain:",
-                  bestTrain
-                    ? `entry=${bestTrain.entryStation.name}, exit=${bestTrain.exitStation.name}, ${bestTrain.path.stationIds.length} stations, ${bestTrain.path.segments.length} segments`
-                    : "null",
-                );
-
-              if (bestTrain) {
-                const WALK_SHADOW_STRENGTH = 0.5;
-
-                // Entrances are fetched here, and not before, because only now
-                // is it known which two stations matter. Asking Overpass for the
-                // whole route's bbox meant a box the size of the trip plus
-                // ~3.3 km in each direction, for doors within 400 m of two
-                // points.
-                const entranceBoxes = [bestTrain.entryStation, bestTrain.exitStation].map(
-                  (station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M),
-                );
-                const entranceResult = await fetchStationEntranceBoxes(entranceBoxes, calcSignal);
-                const { entrances } = entranceResult;
+              // Subway and bus are answered separately, and both are offered.
+              //
+              // Not a presentation choice: a bus stop stands every ~200 m, so
+              // the five nearest "stations" to any midtown point are all bus
+              // stops within a block. One unfiltered search would take bus
+              // candidates at one end and subway at the other, and since the
+              // spatial stubs are refused those are disconnected components —
+              // so it returns no transit route at all, not merely a worse one.
+              for (const transitMode of TRANSIT_MODES) {
+                const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure, transitMode);
                 if (import.meta.env.DEV)
                   console.log(
-                    "[transit] entrances:",
-                    entrances.length,
-                    "in 2 station boxes",
-                    entranceResult.failed ? "(fetch FAILED — list is cache only)" : "",
+                    `[transit] bestTrain (${transitMode}):`,
+                    bestTrain
+                      ? `entry=${bestTrain.entryStation.name}, exit=${bestTrain.exitStation.name}, ${bestTrain.path.stationIds.length} stations, ${bestTrain.path.segments.length} segments`
+                      : "null",
                   );
 
-                // Matched against **every** station, not just the two endpoints,
-                // even though only their boxes were fetched. A door inside the
-                // entry station's box may really belong to a neighbour 200 m
-                // away; offering the full set is what lets the matcher give it
-                // to that neighbour instead of misattributing it here.
-                const stationEntrances = new Map<
-                  string,
-                  { lat: number; lon: number; kind?: "entrance" | "station" }[]
-                >();
-                for (const entrance of entrances) {
-                  const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
-                  if (stationId != null) {
-                    if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
-                    stationEntrances
-                      .get(stationId)!
-                      .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
-                  }
-                }
+                if (bestTrain) {
+                  const WALK_SHADOW_STRENGTH = 0.5;
 
-                const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [
-                  { ...bestTrain.entryStation, kind: "station" },
-                ];
-                const boardEntrance = pickClosestEntrance(a, boardCandidates, haversineMeters);
-
-                const alightCandidates = stationEntrances.get(bestTrain.exitStation.id) ?? [
-                  { ...bestTrain.exitStation, kind: "station" },
-                ];
-                const alightEntrance = pickClosestEntrance(b, alightCandidates, haversineMeters);
-
-                // Snap to somewhere the walker can actually reach. A station
-                // centroid, and sometimes a real entrance, sits on a fragment of
-                // the pedestrian graph that connects to nothing — station
-                // interiors and service stubs are their own islands. Nearest-node
-                // snapping lands there, the walk leg fails, and the whole transit
-                // option is dropped for a reason nobody can see.
-                //
-                // The walking route from A to B already succeeded, so both ends
-                // share one component; computing it from the start covers the
-                // alight snap too. `walkOpts` pins travel mode to walk, and walk
-                // prohibits no edge, so this set is exactly what dijkstra can
-                // traverse.
-                const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
-                const boardNodeId = snapToReachable(
-                  [boardEntrance.lon, boardEntrance.lat],
-                  routingGraph,
-                  walkableFromStart,
-                  spatialGrid,
-                );
-                const walkA = dijkstra(
-                  routingGraph,
-                  effectiveStartId,
-                  boardNodeId,
-                  WALK_SHADOW_STRENGTH,
-                  walkOpts,
-                );
-                if (import.meta.env.DEV)
-                  console.log(
-                    "[transit] walkA:",
-                    walkA ? `${walkA.distanceM.toFixed(0)}m` : "null",
-                    "boardNodeId:",
-                    boardNodeId,
+                  // Entrances are fetched here, and not before, because only now
+                  // is it known which two stations matter. Asking Overpass for the
+                  // whole route's bbox meant a box the size of the trip plus
+                  // ~3.3 km in each direction, for doors within 400 m of two
+                  // points.
+                  const entranceBoxes = [bestTrain.entryStation, bestTrain.exitStation].map(
+                    (station) => boxAround(station.lat, station.lon, ENTRANCE_MATCH_MAX_M),
                   );
-
-                const alightNodeId = snapToReachable(
-                  [alightEntrance.lon, alightEntrance.lat],
-                  routingGraph,
-                  walkableFromStart,
-                  spatialGrid,
-                );
-                const walkB = dijkstra(
-                  routingGraph,
-                  alightNodeId,
-                  effectiveEndId,
-                  WALK_SHADOW_STRENGTH,
-                  walkOpts,
-                );
-                if (import.meta.env.DEV)
-                  console.log(
-                    "[transit] walkB:",
-                    walkB ? `${walkB.distanceM.toFixed(0)}m` : "null",
-                    "alightNodeId:",
-                    alightNodeId,
-                  );
-
-                if (!walkA || !walkB) {
+                  // Bus stops have no entrance geometry in OSM and need none —
+                  // the stop *is* the boarding point — so the fetch and the
+                  // O(entrances x stations) match are pure waste for bus. The
+                  // candidate fallback below already resolves to the stop.
+                  const entranceResult =
+                    transitMode === "subway"
+                      ? await fetchStationEntranceBoxes(entranceBoxes, calcSignal)
+                      : { entrances: [], failed: false };
+                  const { entrances } = entranceResult;
                   if (import.meta.env.DEV)
-                    console.warn(
-                      "[transit] Walk leg failed:",
-                      !walkA ? "walkA=null" : "",
-                      !walkB ? "walkB=null" : "",
+                    console.log(
+                      "[transit] entrances:",
+                      entrances.length,
+                      "in 2 station boxes",
+                      entranceResult.failed ? "(fetch FAILED — list is cache only)" : "",
                     );
-                  transitNotice = entranceResult.failed
-                    ? `No walking route to ${bestTrain.entryStation.name}. Station entrance data could not be loaded — try again in a moment.`
-                    : `Transit via ${bestTrain.entryStation.name} was found but no walking route reaches it, so it is not offered here.`;
-                }
-                if (walkA && walkB) {
-                  const walkAGeoJSON = graphToGeoJSON(walkA.nodeIds, routingGraph);
-                  const walkBGeoJSON = graphToGeoJSON(walkB.nodeIds, routingGraph);
 
-                  const transitCoords: [number, number][] = bestTrain.path.stationIds.map((id) => {
-                    const s = trainGraph.stations.get(id)!;
-                    return [s.lon, s.lat];
-                  });
-                  const transitGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
-                    type: "Feature",
-                    properties: {},
-                    geometry: { type: "LineString", coordinates: transitCoords },
-                  };
+                  // Matched against **every** station, not just the two endpoints,
+                  // even though only their boxes were fetched. A door inside the
+                  // entry station's box may really belong to a neighbour 200 m
+                  // away; offering the full set is what lets the matcher give it
+                  // to that neighbour instead of misattributing it here.
+                  const stationEntrances = new Map<
+                    string,
+                    { lat: number; lon: number; kind?: "entrance" | "station" }[]
+                  >();
+                  for (const entrance of entrances) {
+                    const stationId = matchEntranceToTrainStation(entrance, trainGraph.stations);
+                    if (stationId != null) {
+                      if (!stationEntrances.has(stationId)) stationEntrances.set(stationId, []);
+                      stationEntrances
+                        .get(stationId)!
+                        .push({ lat: entrance.lat, lon: entrance.lon, kind: entrance.kind });
+                    }
+                  }
 
-                  const stopNames = bestTrain.path.stationIds.map(
-                    (id) => trainGraph.stations.get(id)?.name ?? `Station ${id}`,
-                  );
-
-                  const primaryLine = bestTrain.path.lines[0] ?? "";
-                  const lineColor = trainGraph.lineColors.get(primaryLine) ?? "#0070BD";
-                  const lineName = trainGraph.lineNames.get(primaryLine) ?? primaryLine;
-                  const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
-                  // Measured per segment where the shards publish structure;
-                  // the per-mode constant is the fallback, and the absent
-                  // coverage is what tells the card the figure is assumed.
-                  const measured = bestTrain.path.exposure;
-                  const sunExposure = measured?.sunExposure ?? TRAIN_SUN_EXPOSURE[lineMode];
-                  const sunExposureCoverage = measured?.coverage;
-                  const aboveGroundShare = measured?.aboveGroundShare;
-
-                  // Riding, changing lines, and standing on the platform. The
-                  // wait is carried separately as well so the card can say how
-                  // much of the quoted time it is.
-                  const transitTimeSec = bestTrain.path.totalSec;
-
-                  const legs: RouteLeg[] = [
-                    {
-                      type: "walk",
-                      geojson: walkAGeoJSON,
-                      distanceM: walkA.distanceM,
-                      shadowCoverage: walkA.shadowCoverage,
-                    },
-                    {
-                      type: "transit",
-                      geojson: transitGeoJSON,
-                      travelTimeSec: transitTimeSec,
-                      waitSec: bestTrain.path.waitSec,
-                      line: primaryLine,
-                      lineColor,
-                      lineName,
-                      sunExposure,
-                      ...(sunExposureCoverage != null ? { sunExposureCoverage } : {}),
-                      ...(aboveGroundShare != null ? { aboveGroundShare } : {}),
-                      stops: stopNames,
-                    },
-                    {
-                      type: "walk",
-                      geojson: walkBGeoJSON,
-                      distanceM: walkB.distanceM,
-                      shadowCoverage: walkB.shadowCoverage,
-                    },
+                  const boardCandidates = stationEntrances.get(bestTrain.entryStation.id) ?? [
+                    { ...bestTrain.entryStation, kind: "station" },
                   ];
+                  const boardEntrance = pickClosestEntrance(a, boardCandidates, haversineMeters);
 
-                  const totalWalkDistM = walkA.distanceM + walkB.distanceM;
-                  const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
-                  const shadowCov =
-                    totalWalkDistM > 0
-                      ? (walkA.distanceM * walkA.shadowCoverage +
-                          walkB.distanceM * walkB.shadowCoverage) /
-                        totalWalkDistM
-                      : 0;
+                  const alightCandidates = stationEntrances.get(bestTrain.exitStation.id) ?? [
+                    { ...bestTrain.exitStation, kind: "station" },
+                  ];
+                  const alightEntrance = pickClosestEntrance(b, alightCandidates, haversineMeters);
 
-                  const combinedGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
-                    type: "Feature",
-                    properties: {},
-                    geometry: {
-                      type: "LineString",
-                      coordinates: [
-                        ...walkAGeoJSON.geometry.coordinates,
-                        ...walkBGeoJSON.geometry.coordinates,
-                      ],
-                    },
-                  };
-
-                  const drawData = buildTrainDrawData(
-                    bestTrain.path.segments,
-                    trainGraph.lineColors,
+                  // Snap to somewhere the walker can actually reach. A station
+                  // centroid, and sometimes a real entrance, sits on a fragment of
+                  // the pedestrian graph that connects to nothing — station
+                  // interiors and service stubs are their own islands. Nearest-node
+                  // snapping lands there, the walk leg fails, and the whole transit
+                  // option is dropped for a reason nobody can see.
+                  //
+                  // The walking route from A to B already succeeded, so both ends
+                  // share one component; computing it from the start covers the
+                  // alight snap too. `walkOpts` pins travel mode to walk, and walk
+                  // prohibits no edge, so this set is exactly what dijkstra can
+                  // traverse.
+                  const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
+                  const boardNodeId = snapToReachable(
+                    [boardEntrance.lon, boardEntrance.lat],
+                    routingGraph,
+                    walkableFromStart,
+                    spatialGrid,
                   );
+                  const walkA = dijkstra(
+                    routingGraph,
+                    effectiveStartId,
+                    boardNodeId,
+                    WALK_SHADOW_STRENGTH,
+                    walkOpts,
+                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "[transit] walkA:",
+                      walkA ? `${walkA.distanceM.toFixed(0)}m` : "null",
+                      "boardNodeId:",
+                      boardNodeId,
+                    );
 
-                  options.push({
-                    label: "Via Transit",
-                    geojson: combinedGeoJSON,
-                    distanceM: totalWalkDistM,
-                    shadowCoverage: shadowCov,
-                    longestContinuousShadowM: 0,
-                    longestContinuousSunM: 0,
-                    shadowTransitions: 0,
-                    detourRatio: 1.0,
-                    turnCount: 0,
-                    legs,
-                    totalTimeSec,
-                    mrtEntrances: [
-                      [boardEntrance.lon, boardEntrance.lat] as [number, number],
-                      [alightEntrance.lon, alightEntrance.lat] as [number, number],
-                    ],
-                    trainDrawData: drawData,
-                    // Absent for the Overpass producer, which makes none of
-                    // these claims and must not borrow them (#410).
-                    ...(trainGraph.provenance
-                      ? { transitProvenance: trainGraph.provenance }
-                      : {}),
-                  });
+                  const alightNodeId = snapToReachable(
+                    [alightEntrance.lon, alightEntrance.lat],
+                    routingGraph,
+                    walkableFromStart,
+                    spatialGrid,
+                  );
+                  const walkB = dijkstra(
+                    routingGraph,
+                    alightNodeId,
+                    effectiveEndId,
+                    WALK_SHADOW_STRENGTH,
+                    walkOpts,
+                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "[transit] walkB:",
+                      walkB ? `${walkB.distanceM.toFixed(0)}m` : "null",
+                      "alightNodeId:",
+                      alightNodeId,
+                    );
+
+                  if (!walkA || !walkB) {
+                    if (import.meta.env.DEV)
+                      console.warn(
+                        "[transit] Walk leg failed:",
+                        !walkA ? "walkA=null" : "",
+                        !walkB ? "walkB=null" : "",
+                      );
+                    transitNotice = entranceResult.failed
+                      ? `No walking route to ${bestTrain.entryStation.name}. Station entrance data could not be loaded — try again in a moment.`
+                      : `Transit via ${bestTrain.entryStation.name} was found but no walking route reaches it, so it is not offered here.`;
+                  }
+                  if (walkA && walkB) {
+                    const walkAGeoJSON = graphToGeoJSON(walkA.nodeIds, routingGraph);
+                    const walkBGeoJSON = graphToGeoJSON(walkB.nodeIds, routingGraph);
+
+                    const transitCoords: [number, number][] = bestTrain.path.stationIds.map((id) => {
+                      const s = trainGraph.stations.get(id)!;
+                      return [s.lon, s.lat];
+                    });
+                    const transitGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
+                      type: "Feature",
+                      properties: {},
+                      geometry: { type: "LineString", coordinates: transitCoords },
+                    };
+
+                    const stopNames = bestTrain.path.stationIds.map(
+                      (id) => trainGraph.stations.get(id)?.name ?? `Station ${id}`,
+                    );
+
+                    const primaryLine = bestTrain.path.lines[0] ?? "";
+                    const lineColor = trainGraph.lineColors.get(primaryLine) ?? "#0070BD";
+                    const lineName = trainGraph.lineNames.get(primaryLine) ?? primaryLine;
+                    const lineMode = trainGraph.lineModes.get(primaryLine) ?? "subway";
+                    // Measured per segment where the shards publish structure;
+                    // the per-mode constant is the fallback, and the absent
+                    // coverage is what tells the card the figure is assumed.
+                    const measured = bestTrain.path.exposure;
+                    const sunExposure = measured?.sunExposure ?? TRAIN_SUN_EXPOSURE[lineMode];
+                    const sunExposureCoverage = measured?.coverage;
+                    const aboveGroundShare = measured?.aboveGroundShare;
+
+                    // Riding, changing lines, and standing on the platform. The
+                    // wait is carried separately as well so the card can say how
+                    // much of the quoted time it is.
+                    const transitTimeSec = bestTrain.path.totalSec;
+
+                    const legs: RouteLeg[] = [
+                      {
+                        type: "walk",
+                        geojson: walkAGeoJSON,
+                        distanceM: walkA.distanceM,
+                        shadowCoverage: walkA.shadowCoverage,
+                      },
+                      {
+                        type: "transit",
+                        geojson: transitGeoJSON,
+                        travelTimeSec: transitTimeSec,
+                        waitSec: bestTrain.path.waitSec,
+                        line: primaryLine,
+                        lineColor,
+                        lineName,
+                        sunExposure,
+                        ...(sunExposureCoverage != null ? { sunExposureCoverage } : {}),
+                        ...(aboveGroundShare != null ? { aboveGroundShare } : {}),
+                        stops: stopNames,
+                      },
+                      {
+                        type: "walk",
+                        geojson: walkBGeoJSON,
+                        distanceM: walkB.distanceM,
+                        shadowCoverage: walkB.shadowCoverage,
+                      },
+                    ];
+
+                    const totalWalkDistM = walkA.distanceM + walkB.distanceM;
+                    const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
+                    const shadowCov =
+                      totalWalkDistM > 0
+                        ? (walkA.distanceM * walkA.shadowCoverage +
+                            walkB.distanceM * walkB.shadowCoverage) /
+                          totalWalkDistM
+                        : 0;
+
+                    const combinedGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
+                      type: "Feature",
+                      properties: {},
+                      geometry: {
+                        type: "LineString",
+                        coordinates: [
+                          ...walkAGeoJSON.geometry.coordinates,
+                          ...walkBGeoJSON.geometry.coordinates,
+                        ],
+                      },
+                    };
+
+                    const drawData = buildTrainDrawData(
+                      bestTrain.path.segments,
+                      trainGraph.lineColors,
+                    );
+
+                    options.push({
+                      label: transitMode === "bus" ? "Via Bus" : "Via Subway",
+                      geojson: combinedGeoJSON,
+                      distanceM: totalWalkDistM,
+                      shadowCoverage: shadowCov,
+                      longestContinuousShadowM: 0,
+                      longestContinuousSunM: 0,
+                      shadowTransitions: 0,
+                      detourRatio: 1.0,
+                      turnCount: 0,
+                      legs,
+                      totalTimeSec,
+                      mrtEntrances: [
+                        [boardEntrance.lon, boardEntrance.lat] as [number, number],
+                        [alightEntrance.lon, alightEntrance.lat] as [number, number],
+                      ],
+                      trainDrawData: drawData,
+                      // Absent for the Overpass producer, which makes none of
+                      // these claims and must not borrow them (#410).
+                      ...(trainGraph.provenance
+                        ? { transitProvenance: trainGraph.provenance }
+                        : {}),
+                    });
+                  }
                 }
               }
             }

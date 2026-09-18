@@ -14,6 +14,7 @@
  */
 
 import {
+  coveredHourKey,
   headwayKey,
   type TrainDayType,
   type TrainGraph,
@@ -27,21 +28,26 @@ import type { HeadwayDates, TransitShard } from "./shardContract";
 /**
  * GTFS `route_type` → the modes the sun-exposure table prices.
  *
- * Bus (type 3) is deliberately absent. `TRAIN_SUN_EXPOSURE` has no bus figure,
- * and defaulting one to `subway` would claim a bus ride is fully shaded — so
- * bus shards are refused outright until the slice that models them lands.
- *
- * When it does (3C), it must **not** reuse `railExposure`: a bus is at grade
- * everywhere, so track structure carries no information for it, and the
- * exposure that matters is the unsheltered wait at the stop — full pedestrian
- * sun, not a windowed vehicle.
+ * `null` for anything unrecognised, and deliberately so: defaulting an unknown
+ * mode to `subway` would price it at `TRAIN_SUN_EXPOSURE.subway`, which is 0.0,
+ * and claim a ride in full sun is fully shaded. The Overpass producer's
+ * `routeTagToMode` still guesses `subway`; it is kept rail-only for that reason.
  */
 function routeTypeToMode(type: number): TrainMode | null {
   if (type === 0) return "light_rail"; // tram / streetcar / light rail
   if (type === 1) return "subway";
   if (type === 2) return "light_rail"; // commuter rail: at grade, windowed
+  if (type === 3) return "bus";
   if (type === 12) return "monorail";
   return null;
+}
+
+/**
+ * Shard kind to the manifest's dataset key. A bus shard declares `bus-shard`
+ * while the manifest publishes its block as `bus`; everything else is identity.
+ */
+function datasetOf(kind: string): string {
+  return kind === "bus-shard" ? "bus" : kind;
 }
 
 const DAY_TYPES = new Set<string>(["weekday", "saturday", "sunday"]);
@@ -70,17 +76,22 @@ function buildHeadways(shards: TransitShard[], headwayDates?: HeadwayDates): Tra
   const medianSec = new Map<string, number>();
   const coveredHours = new Set<string>();
   const nextDayType = new Map<TrainDayType, TrainDayType>();
+  const routeDataset = new Map<string, string>();
 
   for (const shard of shards) {
+    const dataset = datasetOf(shard.kind);
     for (const headway of shard.headways) {
       medianSec.set(
         headwayKey(headway.route, headway.direction, headway.dayType, headway.hour),
         headway.medianSec,
       );
-      coveredHours.add(`${headway.dayType}|${headway.hour}`);
+      // Keyed by dataset: the subway feed and the bus feeds are separate
+      // publications, and one's coverage must not speak for the other's.
+      coveredHours.add(coveredHourKey(dataset, headway.dayType, headway.hour));
+      routeDataset.set(headway.route, dataset);
     }
 
-    const dates = headwayDates?.[shard.kind === "bus-shard" ? "bus" : shard.kind];
+    const dates = headwayDates?.[dataset];
     if (!dates || typeof dates === "string") continue;
     for (const [dayType, info] of Object.entries(dates)) {
       if (isDayType(dayType) && isDayType(info?.nextDayType)) {
@@ -89,11 +100,11 @@ function buildHeadways(shards: TransitShard[], headwayDates?: HeadwayDates): Tra
     }
   }
 
-  return { medianSec, coveredHours, nextDayType };
+  return { medianSec, coveredHours, nextDayType, routeDataset };
 }
 
 /**
- * Builds the graph from every **subway** shard given.
+ * Builds the graph from every subway and bus shard given.
  *
  * Returns `null` when no usable shard is present, matching `fetchTrainGraph`'s
  * contract that transit is a non-critical extra: the caller keeps its walking
@@ -103,7 +114,9 @@ export function buildTrainGraphFromShards(
   shards: TransitShard[],
   headwayDates?: HeadwayDates,
 ): TrainGraph | null {
-  const usable = shards.filter((shard) => shard.kind === "subway");
+  const usable = shards.filter(
+    (shard) => shard.kind === "subway" || shard.kind === "bus-shard",
+  );
   if (usable.length === 0) return null;
 
   const stations = new Map<string, TrainStation>();
