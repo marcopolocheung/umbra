@@ -1,5 +1,4 @@
 import type { RouteLeg, RouteOption } from "./routing";
-import { MIN_WAIT_COVERAGE } from "./transitWaitExposure";
 import { getTravelModePolicy } from "./travelMode";
 
 /** Speed a route's durations are reported at — its own mode, else walking. */
@@ -22,10 +21,14 @@ function transitLegOf(route: RouteOption): RouteLeg | undefined {
 export interface OutdoorExposure {
   /** Seconds walking, plus seconds waiting at a stop the app samples. */
   outdoorSec: number;
-  /** Share of the *measured* outdoor seconds in shadow, 0–1. */
+  /** Share of the answered outdoor seconds in shadow, 0–1. */
   shadow: number;
-  /** Share of `outdoorSec` that was measured. Never read a low one as shade. */
-  coverage: number;
+  /**
+   * False when some of `outdoorSec` has no answer — a sampled stop whose sun
+   * the field could not give. `shadow` then describes only the rest, and must
+   * not be quoted as the trip's (#393).
+   */
+  known: boolean;
 }
 
 /**
@@ -36,6 +39,9 @@ export interface OutdoorExposure {
  * only how a walk's minutes were obtained. A bus stop's sampled shadow is the
  * same kind of measurement as a walking leg's, so the two share one sum.
  *
+ * All or nothing. An unanswered wait is not given the walk's shadow share: a
+ * stop in full sun beside a shaded walk would then read as shade.
+ *
  * The ride is not in here: it is behind glass or underground, and the card
  * states its track fact in words instead. Nor is a subway platform wait, which
  * #423 leaves unmodelled. See docs/notes/transit-headline-exposure.md.
@@ -43,29 +49,21 @@ export interface OutdoorExposure {
 export function transitOutdoorExposure(legs: RouteLeg[]): OutdoorExposure {
   const walkMps = getTravelModePolicy("walk").speedMps;
   let outdoorSec = 0;
-  let knownSec = 0;
+  let answeredSec = 0;
   let shadowSec = 0;
   for (const leg of legs) {
-    if (leg.type === "walk") {
-      const sec = (leg.distanceM ?? 0) / walkMps;
-      outdoorSec += sec;
-      if (leg.shadowCoverage == null) continue;
-      knownSec += sec;
-      shadowSec += sec * leg.shadowCoverage;
-    } else if (leg.waitExposure && leg.waitSec) {
-      outdoorSec += leg.waitSec;
-      // Absent shadow is unknown, not shaded: the seconds stay in the
-      // denominator and add nothing to what is known (#393).
-      const { shadow, coverage } = leg.waitExposure;
-      if (shadow == null) continue;
-      knownSec += leg.waitSec * coverage;
-      shadowSec += leg.waitSec * coverage * shadow;
-    }
+    const sec =
+      leg.type === "walk" ? (leg.distanceM ?? 0) / walkMps : leg.waitExposure ? (leg.waitSec ?? 0) : 0;
+    const shadow = leg.type === "walk" ? leg.shadowCoverage : leg.waitExposure?.shadow;
+    outdoorSec += sec;
+    if (shadow == null) continue;
+    answeredSec += sec;
+    shadowSec += sec * shadow;
   }
   return {
     outdoorSec,
-    shadow: knownSec > 0 ? shadowSec / knownSec : 0,
-    coverage: outdoorSec > 0 ? knownSec / outdoorSec : 0,
+    shadow: answeredSec > 0 ? shadowSec / answeredSec : 0,
+    known: answeredSec >= outdoorSec,
   };
 }
 
@@ -76,16 +74,15 @@ export function transitOutdoorExposure(legs: RouteLeg[]): OutdoorExposure {
  * so both halves are reported rather than only the exposed one.
  *
  * A transit trip counts its time outdoors instead (`transitOutdoorExposure`),
- * and is `null` when too little of that is measured to stand for the trip —
- * the same floor as the wait's own, for the same reason.
+ * and is `null` when any of that time has no answer.
  */
 export function routeExposureMinutes(route: RouteOption): {
   sunMinutes: number;
   shadowMinutes: number;
 } | null {
   if (route.legs && transitLegOf(route)) {
-    const { outdoorSec, shadow, coverage } = transitOutdoorExposure(route.legs);
-    if (coverage < MIN_WAIT_COVERAGE) return null;
+    const { outdoorSec, shadow, known } = transitOutdoorExposure(route.legs);
+    if (!known) return null;
     return {
       sunMinutes: (outdoorSec * (1 - shadow)) / 60,
       shadowMinutes: (outdoorSec * shadow) / 60,
@@ -163,8 +160,8 @@ export function routeExposureScope(route: RouteOption): string | null {
   const transit = transitLegOf(route);
   if (!transit) return null;
   return transit.waitExposure && transit.waitSec
-    ? "Counts the walk and the wait at the stop, not the ride."
-    : "Counts the walk, not the wait or the ride.";
+    ? "walk and stop wait only; ride not counted"
+    : "walk only; wait and ride not counted";
 }
 
 function formatSunMinutes(minutes: number): string {

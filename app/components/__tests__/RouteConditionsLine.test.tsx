@@ -117,20 +117,20 @@ describe("RouteConditionsLine on a transit route", () => {
       <RouteConditionsLine route={busRoute({ shadow: 0, coverage: 1, boardings: 1 })} weather={HOT} />,
     );
 
-    expect(screen.getByText(/of full sun/)).toBeTruthy();
-    expect(screen.getByText("Counts the walk and the wait at the stop, not the ride.")).toBeTruthy();
+    // 6 min at the stop in full sun, plus 10 min of shadowed walk at 20–60% of
+    // full sun: 8–12 min. Without the wait it would be 2–6.
+    expect(screen.getByText(/8–12 min/)).toBeTruthy();
+    expect(screen.getByText("Sun figures: walk and stop wait only; ride not counted.")).toBeTruthy();
   });
 
-  it("estimates nothing when too little of the time outdoors is measured", () => {
-    // A 6 min wait at stops the field could not answer for, beside under 2 min
-    // of walking: 22% of the time outdoors is known.
-    const unknown = busRoute({ coverage: 0.2, boardings: 1 });
-    unknown.legs = unknown.legs!.map((leg) => (leg.type === "walk" ? { ...leg, distanceM: 60 } : leg));
-    render(<RouteConditionsLine route={unknown} weather={HOT} />);
+  it("estimates nothing when the sun at a stop is unknown", () => {
+    render(<RouteConditionsLine route={busRoute({ coverage: 0.2, boardings: 1 })} weather={HOT} />);
 
     expect(screen.getByText("heat and sun not estimated")).toBeTruthy();
     expect(screen.queryByText(/heat stress/)).toBeNull();
     expect(screen.queryByText(/of full sun/)).toBeNull();
+    // The forecast's UV beside "not estimated" would read as a contradiction.
+    expect(screen.queryByText(/UV \d/)).toBeNull();
   });
 });
 

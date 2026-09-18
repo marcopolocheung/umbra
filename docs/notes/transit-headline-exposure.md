@@ -19,7 +19,7 @@ Three numbers on a transit card each described something narrower than they look
 walk distance only. So the ride and the wait were not under-counted, they were **absent**:
 a rider standing six minutes at a bus stop in full sun added zero minutes to the dose.
 The per-leg facts to do better already existed — `waitExposure` (#423) samples the
-shadow at every boarding stop, and `aboveGroundShare` / `sunExposureCoverage` (#411,
+shadow at the boarding stops, and `aboveGroundShare` / `sunExposureCoverage` (#411,
 #414) measure the ride's track.
 
 ## The question, answered
@@ -49,11 +49,22 @@ kind of measurement as a walking leg's shadow — the shadow at a point, from th
 field — so the two are one physical quantity and can share one sum, weighted by their
 seconds. This is the part item A made measurable and nothing spent.
 
-It inherits A's floor unchanged. `waitExposure.shadow` is absent below
-`MIN_WAIT_COVERAGE`; those seconds are then **unknown**, not shaded, and they stay in
-the denominator as unknown. The unsheltered-stop assumption stays where A put it — the
-producer's own note, beside the card in words (`riderFacingNotes`). It is not a
-discount on the figure.
+It inherits A's own floor unchanged: `waitExposure.shadow` is absent when less than
+`MIN_WAIT_COVERAGE` of the waiting seconds got a confident answer, and above it A's
+share stands for the whole wait, exactly as the leg line already quotes it.
+
+**An unanswered wait makes the trip's figure unknown — all of it.** The tempting
+alternative is to measure the share over the answered seconds and let it stand for the
+rest, as 3B does for the ride. Here that is the #393 inversion in a new place: a
+fully shaded walk beside six minutes at a stop nobody could see would read as six
+shaded minutes, and a stop in full sun is exactly what a bus rider is worried about.
+3B's rule leans on coverage being carried beside the figure; nothing on this card
+carries it. So there is no floor on the outdoor time — one unanswered stop and the
+card says unknown.
+
+The unsheltered-stop assumption stays where A put it — the producer's own note, passed
+through by `riderFacingNotes`. It is not a discount on the figure. Today that note is
+only a tooltip on the schedule line, which a touch screen never shows (#435).
 
 ### The wait on a subway platform — not counted, and said
 
@@ -75,15 +86,18 @@ that means "share of pavement in building shadow" is precisely how the two would
 being separable again.
 
 For the **dose**, the ride is left out and the card says so, rather than counting it at
-0.25. That constant is this codebase's "windowed surface vehicle" routing weight. It was
-never checked against *erythemal* UV, and the direction it would be wrong in is known:
-ordinary window glass absorbs most UVB, which dominates the erythemal action spectrum,
-so a rider behind glass takes well under a quarter of a pedestrian's burning UV. No
-figure for that is sourced here, and a dose built on an unsourced one is the thing
-`heat-model.md` exists to prevent. An underground ride contributes no UV at all, so for
-most Manhattan rides leaving it out costs nothing; for an elevated ride it understates
-the dose by an amount this model cannot bound, which is why the omission is stated
-beside the figure rather than left silent.
+0.25. That constant is this codebase's "windowed surface vehicle" routing weight, and it
+is explicitly *not for buses* (`trainGraph.ts`). It was never checked against
+*erythemal* UV. Window glass is generally understood to absorb much of the UVB that
+dominates erythemal weighting, which suggests the constant would overstate a seated
+rider's burning UV — but no transmission figure is sourced here, and open bus windows
+would undo it. A dose built on an unsourced figure is the thing `heat-model.md` exists
+to prevent.
+
+What leaving it out costs: nothing for an underground ride, which gets no UV. For an
+elevated rail ride and for **every bus ride** — both are in daylight behind glass — the
+dose is understated by an amount this model cannot bound. That is why the omission is
+stated beside the figure rather than left silent.
 
 Tunnel minutes must not enter as *shadow* minutes either: `dose()` charges a shadowed
 minute 20–60% of full sun for the diffuse sky, and a tunnel has no sky.
@@ -102,17 +116,19 @@ ride reads as a claim about the ride.
 `N min in sun`, the heat score's sun share and the dose all come from the same seconds,
 so the card cannot state three different trips.
 
-**Below the floor, it is unknown.** If less than 60% of the outdoor seconds are measured
-— a long bus wait whose stops the field could not answer for, beside a short walk — the
-chip reads `shadow unknown`, the bar is not drawn, the minutes say unknown, and the
-heat score and dose are not computed. The floor is `MIN_WAIT_COVERAGE`, the same 0.6
-as `MIN_REPORTABLE_COVERAGE` on the ride, for the same reason: a percentage of a sliver
-is not a measurement of the trip. Above the floor the share measured over the known
-seconds stands for the rest — the settled 3B rule, "measured over the determined part,
-with coverage carried beside it".
+**With a stop unanswered, it is unknown.** The chip reads `shadow unknown` in a dashed
+outline rather than the filled style of a measurement, the bar is a dashed track rather
+than an empty one (which would read as full sun), the minutes say unknown, and the heat
+score and dose are not computed.
 
-The dose line names its scope in words: *counts the walk and the wait at the stop, not
-the ride* for bus, *counts the walk, not the wait or the ride* for subway.
+Every transit card names the scope in words beside its minutes — *walk and stop wait
+only; ride not counted* for a sampled bus wait, *walk only; wait and ride not counted*
+otherwise — and the conditions panel repeats it beside the dose.
+
+One thing this does not claim: a walking leg always counts as answered. The router
+gives an edge with no shadow source a shadow of 0, so an unsampled block is counted as
+sun. That errs away from shade, which is the safe direction, but it is not
+"measured".
 
 ## What this does not change
 
@@ -121,6 +137,7 @@ the ride* for bus, *counts the walk, not the wait or the ride* for subway.
 - **The ride is not sampled along its drawn line.** Item F's rule stands: shading along
   the ride comes from published `structure`, and sampling the ride geometry is a
   different answer that owes its own justification.
-- **Other surfaces that print `shadowCoverage`** (the navigation panel's list, the
-  arrival panel, saved routes) now receive the outdoor figure, and do not yet know the
-  unknown state. Filed rather than widened into here.
+- **Other surfaces that print `shadowCoverage`** — the navigation panel's list, the
+  status and arrival panels, saved routes, the shade-preference slider — do not know
+  the unknown state, and with a stop unanswered they print the walks' share. They were
+  out of this change's scope; #434.

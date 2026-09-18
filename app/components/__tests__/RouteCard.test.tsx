@@ -48,14 +48,16 @@ describe("RouteCard on a transit route", () => {
     render(<RouteCard route={busRoute(840, 1, 1)} selected={false} onSelect={() => {}} />);
 
     expect(screen.getByText("100% shadow on foot")).toBeTruthy();
+    // The scope sits on the card itself, not only in the selected-route summary.
+    expect(screen.getByText(/walk and stop wait only; ride not counted/)).toBeTruthy();
   });
 
-  it("quotes no percentage when most of the time outdoors is unseen", () => {
+  it("quotes no percentage when the sun at a stop is unknown", () => {
     // 3 min walked, 10 min at a stop the field could not answer for.
     render(<RouteCard route={busRoute(252, 0.2)} selected={false} onSelect={() => {}} />);
 
     expect(screen.getByText("shadow unknown")).toBeTruthy();
     expect(screen.queryByText(/% shadow/)).toBeNull();
-    expect(screen.getByText("time in sun unknown")).toBeTruthy();
+    expect(screen.getByText(/^time in sun unknown/)).toBeTruthy();
   });
 });

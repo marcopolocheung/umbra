@@ -197,7 +197,7 @@ describe("transit exposure — time outdoors, not walk metres", () => {
     const subway = transitRoute([walkLeg(420, 0.5), rideLeg(240), walkLeg(420, 0.5)]);
 
     expect(routeShadowLabel(subway)).toBe("50% shadow on foot");
-    expect(routeExposureScope(subway)).toBe("Counts the walk, not the wait or the ride.");
+    expect(routeExposureScope(subway)).toBe("walk only; wait and ride not counted");
   });
 
   it("names the wait in its scope where the stop was sampled", () => {
@@ -207,11 +207,11 @@ describe("transit exposure — time outdoors, not walk metres", () => {
       walkLeg(420, 1),
     ]);
 
-    expect(routeExposureScope(bus)).toBe("Counts the walk and the wait at the stop, not the ride.");
+    expect(routeExposureScope(bus)).toBe("walk and stop wait only; ride not counted");
   });
 
-  it("says unknown rather than quoting the walk when most of the time outdoors is unseen", () => {
-    // 3 min walked, 10 min at stops the field could not answer for: 23% known.
+  it("says unknown rather than quoting the walk when a stop went unanswered", () => {
+    // 3 min walked, 10 min at stops the field could not answer for.
     const bus = transitRoute([
       walkLeg(126, 1),
       rideLeg(600, { coverage: 0.2, boardings: 2 }),
@@ -219,7 +219,7 @@ describe("transit exposure — time outdoors, not walk metres", () => {
     ]);
     const walk = route("Shortest", 1000, 0.2);
 
-    expect(transitOutdoorExposure(bus.legs!).coverage).toBeCloseTo(3 / 13, 10);
+    expect(transitOutdoorExposure(bus.legs!).known).toBe(false);
     expect(routeExposureMinutes(bus)).toBeNull();
     expect(routeShadowLabel(bus)).toBe("shadow unknown");
     expect(routeExposureLine(bus)).toBe("time in sun unknown");
@@ -227,17 +227,23 @@ describe("transit exposure — time outdoors, not walk metres", () => {
     expect(routeTradeoffLine(bus, bus)).toBe("Shortest baseline, shadow unknown");
   });
 
-  it("keeps an unknown wait unknown above the floor, never shaded", () => {
-    // 10 min walked in full sun, 2 min at an unanswered stop: 83% known. The
-    // unseen wait must not pull the share towards shade.
+  it("never lends an unanswered wait the walk's shade, however short the wait", () => {
+    // 10 min walked in full shadow, 2 min at a stop nobody could see. Giving the
+    // stop the walk's share would call two possibly sunny minutes shaded.
     const bus = transitRoute([
-      walkLeg(420, 0),
-      rideLeg(120, { coverage: 0, boardings: 1 }),
-      walkLeg(420, 0),
+      walkLeg(420, 1),
+      rideLeg(120, { coverage: 0.5, boardings: 1 }),
+      walkLeg(420, 1),
     ]);
 
-    expect(bus.shadowCoverage).toBe(0);
-    expect(routeShadowLabel(bus)).toBe("0% shadow on foot");
+    expect(routeExposureMinutes(bus)).toBeNull();
+    expect(routeShadowLabel(bus)).toBe("shadow unknown");
+  });
+
+  it("reports under a minute, not unknown, for a trip with no time outdoors", () => {
+    const subway = transitRoute([walkLeg(0, 1), rideLeg(240), walkLeg(0, 1)]);
+
+    expect(routeExposureLine(subway)).toBe("under a minute in sun");
   });
 
   it("leaves walk routes exactly as they were", () => {

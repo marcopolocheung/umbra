@@ -52,8 +52,8 @@ export default function RouteConditionsLine({
   baselineRoute,
   weather,
 }: RouteConditionsLineProps) {
-  // Null when too little of a transit trip's time outdoors is measured: a score
-  // or a dose of the sliver that is would read as the whole trip's (#393).
+  // Null when some of a transit trip's time outdoors has no answer: a score or
+  // a dose of the rest would read as the whole trip's (#393).
   const exposure = routeExposureMinutes(route);
   const selected = exposure ? heatScore(exposure, weather) : null;
   const baselineExposure =
@@ -72,7 +72,7 @@ export default function RouteConditionsLine({
     ? "heat and sun not estimated"
     : scored
       ? heatBand(selected.score)
-      : `${selected.score}% of this ${policy.journeyNoun} is in sun`;
+      : `${selected.score}% of ${scope ? "the time outdoors" : `this ${policy.journeyNoun}`} is in sun`;
 
   // The heat model estimates felt temperature while walking (heat/score.ts) —
   // cycling airflow is unmodeled (#349) — so a bike route must not label the
@@ -86,7 +86,7 @@ export default function RouteConditionsLine({
   // and an apparent-temperature one otherwise render identically, and the difference
   // is humidity and wind being absent from the number entirely.
   const detail = !selected
-    ? "too little of the time outdoors is measured"
+    ? "the sun at a stop on this trip is unknown"
     : !scored
       ? "no weather forecast — heat not scored"
       : selected.inputs.ambientIsApparent
@@ -109,7 +109,7 @@ export default function RouteConditionsLine({
         >
           Experimental
         </span>
-        {weather?.uvIndex != null && (
+        {selected && weather?.uvIndex != null && (
           <span
             className="text-[10px] uppercase tracking-widest font-bold"
             style={{ color: "var(--md-on-surface-variant)" }}
@@ -146,7 +146,7 @@ export default function RouteConditionsLine({
 
       {selected && scope && (
         <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
-          {scope}
+          Sun figures: {scope}.
         </div>
       )}
 
