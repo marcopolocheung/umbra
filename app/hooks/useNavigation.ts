@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { haversineMeters } from "../lib/routing";
+import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";
 import { routeToGPX, routeToGeoJSON, downloadBlob } from "../lib/exportRoute";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { partialRouteNotice } from "../lib/partialRoute";
@@ -418,7 +419,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setDrawMode,
   ]);
 
-  const canTransit = !!(waypointA && waypointB && haversineMeters(waypointA, waypointB) > 500);
+  const canTransit = !!(waypointA && waypointB && haversineMeters(waypointA, waypointB) > MIN_TRANSIT_DISTANCE_M);
 
   return {
     // State
