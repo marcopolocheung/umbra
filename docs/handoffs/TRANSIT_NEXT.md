@@ -703,7 +703,7 @@ Surface it beside `waitSec`, and put the assumption in the `transitSunCaveat` fa
 folding it into a percentage — `riderFacingNotes` already passes the manifest's own
 unsheltered-stop note through to the card.
 
-### B. Bus cannot change buses, so its answers are thin and sometimes absurd *(part 2 built — PR_REF, not yet published)*
+### B. Bus cannot change buses, so its answers are thin and sometimes absurd *(part 2 built — #439, not yet published)*
 
 Zero transfers published across all six bus shards, and the subway↔bus stubs are refused, so the
 bus network is a set of isolated single-route corridors. That is what produced a 75-minute Staten
@@ -718,7 +718,7 @@ Two separate questions, and they want answering in this order:
    station nodes does not count as one, since 136 of the 150 published join stations a bus stop
    can walk into and out of — so a bus→station→bus hop through a station's doors cannot sneak in
    as an unvalidated bus-to-bus transfer in the meantime.
-2. **Subway↔bus — built in PR_REF.** `server/transit-prep/src/walkability.ts` promotes a
+2. **Subway↔bus — built in #439.** `server/transit-prep/src/walkability.ts` promotes a
    spatial stub to a third transfer kind, `walked`, when OSM's pedestrian ways connect one of the
    station's own doors (#430; exit-only doors only when leaving) to the bus stop by a routed path
    ≤ **1.5 × the door-to-stop straight line + 50 m**. 1.5 clears a grid's worst honest detour (√2);
@@ -755,7 +755,7 @@ Two separate questions, and they want answering in this order:
 
 **Before publishing a generation built by this code**, in this order:
 
-- **The client must be deployed first.** A client from before PR_REF throws on an unknown
+- **The client must be deployed first.** A client from before #439 throws on an unknown
   transfer kind, which fails the whole subway shard and silently drops every user back to
   Overpass. That is why this PR published no generation.
 - **Publishing is what turns mixed journeys on**, and the card was built for one mode. What a
