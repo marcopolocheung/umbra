@@ -317,6 +317,45 @@ describe("transit shard", () => {
     expect("changeSec" in parsed.stops[2]).toBe(false);
   });
 
+  it("keeps a station's published doors, exit-only marks included", () => {
+    const shard = subwayShard();
+    (shard.stops[2] as Record<string, unknown>).entrances = [
+      { lat: 40.7552, lon: -73.9873 },
+      { lat: 40.7556, lon: -73.9869, exitOnly: true },
+    ];
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect(parsed.stops[2].entrances).toEqual([
+      { lat: 40.7552, lon: -73.9873 },
+      { lat: 40.7556, lon: -73.9869, exitOnly: true },
+    ]);
+  });
+
+  it("keeps an empty door list distinct from none published", () => {
+    // [] says OSM maps no door here; absent says the generation never asked.
+    // Only the second sends the client back to Overpass.
+    const shard = subwayShard();
+    (shard.stops[2] as Record<string, unknown>).entrances = [];
+    (shard.stops[1] as Record<string, unknown>).entrances = null;
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect(parsed.stops[2].entrances).toEqual([]);
+    expect("entrances" in parsed.stops[1]).toBe(false);
+    expect("entrances" in parsed.stops[0]).toBe(false);
+  });
+
+  it("rejects doors that are not a bounded list of points", () => {
+    const bad = (entrances: unknown) => {
+      const shard = subwayShard();
+      (shard.stops[2] as Record<string, unknown>).entrances = entrances;
+      return () => parseTransitShard(shard, refFor(shard));
+    };
+    expect(bad({ lat: 40.75, lon: -73.98 })).toThrow(/stop/);
+    expect(bad([{ lat: Number.NaN, lon: -73.98 }])).toThrow(/stop/);
+    expect(bad([{ lat: 40.75 }])).toThrow(/stop/);
+    expect(bad([{ lat: 40.75, lon: -73.98, exitOnly: false }])).toThrow(/stop/);
+    expect(bad(Array.from({ length: 65 }, () => ({ lat: 40.75, lon: -73.98 })))).toThrow(/stop/);
+    expect(bad(Array.from({ length: 64 }, () => ({ lat: 40.75, lon: -73.98 })))).not.toThrow();
+  });
+
   it("keeps an edge's published structure shares", () => {
     const shard = subwayShard();
     (shard.edges[0] as Record<string, unknown>).structure = { underground: 0.7, elevated: 0.3 };

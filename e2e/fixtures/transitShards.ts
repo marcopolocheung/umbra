@@ -18,10 +18,25 @@ export const TRANSIT_LINE_COLOR = "FF00FF";
 
 const GENERATION = "nyc-2026-09-16-abcdef123456";
 
+// Every stop publishes its doors (#430), so the client never asks Overpass for
+// them; Grid Middle publishes none, the "OSM maps no door here" answer.
 const stops = [
-  { id: "subway:E1", name: "Grid South", lat: 40.7519, lon: -73.987, changeSec: 180 },
-  { id: "subway:E2", name: "Grid Middle", lat: 40.754, lon: -73.984, changeSec: 0 },
-  { id: "subway:E3", name: "Grid North", lat: 40.7561, lon: -73.9811 },
+  {
+    id: "subway:E1",
+    name: "Grid South",
+    lat: 40.7519,
+    lon: -73.987,
+    changeSec: 180,
+    entrances: [{ lat: 40.7516, lon: -73.9873 }],
+  },
+  { id: "subway:E2", name: "Grid Middle", lat: 40.754, lon: -73.984, changeSec: 0, entrances: [] },
+  {
+    id: "subway:E3",
+    name: "Grid North",
+    lat: 40.7561,
+    lon: -73.9811,
+    entrances: [{ lat: 40.7564, lon: -73.9808 }],
+  },
 ];
 
 const edge = (from: string, to: string, direction: number, geom?: string) => ({

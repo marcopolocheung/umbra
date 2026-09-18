@@ -1111,6 +1111,101 @@ describe("the boarding door is one a rider can enter by", () => {
   });
 });
 
+describe("a station's published doors replace the fetched ones (#430)", () => {
+  // Alpha (103.803) is the entry station on this corridor and Gamma (103.807)
+  // the exit; the route runs 103.8 → 103.81.
+  function trainGraphWithDoors(doors: Record<string, { lat: number; lon: number }[]>) {
+    const graph = corridorTrainGraph();
+    for (const [id, entrances] of Object.entries(doors)) {
+      graph.stations.set(id, { ...graph.stations.get(id)!, entrances } as never);
+    }
+    return graph;
+  }
+
+  async function calculateWith(trainGraph: ReturnType<typeof corridorTrainGraph>) {
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(trainGraph as never);
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.81, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+    const transitRoute = result.current.filteredRoutes[0];
+    expect(transitRoute.label).toBe("Via Subway");
+    return transitRoute;
+  }
+
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({ entrances: [], failed: false } as never);
+  });
+
+  it("asks Overpass for nothing when both stations publish their doors", async () => {
+    const route = await calculateWith(
+      trainGraphWithDoors({
+        "subway:1": [{ lat: 1.3, lon: 103.8034 }],
+        "subway:3": [{ lat: 1.3, lon: 103.8072 }],
+      }),
+    );
+    expect(fetchStationEntranceBoxes).not.toHaveBeenCalled();
+    expect(route.mrtEntrances).toEqual([
+      [103.8034, 1.3],
+      [103.8072, 1.3],
+    ]);
+  });
+
+  it("never exits through a nearer door that is not the station's own", async () => {
+    // Grand Central: the fetch finds a door right by the destination and the
+    // nearest-station matcher gives it to Gamma, as it gave the terminal's
+    // doors to the 7. Gamma's published list does not include it.
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({
+      entrances: [{ id: 9, lat: 1.3, lon: 103.8095, kind: "entrance" }],
+      failed: false,
+    } as never);
+    const route = await calculateWith(
+      trainGraphWithDoors({ "subway:3": [{ lat: 1.3, lon: 103.8072 }] }),
+    );
+    // Only Alpha, which publishes nothing, is still fetched for.
+    expect(fetchStationEntranceBoxes).toHaveBeenCalledTimes(1);
+    const [boxes] = vi.mocked(fetchStationEntranceBoxes).mock.calls[0] as [
+      { south: number; west: number; north: number; east: number }[],
+    ];
+    expect(boxes).toHaveLength(1);
+    expect((boxes[0].west + boxes[0].east) / 2).toBeCloseTo(103.803, 3);
+    expect(route.mrtEntrances?.[1]).toEqual([103.8072, 1.3]);
+  });
+
+  it("uses the station point where OSM maps no door, without fetching", async () => {
+    const route = await calculateWith(trainGraphWithDoors({ "subway:1": [], "subway:3": [] }));
+    expect(fetchStationEntranceBoxes).not.toHaveBeenCalled();
+    expect(route.mrtEntrances).toEqual([
+      [103.803, 1.3],
+      [103.807, 1.3],
+    ]);
+  });
+});
+
 // ─── #400: a dropped transit option ─────────────────────────────────────────
 
 /**
