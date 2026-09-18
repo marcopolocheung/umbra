@@ -135,3 +135,42 @@ test("a geom that does not decode is rejected rather than ignored", () => {
     /empty geom/,
   );
 });
+
+test("a walked transfer joins one station to one bus stop, walks a whole number of metres, and not less than the crow flies", () => {
+  const stops = [
+    { id: "bus:a", lat: 40.751, lon: -73.989 },
+    { id: "bus:b", lat: 40.752, lon: -73.988 },
+    { id: "subway:P1", lat: 40.75, lon: -73.99 },
+  ];
+  const crowM = haversineMeters(40.75, -73.99, 40.751, -73.989);
+  const withTransfer = (transfer: Record<string, unknown>) =>
+    shard({ kind: "subway", stops, transfers: [{ minSec: 120, ...transfer }] });
+  const walkM = Math.ceil(crowM) + 20;
+  assert.doesNotThrow(() =>
+    checkShard("subway.json", withTransfer({ from: "subway:P1", to: "bus:a", kind: "walked", walkM })),
+  );
+  assert.throws(
+    () => checkShard("subway.json", withTransfer({ from: "subway:P1", to: "bus:a", kind: "teleport" })),
+    /kind teleport/,
+  );
+  assert.throws(
+    () => checkShard("subway.json", withTransfer({ from: "subway:P1", to: "bus:a", kind: "spatial", walkM })),
+    /spatial transfer .* carries walkM/,
+  );
+  assert.throws(
+    () => checkShard("subway.json", withTransfer({ from: "bus:a", to: "bus:b", kind: "walked", walkM })),
+    /does not join a station to a bus stop/,
+  );
+  assert.throws(
+    () => checkShard("subway.json", withTransfer({ from: "subway:P1", to: "bus:a", kind: "walked", walkM: 12.5 })),
+    /walkM 12.5/,
+  );
+  assert.throws(
+    () =>
+      checkShard(
+        "subway.json",
+        withTransfer({ from: "subway:P1", to: "bus:a", kind: "walked", walkM: Math.floor(crowM) - 10 }),
+      ),
+    /shorter than the straight line/,
+  );
+});

@@ -6,8 +6,11 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { StopNode, TransferEdge } from "./model";
+import { readOsm } from "./osm";
 import { decodePolyline } from "./shapeSlice";
 import { haversineMeters, json, requireRoot, sha256 } from "./util";
+import { buildFootwayGraph, type FootwayGraph, type WalkParams, walkedMinSec, walkStub } from "./walkability";
 
 export interface ShardLike {
   kind?: string;
@@ -29,7 +32,7 @@ export interface ShardLike {
   }[];
   routes: { id: string }[];
   headways: { route: string; hour: number }[];
-  transfers?: { from: string; to: string; minSec: number }[];
+  transfers?: { from: string; to: string; minSec: number; kind?: string; walkM?: number }[];
 }
 
 interface ManifestLike {
@@ -41,6 +44,8 @@ interface ManifestLike {
     sha256: string;
     bounds?: { south: number; west: number; north: number; east: number };
   }[];
+  constants?: Record<string, number>;
+  walkedTransfers?: { footwaysSha256: string; candidates: number; walked: number };
 }
 
 /**
@@ -84,8 +89,87 @@ export async function verifyGeneration(generation?: string): Promise<{ generatio
     const parsed = JSON.parse(bytes.toString("utf8")) as ShardLike;
     checkShard(shard.key, parsed);
     checkBounds(shard.key, parsed, shard.bounds);
+    const walked = (parsed.transfers ?? []).filter((transfer) => transfer.kind === "walked").length;
+    if (walked > 0 || (shard.key === "subway.json" && manifest.walkedTransfers)) {
+      await rederiveWalkedFromCache(shard.key, parsed, manifest);
+    }
   }
   return { generation: name, shards: manifest.shards.length };
+}
+
+/**
+ * Routes every subway↔bus stub again, on the very footway bytes the manifest
+ * says `build` used, and demands the same answer — which stubs walk and how
+ * far. The OSM cache is outside the generation, so a machine without it cannot
+ * verify a generation that claims walked transfers, and says so rather than
+ * passing on the structural checks alone.
+ */
+async function rederiveWalkedFromCache(key: string, shard: ShardLike, manifest: ManifestLike): Promise<void> {
+  const claimed = manifest.walkedTransfers;
+  if (!claimed) throw new Error(`${key}: walked transfers, but the manifest records no walkability check`);
+  const osm = await readOsm();
+  if (!osm?.footways || osm.footwaysSha256 !== claimed.footwaysSha256) {
+    throw new Error(
+      `${key}: walked transfers were routed on footways ${claimed.footwaysSha256.slice(0, 12)}, and the OSM cache holds ${osm?.footwaysSha256?.slice(0, 12) ?? "none"}; cannot re-derive them`,
+    );
+  }
+  const constants = manifest.constants ?? {};
+  const params: WalkParams = {
+    detourRatio: constants.walkedDetourRatio ?? Number.NaN,
+    detourSlackM: constants.walkedDetourSlackM ?? Number.NaN,
+    snapM: constants.walkedSnapM ?? Number.NaN,
+    walkMps: constants.spatialWalkMps ?? Number.NaN,
+  };
+  if (!Object.values(params).every((value) => value > 0)) {
+    throw new Error(`${key}: the manifest does not publish the walkability parameters`);
+  }
+  const counts = rederiveWalked(key, shard, buildFootwayGraph(osm.footways), params);
+  if (counts.candidates !== claimed.candidates || counts.walked !== claimed.walked) {
+    throw new Error(
+      `${key}: manifest claims ${claimed.walked} of ${claimed.candidates} stubs walked; the shard holds ${counts.walked} of ${counts.candidates}`,
+    );
+  }
+}
+
+/**
+ * The re-derivation itself, given a graph. Every `spatial` or `walked` transfer
+ * is routed with `walkStub`, the function `build` used: a walked one must walk
+ * the same whole metres and cost exactly that walk's time, and a spatial one
+ * must still be refused — a stub left spatial that the network can walk is a
+ * build that dropped a real change as surely as a walked one is a claim.
+ */
+export function rederiveWalked(
+  key: string,
+  shard: ShardLike,
+  graph: FootwayGraph,
+  params: WalkParams,
+): { candidates: number; walked: number } {
+  const stopById = new Map(shard.stops.map((stop) => [stop.id, stop as StopNode]));
+  let candidates = 0;
+  let walked = 0;
+  for (const transfer of shard.transfers ?? []) {
+    if (transfer.kind !== "spatial" && transfer.kind !== "walked") continue;
+    const leaving = transfer.from.startsWith("subway:");
+    const station = stopById.get(leaving ? transfer.from : transfer.to);
+    const stop = stopById.get(leaving ? transfer.to : transfer.from);
+    if (!station || !stop) continue;
+    candidates += 1;
+    const result = walkStub(graph, station, stop, leaving, params);
+    const label = `${transfer.from}→${transfer.to}`;
+    if (transfer.kind === "spatial") {
+      if ("walkM" in result) throw new Error(`${key}: ${label} is published spatial, but walks ${result.walkM} m`);
+      continue;
+    }
+    walked += 1;
+    if ("refused" in result) throw new Error(`${key}: ${label} is published walked, but re-routing refuses it (${result.refused})`);
+    if (result.walkM !== transfer.walkM) {
+      throw new Error(`${key}: ${label} publishes walkM ${transfer.walkM}, re-routed ${result.walkM}`);
+    }
+    if (transfer.minSec !== walkedMinSec(result.walkM, params.walkMps)) {
+      throw new Error(`${key}: ${label} publishes minSec ${transfer.minSec} for a ${result.walkM} m walk`);
+    }
+  }
+  return { candidates, walked };
 }
 
 /**
@@ -228,8 +312,30 @@ export function checkShard(key: string, shard: ShardLike): void {
     }
   }
   for (const transfer of shard.transfers ?? []) {
+    const label = `${transfer.from}→${transfer.to}`;
     if (!stopIds.has(transfer.from) || !stopIds.has(transfer.to)) {
-      fail(`transfer dangles ${transfer.from}→${transfer.to}`);
+      fail(`transfer dangles ${label}`);
+    }
+    if (!TRANSFER_KINDS.has(transfer.kind as TransferEdge["kind"])) fail(`transfer ${label} has kind ${transfer.kind}`);
+    if (transfer.kind !== "walked") {
+      if (transfer.walkM !== undefined) fail(`${transfer.kind} transfer ${label} carries walkM`);
+      continue;
+    }
+    // A walked change joins exactly one station to one bus stop.
+    if (transfer.from.startsWith("subway:") === transfer.to.startsWith("subway:")) {
+      fail(`walked transfer ${label} does not join a station to a bus stop`);
+    }
+    if (!Number.isInteger(transfer.walkM) || (transfer.walkM as number) <= 0) {
+      fail(`walked transfer ${label} has walkM ${transfer.walkM}`);
+    }
+    // The walk runs station → door → stop, so by the triangle inequality it is
+    // never shorter than the crow flies; 1 m absorbs rounding to whole metres.
+    const from = coordOf.get(transfer.from);
+    const to = coordOf.get(transfer.to);
+    if (from && to && (transfer.walkM as number) < haversineMeters(from.lat, from.lon, to.lat, to.lon) - 1) {
+      fail(`walked transfer ${label} walks ${transfer.walkM} m, shorter than the straight line`);
     }
   }
 }
+
+const TRANSFER_KINDS = new Set<TransferEdge["kind"]>(["gtfs", "spatial", "walked"]);

@@ -2,9 +2,10 @@
  * Acquires the OSM subway geometry the structure join needs, and the station
  * groupings the entrance join needs, and caches both.
  *
- * Two Overpass queries, about 5 MB together: the subway route relations (which
- * service runs over which way) and the geometry and tags of the ways those
- * relations contain. Restricting ways to relation members is both smaller and
+ * Subway route relations (which service runs over which way) and the geometry
+ * and tags of the ways those relations contain, about 5 MB together, plus the
+ * pedestrian ways around every subway station that `walkability.ts` routes a
+ * subway↔bus change over. Restricting ways to relation members is both smaller and
  * more correct than a bbox sweep — it excludes the 43% of `railway=subway` ways
  * that are yards, sidings and crossovers and carry no riders.
  *
@@ -21,11 +22,14 @@
  * build-time dependency.
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { OsmNode } from "./entrances";
+import { loadStops } from "./gtfs";
+import { FEED_SOURCES } from "./sources";
 import type { OsmRelation, OsmWay } from "./structure";
 import { json, requireRoot, sha256, writeJson } from "./util";
+import type { FootwayWay } from "./walkability";
 
 /** The five boroughs plus enough margin for the Rockaways and Staten Island. */
 export const NYC_BBOX = { south: 40.4, west: -74.3, north: 40.95, east: -73.6 };
@@ -54,6 +58,36 @@ const WAYS_QL = () =>
 const STOP_AREAS_QL = () =>
   `[out:json][timeout:240];rel["public_transport"="stop_area"](${bbox()})->.s;.s out body;node(r.s)["railway"="subway_entrance"];out body;`;
 
+/**
+ * Pedestrian ways within this distance of a station point. A stub reaches 200 m
+ * from the station and the farthest doors stand ~400 m out at the big
+ * complexes, so a path that leaves this circle is a false refusal, never a
+ * false promotion — the check can only fail safe on what it was not given.
+ */
+export const FOOTWAY_RADIUS_M = 350;
+/**
+ * Stations per Overpass request. The whole city in one union is ~60 MB and the
+ * public instances refuse it as "too busy" far more often than they answer;
+ * fifty stations is ~8 MB and usually goes through on the first or second try.
+ */
+const FOOTWAY_BATCH = 50;
+const FOOTWAY_ROUNDS = 6;
+const FOOTWAY_PAUSE_MS = 20_000;
+/**
+ * What a pedestrian may walk on. Everything tagged `highway` except roads
+ * pedestrians are barred from (motorways, and anything `foot=no`, `private` or
+ * `use_sidepath` — the last meaning the pavement is mapped as its own way) and
+ * things that are not a way at all yet (`construction`, `proposed`). Kept in the
+ * receipt, since it is part of what "walkable" means.
+ */
+export const FOOTWAY_FILTER =
+  '["highway"]["highway"!~"^(motorway|motorway_link|construction|proposed|abandoned|platform|raceway|bus_guideway|busway)$"]["foot"!~"^(no|private|use_sidepath)$"]["access"!~"^(no|private)$"]';
+
+const FOOTWAYS_QL = (anchors: { lat: number; lon: number }[]) =>
+  `[out:json][timeout:180];(${anchors
+    .map((a) => `way${FOOTWAY_FILTER}(around:${FOOTWAY_RADIUS_M},${a.lat.toFixed(6)},${a.lon.toFixed(6)});`)
+    .join("")});out skel geom qt;`;
+
 export interface OsmReceipt {
   fetchedAt: string;
   endpoint: string;
@@ -62,6 +96,16 @@ export interface OsmReceipt {
   ways: { count: number; bytes: number; sha256: string };
   /** Absent from a cache acquired before the entrance join existed. */
   stopAreas?: { count: number; entrances: number; bytes: number; sha256: string };
+  /** Absent from a cache acquired before the walkability check existed. */
+  footways?: {
+    count: number;
+    anchors: number;
+    radiusM: number;
+    filter: string;
+    bytes: number;
+    /** Of `footways.json` as written, which is what `build` and `verify` read. */
+    sha256: string;
+  };
 }
 
 export interface OsmCache {
@@ -74,6 +118,14 @@ export interface OsmCache {
    */
   stopAreas?: OsmRelation[];
   entrances?: OsmNode[];
+  /**
+   * The pedestrian ways around every subway station, and the SHA-256 of the
+   * file they were read from — computed on read, not copied from the receipt,
+   * so a manifest records the bytes its transfers were actually routed on.
+   * Absent from an older cache; the build then promotes no stub.
+   */
+  footways?: FootwayWay[];
+  footwaysSha256?: string;
   receipt: OsmReceipt;
 }
 
@@ -123,7 +175,53 @@ async function overpass(query: string, label: string): Promise<{ body: string; e
 }
 
 /**
- * Fetches both queries and writes them to the cache. Network step; run it
+ * `overpass`, retried in rounds: the footway batches are the heaviest thing
+ * this pipeline asks for, and "too busy" is an answer that changes minutes
+ * later, not a verdict.
+ */
+async function overpassPatiently(query: string, label: string): Promise<{ body: string; endpoint: string }> {
+  for (let round = 1; ; round += 1) {
+    try {
+      return await overpass(query, label);
+    } catch (error) {
+      if (round >= FOOTWAY_ROUNDS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, FOOTWAY_PAUSE_MS));
+    }
+  }
+}
+
+/**
+ * The pedestrian ways within `FOOTWAY_RADIUS_M` of every subway parent station
+ * in the local GTFS, deduplicated by way id and sorted, so the same OSM state
+ * writes the same bytes.
+ */
+async function acquireFootways(): Promise<{ ways: FootwayWay[]; anchors: number }> {
+  const source = FEED_SOURCES.find((item) => item.id === "subway");
+  if (!source) throw new Error("subway source missing");
+  const { stops } = loadStops(await readFile(join(requireRoot(), source.workDir, "stops.txt"), "utf8"));
+  const anchors = stops.filter((stop) => stop.locationType === 1);
+  if (anchors.length === 0) throw new Error("no subway parent stations to fetch footways around (run acquire first)");
+  const byId = new Map<number, FootwayWay>();
+  for (let i = 0; i < anchors.length; i += FOOTWAY_BATCH) {
+    const batch = anchors.slice(i, i + FOOTWAY_BATCH);
+    const { body } = await overpassPatiently(FOOTWAYS_QL(batch), `footways ${i / FOOTWAY_BATCH + 1}`);
+    for (const element of JSON.parse(body).elements ?? []) {
+      if (element.type !== "way" || byId.has(element.id)) continue;
+      const nodes = element.nodes as number[];
+      const geometry = element.geometry as { lat: number; lon: number }[];
+      if (!Array.isArray(nodes) || !Array.isArray(geometry) || nodes.length !== geometry.length) continue;
+      byId.set(element.id, {
+        id: element.id,
+        nodes,
+        coords: geometry.flatMap((point) => [point.lat, point.lon]),
+      });
+    }
+  }
+  return { ways: [...byId.values()].sort((a, b) => a.id - b.id), anchors: anchors.length };
+}
+
+/**
+ * Fetches every query and writes them to the cache. Network step; run it
  * deliberately, not as part of a build.
  */
 export async function acquireOsm(): Promise<OsmReceipt> {
@@ -133,6 +231,7 @@ export async function acquireOsm(): Promise<OsmReceipt> {
   const relationsResponse = await overpass(RELATIONS_QL(), "relations");
   const waysResponse = await overpass(WAYS_QL(), "ways");
   const stopAreasResponse = await overpass(STOP_AREAS_QL(), "stop areas");
+  const footways = await acquireFootways();
 
   const relations = (JSON.parse(relationsResponse.body).elements ?? []).filter(
     (element: { type: string }) => element.type === "relation",
@@ -153,6 +252,9 @@ export async function acquireOsm(): Promise<OsmReceipt> {
   if (ways.length === 0) throw new Error("OSM returned no subway ways");
   if (stopAreas.length === 0) throw new Error("OSM returned no stop areas");
   if (entrances.length === 0) throw new Error("OSM returned no subway entrances");
+  if (footways.ways.length === 0) throw new Error("OSM returned no pedestrian ways");
+  // Compact, not pretty-printed: ~120k ways, and the hash is of these bytes.
+  const footwayBytes = JSON.stringify(footways.ways);
 
   const encoder = new TextEncoder();
   const receipt: OsmReceipt = {
@@ -175,12 +277,21 @@ export async function acquireOsm(): Promise<OsmReceipt> {
       bytes: stopAreasResponse.body.length,
       sha256: sha256(encoder.encode(stopAreasResponse.body)),
     },
+    footways: {
+      count: footways.ways.length,
+      anchors: footways.anchors,
+      radiusM: FOOTWAY_RADIUS_M,
+      filter: FOOTWAY_FILTER,
+      bytes: footwayBytes.length,
+      sha256: sha256(encoder.encode(footwayBytes)),
+    },
   };
 
   await writeJson(join(directory, "relations.json"), relations);
   await writeJson(join(directory, "ways.json"), ways);
   await writeJson(join(directory, "stop_areas.json"), stopAreas);
   await writeJson(join(directory, "entrances.json"), entrances);
+  await writeFile(join(directory, "footways.json"), footwayBytes);
   await writeJson(join(directory, "receipt.json"), receipt);
   return receipt;
 }
@@ -214,6 +325,13 @@ export async function readOsm(): Promise<OsmCache | null> {
     } catch {
       // Acquired before stop areas were; build publishes no entrances.
     }
+    try {
+      const bytes = await readFile(join(directory, "footways.json"));
+      cache.footways = JSON.parse(bytes.toString("utf8")) as FootwayWay[];
+      cache.footwaysSha256 = sha256(new Uint8Array(bytes));
+    } catch {
+      // Acquired before the walkability check; build promotes no stub.
+    }
     return cache;
   } catch {
     return null;
@@ -230,5 +348,6 @@ export async function writeOsmCache(cache: OsmCache): Promise<void> {
     await writeJson(join(directory, "stop_areas.json"), cache.stopAreas);
     await writeJson(join(directory, "entrances.json"), cache.entrances);
   }
+  if (cache.footways) await writeFile(join(directory, "footways.json"), JSON.stringify(cache.footways));
   await writeJson(join(directory, "receipt.json"), cache.receipt);
 }

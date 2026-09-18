@@ -95,7 +95,8 @@ export interface TrainGraphEdge {
   geom?: string;
   /**
    * Where a `transfer` edge came from. `gtfs` is the agency's own published
-   * transfer; `spatial` is an unvalidated straight-line stub.
+   * transfer; `spatial` is an unvalidated straight-line stub; `walked` is a
+   * subway↔bus change the producer routed over OSM's pedestrian ways.
    *
    * Carried because the two are not interchangeable and the distinction was
    * being thrown away at the adapter boundary: the shard contract keeps `kind`,
@@ -103,7 +104,7 @@ export interface TrainGraphEdge {
    * guess became indistinguishable from an agency fact the moment it was
    * loaded. Absent from the Overpass producer, which synthesises no transfers.
    */
-  transferKind?: "gtfs" | "spatial";
+  transferKind?: "gtfs" | "spatial" | "walked";
 }
 
 /**
@@ -886,6 +887,12 @@ const STATE_SEP = "\u0000";
 const ARRIVED_ON_FOOT = "";
 /** Arrived over a transfer edge, whose `minSec` already paid for the change. */
 const ARRIVED_BY_TRANSFER = "\u0001";
+/**
+ * Arrived over a `walked` subway↔bus change. Kept apart from any other transfer
+ * because what may follow it is narrower: never a second walked change, and the
+ * journey may not end on it.
+ */
+const ARRIVED_BY_WALK = "\u0002";
 
 function stateKey(stationId: string, arrivedOn: string): string {
   return `${stationId}${STATE_SEP}${arrivedOn}`;
@@ -921,7 +928,8 @@ function boardingCost(
   const route = edge.line ?? "";
   if (arrivedOn === route) return { changeSec: 0, waitSec: 0 };
 
-  const changingLines = arrivedOn !== ARRIVED_ON_FOOT && arrivedOn !== ARRIVED_BY_TRANSFER;
+  const changingLines =
+    arrivedOn !== ARRIVED_ON_FOOT && arrivedOn !== ARRIVED_BY_TRANSFER && arrivedOn !== ARRIVED_BY_WALK;
   // Absent `changeSec` costs nothing here because it is *unpriced*, not free.
   // The alternative is to make a number up, which is what #384 forbids.
   const changeSec = changingLines ? (graph.stations.get(stationId)?.changeSec ?? 0) : 0;
@@ -1000,21 +1008,36 @@ export function trainDijkstra(
 
     if (cost > (dist.get(key) ?? Infinity)) continue;
     const id = stationOfState(key);
+    const arrivedOn = arrivalOfState(key);
     // States pop in cost order, so the first one standing at the destination is
-    // the cheapest way to be standing there, whatever it arrived on.
-    if (id === endId) {
+    // the cheapest way to be standing there, whatever it arrived on — except
+    // on foot from a subway↔bus change, which would end a ride at the wrong
+    // mode's stop and hand the last walk to it.
+    if (id === endId && arrivedOn !== ARRIVED_BY_WALK) {
       endKey = key;
       break;
     }
-    const arrivedOn = arrivalOfState(key);
 
     for (const edge of graph.adj.get(id) ?? []) {
+      // A walked change joins two rides. It never starts a journey — the walk
+      // in is routed on the street to the stop itself — and two in a row would
+      // be a bus-to-bus change through a station's doors, which nobody has
+      // validated.
+      if (
+        edge.transferKind === "walked" &&
+        (arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK)
+      )
+        continue;
       const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
       if (boarding === null) continue;
       const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
       const nextKey = stateKey(
         edge.to,
-        edge.type === "transfer" ? ARRIVED_BY_TRANSFER : (edge.line ?? ARRIVED_ON_FOOT)
+        edge.transferKind === "walked"
+          ? ARRIVED_BY_WALK
+          : edge.type === "transfer"
+            ? ARRIVED_BY_TRANSFER
+            : (edge.line ?? ARRIVED_ON_FOOT)
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, newCost);

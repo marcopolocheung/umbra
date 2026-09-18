@@ -262,6 +262,53 @@ test("build publishes each subway station's own doors when the cache has stop ar
   });
 });
 
+/**
+ * `osmCacheWithStopAreas`, plus a pavement from Station Alpha's door to the
+ * shared bus stop S1, ~140 m north-east. Station Beta has no door, so its
+ * stubs stay spatial however good the pavement.
+ */
+function osmCacheWithFootways() {
+  const base = osmCacheWithStopAreas();
+  return {
+    ...base,
+    footways: [
+      { id: 950, nodes: [1, 2, 3], coords: [40.7502, -73.9902, 40.7502, -73.989, 40.751, -73.989] },
+    ],
+  };
+}
+
+test("build walks a subway-bus stub the pavement connects, and verify re-routes it", async () => {
+  const root = await seedRoot();
+  await withRoot(root, async () => {
+    await assembleReceipts();
+    await validate();
+    await writeOsmCache(osmCacheWithFootways());
+    const built = await buildGeneration({ updateBaseline: true });
+    await verifyGeneration(built.generation);
+    const shard = JSON.parse(
+      await readFile(join(root, "normalized", built.generation, "subway.json"), "utf8"),
+    ) as { transfers: { from: string; to: string; minSec: number; kind: string; walkM?: number }[] };
+    const out = shard.transfers.find((t) => t.from === "subway:P1" && t.to === "bus:S1");
+    const back = shard.transfers.find((t) => t.from === "bus:S1" && t.to === "subway:P1");
+    assert.equal(out?.kind, "walked");
+    assert.equal(back?.kind, "walked");
+    // Door 20 m from the station point, then ~101 m east and ~89 m north.
+    assert.ok(out?.walkM !== undefined && out.walkM > 180 && out.walkM < 240, `walkM ${out?.walkM}`);
+    assert.equal(out?.minSec, Math.ceil((out?.walkM as number) / 1.4));
+    // Station Beta publishes no door: nothing of its is walked.
+    for (const t of shard.transfers.filter((x) => x.from === "subway:P2" || x.to === "subway:P2")) {
+      assert.notEqual(t.kind, "walked");
+    }
+    assert.equal(built.manifest.constants.walkedDetourRatio, 1.5);
+    assert.equal(built.manifest.walkedTransfers?.walked, 2);
+    assert.ok(built.manifest.notes.some((n) => n.includes("footpaths")));
+
+    // A different footway cache is not the evidence the manifest names.
+    await writeOsmCache({ ...osmCacheWithFootways(), footways: [] });
+    await assert.rejects(() => verifyGeneration(built.generation), /cannot re-derive/);
+  });
+});
+
 test("a cache from before stop areas still joins structure and publishes no doors", async () => {
   const root = await seedRoot();
   await withRoot(root, async () => {
