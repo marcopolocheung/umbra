@@ -12,7 +12,7 @@ import { travelTimeSeconds } from "./travelMode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type TrainMode = "subway" | "light_rail" | "monorail";
+export type TrainMode = "subway" | "light_rail" | "monorail" | "bus";
 
 export interface TrainStation {
   /**
@@ -138,6 +138,21 @@ export interface TrainDrawData {
   transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
 }
 
+/**
+ * One priced wait: how long, and **where it is spent standing**.
+ *
+ * The stop is the point of this: a rider waiting for a bus stands in the open,
+ * and whether that spot is in a building's shadow is a question about the spot,
+ * not about the mode. A total alone can quote a time and can answer nothing
+ * else, which is why the search now carries the pair.
+ */
+export interface TrainWait {
+  /** The station the boarded edge leaves from — where the rider stands. */
+  stationId: string;
+  /** Half a published headway. Only priced waits appear here. */
+  waitSec: number;
+}
+
 export interface TrainPathResult {
   stationIds: string[];
   /** Scheduled riding, changing lines, and waiting to board. */
@@ -148,6 +163,12 @@ export interface TrainPathResult {
    * claim that a train was there, only that the wait went unpriced.
    */
   waitSec: number;
+  /**
+   * The same seconds, split per boarding and located. Empty where the feed
+   * priced nothing — an unpriced wait is not a zero-second wait at a known
+   * stop, it is nothing to say.
+   */
+  waits: TrainWait[];
   lines: string[]; // unique lines in traversal order
   segments: TrainSegment[];
   /**
@@ -178,6 +199,15 @@ export const TRAIN_SUN_EXPOSURE: Record<TrainMode, number> = {
   subway: 0.0,
   light_rail: 0.25,
   monorail: 0.1,
+  // A bus runs at grade everywhere, so unlike rail there is no structure to
+  // measure and no variation to miss: the ride is always open to the sky, and
+  // the only attenuation is the vehicle itself. Same windowed-vehicle figure as
+  // `light_rail`, which is what it physically is.
+  //
+  // This covers the *ride* only. What dominates a bus rider's exposure is the
+  // wait at the stop, which is unattenuated pedestrian sun and is not a
+  // property of the vehicle or the track — it is modelled separately.
+  bus: 0.25,
 };
 
 /**
@@ -346,6 +376,18 @@ export interface TrainHeadways {
    */
   coveredHours: Set<string>;
   /**
+   * Which published dataset each route's table came from, so `coveredHours` can
+   * be read per dataset rather than globally.
+   *
+   * Without it, one dataset's coverage speaks for another's. The subway feed and
+   * the six bus feeds are separate publications with separate reference dates:
+   * subway covering weekday hour 10 would make a bus route's silence at hour 10
+   * read as "no bus is scheduled" rather than "this table does not reach here",
+   * and `boardingCost` refuses a `no-service` edge outright. Absent for the
+   * Overpass producer, which ships no tables at all.
+   */
+  routeDataset?: Map<string, string>;
+  /**
    * Which day type each table's hours 24+ describe, out of the manifest's
    * `headwayDates`. Saturday's hour 24 is a Sunday morning; the weekday
    * table's is a weekday morning, so it cannot price a Saturday one.
@@ -444,6 +486,15 @@ export type HeadwayReading =
   | { kind: "no-service" }
   | { kind: "unreadable" };
 
+/**
+ * The key `coveredHours` is keyed by. Exported so a hand-built table cannot
+ * drift from the one `trainGraphAdapter` builds — the two disagreeing is a
+ * silent "no service" rather than a failure.
+ */
+export function coveredHourKey(dataset: string, dayType: TrainDayType, hour: number): string {
+  return `${dataset}|${dayType}|${hour}`;
+}
+
 export function readHeadway(
   headways: TrainHeadways | undefined,
   route: string,
@@ -462,7 +513,11 @@ export function readHeadway(
   );
   if (medianSec !== undefined) return { kind: "published", medianSec };
   if (slot.hour > LAST_COMPLETE_SERVICE_HOUR) return { kind: "unreadable" };
-  if (!headways.coveredHours.has(`${slot.dayType}|${slot.hour}`)) return { kind: "unreadable" };
+  // Per dataset: a hour the *subway* tables cover says nothing about whether the
+  // bus tables reach it, and vice versa.
+  const dataset = headways.routeDataset?.get(route) ?? "";
+  if (!headways.coveredHours.has(coveredHourKey(dataset, slot.dayType, slot.hour)))
+    return { kind: "unreadable" };
   return { kind: "no-service" };
 }
 
@@ -527,8 +582,17 @@ interface LineInfo {
 }
 
 function routeTagToMode(route: string): TrainMode {
-  if (route === "light_rail") return "light_rail";
+  if (route === "light_rail" || route === "tram") return "light_rail";
   if (route === "monorail") return "monorail";
+  // Everything else is subway, which is only safe because the Overpass query
+  // below asks for `^(subway|light_rail|monorail|metro)$` and nothing else.
+  //
+  // **Do not add `bus` to that regex without changing this function first.**
+  // Falling through to `subway` prices a ride at TRAIN_SUN_EXPOSURE.subway,
+  // which is 0.0 — full shade — and a bus in full sun would be silently
+  // labelled underground. The shard producer refuses an unknown mode outright
+  // (`routeTypeToMode` returns null) precisely to avoid that; this producer
+  // predates it and guesses instead. Bus comes from the shards, not from here.
   return "subway";
 }
 
@@ -873,7 +937,10 @@ export function trainDijkstra(
   if (startId === endId) return null;
 
   const dist = new Map<string, number>();
-  const waitTo = new Map<string, number>();
+  // The wait paid on the edge that reached this state, not the running total:
+  // the path is reconstructed from `prev` anyway, and a total cannot say where
+  // any of it was spent.
+  const waitOnEdgeTo = new Map<string, number>();
   const prev = new Map<string, string>();
   const prevLine = new Map<string, string>();
   // Ties break on insertion order, which is what the argmin this replaced did.
@@ -884,7 +951,6 @@ export function trainDijkstra(
 
   const startKey = stateKey(startId, ARRIVED_ON_FOOT);
   dist.set(startKey, 0);
-  waitTo.set(startKey, 0);
   pq.push({ key: startKey, cost: 0, seq: seq++ });
 
   let endKey: string | null = null;
@@ -912,7 +978,7 @@ export function trainDijkstra(
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, newCost);
-        waitTo.set(nextKey, (waitTo.get(key) ?? 0) + boarding.waitSec);
+        waitOnEdgeTo.set(nextKey, boarding.waitSec);
         prev.set(nextKey, key);
         prevLine.set(nextKey, edge.line ?? "");
         pq.push({ key: nextKey, cost: newCost, seq: seq++ });
@@ -925,15 +991,24 @@ export function trainDijkstra(
   // Reconstruct path backward, collecting edge line refs
   const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
+  const waits: TrainWait[] = [];
   let cur: string | undefined = endKey;
   while (cur !== undefined) {
     stationIds.push(stationOfState(cur));
     const line = prevLine.get(cur);
     if (line !== undefined) edgeLines.push(line); // skip start (no incoming edge)
-    cur = prev.get(cur);
+    const from = prev.get(cur);
+    const waitSec = waitOnEdgeTo.get(cur) ?? 0;
+    // The wait belongs to the station the edge *left*, which is where the rider
+    // stood, not the one it arrived at.
+    if (from !== undefined && waitSec > 0) {
+      waits.push({ stationId: stationOfState(from), waitSec });
+    }
+    cur = from;
   }
   stationIds.reverse();
   edgeLines.reverse();
+  waits.reverse();
 
   // Unique line refs (non-empty = rail edges)
   const lines: string[] = [];
@@ -979,7 +1054,8 @@ export function trainDijkstra(
   return {
     stationIds,
     totalSec: dist.get(endKey)!,
-    waitSec: waitTo.get(endKey) ?? 0,
+    waitSec: waits.reduce((sum, wait) => sum + wait.waitSec, 0),
+    waits,
     lines,
     segments,
     ...(exposure ? { exposure } : {}),
@@ -988,14 +1064,30 @@ export function trainDijkstra(
 
 // ─── Nearest station lookup ─────────────────────────────────────────────────
 
+/**
+ * Whether any line calling at this station runs the given mode.
+ *
+ * A station carries line refs, not a mode; the graph's `lineModes` is what
+ * turns one into the other.
+ */
+export function stationServesMode(
+  graph: TrainGraph,
+  station: TrainStation,
+  mode: TrainMode,
+): boolean {
+  return station.lines.some((line) => graph.lineModes.get(line) === mode);
+}
+
 export function nearestStations(
   coord: [number, number], // [lng, lat]
   stations: Map<string, TrainStation>,
   n: number,
-  maxDistM = 2000
+  maxDistM = 2000,
+  accept?: (station: TrainStation) => boolean
 ): TrainStation[] {
   const withDist: { station: TrainStation; dist: number }[] = [];
   for (const station of stations.values()) {
+    if (accept && !accept(station)) continue;
     const d = haversineMeters(coord, [station.lon, station.lat]);
     if (d <= maxDistM) withDist.push({ station, dist: d });
   }
@@ -1020,19 +1112,28 @@ export function findBestTrainRoute(
   graph: TrainGraph,
   maxWalkM = 1500,
   maxCandidates = 5,
-  opts: TrainDepartureOptions = {}
+  opts: TrainDepartureOptions = {},
+  mode?: TrainMode
 ): BestTrainRoute | null {
+  // Without a mode filter, bus swamps the candidate list: a bus stop stands
+  // every ~200 m, so the five nearest "stations" to any midtown point are all
+  // bus stops within a block and no subway station is ever tried. Filtering
+  // here is what makes a per-mode answer possible at all, and it is cheap —
+  // `nearestStations` already walks every station.
+  const accept = mode ? (station: TrainStation) => stationServesMode(graph, station, mode) : undefined;
   const entryCandidates = nearestStations(
     a,
     graph.stations,
     maxCandidates,
-    maxWalkM
+    maxWalkM,
+    accept
   );
   const exitCandidates = nearestStations(
     b,
     graph.stations,
     maxCandidates,
-    maxWalkM
+    maxWalkM,
+    accept
   );
 
   if (entryCandidates.length === 0 || exitCandidates.length === 0) return null;

@@ -5,6 +5,7 @@ import type { TrainDrawData, TransitProvenance } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
 import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
+import type { TransitWaitExposure } from "./transitWaitExposure";
 
 export interface OsmNode {
   id: number;
@@ -96,6 +97,15 @@ export interface RouteLeg {
   travelTimeSec?: number;    // transit legs — riding, changing, and waiting
   /** Transit legs: the waiting half of `travelTimeSec`, 0 where unpriced. */
   waitSec?: number;
+  /**
+   * Transit legs whose wait is spent in the open — bus: the sun at the boarding
+   * stop, sampled rather than assumed from the mode.
+   *
+   * Absent on a subway leg, whose wait is on a platform this app does not model
+   * at all; present with no `shadow` means the field could not answer for the
+   * stop. The three states read differently on the card on purpose.
+   */
+  waitExposure?: TransitWaitExposure;
   shadowCoverage?: number;    // walk legs only (0–1)
   line?: string;             // transit legs: line ref/code
   lineColor?: string;        // transit legs: hex color

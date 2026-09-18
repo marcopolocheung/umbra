@@ -1,9 +1,16 @@
 /* @vitest-environment jsdom */
-import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RouteOption } from "../../lib/routing";
 import type { EdgeRef, EdgeShadow, ShadowField } from "../../lib/shadowField/ShadowField";
 import { useHourlyExposure } from "../useHourlyExposure";
+
+// Without this the hooks stay mounted past the end of the file, and React's
+// scheduler still has a `performWorkUntilDeadline` immediate queued when the
+// jsdom environment is torn down — "ReferenceError: window is not defined",
+// an unhandled error that fails the run while every test passes. It surfaces
+// under `--coverage`, where instrumentation is slow enough to lose the race.
+afterEach(cleanup);
 
 /** A straight west→east route of three ~111 m edges at the equator. */
 function route(sides?: RouteOption["sides"]): RouteOption {

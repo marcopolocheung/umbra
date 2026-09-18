@@ -8,6 +8,7 @@ import {
   TRAIN_SPEED_MPS,
   TRANSFER_PENALTY_SEC,
   trainDijkstra,
+  coveredHourKey,
   railExposure,
   RAIL_VEHICLE_EXPOSURE,
   type TrainDayType,
@@ -331,7 +332,7 @@ function headways(
     medianSec: new Map(
       rows.map((r) => [headwayKey(r.route, r.direction ?? 0, r.dayType, r.hour), r.sec]),
     ),
-    coveredHours: new Set(rows.map((r) => `${r.dayType}|${r.hour}`)),
+    coveredHours: new Set(rows.map((r) => coveredHourKey("", r.dayType, r.hour))),
     nextDayType: new Map(nextDayType),
   };
 }
@@ -720,5 +721,51 @@ describe("equal-cost paths", () => {
     expect(result?.totalSec).toBe(200);
     expect(result?.stationIds).toEqual(["X", "P1", "Z"]);
     expect(result?.lines).toEqual(["P"]);
+  });
+});
+
+describe("trainDijkstra: where the rider waits", () => {
+  const table = headways([
+    { route: "SLOW", dayType: "weekday", hour: 10, sec: 240 },
+    { route: "FAST", dayType: "weekday", hour: 10, sec: 1800 },
+  ]);
+  const departure = { at: WEEKDAY_MORNING, utcOffsetMin: NYC_UTC_OFFSET_MIN };
+
+  it("names the stop a priced wait is spent standing at", () => {
+    // A total is enough to quote a time and useless for anything else. The sun
+    // a rider takes waiting is a property of *where* they stand, so the stop
+    // has to survive the search.
+    const path = trainDijkstra(frequencyGraph(table), "X", "Z", departure)!;
+    expect(path.waits).toEqual([{ stationId: "X", waitSec: 120 }]);
+    expect(path.waitSec).toBe(120);
+  });
+
+  it("records one wait per boarding, each at its own stop", () => {
+    const path = trainDijkstra(
+      toyGraph(
+        [toyStation("X", 40.7), toyStation("M", 40.706), toyStation("Z", 40.712)],
+        [
+          { from: "X", to: "M", line: "SLOW", sec: 300 },
+          { from: "M", to: "Z", line: "FAST", sec: 300 },
+        ],
+        table,
+      ),
+      "X",
+      "Z",
+      departure,
+    )!;
+    expect(path.waits).toEqual([
+      { stationId: "X", waitSec: 120 },
+      { stationId: "M", waitSec: 900 },
+    ]);
+    // Still the sum it always was, so nothing that quotes a time changes.
+    expect(path.waitSec).toBe(1020);
+  });
+
+  it("records no wait where the feed priced none", () => {
+    // Unpriced is not a zero-second wait at a known stop; it is nothing to say.
+    const path = trainDijkstra(frequencyGraph(table), "X", "Z")!;
+    expect(path.waits).toEqual([]);
+    expect(path.waitSec).toBe(0);
   });
 });
