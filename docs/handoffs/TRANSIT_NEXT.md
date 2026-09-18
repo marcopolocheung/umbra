@@ -849,7 +849,7 @@ were considered and deliberately deferred for want of that evidence:
   `trainGraph.ts`, read by `useNavigation`'s `canTransit` and both `useRouting` sites. A
   behavioural test puts the trip's end 25 m either side of it and checks both the picker and
   whether the pipeline fetches a train graph, so the three sites cannot drift apart again.
-- **`at_grade` slivers** *(fixed in the pipeline — #PR2; live once a generation built from it is
+- **`at_grade` slivers** *(fixed in the pipeline — #438; live once a generation built from it is
   promoted, and until then Times Sq → Union Sq still reads "6% above ground")*. Measured before
   picking, and neither option held, because the sliver was never a stray untagged way. `way(r)`
   returns every member of a subway route relation, PTv2 lists **platforms** as members, and NYC's
