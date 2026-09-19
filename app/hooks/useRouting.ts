@@ -34,6 +34,12 @@ import {
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
 import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
+import { createNycStaticPrismProvider } from "../lib/navigationData/buildingProvider";
+import type { NycStaticBuildingProvider } from "../lib/navigationData/buildingProvider";
+import {
+  acquireNavigationSnapshot,
+  type NavigationSnapshot,
+} from "../lib/navigationData/remoteNavigation";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
@@ -220,14 +226,22 @@ export function useRouting({
   const pitchRestoreRef = useRef<number | null>(null);
 
   /**
-   * Shadow from building geometry, tiles first and Overpass behind for reach, with
-   * canopy blended on top — OSM's tagged crowns (A7) and the Meta/WRI height raster
-   * (A8d), whichever is darker at a point.
+   * Shadow from building geometry, static NYC snapshot first where it is bound
+   * and the current providers behind it, with canopy blended on top — OSM's
+   * tagged crowns (A7) and the Meta/WRI height raster (A8d), whichever is
+   * darker at a point.
    *
    * Lazily built rather than `useRef(createGeometryShadowField(...))`, whose argument
    * would be re-evaluated on every render and thrown away. `maplibregl.Map` satisfies
    * `TileMapLike` structurally, so the provider reads the live map through a getter
    * without any of it being plumbed through props.
+   *
+   * The static provider is long-lived but its data is not: every calculation
+   * binds the route-scoped snapshot it shares with the street graph (see the
+   * `bindSnapshot` call beside `fetchBestRoutingGraph`), so a pointer promotion
+   * mid-calculation cannot mix generations. Unbound — or outside verified NYC
+   * support, or on a static failure — it declines and the current order
+   * answers exactly as before.
    *
    * The canopy lists are separate, not more entries in the first: buildings resolve
    * first-one-wins and canopy is additive on top of whichever of them answered. The
@@ -235,9 +249,15 @@ export function useRouting({
    * prisms — see `canopyRasterField.ts` for why a raster is marched, not tessellated.
    */
   const shadowFieldRef = useRef<ShadowField | null>(null);
+  const staticBuildingsRef = useRef<NycStaticBuildingProvider | null>(null);
   if (!shadowFieldRef.current) {
+    staticBuildingsRef.current = createNycStaticPrismProvider();
     shadowFieldRef.current = createGeometryShadowField(
-      [createTilePrismProvider(() => mapRef.current), createOverpassPrismProvider()],
+      [
+        staticBuildingsRef.current,
+        createTilePrismProvider(() => mapRef.current),
+        createOverpassPrismProvider(),
+      ],
       [createOverpassCanopyProvider()],
       [createRasterCanopyProvider()],
     );
@@ -295,6 +315,18 @@ export function useRouting({
     // Tilting is the one camera move that can provoke motion sickness.
     if (prefersReducedMotion()) map.jumpTo({ pitch });
     else map.easeTo({ pitch, duration: 400 });
+  }, []);
+
+  /**
+   * The per-calculation lease for the shared static building provider.
+   *
+   * Both route pipelines call this with the snapshot their street graph
+   * loads through, before field readiness starts — see `bindSnapshot`. A
+   * stable identity so the sketch pipeline can share it without re-render
+   * churn.
+   */
+  const bindStaticSnapshot = useCallback((snapshot: NavigationSnapshot | null) => {
+    staticBuildingsRef.current?.bindSnapshot(snapshot);
   }, []);
 
   const cancelInFlightCalculation = useCallback(() => {
@@ -422,6 +454,23 @@ export function useRouting({
         )!;
         const field = shadowFieldRef.current!;
 
+        // One route-scoped snapshot for streets and buildings alike, acquired
+        // before graph fetch and field readiness start in parallel. Both paths
+        // consume this immutable pin, so a pointer promotion mid-calculation
+        // cannot mix generations inside one route. Unavailable or invalid
+        // means static stays unbound and both paths take their current
+        // fallbacks; a caller abort still cancels the calculation.
+        let navSnapshot: NavigationSnapshot | null = null;
+        try {
+          navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
+        } catch {
+          if (calcSignal.aborted || myGen !== calcGenRef.current) return cancelled();
+          if (import.meta.env.DEV) {
+            console.log("[navigation] snapshot unavailable; static buildings off");
+          }
+        }
+        staticBuildingsRef.current?.bindSnapshot(navSnapshot);
+
         readinessAbort = new AbortController();
         const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
         const readyOptions = {
@@ -432,7 +481,9 @@ export function useRouting({
         const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
         try {
-          graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal);
+          graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal, {
+            snapshot: navSnapshot,
+          });
         } catch (error) {
           readinessAbort.abort();
           throw error;
@@ -531,7 +582,7 @@ export function useRouting({
         // keeps the field's answer and its real confidence, and the route says so
         // rather than pretending to a certainty nothing measured.
         let canvasFallbackEdges = 0;
-        const buildingProviders: Array<"tiles" | "overpass" | "dedicated-mask" | "none"> = [];
+        const buildingProviders: Array<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none"> = [];
         const canopyProviders: Array<"osm" | "raster" | "both" | "none"> = [];
         for (let i = 0; i < edgeRefs.length; i++) {
           const sample = fieldShadow[i];
@@ -1300,9 +1351,13 @@ export function useRouting({
           buildingProviderShares: {
             tiles: shareOf(buildingProviders, "tiles"),
             overpass: shareOf(buildingProviders, "overpass"),
+            "nyc-static": shareOf(buildingProviders, "nyc-static"),
             "dedicated-mask": shareOf(buildingProviders, "dedicated-mask"),
             none: shareOf(buildingProviders, "none"),
           },
+          staticBuildingGeneration: buildingProviders.includes("nyc-static")
+            ? (navSnapshot?.generation ?? null)
+            : null,
           canopySourceShares: {
             osm: shareOf(canopyProviders, "osm"),
             raster: shareOf(canopyProviders, "raster"),
@@ -1507,6 +1562,7 @@ export function useRouting({
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
+    bindStaticSnapshot,
     advanceRoutePlanRevision,
     cancelInFlightCalculation,
     fitMapToRoute,

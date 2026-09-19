@@ -44,6 +44,12 @@ function isAbort(error: unknown, signal?: AbortSignal): boolean {
  * The Overpass fallback preserves `fetchRoutingGraph`'s own behavior exactly,
  * including its bbox cache: a static failure costs one Overpass request, and
  * a later identical request is served from that cache without refetching.
+ *
+ * Pass the route-scoped `options.snapshot` when the caller already acquired
+ * one (the building provider binds the same snapshot, so one calculation
+ * never mixes generations even if the pointer is promoted mid-flight).
+ * `undefined` acquires internally, as before; an explicit `null` skips the
+ * static attempt and goes straight to Overpass.
  */
 export async function fetchBestRoutingGraph(
   south: number,
@@ -51,7 +57,7 @@ export async function fetchBestRoutingGraph(
   north: number,
   east: number,
   signal?: AbortSignal,
-  options?: NavigationRequestOptions,
+  options?: NavigationRequestOptions & { snapshot?: NavigationSnapshot | null },
 ): Promise<RoutingGraph> {
   const request: NavigationRequestOptions = { ...options, signal: options?.signal ?? signal };
   const overpass = (): Promise<RoutingGraph> =>
@@ -63,11 +69,15 @@ export async function fetchBestRoutingGraph(
   };
 
   let snapshot: NavigationSnapshot | null;
-  try {
-    snapshot = await acquireNavigationSnapshot(request);
-  } catch (error) {
-    if (isAbort(error, request.signal)) throw error;
-    return fallback("snapshot failed");
+  if (options?.snapshot !== undefined) {
+    snapshot = options.snapshot;
+  } else {
+    try {
+      snapshot = await acquireNavigationSnapshot(request);
+    } catch (error) {
+      if (isAbort(error, request.signal)) throw error;
+      return fallback("snapshot failed");
+    }
   }
   // Unconfigured builds take the current path silently, exactly as before —
   // the dataset being off is the default, not a fallback.
