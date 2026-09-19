@@ -96,6 +96,12 @@ export interface DirectionsPanelProps {
   onShadowPreferenceChange?: (v: number) => void;
   /** The forecast hour at the map's location, for the heat score. */
   weather?: WeatherHour | null;
+  /** Rain objective: cards present shelter figures; sun-derived lines hide. */
+  rainMode?: boolean;
+  onRainModeChange?: (mode: boolean) => void;
+  /** 0–10 intensity setting that scales wet-minute figures only. */
+  rainIntensity?: number;
+  onRainIntensityChange?: (v: number) => void;
 }
 
 export default function DirectionsPanel({
@@ -126,6 +132,8 @@ export default function DirectionsPanel({
   travelMode = 'walk', onTravelModeChange,
   shadowPreference = 0.5, onShadowPreferenceChange,
   weather = null,
+  rainMode = false, onRainModeChange,
+  rainIntensity = 5, onRainIntensityChange,
 }: DirectionsPanelProps) {
   const shadowLabel = shadowPreference < 0.33 ? "Fastest" : shadowPreference > 0.66 ? "Most shadowed" : "Balanced";
   const baselineRoute = shortestRoute(routes);
@@ -176,6 +184,45 @@ export default function DirectionsPanel({
           ))}
         </div>
       </div>
+
+      {/* Rain objective — walk pricing only; transit cards keep their sun model */}
+      {onRainModeChange && (
+        <div
+          className="flex rounded-lg overflow-hidden border self-start"
+          style={{ borderColor: "var(--md-outline-variant)" }}
+          data-testid="rain-mode-selector"
+        >
+          {([false, true] as const).map((rain) => (
+            <button type="button"
+              key={rain ? "rain" : "sun"}
+              onClick={() => onRainModeChange(rain)}
+              aria-pressed={rainMode === rain}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                rainMode === rain ? 'text-cyan-900 bg-cyan-50' : 'hover:bg-slate-50'
+              }`}
+              style={rainMode !== rain ? { color: "var(--md-on-surface-variant)" } : undefined}
+              title={rain ? 'Route away from rain (experimental)' : 'Route by sun exposure'}
+            >
+              {rain ? 'Rain' : 'Sun'}
+            </button>
+          ))}
+        </div>
+      )}
+      {rainMode && onRainIntensityChange && (
+        <label className="flex items-center gap-2 self-start text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={1}
+            value={rainIntensity}
+            onChange={(e) => onRainIntensityChange(Number(e.target.value))}
+            aria-label="Rain intensity 0 to 10"
+            className="w-32"
+          />
+          <span>Rain {rainIntensity}/10</span>
+        </label>
+      )}
 
       {/* Active-travel selector (E1/E4) — only for walk routing; transit legs stay pedestrian */}
       {routeMode === 'walk' && onTravelModeChange && (
@@ -465,11 +512,13 @@ export default function DirectionsPanel({
       {/* Route cards — hidden on desktop when FloatingRouteCards is used */}
       {!hideRouteCards && routes.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--md-outline-variant)" }}>
-          {solarIntensity != null && <SolarPill intensity={solarIntensity} />}
+          {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
           <RouteTradeoffSummary
             route={selectedRoute}
             baselineRoute={completeBaselineRoute ?? undefined}
             weather={weather}
+            rainMode={rainMode}
+            rainIntensity={rainIntensity}
           />
           {exposureSlot}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">
@@ -482,6 +531,8 @@ export default function DirectionsPanel({
                 onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
                 onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
                 recommended={r.label === "Balanced"}
+                rainMode={rainMode}
+                rainIntensity={rainIntensity}
               />
             ))}
           </div>

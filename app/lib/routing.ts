@@ -26,6 +26,14 @@ export interface GraphEdge {
   toId: number;
   distanceM: number;
   shadowFactor: number;
+  /**
+   * Fraction of rainfall blocked over this edge, 0–1 (1 = fully sheltered).
+   *
+   * The rain twin of `shadowFactor`. Optional because every sun-era producer and
+   * fixture predates it: absent reads as 0 (fully exposed) with unknown
+   * provenance, never as dry. Set by `parallelSidewalkEdges` in rain mode.
+   */
+  shelterFactor?: number;
   side?: SidewalkSide;
   highway?: string;
   surface?: string;
@@ -41,6 +49,15 @@ export interface RoutingGraph {
   nodes: Map<number, OsmNode>;
   adj: Map<number, GraphEdge[]>; // bidirectional
 }
+
+/**
+ * Which exposure the search optimises for.
+ *
+ * `"sun"` reads `shadowFactor` and reports shadow metrics; `"rain"` reads
+ * `shelterFactor` (a static overhead-coverage or wind-tilted figure) and reports
+ * dry/wet metrics. Every default keeps sun behavior bit-identical.
+ */
+export type ExposureObjective = "sun" | "rain";
 
 export interface RouteResult {
   nodeIds: number[];
@@ -71,6 +88,12 @@ export interface RouteResult {
   turnCount: number;
   /** Where `shadowCoverage` came from. Set by the caller that sampled; see `shadowProvenance.ts`. */
   shadowSource?: ShadowProvenance;
+  /** Rain objective only: share of distance blocking rain (fraction sheltered), 0–1. */
+  dryCoverage?: number;
+  /** Rain objective only: longest unbroken run of *wet* edges, in metres. */
+  longestContinuousWetM?: number;
+  /** Rain objective only: times the path crosses the wet/dry threshold. */
+  wetTransitions?: number;
   /**
    * Physical metres per raw `surface=*` tag value along the chosen path
    * (untagged edges accumulate under `"unknown"`). Mode-independent data —
@@ -168,6 +191,21 @@ export interface RouteOption {
   /** Where `shadowCoverage` came from. Absent on sketch and transit routes. */
   shadowSource?: ShadowProvenance;
   /**
+   * Rain objective only — share of the route sheltered from rain, 0–1. Present on
+   * walk routes computed in rain mode; absent on sketch and transit routes.
+   */
+  dryCoverage?: number;
+  /** Rain objective only: longest unbroken wet stretch, metres (0 = tasteful placeholder). */
+  longestContinuousWetM?: number;
+  /** Rain objective only: wet/dry crossings along the path. */
+  wetTransitions?: number;
+  /**
+   * Where the rain figures came from. Reuses `ShadowProvenance` because the
+   * source vocabulary (building geometry, tree canopy, mixed) means the same
+   * thing for shelter as it does for shade.
+   */
+  shelterSource?: ShadowProvenance;
+  /**
    * Physical metres per `surface=*` value (see `RouteResult.surfaceMetresM`).
    * Absent on sketch and transit routes, which don't reconstruct edges;
    * present on partial routes for the completed legs only.
@@ -185,6 +223,10 @@ export interface DijkstraOptions {
   maxDetourFactor?: number;   // paretoRoutes only: search budget = shortest distance
                               // × this factor + the mode-scaled flat below; default 2.0
   travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
+  /** "sun" (default) prices `shadowFactor`; "rain" prices `shelterFactor`. */
+  objective?: ExposureObjective;
+  /** Rain objective: 0–1 intensity multiplier on the shelter saving (a slider, today). */
+  precipIntensity?: number;
 }
 
 /** Haversine distance in meters. a/b are [lng, lat]. */
@@ -473,11 +515,18 @@ export function parallelSidewalkEdges(
   fromId: number,
   sourceEdge: GraphEdge,
   canonicalLeftShadow: number,
-  canonicalRightShadow: number
+  canonicalRightShadow: number,
+  objective: ExposureObjective = "sun"
 ): [GraphEdge, GraphEdge] {
   const isCanonical = fromId < sourceEdge.toId;
   const travellerLeft = isCanonical ? canonicalLeftShadow : canonicalRightShadow;
   const travellerRight = isCanonical ? canonicalRightShadow : canonicalLeftShadow;
+  if (objective === "rain") {
+    return [
+      { ...sourceEdge, shelterFactor: travellerLeft, side: "left" },
+      { ...sourceEdge, shelterFactor: travellerRight, side: "right" },
+    ];
+  }
   return [
     { ...sourceEdge, shadowFactor: travellerLeft, side: "left" },
     { ...sourceEdge, shadowFactor: travellerRight, side: "right" },
@@ -487,6 +536,13 @@ export function parallelSidewalkEdges(
 /** Cap shadow saving at 70% so fully-shadowed edges still cost 30% of their distance.
  *  Prevents Dijkstra from creating unbounded detours through zero-cost shadowed paths. */
 const MAX_SHADOW_SAVING = 0.7;
+
+/** The rain twin of `MAX_SHADOW_SAVING`: a fully dry edge still costs 30% of its
+ *  distance, so Dijkstra cannot treat a sheltered arcade as a zero-cost wormhole. */
+const MAX_RAIN_SAVING = 0.7;
+
+/** Above this the edge counts as wet for streak metrics (mirror of `SHADOW_THRESH`). */
+const WET_EXPOSURE_THRESH = 0.5;
 
 /**
  * Dijkstra's shortest path.
@@ -505,8 +561,22 @@ export function dijkstra(
   shadowStrength: number,
   options: DijkstraOptions = {}
 ): RouteResult | null {
-  const { crossingPenaltyM = 0, solarIntensity = 1.0, straightLineDistM = 0, travelMode = "walk" } = options;
-  const effectiveMaxShadowSaving = MAX_SHADOW_SAVING * solarIntensity;
+  const {
+    crossingPenaltyM = 0,
+    solarIntensity = 1.0,
+    straightLineDistM = 0,
+    travelMode = "walk",
+    objective = "sun",
+    precipIntensity = 1.0,
+  } = options;
+  // Rain reads `shelterFactor` and scales its saving by the precipitation slider;
+  // every sun default is the literal old arithmetic.
+  const rain = objective === "rain";
+  const effectiveMaxShadowSaving = rain
+    ? MAX_RAIN_SAVING * precipIntensity
+    : MAX_SHADOW_SAVING * solarIntensity;
+  const exposureFactor = (edge: GraphEdge): number =>
+    rain ? (edge.shelterFactor ?? 0) : edge.shadowFactor;
   const effectiveCrossingM = crossingPenaltyM * speedRatioVsWalk(travelMode);
 
   const dist = new Map<number, number>();
@@ -535,7 +605,7 @@ export function dijkstra(
           ? effectiveCrossingM
           : 0;
       const edgeCost =
-        modeAdjustedDistanceM(edge, travelMode) * (1 - shadowStrength * edge.shadowFactor * effectiveMaxShadowSaving)
+        modeAdjustedDistanceM(edge, travelMode) * (1 - shadowStrength * exposureFactor(edge) * effectiveMaxShadowSaving)
         + crossing;
       const newCost = cost + edgeCost;
       if (newCost < (dist.get(edge.toId) ?? Infinity)) {
@@ -562,10 +632,12 @@ export function dijkstra(
   // Compute aggregate stats along the path
   const sides: Array<SidewalkSide | null> = [];
   const SHADOW_THRESH = 0.5;
-  let totalDist = 0, shadowedDist = 0;
+  let totalDist = 0, shadowedDist = 0, dryDist = 0;
   let longestContinuousShadowM = 0, currentStreakM = 0, shadowTransitions = 0;
   let longestContinuousSunM = 0, currentSunStreakM = 0;
   let prevShadowed: boolean | null = null;
+  let longestContinuousWetM = 0, currentWetStreakM = 0, wetTransitions = 0;
+  let prevWet: boolean | null = null;
   let turnCount = 0, prevBearing: number | null = null;
   const surfaceMetresM: Record<string, number> = {};
 
@@ -577,6 +649,7 @@ export function dijkstra(
     sides.push(edge.side ?? null);
     totalDist += edge.distanceM;
     shadowedDist += edge.distanceM * edge.shadowFactor;
+    dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
     surfaceMetresM[edge.surface ?? "unknown"] =
       (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
 
@@ -593,6 +666,17 @@ export function dijkstra(
     }
     if (prevShadowed !== null && isShadowed !== prevShadowed) shadowTransitions++;
     prevShadowed = isShadowed;
+
+    // Rain continuity tracking (absence of a shelter figure reads wet, never dry)
+    const isWet = (edge.shelterFactor ?? 0) <= WET_EXPOSURE_THRESH;
+    if (isWet) {
+      currentWetStreakM += edge.distanceM;
+      longestContinuousWetM = Math.max(longestContinuousWetM, currentWetStreakM);
+    } else {
+      currentWetStreakM = 0;
+    }
+    if (prevWet !== null && isWet !== prevWet) wetTransitions++;
+    prevWet = isWet;
 
     // Turn counting
     const fn = graph.nodes.get(nodeIds[i])!;
@@ -619,6 +703,14 @@ export function dijkstra(
     detourRatio,
     turnCount,
     surfaceMetresM,
+    // Present only for rain searches: sun results keep their exact old shape.
+    ...(rain
+      ? {
+          dryCoverage: totalDist > 0 ? dryDist / totalDist : 0,
+          longestContinuousWetM,
+          wetTransitions,
+        }
+      : {}),
   };
 }
 
@@ -700,7 +792,11 @@ export function paretoRoutes(
   endId: number,
   options: DijkstraOptions = {}
 ): RouteResult[] {
-  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, travelMode = "walk" } = options;
+  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, travelMode = "walk", objective = "sun" } = options;
+  const rain = objective === "rain";
+  /** The bi-criterion the labels accumulate: shadowed metres, or sheltered metres. */
+  const exposureFactor = (edge: GraphEdge): number =>
+    rain ? (edge.shelterFactor ?? 0) : edge.shadowFactor;
 
   // Distance-only Dijkstra: budget baseline + fast exit when unreachable.
   // Runs in the same mode so the baseline prices the same mode penalties, but
@@ -734,7 +830,8 @@ export function paretoRoutes(
   interface PLabel {
     id: number;
     distM: number;
-    shadowM: number;
+    /** Shadowed metres (sun) or sheltered metres (rain) accumulated so far. */
+    exposureM: number;
     nodeId: number;
     parentId: number;      // allLabels index; -1 for the start label
     prevEdge: GraphEdge | null;
@@ -743,10 +840,10 @@ export function paretoRoutes(
 
   const allLabels: PLabel[] = [];
   const mkLabel = (
-    distM: number, shadowM: number, nodeId: number,
+    distM: number, exposureM: number, nodeId: number,
     parentId: number, prevEdge: GraphEdge | null
   ): PLabel => {
-    const lbl: PLabel = { id: allLabels.length, distM, shadowM, nodeId, parentId, prevEdge, evicted: false };
+    const lbl: PLabel = { id: allLabels.length, distM, exposureM, nodeId, parentId, prevEdge, evicted: false };
     allLabels.push(lbl);
     return lbl;
   };
@@ -761,8 +858,8 @@ export function paretoRoutes(
     return paretoSets.get(id)!;
   };
 
-  /** Returns true if a dominates b (a is at least as short AND at least as shadowed). */
-  const dom = (a: PLabel, b: PLabel) => a.distM <= b.distM && a.shadowM >= b.shadowM;
+  /** Returns true if a dominates b (at least as short AND at least as sheltered). */
+  const dom = (a: PLabel, b: PLabel) => a.distM <= b.distM && a.exposureM >= b.exposureM;
 
   /**
    * Try to insert `incoming` into the Pareto set for its node.
@@ -848,11 +945,11 @@ export function paretoRoutes(
     const destSet = paretoSets.get(endId);
     if (destSet && destSet.length > 0 && label.nodeId !== endId) {
       const optDistM  = label.distM + hCostRemaining(label.nodeId);
-      const optShadowM = label.shadowM + (budgetM - label.distM) / costRatio;
+      const optExposureM = label.exposureM + (budgetM - label.distM) / costRatio;
       let prunedByDest = false;
       for (const id of destSet) {
         const d = allLabels[id];
-        if (d.distM <= optDistM && d.shadowM >= optShadowM) { prunedByDest = true; break; }
+        if (d.distM <= optDistM && d.exposureM >= optExposureM) { prunedByDest = true; break; }
       }
       if (prunedByDest) continue;
     }
@@ -871,7 +968,7 @@ export function paretoRoutes(
           ? effectiveCrossingM : 0;
 
       const newDistM  = label.distM  + modeAdjustedDistanceM(edge, travelMode) + crossing;
-      const newShadowM = label.shadowM + edge.distanceM * edge.shadowFactor;
+      const newExposureM = label.exposureM + edge.distanceM * exposureFactor(edge);
 
       // Detour budget: prune anything that can no longer finish within budget
       const hTo = hCostRemaining(edge.toId);
@@ -882,11 +979,11 @@ export function paretoRoutes(
       let dominated = false;
       for (const id of candidateSet) {
         const ex = allLabels[id];
-        if (ex.distM <= newDistM && ex.shadowM >= newShadowM) { dominated = true; break; }
+        if (ex.distM <= newDistM && ex.exposureM >= newExposureM) { dominated = true; break; }
       }
       if (dominated) continue;
 
-      const newLabel = mkLabel(newDistM, newShadowM, edge.toId, labelId, edge);
+      const newLabel = mkLabel(newDistM, newExposureM, edge.toId, labelId, edge);
       if (insertPareto(newLabel)) {
         heap.push({ labelId: newLabel.id, f: newDistM + hTo });
       }
@@ -917,10 +1014,12 @@ export function paretoRoutes(
     // one shorter than nodeIds — the alignment RouteResult.sides documents.
     const sides: Array<SidewalkSide | null> = edgePath.map((e) => e.side ?? null);
     const SHADOW_THRESH = 0.5;
-    let totalDist = 0, shadowedDist = 0;
+    let totalDist = 0, shadowedDist = 0, dryDist = 0;
     let longestContinuousShadowM = 0, currentStreakM = 0, shadowTransitions = 0;
     let longestContinuousSunM = 0, currentSunStreakM = 0;
     let prevShadowed: boolean | null = null;
+    let longestContinuousWetM = 0, currentWetStreakM = 0, wetTransitions = 0;
+    let prevWet: boolean | null = null;
     let turnCount = 0, prevBearing: number | null = null;
     const surfaceMetresM: Record<string, number> = {};
 
@@ -928,6 +1027,7 @@ export function paretoRoutes(
       const edge = edgePath[i];
       totalDist  += edge.distanceM;
       shadowedDist += edge.distanceM * edge.shadowFactor;
+      dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
       surfaceMetresM[edge.surface ?? "unknown"] =
         (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
       const isShadowed = edge.shadowFactor > SHADOW_THRESH;
@@ -942,6 +1042,16 @@ export function paretoRoutes(
       }
       if (prevShadowed !== null && isShadowed !== prevShadowed) shadowTransitions++;
       prevShadowed = isShadowed;
+
+      const isWet = (edge.shelterFactor ?? 0) <= WET_EXPOSURE_THRESH;
+      if (isWet) {
+        currentWetStreakM += edge.distanceM;
+        longestContinuousWetM = Math.max(longestContinuousWetM, currentWetStreakM);
+      } else {
+        currentWetStreakM = 0;
+      }
+      if (prevWet !== null && isWet !== prevWet) wetTransitions++;
+      prevWet = isWet;
 
       const fn = graph.nodes.get(nodeIds[i]);
       const tn = graph.nodes.get(nodeIds[i + 1]);
@@ -968,6 +1078,13 @@ export function paretoRoutes(
       detourRatio: straightLineDistM > 0 ? totalDist / straightLineDistM : 1.0,
       turnCount,
       surfaceMetresM,
+      ...(rain
+        ? {
+            dryCoverage: totalDist > 0 ? dryDist / totalDist : 0,
+            longestContinuousWetM,
+            wetTransitions,
+          }
+        : {}),
     };
   };
 
@@ -986,16 +1103,16 @@ export function paretoRoutes(
 
   const minDist  = candidates[0].lbl.distM;
   const maxDist  = candidates[candidates.length - 1].lbl.distM;
-  const minShadow = candidates[0].lbl.shadowM;
-  const maxShadow = candidates[candidates.length - 1].lbl.shadowM;
+  const minExposure = candidates[0].lbl.exposureM;
+  const maxExposure = candidates[candidates.length - 1].lbl.exposureM;
   const distRange  = maxDist  - minDist  || 1;
-  const shadowRange = maxShadow - minShadow || 1;
+  const exposureRange = maxExposure - minExposure || 1;
 
   let knee = candidates[0];
   let kneeScore = Infinity;
   for (const c of candidates) {
     const nd = (c.lbl.distM  - minDist)  / distRange;
-    const ns = (c.lbl.shadowM - minShadow) / shadowRange;
+    const ns = (c.lbl.exposureM - minExposure) / exposureRange;
     const score = Math.sqrt(nd * nd + (1 - ns) * (1 - ns));
     if (score < kneeScore) { kneeScore = score; knee = c; }
   }

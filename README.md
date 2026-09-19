@@ -44,6 +44,11 @@ so in the same paragraph.
 - **Sun-exposure mode** — accumulate shadow across a date range over whatever the map is
   showing, and export the result as a georeferenced GeoTIFF.
   ([`AccumulationPanel.tsx`](app/components/AccumulationPanel.tsx))
+- **A rain objective** (experimental): with Rain mode on, walk and bike routes are priced by
+  shelter from vertical rain — building overhangs, arcades and tree canopy — and cards report
+  dry coverage, wet minutes at your intensity setting, and the model's method
+  ([rain-model.md](docs/notes/rain-model.md)). Subway-underground legs are fully sheltered by
+  construction.
 - **A heat score and a UV dose per route**, both labelled *experimental* in the UI, both with
   their method published: [heat-score.md](docs/notes/heat-score.md),
   [heat-model.md](docs/notes/heat-model.md).

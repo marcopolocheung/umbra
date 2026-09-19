@@ -14,6 +14,13 @@ export interface WeatherHour {
   tempC: number | null;
   humidityPct: number | null;
   windMs: number | null;
+  /**
+   * Wind-from bearing, degrees — the meteorological convention Open-Meteo reports,
+   * and the azimuth the rain shelter field feeds through as its ray direction.
+   */
+  windDirDeg: number | null;
+  /** Peak gust in m/s, same unit as `windMs`. Display-only for now. */
+  windGustMs: number | null;
   cloudPct: number | null;
   apparentTempC: number | null;
   /**

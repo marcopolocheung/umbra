@@ -11,6 +11,12 @@ interface FloatingMapControlsProps {
   isLocating: boolean;
   onShare?: () => void;
   shareStatus?: "idle" | "copied" | "error";
+  /** Rain objective toggle — absent keeps the control out of the column. */
+  rainMode?: boolean;
+  onRainModeChange?: (mode: boolean) => void;
+  /** 0–10 intensity slider, shown while rain mode is on. */
+  rainIntensity?: number;
+  onRainIntensityChange?: (v: number) => void;
 }
 
 export default function FloatingMapControls({
@@ -20,6 +26,10 @@ export default function FloatingMapControls({
   isLocating,
   onShare,
   shareStatus = "idle",
+  rainMode = false,
+  onRainModeChange,
+  rainIntensity = 5,
+  onRainIntensityChange,
 }: FloatingMapControlsProps) {
   const is3D = pitch > 0;
 
@@ -48,6 +58,53 @@ export default function FloatingMapControls({
       </button>
 
       <div className="h-px w-8 bg-slate-200 self-center my-1" />
+
+      {onRainModeChange && (
+        <>
+          <fieldset
+            className="flex rounded-2xl overflow-hidden shadow-xl self-center border-0 p-0 m-0"
+            aria-label="Route objective"
+          >
+            <button
+              type="button"
+              onClick={() => onRainModeChange(false)}
+              aria-pressed={!rainMode}
+              title="Route by sun exposure"
+              className={`w-14 h-10 flex items-center justify-center transition-colors ${
+                !rainMode ? "bg-amber-700 text-white" : "bg-white text-slate-600 hover:text-amber-700"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[20px]">light_mode</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onRainModeChange(true)}
+              aria-pressed={rainMode}
+              title="Route away from rain (experimental)"
+              className={`w-14 h-10 flex items-center justify-center transition-colors ${
+                rainMode ? "bg-cyan-800 text-white" : "bg-white text-slate-600 hover:text-cyan-800"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[20px]">rainy</span>
+            </button>
+          </fieldset>
+          {rainMode && onRainIntensityChange && (
+            <div className="w-12 flex flex-col items-center gap-1 rounded-2xl bg-white/90 shadow-xl px-1 py-2">
+              <input
+                type="range"
+                min={0}
+                max={10}
+                step={1}
+                value={rainIntensity}
+                onChange={(e) => onRainIntensityChange(Number(e.target.value))}
+                aria-label="Rain intensity 0 to 10"
+                className="h-24 w-2 accent-cyan-800"
+                style={{ writingMode: "vertical-lr", direction: "rtl" }}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {onShare && (
         <button

@@ -207,7 +207,10 @@ const MAX_FOOTPRINT_GRID_SIDE = 256;
  * pass that remains is a handful of arithmetic per prism plus the triangulation of
  * whatever survives the region filter.
  */
-export function prepareShadowCasters(prisms: BuildingPrism[]): ShadowCasters {
+export function prepareShadowCasters(
+  prisms: BuildingPrism[],
+  opts?: { ownFootprintOccluded?: boolean }
+): ShadowCasters {
   const casters: Caster[] = [];
   let maxAbsHeightM = 0;
 
@@ -244,7 +247,12 @@ export function prepareShadowCasters(prisms: BuildingPrism[]): ShadowCasters {
       heightM: prism.heightM,
       baseM,
       opacity: prism.opacity ?? 1,
-      occludesOwnFootprint: baseM <= 0,
+      // Rain shelter asks the inverse question of a lit roof: standing *inside*
+      // a caster's footprint (an arcade, an overhang) is the dry place. The
+      // optional override lets the rain path flip a grounded caster's exclusion
+      // without touching one byte of the sun path's default.
+      occludesOwnFootprint:
+        opts?.ownFootprintOccluded ?? baseM <= 0,
       west: rw, south: rs, east: re, north: rn,
     });
     const absHeight = Math.abs(prism.heightM);
