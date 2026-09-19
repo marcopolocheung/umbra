@@ -2,9 +2,8 @@ import type { Page } from "@playwright/test";
 import { fixtureBasemapStyle } from "../fixtures/basemapStyle";
 import { overpassGridResponse } from "../fixtures/overpassGrid";
 import {
-  transitManifestJson,
-  transitPointerJson,
-  transitShardJson,
+  transitFixtureArtifacts,
+  type TransitFixtureKind,
 } from "../fixtures/transitShards";
 
 // Midtown Manhattan at z17 on the June solstice morning: dense towers, low sun,
@@ -55,6 +54,12 @@ export const SAMPLE_STEP = 8;
 /** Which basemap the run is testing against. See `playwright.config.ts`. */
 export type Basemap = "fixture" | "live";
 
+/** Which transit dataset the stub serves. `fixture` is the 3-station smoke line. */
+export type StubNetworkOptions = {
+  basemap: Basemap;
+  transit?: TransitFixtureKind;
+};
+
 const MAPTILER_STYLE_URL = "**api.maptiler.com/maps/outdoor-v2/style.json*";
 
 /**
@@ -64,7 +69,11 @@ const MAPTILER_STYLE_URL = "**api.maptiler.com/maps/outdoor-v2/style.json*";
  * registered matching route, so the blanket MapTiler abort goes in *before* the
  * style handler that has to win.
  */
-export async function stubNetwork(page: Page, opts: { basemap: Basemap }): Promise<void> {
+export async function stubNetwork(
+  page: Page,
+  opts: StubNetworkOptions
+): Promise<void> {
+  const transit = transitFixtureArtifacts(opts.transit ?? "fixture");
   if (opts.basemap === "fixture") {
     // Nothing should reach MapTiler once the style is stubbed. Abort rather than
     // let a stray request quietly hit the network (or 403 without a key), so a
@@ -82,16 +91,16 @@ export async function stubNetwork(page: Page, opts: { basemap: Basemap }): Promi
   // The published transit dataset, served from the fixture rather than R2. The
   // bucket's CORS allowlist covers the deployed origin and localhost:5173, not
   // the 127.0.0.1 this suite runs on, so a real fetch could never work here —
-  // and CI must stay hermetic anyway.
+  // and CI must stay hermetic anyway. `opts.transit` picks which dataset the
+  // run loads: the 3-station smoke line, or the seeded NYC-scale generator.
   await page.route(`${TRANSIT_BASE}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
+    const key = path.slice(path.lastIndexOf("/") + 1);
     const body = path.endsWith("/current.json")
-      ? transitPointerJson
+      ? transit.pointer
       : path.endsWith("/manifest.json")
-        ? transitManifestJson
-        : path.endsWith("/subway.json")
-          ? transitShardJson
-          : null;
+        ? transit.manifest
+        : (transit.shards.get(key) ?? null);
     if (body === null) return route.fulfill({ status: 404, body: "" });
     return route.fulfill({ status: 200, contentType: "application/json", body });
   });
