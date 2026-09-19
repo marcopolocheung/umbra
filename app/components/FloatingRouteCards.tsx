@@ -21,6 +21,8 @@ interface FloatingRouteCardsProps {
   rainMode?: boolean;
   /** 0–10 intensity setting that scales wet-minute figures only. */
   rainIntensity?: number;
+  /** Wind the last rain calculation priced, for the card to state it. */
+  rainWind?: { dirDeg: number | null; windMs: number | null } | null;
 }
 
 function routeKey(route: RouteOption): string {
@@ -40,6 +42,7 @@ export default function FloatingRouteCards({
   exposureSlot,
   rainMode = false,
   rainIntensity = 5,
+  rainWind = null,
 }: FloatingRouteCardsProps) {
   if (routes.length === 0) return null;
   const baselineRoute = shortestRoute(routes);
@@ -82,6 +85,7 @@ export default function FloatingRouteCards({
           weather={weather}
           rainMode={rainMode}
           rainIntensity={rainIntensity}
+          rainWind={rainWind}
         />
         {exposureSlot}
 

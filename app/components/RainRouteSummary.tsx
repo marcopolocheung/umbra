@@ -8,6 +8,7 @@
  * lives in full.
  */
 
+import { rainDirectionFromWind, windFromLabel } from "../lib/rain/direction";
 import { rainDryPct, rainExposureLine } from "../lib/routeRain";
 import type { RouteOption } from "../lib/routing";
 
@@ -18,10 +19,25 @@ interface RainRouteSummaryProps {
   route: RouteOption;
   /** 0–10 user intensity setting. */
   rainIntensity: number;
+  /** Wind the last rain calculation priced, or null when none was known. */
+  wind?: { dirDeg: number | null; windMs: number | null } | null;
 }
 
-export default function RainRouteSummary({ route, rainIntensity }: RainRouteSummaryProps) {
+/**
+ * One line the card can state about the wind the calculation actually used:
+ * from-bearing, speed, and the resulting ray tilt. Absent wind means the
+ * vertical (v0) ray priced the route — which the copy below already admits.
+ */
+function windLine(wind: RainRouteSummaryProps["wind"]): string | null {
+  if (!wind?.dirDeg || wind.windMs == null) return null;
+  const direction = rainDirectionFromWind(wind.dirDeg, wind.windMs);
+  const kmh = Math.round(wind.windMs * 3.6);
+  return `wind from ${windFromLabel(wind.dirDeg)} at ${kmh} km/h — shelter tilted ${Math.round(direction.altitudeDeg)}° from horizontal`;
+}
+
+export default function RainRouteSummary({ route, rainIntensity, wind = null }: RainRouteSummaryProps) {
   if (route.dryCoverage === undefined) return null;
+  const windText = windLine(wind);
 
   return (
     <div className="flex flex-col">
@@ -37,8 +53,9 @@ export default function RainRouteSummary({ route, rainIntensity }: RainRouteSumm
         </span>
       </div>
       <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
-        Rain shelter assumes vertical rain and says so where it is unsure. Numbers are
-        ordinal at your intensity setting.
+        {windText ?? "No wind forecast — shelter priced as vertical rain."} Wind is
+        reported above street level and treated as a prior. Numbers are ordinal at your
+        intensity setting.
       </div>
       <a
         href={METHOD_URL}

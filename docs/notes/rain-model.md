@@ -1,6 +1,7 @@
 # How rain shelter is estimated
 
-Method version: **rain-vertical-v0**. The UI links here so that every rain figure can be
+Method version: **rain-wind-v1**, which falls back to **rain-vertical-v0** whenever the
+wind forecast cannot answer. The UI links here so that every rain figure can be
 re-derived from this page. Status: **experimental**. None of these numbers is measured
 ground truth — they are priors, stated as ranges where the source evidence is a range,
 and the app says "unknown" rather than inventing a dry street.
@@ -58,7 +59,7 @@ shadow: *from building geometry*, *from tree canopy*, *mixed sources*, or *sourc
 exposed with low confidence, and a low-confidence route says so, exactly as the shadow
 model's "unknown ≠ shaded" rule.
 
-## v1 — wind-driven rain (not yet wired to the UI)
+## v1 — wind-driven rain (wired, with a stated fallback)
 
 The direction of rain is a wind report away: a drop arrives along a ray tilted
 `atan(wind / fall speed)` from vertical, from the meteorological wind-from bearing.
@@ -68,6 +69,12 @@ downwind). The vertical v0 is the `wind ≈ 0` limit of that formula, identical 
 the 89.5° clamp that keeps `tan(90°)` finite. One caveat is designed in: building-backed
 answers below a 70° ray elevation pay a 0.85 confidence dock, because the wind that
 steepens the ray is measured above the canyon it claims to describe.
+
+The route uses the forecast hour nearest the trip time at the trip's midpoint, from
+the same cached fetch every other weather figure reads (D2); if the response carries no
+wind direction, the calculation stays vertical and the card says so. The card reports
+the wind it actually priced: from-bearing, speed, and resulting tilt.
+
 
 ## What this model does not know, stated on purpose
 
