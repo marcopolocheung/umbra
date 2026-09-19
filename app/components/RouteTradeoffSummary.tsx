@@ -1,6 +1,8 @@
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
+import { rainExposureLine, rainTradeoffLine } from "../lib/routeRain";
 import { routeExposureLine, routeTradeoffLine } from "../lib/routeTradeoff";
+import RainRouteSummary from "./RainRouteSummary";
 import RouteConditionsLine from "./RouteConditionsLine";
 
 interface RouteTradeoffSummaryProps {
@@ -8,12 +10,18 @@ interface RouteTradeoffSummaryProps {
   baselineRoute?: RouteOption;
   /** The forecast hour at the map's location, or null when none is available. */
   weather?: WeatherHour | null;
+  /** Rain objective active: swap the figures and suppress the sun-derived ones. */
+  rainMode?: boolean;
+  /** 0–10 user setting that scales the wet-minute figure only. */
+  rainIntensity?: number;
 }
 
 export default function RouteTradeoffSummary({
   route,
   baselineRoute,
   weather = null,
+  rainMode = false,
+  rainIntensity = 5,
 }: RouteTradeoffSummaryProps) {
   if (!route || route.partial || !baselineRoute) return null;
 
@@ -33,13 +41,27 @@ export default function RouteTradeoffSummary({
       >
         Selected route
       </div>
-      <div className="text-sm font-semibold leading-snug" style={{ color: "var(--md-primary)" }}>
-        {routeTradeoffLine(route, baselineRoute)}
-      </div>
-      <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
-        {routeExposureLine(route)}
-      </div>
-      <RouteConditionsLine route={route} baselineRoute={baselineRoute} weather={weather} />
+      {rainMode && route.dryCoverage !== undefined && baselineRoute.dryCoverage !== undefined ? (
+        <>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--md-primary)" }}>
+            {rainTradeoffLine(route, baselineRoute)}
+          </div>
+          <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+            {rainExposureLine(route, rainIntensity)}
+          </div>
+          <RainRouteSummary route={route} rainIntensity={rainIntensity} />
+        </>
+      ) : (
+        <>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--md-primary)" }}>
+            {routeTradeoffLine(route, baselineRoute)}
+          </div>
+          <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+            {routeExposureLine(route)}
+          </div>
+          <RouteConditionsLine route={route} baselineRoute={baselineRoute} weather={weather} />
+        </>
+      )}
     </div>
   );
 }

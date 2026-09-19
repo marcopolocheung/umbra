@@ -29,6 +29,12 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const [routeMode, setRouteMode] = useState<"walk" | "transit">("walk");
   const [shadowPreference, setShadowPreference] = useState(0.5);
 
+  // Rain objective: walk/bike routes are priced on rain shelter instead of sun.
+  // The intensity is an ordinal 0–10 setting (no mm/h claim anywhere); it scales
+  // reported exposure only — route choice does not depend on it.
+  const [rainMode, setRainMode] = useState(false);
+  const [rainIntensity, setRainIntensity] = useState(5);
+
   // Active-travel mode for walk routing (E1). Transit access legs stay
   // pedestrian — mixed-mode journeys are E6.
   const [travelMode, setTravelMode] = useState<TravelModeId>("walk");
@@ -132,6 +138,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     dateRef,
     travelModeRef,
     routeMode,
+    rainMode,
     waypointA,
     waypointB,
     additionalWaypoints,
@@ -251,6 +258,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSimplifiedWaypoints(null);
     setRouteMode("walk");
     setShadowPreference(0.5);
+    setRainMode(false);
+    setRainIntensity(5);
     setTravelMode("walk");
   }, [
     cancelInFlightCalculation,
@@ -309,6 +318,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSimplifiedWaypoints(null);
     setRouteMode("walk");
     setShadowPreference(0.5);
+    setRainMode(false);
+    setRainIntensity(5);
     setNavMode(false);
   }, [
     cancelInFlightCalculation,
@@ -362,6 +373,23 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       return routes;
     });
   }, [setNavRoutes, setSelectedRouteIndex]);
+
+  // Objective switch is a route-defining change: in-flight work is obsolete and
+  // the existing cards are answers to a different question.
+  const handleRainModeChange = useCallback(
+    (mode: boolean) => {
+      cancelInFlightCalculation();
+      setRainMode(mode);
+      setNavRoutes([]);
+      setSelectedRouteIndex(0);
+    },
+    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+  );
+
+  // Intensity rescales reported wet time without changing which route won.
+  const handleRainIntensityChange = useCallback((v: number) => {
+    setRainIntensity(Math.max(0, Math.min(10, Math.round(v))));
+  }, []);
 
 
 
@@ -419,6 +447,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     simplifiedWaypoints,
     routeMode,
     shadowPreference,
+    rainMode,
+    rainIntensity,
     travelMode,
 
     // Setters
@@ -445,6 +475,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     handleRouteModeChange,
     handleTravelModeChange,
     handleShadowPreferenceChange,
+    handleRainModeChange,
+    handleRainIntensityChange,
     handleSketchPointClick,
     handleSketchPointDrag,
     handleSketchFinish,

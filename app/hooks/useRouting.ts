@@ -68,6 +68,7 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
+import { verticalRainDirection } from "../lib/rain/direction";
 import { MAX_STOP_PRELOADS, waitExposureFrom } from "../lib/transitWaitExposure";
 import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
@@ -164,6 +165,8 @@ export interface UseRoutingArgs {
   dateRef: React.MutableRefObject<Date>;
   travelModeRef: React.MutableRefObject<TravelModeId>;
   routeMode: "walk" | "transit";
+  /** Rain objective active: walk/bike legs price shelter, not shadow. */
+  rainMode: boolean;
   waypointA: [number, number] | null;
   waypointB: [number, number] | null;
   additionalWaypoints: [number, number][];
@@ -193,6 +196,7 @@ export function useRouting({
   dateRef,
   travelModeRef,
   routeMode,
+  rainMode,
   waypointA,
   waypointB,
   additionalWaypoints,
@@ -218,6 +222,9 @@ export function useRouting({
   // the finished route is framed against.
   const routeModeRef = useRef(routeMode);
   routeModeRef.current = routeMode;
+  // Volatile across renders: `calculateRoute` keeps its identity and reads this.
+  const rainModeRef = useRef(rainMode);
+  rainModeRef.current = rainMode;
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
   const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
@@ -538,7 +545,10 @@ export function useRouting({
         const coverage =
           field.coverageEdges?.(edgeRefs, dateRef.current) ??
           field.coverage(shadowBbox, dateRef.current);
-        const needsCanvas = coverage.confidence < LOW_CONFIDENCE;
+        // Rain never falls back to the renderer: the canvas paints *shadow*, and
+        // reading it as shelter would invent dryness. A rain edge the field cannot
+        // answer keeps its real (low) confidence and reads exposed, honestly.
+        const needsCanvas = !rainModeRef.current && coverage.confidence < LOW_CONFIDENCE;
 
         let buildingMask: ReturnType<IShadowLayer["readBuildingShadowMask"]> = null;
 
@@ -598,12 +608,19 @@ export function useRouting({
         // region-filtered shadow index per cell, so slicing this up here would only
         // rebuild those indices and re-triangulate every prism whose shadow straddles
         // a slice boundary.
+        const rainObjective = rainModeRef.current;
         updateProgress({
-          message: "Sampling street shadow",
+          message: rainObjective ? "Sampling street rain shelter" : "Sampling street shadow",
           current: 0,
           total: edgeRefs.length,
         });
-        const fieldShadow = edgeRefs.length > 0 ? field.sampleEdges(edgeRefs, dateRef.current) : [];
+        // v0 pricing is the windless (vertical) direction; the wind-tilted v1 exists
+        // behind the same call and is not wired to the UI yet.
+        const fieldShadow = edgeRefs.length > 0
+          ? rainObjective
+            ? field.sampleRainEdges(edgeRefs, verticalRainDirection(), dateRef.current)
+            : field.sampleEdges(edgeRefs, dateRef.current)
+          : [];
         if (myGen !== calcGenRef.current) return cancelled();
 
         // Per edge: trust the geometry, or fall back to pixels for that edge alone.
@@ -615,7 +632,26 @@ export function useRouting({
         const canopyProviders: Array<"osm" | "raster" | "both" | "none"> = [];
         for (let i = 0; i < edgeRefs.length; i++) {
           const sample = fieldShadow[i];
-          if (sample.confidence >= LOW_CONFIDENCE || !buildingMask) {
+          if (rainObjective) {
+            edgeShadowCache.set(edgeKeys[i], {
+              left: sample.left,
+              right: sample.right,
+              source: sample.source,
+              confidence: sample.confidence,
+            });
+            buildingProviders.push(sample.buildingSource ?? "none");
+            const osmCanopy = sample.canopySources?.osm ?? false;
+            const rasterCanopy = sample.canopySources?.raster ?? false;
+            canopyProviders.push(
+              osmCanopy && rasterCanopy
+                ? "both"
+                : osmCanopy
+                  ? "osm"
+                  : rasterCanopy
+                    ? "raster"
+                    : "none",
+            );
+          } else if (sample.confidence >= LOW_CONFIDENCE || !buildingMask) {
             edgeShadowCache.set(edgeKeys[i], {
               left: sample.left,
               right: sample.right,
@@ -654,7 +690,7 @@ export function useRouting({
           const done = i + 1;
           if (done === edgeRefs.length || done % 100 === 0) {
             updateProgress({
-              message: "Sampling street shadow",
+              message: rainObjective ? "Sampling street rain shelter" : "Sampling street shadow",
               current: done,
               total: edgeRefs.length,
             });
@@ -685,7 +721,9 @@ export function useRouting({
             const lo = Math.min(fromId, edge.toId);
             const hi = Math.max(fromId, edge.toId);
             const { left, right } = edgeShadowCache.get(`${lo},${hi}`) ?? { left: 0, right: 0 };
-            routingAdj.get(fromId)!.push(...parallelSidewalkEdges(fromId, edge, left, right));
+            routingAdj.get(fromId)!.push(
+              ...parallelSidewalkEdges(fromId, edge, left, right, rainObjective ? "rain" : "sun"),
+            );
           }
         }
         const routingGraph: RoutingGraph = { nodes: graph.nodes, adj: routingAdj };
@@ -763,7 +801,13 @@ export function useRouting({
         const solarIntensity = computeSolarIntensity(dateRef.current, midLat, midLng);
         const CROSSING_PENALTY_M = 15;
         const travelMode = travelModeRef.current;
-        const opts = { crossingPenaltyM: CROSSING_PENALTY_M, solarIntensity, straightLineDistM, travelMode };
+        const opts = {
+          crossingPenaltyM: CROSSING_PENALTY_M,
+          solarIntensity,
+          straightLineDistM,
+          travelMode,
+          objective: rainObjective ? "rain" as const : "sun" as const,
+        };
         // Station access is pedestrian even on a bike journey (mixed-mode is E6).
         const walkOpts = { ...opts, travelMode: "walk" as TravelModeId };
 
@@ -774,11 +818,14 @@ export function useRouting({
           const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
           dijkstraMs = performance.now() - tDijkstra;
 
-          // Results are ordered [shortest, balanced, most shadowed] with duplicate
-          // paths removed — when only 2 remain, the second is always the shadowed
+          // Results are ordered [shortest, balanced, most exposed] with duplicate
+          // paths removed — when only 2 remain, the second is always the exposed
           // end of the Pareto front, not "Balanced".
-          const ROUTE_LABELS =
-            paretoResults.length === 2
+          const ROUTE_LABELS = rainObjective
+            ? paretoResults.length === 2
+              ? ["Shortest", "Driest"]
+              : ["Shortest", "Balanced", "Driest"]
+            : paretoResults.length === 2
               ? ["Shortest", "Most shadowed"]
               : ["Shortest", "Balanced", "Most shadowed"];
           options = paretoResults.map((result, i) => ({
@@ -793,6 +840,16 @@ export function useRouting({
             detourRatio: result.detourRatio,
             turnCount: result.turnCount,
             shadowSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
+            ...(rainObjective
+              ? {
+                  dryCoverage: result.dryCoverage,
+                  longestContinuousWetM: result.longestContinuousWetM,
+                  wetTransitions: result.wetTransitions,
+                  // Same summariser, same vocabulary: the sources it names —
+                  // building geometry, tree canopy — describe shelter too.
+                  shelterSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
+                }
+              : {}),
             travelMode,
             totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
             surfaceMetresM: result.surfaceMetresM,
@@ -800,7 +857,9 @@ export function useRouting({
         } else {
           const nodeChain = snappedStops.ids;
 
-          const MULTI_LABELS = ["Shortest", "Balanced", "Most shadowed"] as const;
+          const MULTI_LABELS = rainObjective
+            ? (["Shortest", "Balanced", "Driest"] as const)
+            : (["Shortest", "Balanced", "Most shadowed"] as const);
           const STRENGTHS = [0, 0.5, 1.0];
           const totalRouteLegs = STRENGTHS.length * (nodeChain.length - 1);
           let completedRouteLegs = 0;
@@ -815,6 +874,7 @@ export function useRouting({
             const strength = STRENGTHS[si];
             let totalDist = 0;
             let totalShadowDist = 0;
+            let totalDryDist = 0;
             const allCoords: [number, number][] = [];
             // `segResult` is scoped to the leg loop, but provenance is a property of the
             // whole route — so the node ids have to outlive the leg that produced them.
@@ -864,6 +924,7 @@ export function useRouting({
               });
               totalDist += segResult.distanceM;
               totalShadowDist += segResult.distanceM * segResult.shadowCoverage;
+              totalDryDist += segResult.distanceM * (segResult.dryCoverage ?? 0);
               for (const [surface, metres] of Object.entries(segResult.surfaceMetresM)) {
                 surfaceMetresM[surface] = (surfaceMetresM[surface] ?? 0) + metres;
               }
@@ -889,6 +950,14 @@ export function useRouting({
                   turnCount: 0,
                   legs,
                   shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+                  ...(rainObjective
+                    ? {
+                        dryCoverage: totalDist > 0 ? totalDryDist / totalDist : 0,
+                        longestContinuousWetM: 0,
+                        wetTransitions: 0,
+                        shelterSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+                      }
+                    : {}),
                   travelMode,
                   totalTimeSec: travelTimeSeconds(totalDist, travelMode),
                   surfaceMetresM: { ...surfaceMetresM },
@@ -926,6 +995,14 @@ export function useRouting({
               turnCount: 0,
               legs,
               shadowSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+              ...(rainObjective
+                ? {
+                    dryCoverage: totalDist > 0 ? totalDryDist / totalDist : 0,
+                    longestContinuousWetM: 0,
+                    wetTransitions: 0,
+                    shelterSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
+                  }
+                : {}),
               travelMode,
               totalTimeSec: travelTimeSeconds(totalDist, travelMode),
               surfaceMetresM: { ...surfaceMetresM },

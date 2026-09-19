@@ -17,6 +17,10 @@ interface FloatingRouteCardsProps {
   onStartNavigation?: () => void;
   /** The dose line and hourly exposure strip, rendered under the tradeoff line. */
   exposureSlot?: ReactNode;
+  /** Rain objective: cards present shelter, and the solar pill steps aside. */
+  rainMode?: boolean;
+  /** 0–10 intensity setting that scales wet-minute figures only. */
+  rainIntensity?: number;
 }
 
 function routeKey(route: RouteOption): string {
@@ -34,6 +38,8 @@ export default function FloatingRouteCards({
   solarIntensity,
   onStartNavigation,
   exposureSlot,
+  rainMode = false,
+  rainIntensity = 5,
 }: FloatingRouteCardsProps) {
   if (routes.length === 0) return null;
   const baselineRoute = shortestRoute(routes);
@@ -57,8 +63,8 @@ export default function FloatingRouteCards({
           </span>
         </div>
 
-        {/* Solar pill */}
-        {solarIntensity != null && solarIntensity > 0.15 && (
+        {/* Solar pill — sun semantics, so it yields to a rain objective */}
+        {!rainMode && solarIntensity != null && solarIntensity > 0.15 && (
           <div
             className="text-xs px-3 py-1.5 rounded-full self-start"
             style={{
@@ -74,6 +80,8 @@ export default function FloatingRouteCards({
           route={selectedRoute}
           baselineRoute={completeBaselineRoute ?? undefined}
           weather={weather}
+          rainMode={rainMode}
+          rainIntensity={rainIntensity}
         />
         {exposureSlot}
 
@@ -88,6 +96,8 @@ export default function FloatingRouteCards({
               onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
               onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
               recommended={r.label === "Balanced"}
+              rainMode={rainMode}
+              rainIntensity={rainIntensity}
             />
           ))}
         </div>
