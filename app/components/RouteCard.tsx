@@ -7,6 +7,7 @@ import {
   transitSunCaveat,
   transitSunTone,
 } from "../lib/routeLegSummary";
+import { rainDryPct, rainExposureLine } from "../lib/routeRain";
 import {
   isTimetableExpired,
   riderFacingNotes,
@@ -26,15 +27,39 @@ interface RouteCardProps {
   onSave?: () => void;
   onExport?: (format: "gpx" | "geojson") => void;
   recommended?: boolean;
+  /** Rain objective: show shelter figures; absent dryCoverage keeps the sun card. */
+  rainMode?: boolean;
+  /** 0–10 intensity setting that scales the wet-minute figure only. */
+  rainIntensity?: number;
 }
 
-export default function RouteCard({ route: r, selected, onSelect, onSave, onExport, recommended }: RouteCardProps) {
-  const streak = r.longestContinuousShadowM >= 10 ? `${Math.round(r.longestContinuousShadowM)}m shadow` : null;
-  const transitions = r.shadowTransitions === 0 ? "continuous" : `${r.shadowTransitions} break${r.shadowTransitions === 1 ? "" : "s"}`;
+export default function RouteCard({ route: r, selected, onSelect, onSave, onExport, recommended, rainMode = false, rainIntensity = 5 }: RouteCardProps) {
+  const rainCard = rainMode && r.dryCoverage !== undefined;
+  const streak =
+    rainCard
+      ? (r.longestContinuousWetM ?? 0) >= 10
+        ? `${Math.round(r.longestContinuousWetM ?? 0)}m wet`
+        : null
+      : r.longestContinuousShadowM >= 10
+        ? `${Math.round(r.longestContinuousShadowM)}m shadow`
+        : null;
+  const transitions = rainCard
+    ? (r.wetTransitions ?? 0) === 0
+      ? "continuous"
+      : `${r.wetTransitions} break${r.wetTransitions === 1 ? "" : "s"}`
+    : r.shadowTransitions === 0
+      ? "continuous"
+      : `${r.shadowTransitions} break${r.shadowTransitions === 1 ? "" : "s"}`;
   const detour = r.detourRatio > 1.05 ? `${r.detourRatio.toFixed(1)}×` : null;
-  const shadowPct = Math.round(r.shadowCoverage * 100);
+  const shadowPct = rainCard ? rainDryPct(r) : Math.round(r.shadowCoverage * 100);
   // Absent on sketch and transit routes, whose shadow was not sampled per sidewalk.
-  const shadowSource = r.shadowSource ? describeShadowProvenance(r.shadowSource) : null;
+  const shadowSource = rainCard
+    ? r.shelterSource
+      ? describeShadowProvenance(r.shelterSource)
+      : null
+    : r.shadowSource
+      ? describeShadowProvenance(r.shadowSource)
+      : null;
   // Names the avoided surfaces the chosen route still crosses in scoot/bike
   // mode (E4) — raw surface tags, so a smoothness=good sett section is still
   // named, and silence is absence of data, not proof of smooth. Absent on
@@ -90,7 +115,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               color: selected ? "var(--md-on-surface)" : "var(--md-on-surface-variant)",
             }}
           >
-            {shadowPct}% shadow
+            {shadowPct}%{rainCard ? " dry" : " shadow"}
           </span>
         </div>
 
@@ -105,7 +130,10 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(130,85,0,0.08)" }}>
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${shadowPct}%`, background: "var(--md-primary-container)" }}
+              style={{
+                width: `${shadowPct}%`,
+                background: rainCard ? "rgba(14,116,144,0.55)" : "var(--md-primary-container)",
+              }}
             />
           </div>
           <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: "var(--md-on-surface-variant)" }}>
@@ -114,7 +142,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         </div>
 
         <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
-          {routeExposureLine(r)}
+          {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
         </div>
 
         {roughLine && (
@@ -138,7 +166,9 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             </div>
             {streak && (
               <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Continuous Shadow</div>
+                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>
+                  {rainCard ? "Continuous Wet" : "Continuous Shadow"}
+                </div>
                 <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{streak}</div>
               </div>
             )}
@@ -149,7 +179,9 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               </div>
             )}
             <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Shadow Breaks</div>
+              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>
+                {rainCard ? "Wet Breaks" : "Shadow Breaks"}
+              </div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{transitions}</div>
             </div>
           </div>

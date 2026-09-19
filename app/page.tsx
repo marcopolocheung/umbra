@@ -256,6 +256,8 @@ export default function Home() {
     simplifiedWaypoints,
     routeMode,
     shadowPreference,
+    rainMode,
+    rainIntensity,
     travelMode,
     setPendingSlot,
     setSelectedRouteIndex,
@@ -278,6 +280,8 @@ export default function Home() {
     handleRouteModeChange,
     handleTravelModeChange,
     handleShadowPreferenceChange,
+    handleRainModeChange,
+    handleRainIntensityChange,
     handleSketchPointClick,
     handleSketchPointDrag,
     handleSketchFinish,
@@ -1030,6 +1034,8 @@ export default function Home() {
           solarIntensity={routeSolarIntensity}
           exposureSlot={exposureSlot}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
+          rainMode={rainMode}
+          rainIntensity={rainIntensity}
         />
       )}
 
@@ -1042,6 +1048,10 @@ export default function Home() {
           isLocating={isLocating}
           onShare={handleShareLink}
           shareStatus={shareStatus}
+          rainMode={rainMode}
+          onRainModeChange={handleRainModeChange}
+          rainIntensity={rainIntensity}
+          onRainIntensityChange={handleRainIntensityChange}
         />
       </div>
 
@@ -1122,6 +1132,10 @@ export default function Home() {
               onTravelModeChange={handleTravelModeChange}
               shadowPreference={shadowPreference}
               onShadowPreferenceChange={handleShadowPreferenceChange}
+              rainMode={rainMode}
+              onRainModeChange={handleRainModeChange}
+              rainIntensity={rainIntensity}
+              onRainIntensityChange={handleRainIntensityChange}
             />
           ) : phase === "NAVIGATING" ? (
             <NavigationStatusPanel

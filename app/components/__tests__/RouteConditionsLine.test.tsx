@@ -30,6 +30,8 @@ const HOT: WeatherHour = {
   tempC: 31,
   humidityPct: 45,
   windMs: 2.5,
+  windDirDeg: 225,
+  windGustMs: 7,
   apparentTempC: 33,
   shortwaveWm2: 820,
   uvIndex: 8.4,
