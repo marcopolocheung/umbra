@@ -629,6 +629,18 @@ describe("confidenceFor", () => {
     );
   });
 
+  it("places the static snapshot between tiles and Overpass", () => {
+    // The documented prior: verified bytes and pinned heights beat live OSM,
+    // but an explicit unknown-height fraction keeps it below per-building
+    // render heights.
+    expect(confidenceFor("nyc-static", HIGH_SUN, 3)).toBeLessThan(
+      confidenceFor("tiles", HIGH_SUN, 3)
+    );
+    expect(confidenceFor("nyc-static", HIGH_SUN, 3)).toBeGreaterThan(
+      confidenceFor("overpass", HIGH_SUN, 3)
+    );
+  });
+
   it("docks confidence when the covering source holds no buildings", () => {
     expect(confidenceFor("tiles", HIGH_SUN, 0)).toBeLessThan(confidenceFor("tiles", HIGH_SUN, 1));
     expect(confidenceFor("tiles", HIGH_SUN, 0)).toBeLessThan(LOW_CONFIDENCE);
@@ -658,7 +670,7 @@ describe("confidenceFor", () => {
   it("never leaves the 0–1 range", () => {
     for (const altitude of [0.0001, 0.05, 0.2, 1.4]) {
       for (const inReach of [0, 12]) {
-        for (const source of ["tiles", "overpass"] as const) {
+        for (const source of ["tiles", "overpass", "nyc-static"] as const) {
           const c = confidenceFor(source, altitude, inReach);
           expect(c).toBeGreaterThanOrEqual(0);
           expect(c).toBeLessThanOrEqual(1);
