@@ -509,6 +509,114 @@ describe("ready", () => {
   });
 });
 
+// ─── readiness cache (A2) ─────────────────────────────────────────────────────
+
+describe("readiness cache", () => {
+  // A provider that resolves nothing and counts what it was asked to preload.
+  function countingProvider(loaded: BBox[], pendingSignals?: AbortSignal[]) {
+    const provider: PrismProvider = {
+      source: "overpass",
+      prismsFor: () => null,
+      load: async (bbox, signal) => {
+        loaded.push(bbox);
+        if (!pendingSignals) return;
+        await new Promise<void>((resolve) => {
+          if (signal) pendingSignals.push(signal);
+          signal?.addEventListener("abort", () => resolve(), { once: true });
+          if (signal?.aborted) resolve();
+        });
+      },
+    };
+    return provider;
+  }
+
+  it("returns a cached answer for a bbox `ready()` already resolved", async () => {
+    const loaded: BBox[] = [];
+    const field = createGeometryShadowField([countingProvider(loaded)]);
+
+    await field.ready(WIDE_COVERAGE);
+    await field.ready(WIDE_COVERAGE);
+
+    expect(loaded).toEqual([WIDE_COVERAGE]);
+  });
+
+  it("still loads a different bbox whose readiness was never resolved", async () => {
+    const elsewhere = bboxAroundPoint(LNG + 0.02, LAT, 500);
+    const loaded: BBox[] = [];
+    const field = createGeometryShadowField([countingProvider(loaded)]);
+
+    await field.ready(WIDE_COVERAGE);
+    await field.ready(elsewhere);
+
+    expect(loaded).toEqual([WIDE_COVERAGE, elsewhere]);
+  });
+
+  it("re-resolves the same bbox under a different generation", async () => {
+    let generation: string | null = "nyc-2026-09-18-aaaaaaaaaaaa";
+    const loaded: BBox[] = [];
+    const field = createGeometryShadowField([countingProvider(loaded)], [], [], {
+      generationOf: () => generation,
+    });
+
+    await field.ready(WIDE_COVERAGE);
+    await field.ready(WIDE_COVERAGE);
+    generation = "nyc-2026-09-19-bbbbbbbbbbbb";
+    await field.ready(WIDE_COVERAGE);
+
+    expect(loaded).toEqual([WIDE_COVERAGE, WIDE_COVERAGE]);
+  });
+
+  it("reuses per-cell readiness for the same edges, and only loads new cells", async () => {
+    const loaded: BBox[] = [];
+    const field = createGeometryShadowField([countingProvider(loaded)]);
+    // Two cells, 0.1° apart (the file's edge-cell coverage fixture).
+    const near: EdgeRef = {
+      from: [LNG - 10 / mPerLng, LAT],
+      to: [LNG + 10 / mPerLng, LAT],
+    };
+    const far: EdgeRef = {
+      from: [LNG + 0.1 - 10 / mPerLng, LAT],
+      to: [LNG + 0.1 + 10 / mPerLng, LAT],
+    };
+    // A third cell further along the grid line.
+    const third: EdgeRef = {
+      from: [LNG + 0.2 - 10 / mPerLng, LAT],
+      to: [LNG + 0.2 + 10 / mPerLng, LAT],
+    };
+
+    await field.readyEdges([near, far]);
+    await field.readyEdges([near, far]);
+    expect(loaded).toHaveLength(2);
+
+    await field.readyEdges([near, far, third]);
+    expect(loaded).toHaveLength(3);
+  });
+
+  it("does not cache readiness the deadline cut short", async () => {
+    vi.useFakeTimers();
+    try {
+      const signals: AbortSignal[] = [];
+      const loaded: BBox[] = [];
+      const field = createGeometryShadowField([countingProvider(loaded, signals)]);
+
+      const aborted = field.ready(WIDE_COVERAGE, { deadlineAt: Date.now() + 25 });
+      await vi.advanceTimersByTimeAsync(25);
+      await aborted;
+      expect(loaded).toHaveLength(1);
+
+      // A fresh pass over the same bbox gets a fresh load: the aborted pass
+      // recorded nothing.
+      const retry = field.ready(WIDE_COVERAGE, { deadlineAt: Date.now() + 25 });
+      await vi.advanceTimersByTimeAsync(25);
+      await retry;
+      expect(loaded).toHaveLength(2);
+      expect(signals.every((s) => s.aborted)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 // ─── coverage ─────────────────────────────────────────────────────────────────
 
 describe("coverage", () => {

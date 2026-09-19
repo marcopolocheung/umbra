@@ -274,6 +274,10 @@ export function useRouting({
       ],
       [createOverpassCanopyProvider()],
       [createRasterCanopyProvider()],
+      // The readiness cache is scoped to the static dataset generation the
+      // provider is currently bound to, so a promotion never reuses a stale
+      // area's cached readiness.
+      { generationOf: () => staticBuildingsRef.current?.generation ?? null },
     );
   }
 
