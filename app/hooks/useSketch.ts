@@ -3,6 +3,10 @@ import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
 import {
+  acquireNavigationSnapshot,
+  type NavigationSnapshot,
+} from "../lib/navigationData/remoteNavigation";
+import {
   bfsReachable,
   connectRouteEndpoints,
   dijkstra,
@@ -56,6 +60,7 @@ export interface UseSketchArgs {
   calcGenRef: React.MutableRefObject<number>;
   calcAbortRef: React.MutableRefObject<AbortController | null>;
   shadowFieldRef: React.MutableRefObject<ShadowField | null>;
+  bindStaticSnapshot: (snapshot: NavigationSnapshot | null) => void;
   fitMapToRoute: (route: RouteOption) => void;
   flattenForShadowReadback: (map: maplibregl.Map) => boolean;
   restorePitchAfterShadowReadback: (map: maplibregl.Map | null) => void;
@@ -74,6 +79,7 @@ export function useSketch({
   calcGenRef,
   calcAbortRef,
   shadowFieldRef,
+  bindStaticSnapshot,
   fitMapToRoute,
   flattenForShadowReadback,
   restorePitchAfterShadowReadback,
@@ -291,6 +297,17 @@ export function useSketch({
       )!;
       const field = shadowFieldRef.current!;
 
+      // Same route-scoped snapshot discipline as the normal pipeline: one pin
+      // for the street graph and the static buildings, so a mid-calculation
+      // promotion cannot mix generations.
+      let sketchSnapshot: NavigationSnapshot | null = null;
+      try {
+        sketchSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
+      } catch {
+        if (calcGenRef.current !== myGen || calcSignal.aborted) return;
+      }
+      bindStaticSnapshot(sketchSnapshot);
+
       readinessAbort = new AbortController();
       const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
       const readyOptions = {
@@ -301,7 +318,9 @@ export function useSketch({
       const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
       let graph: RoutingGraph;
       try {
-        graph = await fetchBestRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal);
+        graph = await fetchBestRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal, {
+          snapshot: sketchSnapshot,
+        });
       } catch (error) {
         readinessAbort.abort();
         throw error;
@@ -489,6 +508,7 @@ export function useSketch({
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
+    bindStaticSnapshot,
     snapSketchWaypoints,
     fitMapToRoute,
     flattenForShadowReadback,

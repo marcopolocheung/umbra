@@ -124,6 +124,9 @@ describe("describeShadowProvenance", () => {
     expect(summarize([shadow("overpass"), shadow("overpass"), shadow("overpass")])).toBe(
       "from building geometry"
     );
+    expect(summarize([shadow("nyc-static"), shadow("nyc-static"), shadow("nyc-static")])).toBe(
+      "from building geometry"
+    );
   });
 
   it("names canopy when A7 blended it in, rather than falling through to unknown", () => {

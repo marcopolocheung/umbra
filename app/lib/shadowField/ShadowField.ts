@@ -41,7 +41,10 @@ import {
  * than a claim of full sun. `"canvas"` is the pixel sampler, wired in by A4 as the
  * fallback. A7 filled in the last two: `"canopy"` means a canopy source answered and
  * no building source could, `"mixed"` that a building source answered *and* canopy
- * was present in the area to be blended with it.
+ * was present in the area to be blended with it. `"nyc-static"` is the verified
+ * NYC building snapshot: like `"tiles"` and `"overpass"` it names the exact
+ * building provider behind an answer (see `EdgeShadow.buildingSource`), and
+ * the user-facing label stays "from building geometry".
  *
  * A8d's height raster is deliberately *not* a sixth member. It is canopy, it reports
  * the same fraction, and `describeShadowProvenance` already says "from tree canopy"
@@ -50,7 +53,14 @@ import {
  * canopy *share* so the cost model can weight it — not in a label the UI would have
  * to explain.
  */
-export type ShadowSource = "tiles" | "overpass" | "canopy" | "mixed" | "canvas" | "none";
+export type ShadowSource =
+  | "tiles"
+  | "overpass"
+  | "nyc-static"
+  | "canopy"
+  | "mixed"
+  | "canvas"
+  | "none";
 
 export interface ShadowSample {
   /** 0 = full sun, 1 = fully shadowed. */
@@ -128,13 +138,15 @@ export interface ShadowField {
  * A source of building prisms for an area.
  *
  * Two exist today — MapTiler vector tiles (what the renderer draws, synchronous,
- * viewport-scoped) and Overpass (slower, async, works anywhere). `prismsFor` must
+ * viewport-scoped) and Overpass (slower, async, works anywhere) — plus the
+ * static NYC snapshot provider (`nyc-static`, verified shards, route-scoped),
+ * which goes first inside its coverage. `prismsFor` must
  * return `null` rather than an empty set when the provider cannot speak for a bbox,
  * because "no buildings here" and "I haven't loaded this area" produce the same
  * shadow number and very different confidence.
  */
 export interface PrismProvider {
-  source: "tiles" | "overpass";
+  source: "tiles" | "overpass" | "nyc-static";
   prismsFor(bbox: BBox): PrismSet | null;
   load?(bbox: BBox, signal?: AbortSignal): Promise<void>;
   /**
@@ -280,6 +292,22 @@ type SourceKey = PrismProvider["source"] | "canopy" | "canopy-raster";
 const SOURCE_BASE_CONFIDENCE: Record<SourceKey, number> = {
   tiles: 0.8,
   overpass: 0.7,
+  /**
+   * The static NYC snapshot: below tiles, above Overpass, and deliberately
+   * neither by accident.
+   *
+   * Above Overpass (0.7) because every byte is digest-verified against the
+   * published generation and heights come from the pinned NYC Building
+   * Footprints release rather than whoever tagged the way. Below tiles (0.8)
+   * because MapTiler resolves a `render_height` per served building while the
+   * static set carries an explicit unknown-height fraction
+   * (`missingHeights` per shard ref) through a flat fallback — and the
+   * agreement harness cannot calibrate any of this, since it compares the
+   * field against a pixel sampler over identical prisms. A prior, like every
+   * other number in this block, and one a retained-sample comparison should
+   * replace.
+   */
+  "nyc-static": 0.75,
   /**
    * Canopy alone, with no building source behind it, is deliberately below
    * `LOW_CONFIDENCE`: a tree layer cannot tell you anything about the tower across

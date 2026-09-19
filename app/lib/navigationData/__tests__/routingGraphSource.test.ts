@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dijkstra, haversineMeters } from "../../routing";
 import type { GeoBounds } from "../shardContract";
-import { clearNavigationCache } from "../remoteNavigation";
+import { acquireNavigationSnapshot, clearNavigationCache } from "../remoteNavigation";
 import { fetchBestRoutingGraph } from "../routingGraphSource";
 
 const generation = "nyc-2026-09-18-abcdef123456";
@@ -389,5 +389,53 @@ describe("fetchBestRoutingGraph", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(overpassCalls).toHaveLength(0);
+  });
+
+  it("serves a caller-pinned snapshot without re-reading the pointer", async () => {
+    // The building provider binds this same snapshot: one calculation, one
+    // generation, even if the pointer is promoted between the two loads.
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn, calls } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+    const snapshot = await acquireNavigationSnapshot({ fetchFn });
+    expect(snapshot).not.toBeNull();
+    const pointerCalls = calls.filter((call) => call.url.endsWith("/current.json")).length;
+
+    const graph = await fetchBestRoutingGraph(40.745, -73.998, 40.755, -73.982, undefined, {
+      fetchFn,
+      snapshot,
+    });
+
+    expect(graph.nodes.size).toBe(4);
+    expect(overpassCalls).toHaveLength(0);
+    expect(calls.filter((call) => call.url.endsWith("/current.json")).length).toBe(pointerCalls);
+  });
+
+  it("treats an explicit null snapshot as static-off and goes straight to Overpass", async () => {
+    const published = await publish([cellWest, cellEast]);
+    const { calls } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+    // Tripwire: a pinned-null call must not touch the navigation dataset at all.
+    const tripwire = (async () => {
+      throw new Error("must not fetch");
+    }) as unknown as typeof fetch;
+
+    const graph = await fetchBestRoutingGraph(
+      // Fresh bbox no earlier test fetched, so the Overpass cache cannot mask
+      // a missing upstream call.
+      40.71,
+      -73.985,
+      40.711,
+      -73.984,
+      undefined,
+      {
+        fetchFn: tripwire,
+        snapshot: null,
+      },
+    );
+
+    expect(graph.nodes.size).toBe(2);
+    expect(overpassCalls).toHaveLength(1);
+    expect(calls).toHaveLength(0);
   });
 });
