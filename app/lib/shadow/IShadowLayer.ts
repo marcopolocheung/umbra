@@ -32,4 +32,9 @@ export interface IShadowLayer {
    * fall back to rendered-canvas sampling.
    */
   queryPointShadow?(lng: number, lat: number, opts?: { date?: Date }): ShadowPointQueryResult | null;
+  /**
+   * Rain mode hides the shadow canvas while keeping every resource alive, so
+   * the toggle is instant both ways and unmount cleanup stays unchanged.
+   */
+  setEnabled?(enabled: boolean): void;
 }
