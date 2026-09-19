@@ -861,14 +861,7 @@ export function useRouting({
             ? (["Shortest", "Balanced", "Driest"] as const)
             : (["Shortest", "Balanced", "Most shadowed"] as const);
           const STRENGTHS = [0, 0.5, 1.0];
-          const totalRouteLegs = STRENGTHS.length * (nodeChain.length - 1);
-          let completedRouteLegs = 0;
           options = [];
-          updateProgress({
-            message: "Calculating route legs",
-            current: completedRouteLegs,
-            total: totalRouteLegs,
-          });
 
           for (let si = 0; si < STRENGTHS.length; si++) {
             const strength = STRENGTHS[si];
@@ -884,6 +877,16 @@ export function useRouting({
             let failed = false;
             let failedLeg: number | null = null;
 
+            // A1: one progress update per strength pass. The browser yield that
+            // used to sit here (and once per leg) moves to a single point after
+            // the pass-batched loop: each yield hands the page a full render
+            // and the renderable passes are sub-millisecond searches.
+            updateProgress({
+              message: "Calculating route legs",
+              current: si + 1,
+              total: STRENGTHS.length,
+            });
+
             for (let seg = 0; seg < nodeChain.length - 1; seg++) {
               const segResult = dijkstra(
                 routingGraph,
@@ -892,13 +895,6 @@ export function useRouting({
                 strength,
                 opts,
               );
-              completedRouteLegs++;
-              updateProgress({
-                message: "Calculating route legs",
-                current: completedRouteLegs,
-                total: totalRouteLegs,
-              });
-              await yieldToBrowser();
               if (myGen !== calcGenRef.current) return cancelled();
               if (!segResult) {
                 failed = true;
@@ -1011,6 +1007,13 @@ export function useRouting({
           }
 
           dijkstraMs = performance.now() - tDijkstra;
+
+          // A1: the one browser yield for the whole multi-leg loop. The loop
+          // itself is a few sub-millisecond searches and must not be
+          // serialized against a repaint, but the pass progress and the
+          // si === 0 preview updates above need one paint opportunity.
+          await yieldToBrowser();
+          if (myGen !== calcGenRef.current) return cancelled();
 
           options = options.filter(
             (o, i, arr) => arr.findIndex((x) => Math.abs(x.distanceM - o.distanceM) < 1) === i,
