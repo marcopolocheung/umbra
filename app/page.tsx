@@ -35,6 +35,15 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
+import { directionForWindReport } from "./lib/rain/direction";
+import {
+  ensureRainMapLayer,
+  rainGridFeatureCollection,
+  RAIN_GRID_COLS,
+  RAIN_GRID_ROWS,
+  setRainMapData,
+} from "./lib/rain/rainMapLayer";
+import type { BBox } from "./lib/shadowField/ShadowField";
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import type { MapObject } from "./lib/agent/receipts";
@@ -328,6 +337,59 @@ export default function Home() {
   // Weather for the heat score, from D2's cache — the same response the cloud badge
   // already fetched for this location, matched to the hour the timeline is showing.
   const heatWeather = useWeatherHour(mapCenter, date);
+
+  // Rain mode repurposes the map: the sun canvas steps aside (resources intact) and
+  // the shelter grid paints blue where direct rain reaches. The grid is the same
+  // fraction routing pays for, priced at the map centre's wind for the timeline hour.
+  const rainWindKey =
+    heatWeather?.windDirDeg != null && heatWeather.windMs !== null
+      ? `${Math.round(heatWeather.windDirDeg / 5) * 5}|${Math.round(heatWeather.windMs)}`
+      : "none";
+  useEffect(() => {
+    const map = mapRef.current;
+    shadowLayerRef.current?.setEnabled?.(!rainMode);
+    if (!rainMode || !map || !shadowField) return;
+
+    try {
+      ensureRainMapLayer(map);
+    } catch {
+      // Style not settled yet; the next moveend pass adds it.
+    }
+
+    const repaint = () => {
+      const bounds = map.getBounds();
+      const rainBbox: BBox = {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      };
+      const direction = directionForWindReport(
+        heatWeather?.windDirDeg ?? null,
+        heatWeather?.windMs ?? null,
+      );
+      const grid = shadowField.sampleRainGrid(
+        rainBbox,
+        RAIN_GRID_COLS,
+        RAIN_GRID_ROWS,
+        direction,
+        date,
+      );
+      setRainMapData(map, rainGridFeatureCollection(grid, rainBbox));
+    };
+
+    repaint();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onMoveEnd = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(repaint, 200);
+    };
+    map.on("moveend", onMoveEnd);
+    return () => {
+      map.off("moveend", onMoveEnd);
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [rainMode, rainWindKey, heatWeather, shadowField, date, mapRef]);
 
   const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
@@ -1060,6 +1122,26 @@ export default function Home() {
       {shadowLayerReady && !shadowLegendDismissed && !accumulation.enabled && (
         <div className="absolute left-4 top-20 z-20 md:left-6 md:top-20">
           <ShadowLegend onDismiss={handleDismissShadowLegend} />
+        </div>
+      )}
+
+      {/* Rain map legend — only while the rain objective owns the map */}
+      {rainMode && !accumulation.enabled && (
+        <div
+          className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 rounded-lg px-3 py-2 shadow-lg backdrop-blur-xl"
+          style={{ background: "rgba(255,255,255,0.86)", borderColor: "var(--md-outline-variant)", border: "1px solid var(--md-outline-variant)" }}
+        >
+          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--md-on-surface-variant)" }}>
+            Rain shelter
+          </div>
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--md-on-surface-variant)" }}>
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(37,99,235,0.5)" }} />
+            Direct rain reaches here
+          </div>
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--md-on-surface-variant)" }}>
+            <span className="inline-block w-3 h-3 rounded-sm bg-transparent" style={{ border: "1px dashed var(--md-outline)" }} />
+            Sheltered (overhang or canopy)
+          </div>
         </div>
       )}
 
