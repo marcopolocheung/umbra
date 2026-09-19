@@ -443,11 +443,16 @@ then publish the pointer last. Retain the previous generation. The serving Worke
 the navigation pointer and immutable navigation objects, support CORS for intended origins, set
 correct JSON/cache headers, and expose no raw acquisition directory or write/list operation.
 
-(As built: delivery/publication landed with a dedicated
-`cloudflare/navigation-data-worker`, separate from both the shadow Worker and
-transit's worker-less public r2.dev bucket — the handoff bars touching
-`cloudflare/shadow-data-worker/**` and navigation needs an origin-pinned CORS
-and a key allow-list. `server/navigation-prep/src/publish.ts` runs the
+(As built: delivery/publication extend the existing
+`cloudflare/shadow-data-worker` into the single NYC R2 origin instead of a
+dedicated Worker — an explicit waiver of this track's "avoid touching
+`cloudflare/shadow-data-worker/**`" rule, judged against the alternatives
+after Session 7. Serving code and the CORS/cache/rejection policy consolidate
+in the one Worker the app already depends on; storage stays separate: the new
+private `shademap-nyc-navigation-staging` bucket binds as `NAVIGATION_DATA`,
+navigation keys carry none of `_shadow`'s marker/legacy gating, and browser
+loads stay under `/navigation/nyc` with no `.smb`/`_shadow` surface.
+`server/navigation-prep/src/publish.ts` runs the
 verifier, uploads manifest/notices/shards first (resuming on ETag+size), then
 re-downloads one street and one building shard per borough, reconciles bucket
 inventory against the verifier, promotes `navigation/nyc/current.json`
