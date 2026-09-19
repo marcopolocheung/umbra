@@ -13,6 +13,32 @@ const currentPointer = "current.json";
 // grandfathered (pre-root) generations stay servable for rollback.
 const rootGatedFiles = new Set(["generation.json", "coverage.json", "bounds.json", "notices.json"]);
 
+// ─── NYC navigation delivery ──────────────────────────────────────────────
+//
+// The navigation dataset shares this origin but lives in its own private
+// bucket and has none of _shadow's marker/legacy gating: its integrity chain
+// is pointer → manifest → shards, verified client-side, and the producer
+// promotes current.json only after every immutable object reconciles. The
+// same generator/cell grammar the shardContract parser accepts is pinned:
+// nyc-<date>-<12 hex> / manifest|notices / streets|buildings/<cell>.json.
+const navigationGenerationPattern = "nyc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-f0-9]{12}";
+const navigationShardKey = "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json";
+const navigationPointerKey = "navigation/nyc/current.json";
+const navigationAsset = new RegExp(
+  `^navigation\\/nyc\\/(?:current\\.json|${navigationGenerationPattern}\\/(?:manifest\\.json|notices\\.json|${navigationShardKey}))$`,
+);
+
+/** Mutable pointers are short-cached; every generation object is not. */
+function cacheControlFor(key: string): string {
+  if (key === currentPointer || key === navigationPointerKey) return "public, max-age=60";
+  return "public, max-age=31536000, immutable";
+}
+
+/** Navigation keys resolve against their own bucket, shadow keys against SHADOW_TILES. */
+function bucketFor(key: string, env: Env): R2Bucket {
+  return key.startsWith("navigation/nyc/") ? env.NAVIGATION_DATA : env.SHADOW_TILES;
+}
+
 function cors(request: Request, env: Env): Headers {
   const headers = new Headers({ Vary: "Origin" });
   if (request.headers.get("Origin") === env.ALLOWED_ORIGIN) {
@@ -32,11 +58,24 @@ function legacyGenerations(env: Env): Set<string> {
 }
 
 export function requestedKey(url: URL): string | undefined {
-  // The bucket is private.  This is an allow-list rather than an R2 proxy: it
-  // never permits list, arbitrary prefixes, or raw candidate objects.
-  const path = url.pathname.replace(/^\/_shadow\//, "");
-  if (path === currentPointer || immutableAsset.test(path)) return path;
+  // The buckets are private. This is an allow-list rather than an R2 proxy:
+  // it never permits list, arbitrary prefixes, or raw candidate objects.
+  if (url.pathname.startsWith("/_shadow/")) {
+    const path = url.pathname.replace(/^\/_shadow\//, "");
+    if (path === currentPointer || immutableAsset.test(path)) return path;
+    return undefined;
+  }
+  const path = url.pathname.startsWith("/") ? url.pathname.slice(1) : url.pathname;
+  if (path === navigationPointerKey) return path;
+  if (navigationAsset.test(path)) return path;
   return undefined;
+}
+
+/** Pathname-only guard: no query string, no dots in keys, no prefix games. */
+export function navigationRequestedKey(url: URL): string | undefined {
+  const key = requestedKey(url);
+  if (!key || !key.startsWith("navigation/nyc/")) return undefined;
+  return key;
 }
 
 /**
@@ -44,6 +83,8 @@ export function requestedKey(url: URL): string | undefined {
  * except a grandfathered manifest/tile needs its generation's published root
  * marker. v1 smoke generations verify through the R2 API directly and never
  * need Worker serving; only legacy-listed generations serve marker-free.
+ * Navigation keys never match `generationAsset` and therefore pass through
+ * ungated — they are allowed only if `requestedKey` allowed them.
  */
 export function generationNeedsMarker(
   generation: string,
@@ -78,22 +119,23 @@ export default {
     if (!key) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
     if (!(await generationAllowed(env, key)))
       return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
+    const bucket = bucketFor(key, env);
     // HEAD must not pull the object body; it only proves existence + ETag.
     if (request.method === "HEAD") {
-      const meta = await env.SHADOW_TILES.head(key);
+      const meta = await bucket.head(key);
       if (!meta) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
       headers.set("Content-Type", key.endsWith(".json") ? "application/json" : "application/octet-stream");
       headers.set("ETag", meta.httpEtag);
-      headers.set("Cache-Control", key === currentPointer ? "public, max-age=60" : "public, max-age=31536000, immutable");
+      headers.set("Cache-Control", cacheControlFor(key));
       return new Response(null, { headers });
     }
-    const object = await env.SHADOW_TILES.get(key);
+    const object = await bucket.get(key);
     // Do not cache a miss: R2 can become immediately consistent after an
     // upload, while an intermediary-cached 404 would hide the new object.
     if (!object) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
     headers.set("Content-Type", key.endsWith(".json") ? "application/json" : "application/octet-stream");
     headers.set("ETag", object.httpEtag);
-    headers.set("Cache-Control", key === currentPointer ? "public, max-age=60" : "public, max-age=31536000, immutable");
+    headers.set("Cache-Control", cacheControlFor(key));
     return new Response(object.body, { headers });
   },
 } satisfies ExportedHandler<Env>;

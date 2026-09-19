@@ -48,7 +48,7 @@ export R2_ACCOUNT_ID=…          # account id
 export R2_ACCESS_KEY_ID=…       # dedicated R2 object read/write token for the bucket only
 export R2_SECRET_ACCESS_KEY=…   # never committed, never in the report
 export R2_NAVIGATION_BUCKET=shademap-nyc-navigation-staging
-export R2_PUBLIC_BASE=https://shademap-nyc-navigation-staging.marcoctpolo.workers.dev
+export R2_PUBLIC_BASE=https://shademap-nyc-shadow-staging.marcoctpolo.workers.dev
 ```
 
 `publish --execute <generation?>` is ordered so a failure at any point leaves
@@ -71,8 +71,11 @@ bytes, specimens, reconciliation, the previous pointer, and the exact
 rollback command). `publish --execute` also records the promoted pointer at
 `normalized/<generation>/current.json` next to its candidate.
 
-The delivery Worker in `cloudflare/navigation-data-worker/` is what browsers
-reach; the bucket stays private and is written only through this uploader.
+Browsers reach the data through the existing delivery Worker
+(`cloudflare/shadow-data-worker/`), which serves `navigation/nyc/**` from the
+private `shademap-nyc-navigation-staging` bucket through the same origin as
+`_shadow/**`. The bucket stays private and is written only through this
+uploader.
 
 `tsx measure-grids.ts <generation> …` re-derives the z13/z14 selection
 measurement cited in the decision record; `build --dry-run --report-only`
