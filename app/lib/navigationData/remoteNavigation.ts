@@ -344,13 +344,44 @@ export function selectNavigationShards(
   bbox: GeoBounds,
   casterReachM: number = DEFAULT_CASTER_REACH_M,
 ): NavigationShardSelection | null {
-  if (!boundsContain(manifest.supportBounds, bbox)) return null;
+  return selectNavigationShardsForBoxes(manifest, bbox, [], casterReachM);
+}
+
+/**
+ * The bounded access zone around one trip endpoint for transit boarding and
+ * alighting. A selected station can stand up to the transit candidate radius
+ * from the endpoint, and its doors up to the entrance-match box beyond that,
+ * so the zone is a point bbox expanded by that reach — never the rectangle
+ * spanning every candidate station.
+ */
+export function zoneAround(lon: number, lat: number, radiusM: number): GeoBounds {
+  return expandBounds({ south: lat, west: lon, north: lat, east: lon }, radiusM);
+}
+
+/**
+ * Picks shard refs for a primary bbox plus bounded extra boxes — the transit
+ * access zones around the trip endpoints. The primary bbox must be fully
+ * covered or the whole selection declines (`null`, as above); extras are
+ * best-effort, so a zone reaching past the support boundary adds the shards
+ * it overlaps without failing the covered route. Every returned ref still
+ * verifies before use, so the union is fully static or nothing.
+ */
+export function selectNavigationShardsForBoxes(
+  manifest: NavigationManifest,
+  primary: GeoBounds,
+  extras: GeoBounds[],
+  casterReachM: number = DEFAULT_CASTER_REACH_M,
+): NavigationShardSelection | null {
+  if (!boundsContain(manifest.supportBounds, primary)) return null;
+  const boxes = [primary, ...extras];
   const reach = Number.isFinite(casterReachM) && casterReachM > 0 ? casterReachM : 0;
-  const casterBounds = expandBounds(bbox, reach);
+  const casterBoxes = boxes.map((box) => expandBounds(box, reach));
   return {
-    streets: manifest.streetShards.filter((ref) => boundsIntersect(ref.geometryBounds, bbox)),
+    streets: manifest.streetShards.filter((ref) =>
+      boxes.some((box) => boundsIntersect(ref.geometryBounds, box)),
+    ),
     buildings: manifest.buildingShards.filter((ref) =>
-      boundsIntersect(ref.geometryBounds, casterBounds),
+      casterBoxes.some((box) => boundsIntersect(ref.geometryBounds, box)),
     ),
   };
 }
