@@ -49,6 +49,15 @@ interface PhaseSample {
   canvasRead: number;
   shadowSample: number;
   dijkstra: number;
+  /** Phase-0 transit audit split — absent on runs recorded before it landed. */
+  walkPareto?: number;
+  transitFetch?: number;
+  trainSearch?: number;
+  trainSearchSubway?: number;
+  trainSearchBus?: number;
+  entrances?: number;
+  walkLegs?: number;
+  busWait?: number;
   total: number;
   shadowFallbackShare: number;
 }
@@ -92,6 +101,14 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
       canvasRead: h.phases.canvasRead,
       shadowSample: h.phases.shadowSample,
       dijkstra: h.phases.dijkstra,
+      walkPareto: h.phases.walkPareto ?? 0,
+      transitFetch: h.phases.transitFetch ?? 0,
+      trainSearch: h.phases.trainSearch ?? 0,
+      trainSearchSubway: h.phases.trainSearchSubway ?? 0,
+      trainSearchBus: h.phases.trainSearchBus ?? 0,
+      entrances: h.phases.entrances ?? 0,
+      walkLegs: h.phases.walkLegs ?? 0,
+      busWait: h.phases.busWait ?? 0,
       total: h.phases.total,
       shadowFallbackShare: h.shadowFallbackShare,
     }));
@@ -268,6 +285,12 @@ test.afterAll(() => {
       phase((s) => s.canvasRead),
       phase((s) => s.shadowSample),
       phase((s) => s.dijkstra),
+      phase((s) => s.walkPareto ?? 0),
+      phase((s) => s.transitFetch ?? 0),
+      phase((s) => s.trainSearch ?? 0),
+      phase((s) => s.entrances ?? 0),
+      phase((s) => s.walkLegs ?? 0),
+      phase((s) => s.busWait ?? 0),
     ];
   });
 
@@ -284,6 +307,12 @@ test.afterAll(() => {
           "canvas read",
           "shadow sample",
           "dijkstra",
+          "walk pareto",
+          "transit fetch",
+          "train search",
+          "entrances",
+          "walk legs",
+          "bus wait",
         ],
         phaseRows
       ) +
@@ -303,6 +332,12 @@ test.afterAll(() => {
     console.log(`  totals in order: ${r.samples.map((s) => ms(s.total)).join(", ")}`);
     console.log(`  canvas read:     ${r.samples.map((s) => ms(s.canvasRead)).join(", ")}`);
     console.log(`  dijkstra:        ${r.samples.map((s) => ms(s.dijkstra)).join(", ")}`);
+    console.log(`  walk pareto:     ${r.samples.map((s) => ms(s.walkPareto ?? 0)).join(", ")}`);
+    console.log(`  transit fetch:   ${r.samples.map((s) => ms(s.transitFetch ?? 0)).join(", ")}`);
+    console.log(`  train search:    ${r.samples.map((s) => ms(s.trainSearch ?? 0)).join(", ")}`);
+    console.log(`  entrances:       ${r.samples.map((s) => ms(s.entrances ?? 0)).join(", ")}`);
+    console.log(`  walk legs:       ${r.samples.map((s) => ms(s.walkLegs ?? 0)).join(", ")}`);
+    console.log(`  bus wait:        ${r.samples.map((s) => ms(s.busWait ?? 0)).join(", ")}`);
     // Per-run, not just the median: "the pixel sampler answered no edges" is a
     // claim about every run, and a median of 0 is consistent with half of them
     // being non-zero. Whatever is asserted from this has to be readable here.

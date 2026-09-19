@@ -22,7 +22,22 @@ export interface RoutingPhaseMs {
   /** Readback of the renderer's building-only FBO; separate from composited canvas reads. */
   dedicatedMaskRead?: number;
   shadowSample: number; // edge shadow-factor sampling loop
-  dijkstra: number; // snap + all Dijkstra passes
+  dijkstra: number; // snap + graph build + walk search (kept for back-compat; see walkPareto)
+  /**
+   * Phase-0 transit audit split (all optional, 0/absent = phase did not run).
+   * `dijkstra` keeps its historic meaning (snap + build + walk search) so old
+   * readers keep working; `walkPareto` is the search-only portion of it, and
+   * the five transit phases cover the block after the walk options are built
+   * (`useRouting` transit branch) that previously fell into `total` unmeasured.
+   */
+  walkPareto?: number; // paretoRoutes (2-pt) or per-leg dijkstra loop (multi-pt)
+  transitFetch?: number; // fetchBestTrainGraph (shards or Overpass)
+  trainSearch?: number; // findBestTrainRoute across subway+bus
+  trainSearchSubway?: number; // subway slice of trainSearch
+  trainSearchBus?: number; // bus slice of trainSearch
+  entrances?: number; // entrance-box fetch + match + pick (subway only)
+  walkLegs?: number; // reachableFrom + snapToReachable + walkA/walkB dijkstras
+  busWait?: number; // bus boarding shadowAt + stop preloads + waitExposureFrom
   total: number; // wall-clock end-to-end
 }
 
@@ -49,6 +64,17 @@ export interface RoutingRunMetrics {
   buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>>;
   /** The static building generation that answered, when any edge used it. */
   staticBuildingGeneration?: string | null;
+  /**
+   * Phase-0 transit audit counters (all optional; absent = phase did not run).
+   * Sizes, not coordinates — safe to log and to assert in benchmarks.
+   */
+  transitTried?: boolean; // transit branch entered (straight-line > 500 m, no partial)
+  transitStationCount?: number | null; // trainGraph.stations.size
+  transitLineCount?: number | null; // trainGraph.lineColors.size
+  entranceBoxCount?: number; // station boxes fetched (subway only)
+  entranceCount?: number; // doors returned (cache + network)
+  boardingStopCount?: number; // bus boardings sampled
+  busPreloadCount?: number; // bus stop ready() preloads issued (<= MAX_STOP_PRELOADS)
   canopySourceShares?: Partial<Record<"osm" | "raster" | "both" | "none", number>>;
   fallbackReason?: "low-confidence" | "mask-unavailable" | null;
   routes: RouteMetricSnapshot[];
@@ -104,6 +130,12 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
       "Canvas fallback (%)": (m.shadowFallbackShare * 100).toFixed(1),
       "Shadow sample (ms)": phases.shadowSample.toFixed(1),
       "Dijkstra (ms)": phases.dijkstra.toFixed(1),
+      "Walk pareto (ms)": (phases.walkPareto ?? 0).toFixed(1),
+      "Transit fetch (ms)": (phases.transitFetch ?? 0).toFixed(1),
+      "Train search (ms)": (phases.trainSearch ?? 0).toFixed(1),
+      "Entrances (ms)": (phases.entrances ?? 0).toFixed(1),
+      "Walk legs (ms)": (phases.walkLegs ?? 0).toFixed(1),
+      "Bus wait (ms)": (phases.busWait ?? 0).toFixed(1),
       "Total (ms)": phases.total.toFixed(1),
     });
     if (m.shadowCoverageGainPp !== null) {
