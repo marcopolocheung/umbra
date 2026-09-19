@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_SHADOW_V2_DEBUG?: string;
   /** Public origin serving the published NYC transit dataset. Absent = off. */
   readonly VITE_TRANSIT_BASE?: string;
+  /** Public origin serving the published NYC navigation dataset. Absent = off. */
+  readonly VITE_NAVIGATION_BASE?: string;
 }
 
 interface ImportMeta {
