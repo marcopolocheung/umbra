@@ -14,6 +14,8 @@ interface RouteTradeoffSummaryProps {
   rainMode?: boolean;
   /** 0–10 user setting that scales the wet-minute figure only. */
   rainIntensity?: number;
+  /** Wind the last rain calculation priced, for the card to state it. */
+  rainWind?: { dirDeg: number | null; windMs: number | null } | null;
 }
 
 export default function RouteTradeoffSummary({
@@ -22,6 +24,7 @@ export default function RouteTradeoffSummary({
   weather = null,
   rainMode = false,
   rainIntensity = 5,
+  rainWind = null,
 }: RouteTradeoffSummaryProps) {
   if (!route || route.partial || !baselineRoute) return null;
 
@@ -49,7 +52,7 @@ export default function RouteTradeoffSummary({
           <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
             {rainExposureLine(route, rainIntensity)}
           </div>
-          <RainRouteSummary route={route} rainIntensity={rainIntensity} />
+          <RainRouteSummary route={route} rainIntensity={rainIntensity} wind={rainWind} />
         </>
       ) : (
         <>

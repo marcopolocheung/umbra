@@ -102,6 +102,8 @@ export interface DirectionsPanelProps {
   /** 0–10 intensity setting that scales wet-minute figures only. */
   rainIntensity?: number;
   onRainIntensityChange?: (v: number) => void;
+  /** Wind the last rain calculation priced, for the card to state it. */
+  rainWind?: { dirDeg: number | null; windMs: number | null } | null;
 }
 
 export default function DirectionsPanel({
@@ -134,6 +136,7 @@ export default function DirectionsPanel({
   weather = null,
   rainMode = false, onRainModeChange,
   rainIntensity = 5, onRainIntensityChange,
+  rainWind = null,
 }: DirectionsPanelProps) {
   const shadowLabel = shadowPreference < 0.33 ? "Fastest" : shadowPreference > 0.66 ? "Most shadowed" : "Balanced";
   const baselineRoute = shortestRoute(routes);
@@ -519,6 +522,7 @@ export default function DirectionsPanel({
             weather={weather}
             rainMode={rainMode}
             rainIntensity={rainIntensity}
+            rainWind={rainWind}
           />
           {exposureSlot}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">

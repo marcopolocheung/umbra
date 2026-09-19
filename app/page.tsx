@@ -241,6 +241,7 @@ export default function Home() {
     routeProgress,
     navError,
     routeSolarIntensity,
+    routeWind,
     waypointALabel,
     waypointBLabel,
     pendingSlot,
@@ -1032,6 +1033,7 @@ export default function Home() {
           onExportRoute={handleExportRoute}
           weather={heatWeather}
           solarIntensity={routeSolarIntensity}
+          rainWind={routeWind}
           exposureSlot={exposureSlot}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
           rainMode={rainMode}
@@ -1101,6 +1103,7 @@ export default function Home() {
               routeProgress={routeProgress}
               routes={filteredRoutes}
               weather={heatWeather}
+              rainWind={routeWind}
               selectedRouteIndex={selectedRouteIndex}
               onSelectRoute={setSelectedRouteIndex}
               error={navError}
