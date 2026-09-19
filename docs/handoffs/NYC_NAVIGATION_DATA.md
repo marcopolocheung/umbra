@@ -315,12 +315,33 @@ the added edges through the same shadow sampling, sidewalk expansion, access fil
 indexing, and reachability preparation as the initial graph before either transit walk is searched.
 If that makes the hook state unsafe or duplicative, load the bounded access zones before the first
 enrichment pass instead; do not splice raw, unshadowed edges into `routingGraph`.
-(As built in Session 5: upfront zones only — `zoneAround` each endpoint with
-`TRANSIT_ACCESS_RADIUS_M = 2000` (1500 m candidate radius + 400 m door box + 100 m
-snap margin) joins the street selection and the shadow bbox before enrichment, so
-added edges pass through the unchanged sampling/sidewalk/index/reachability
-pipeline. The primary bbox must be covered; zones are best-effort. The Overpass
-fallback still fetches exactly the route-stop bbox, and no second load exists.)
+(As built in Session 5, measured on `main` 76cce06 — the six relationships the
+session pinned, and the chosen contract:
+
+- Route-stop walking bbox: min/max of the snapped stops, padded by `max(0.005,
+  min(0.008, 0.3 × straight-line/111000))` degrees, i.e. 0.55–0.9 km per side.
+  Overpass streets, and walk-only plus static-off static selection, stay exactly
+  on this bbox.
+- Transit candidate search bounds: `findBestTrainRoute(..., 1500, 5, ...)` admits
+  up to the five nearest stations (per mode) within 1500 m of an endpoint —
+  `useRouting` calls it at `app/hooks/useRouting.ts`.
+- Selected board/alight entrances: chosen stations can add doors up to
+  `ENTRANCE_MATCH_MAX_M = 400` beyond the station point, and `snapToReachable`
+  then snaps the door onto the reachable component by a small spatial-index
+  margin; the zones add 100 m of headline snap margin on top.
+- Static street shard halo: there is none. Street shards are selected purely by
+  geometry-bounds intersection; cross-shard continuity is carried by duplicated
+  ghost nodes that merge to one id in `buildRoutingGraphFromStreetShards`.
+- Shadow readiness and sidewalk expansion: the field preloads
+  (`QUERY_PAD_M = 400`) the union of the route bbox and any access zones, and
+  every selected shard flows through the unchanged sidewalk/access filtering,
+  `sampleEdges`, spatial indexing, and reachable-component build before any
+  walk is searched.
+- Contract chosen: upfront `zoneAround` zones of `TRANSIT_ACCESS_RADIUS_M = 2000`
+  join street selection and the shadow bbox before the initial enrichment pass;
+  the primary bbox must be covered, zones are best-effort, the Overpass fallback
+  still fetches exactly the route-stop bbox, no second load exists, and
+  calculations without a bound static snapshot never widen.)
 
 Published transit entrances remain authoritative. The old-generation entrance Overpass fallback
 stays for compatibility and is not evidence that street loading failed. A later transit
