@@ -773,12 +773,80 @@ function preparedRainCastersFor(prisms: BuildingPrism[]): ShadowCasters {
  * answers, so a caller can put the fast synchronous tile provider ahead of the
  * Overpass one and get the network path only where the renderer has nothing loaded.
  */
+/** Options for `createGeometryShadowField` beyond the three provider lists. */
+export interface GeometryShadowFieldOptions {
+  /**
+   * The current dataset generation, read at the moment a `ready`/`readyEdges`
+   * call enters. Resolved readiness is cached per (generation, bbox) so that a
+   * new generation never reuses another generation's answer; omit the hook and
+   * every cache entry is keyed on `null` (the whole lifetime of the field).
+   */
+  generationOf?: () => string | null;
+}
+
 export function createGeometryShadowField(
   providers: PrismProvider[],
   canopyProviders: CanopyProvider[] = [],
-  rasterProviders: CanopyRasterProvider[] = []
+  rasterProviders: CanopyRasterProvider[] = [],
+  options: GeometryShadowFieldOptions = {}
 ): ShadowField {
   let overpassTail = Promise.resolve();
+  const generationOf = options.generationOf ?? (() => null);
+
+  /**
+   * Resolved readiness, MRU, keyed by generation + the exact bbox.
+   *
+   * `ready()` and `readyEdges()` repeatedly re-attempted provider loads for
+   * areas that had already resolved, and those attempts — failed raster reads
+   * with their retry backoff, Overpass lookups, shard selection — are what kept
+   * warm `fieldReady` in the hundreds of milliseconds. Providers already cache
+   * their own decoded geometry (MRU arrays, four to eight entries); this list is
+   * the same shape on top: readiness per (generation, exact bbox/cell key),
+   * bounded, most recently used first. The exact key is deliberate — a caller
+   * must ask for the same area `sampleEdges` will resolve, not merely an area
+   * contained in something else that happened to load.
+   *
+   * Entries record only when a pass **completes** (no deadline/abort cut it
+   * short): a bbox whose loads were interrupted still re-attempts next time.
+   */
+  const READINESS_CACHE_ENTRIES = 8;
+  interface ReadinessEntry {
+    /** Generation the provider data belonged to when this area was resolved. */
+    generation: string | null;
+    key: string;
+    coverage: BBox;
+  }
+  const readyAreas: ReadinessEntry[] = [];
+
+  function readinessKey(bbox: BBox): string {
+    return [bbox.west, bbox.south, bbox.east, bbox.north]
+      .map((value) => value.toFixed(5))
+      .join(",");
+  }
+
+  function readinessHit(bbox: BBox, generation: string | null): boolean {
+    const key = readinessKey(bbox);
+    for (let i = 0; i < readyAreas.length; i++) {
+      if (readyAreas[i].generation === generation && readyAreas[i].key === key) {
+        // Most-recently-used to the front, exactly like the provider caches.
+        const [entry] = readyAreas.splice(i, 1);
+        readyAreas.unshift(entry);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function recordReadiness(bbox: BBox, generation: string | null): void {
+    const key = readinessKey(bbox);
+    for (let i = readyAreas.length - 1; i >= 0; i--) {
+      if (readyAreas[i].generation === generation && readyAreas[i].key === key) {
+        readyAreas.splice(i, 1);
+      }
+    }
+    readyAreas.unshift({ generation, key, coverage: { ...bbox } });
+    if (readyAreas.length > READINESS_CACHE_ENTRIES) readyAreas.length = READINESS_CACHE_ENTRIES;
+  }
 
   function serializeOverpass(task: () => Promise<void>): Promise<void> {
     const run = overpassTail.then(task, task);
@@ -1282,12 +1350,21 @@ export function createGeometryShadowField(
       window.cleanup();
       return;
     }
+    const generation = generationOf();
     const bboxes = cells.map(queryBboxForCell);
+    // Load only the cells this generation has not already resolved. A repeated
+    // calculation over the same edges finds every cell cached and pays nothing;
+    // the `fieldReady` metric keeps measuring whatever remains.
+    const missing = bboxes.filter((bbox) => !readinessHit(bbox, generation));
+    if (missing.length === 0) {
+      window.cleanup();
+      return;
+    }
 
     // Raster cells use the store's scheduler and may run together. The two OSM
     // provider families stay on one serial chain so a route never bursts the
     // volunteer Overpass service. Provider caches make these missing-only loads.
-    const raster = Promise.all(bboxes.map(async (bbox) => {
+    const raster = Promise.all(missing.map(async (bbox) => {
       for (const provider of rasterProviders) {
         if (provider.fieldFor(bbox)) break;
         await provider.load?.(bbox, options.signal);
@@ -1295,7 +1372,7 @@ export function createGeometryShadowField(
       }
     }));
     const overpass = serializeOverpass(async () => {
-      for (const bbox of bboxes) {
+      for (const bbox of missing) {
         if (window.signal.aborted) return;
         if (!resolve(bbox)) {
           for (const provider of providers) {
@@ -1316,10 +1393,13 @@ export function createGeometryShadowField(
 
     // Overpass waiters are cancelled at the absolute deadline. Raster waiters use
     // only the caller signal: their shared scheduler may finish for later reuse.
-    await settleReadiness(
+    const completed = await settleReadiness(
       Promise.all([raster, overpass]).then(() => undefined),
       window.signal,
     );
+    if (completed) {
+      for (const bbox of missing) recordReadiness(bbox, generation);
+    }
     window.cleanup();
   }
 
@@ -1392,6 +1472,11 @@ export function createGeometryShadowField(
         window.cleanup();
         return;
       }
+      const generation = generationOf();
+      if (readinessHit(bbox, generation)) {
+        window.cleanup();
+        return;
+      }
       // Buildings first, canopy after — not one `Promise.all` over both. Every load
       // on that chain is a request to the same volunteer-run Overpass instance, and
       // the caller is already fetching the routing graph from it in parallel; firing
@@ -1403,7 +1488,7 @@ export function createGeometryShadowField(
       // against `source.coop`, which shares neither a host nor a rate limit with
       // Overpass, so queueing it behind two Overpass calls would only make a route
       // wait for nothing.
-      await settleReadiness(Promise.all([
+      const completed = await settleReadiness(Promise.all([
         Promise.all(
           rasterProviders.map((provider) => provider.load?.(bbox, options.signal)),
         ),
@@ -1418,6 +1503,7 @@ export function createGeometryShadowField(
           );
         }),
       ]).then(() => undefined), window.signal);
+      if (completed) recordReadiness(bbox, generation);
       window.cleanup();
     },
   };
@@ -1443,26 +1529,28 @@ function readinessWindow(options: ShadowReadyOptions): {
   };
 }
 
+/** Resolves whether the readiness chain finished before the deadline did. */
 function settleReadiness(
   promise: Promise<void>,
   signal: AbortSignal,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
     let settled = false;
-    const finish = () => {
+    const finish = (completed: boolean) => {
       if (settled) return;
       settled = true;
-      signal.removeEventListener("abort", finish);
-      resolve();
+      signal.removeEventListener("abort", onAbort);
+      resolve(completed);
     };
+    const onAbort = () => finish(false);
     if (signal.aborted) {
-      finish();
+      finish(false);
       return;
     }
-    signal.addEventListener("abort", finish, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
-      finish,
-      finish,
+      () => finish(true),
+      () => finish(true),
     );
   });
 }
