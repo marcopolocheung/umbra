@@ -30,6 +30,9 @@ import {
   prepareShadowCasters,
 } from "./shadowIndex";
 
+import { rainOpacityForLightOpacity, RAIN_TILT_DOCK_ALTITUDE_DEG, RAIN_TILT_WALL_DOCK } from "../rain/opacity";
+import type { RainDirection } from "../rain/direction";
+
 // ─── The published contract ───────────────────────────────────────────────────
 
 /**
@@ -91,6 +94,25 @@ export interface EdgeShadow {
   canopySources?: { osm: boolean; raster: boolean };
 }
 
+/**
+ * Rain shelter for both sidewalks of an edge — the rain twin of `EdgeShadow`,
+ * with the identical polarity: 0 = fully exposed (wet), 1 = fully sheltered (dry).
+ *
+ * `source` and `confidence` keep the shadow vocabulary so a caller can reuse the
+ * exact provenance and floor machinery; only the numbers' meaning changed, and the
+ * UI says so when it shows them.
+ */
+export interface EdgeShelter {
+  left: number;
+  right: number;
+  source: ShadowSource;
+  confidence: number;
+  /** Exact building provider used for this edge. */
+  buildingSource?: PrismProvider["source"] | null;
+  /** Canopy evidence. `raster` is always false: the raster march is a light model. */
+  canopySources?: { osm: boolean; raster: boolean };
+}
+
 export interface BBox {
   west: number;
   south: number;
@@ -122,6 +144,13 @@ export interface ShadowReadyOptions {
 export interface ShadowField {
   shadowAt(lng: number, lat: number, when: Date): ShadowSample;
   sampleEdges(edges: EdgeRef[], when: Date): EdgeShadow[];
+  /**
+   * Rain shelter for each edge's two sidewalks, from the same providers.
+   *
+   * The only directional input is `direction` — no sun, no time. `when` selects
+   * the canopy's leaf state exactly as `sampleEdges` does; omit it for now.
+   */
+  sampleRainEdges(edges: EdgeRef[], direction: RainDirection, when?: Date): EdgeShelter[];
   /** Preload the exact 2 km cells that `sampleEdges` will resolve. */
   readyEdges(edges: EdgeRef[], options?: ShadowReadyOptions): Promise<void>;
   /** Weakest provider coverage across the exact cells `sampleEdges` will use. */
@@ -685,6 +714,34 @@ function preparedCastersFor(prisms: BuildingPrism[]): ShadowCasters {
 }
 
 /**
+ * Rain-opacified canopy prisms, keyed by the light-opacity array they mirror.
+ *
+ * The canopy provider hands back one prism array per (area, leaf state), so this
+ * cache makes the rain rewrite happen once per fetch, and `PREPARED` then caches
+ * the prepared casters on the rain array's identity exactly as it does for light.
+ */
+const RAIN_CANOPY_PRISMS = new WeakMap<BuildingPrism[], BuildingPrism[]>();
+
+function rainCanopyCastersFor(prisms: BuildingPrism[]): BuildingPrism[] {
+  const hit = RAIN_CANOPY_PRISMS.get(prisms);
+  if (hit) return hit;
+  const rain = prisms.map((p) => ({ ...p, opacity: rainOpacityForLightOpacity(p.opacity) }));
+  RAIN_CANOPY_PRISMS.set(prisms, rain);
+  return rain;
+}
+
+/** Prepared casters that shelter their own footprint (rain semantics). */
+const RAIN_PREPARED = new WeakMap<BuildingPrism[], ShadowCasters>();
+
+function preparedRainCastersFor(prisms: BuildingPrism[]): ShadowCasters {
+  const hit = RAIN_PREPARED.get(prisms);
+  if (hit) return hit;
+  const prepared = prepareShadowCasters(prisms, { ownFootprintOccluded: false });
+  RAIN_PREPARED.set(prisms, prepared);
+  return prepared;
+}
+
+/**
  * A `ShadowField` over building prisms.
  *
  * Providers are consulted in order and the first one that can speak for the area
@@ -998,6 +1055,105 @@ export function createGeometryShadowField(
     );
   }
 
+  /**
+   * Rain shelter for each edge's two sidewalks (v0 vertical, v1 wind-tilted).
+   *
+   * Same hostage rules as `sampleEdges`: one resolution per 2 km cell, samples at
+   * the pixel sampler's ±4 m sidewalk offsets, mean over the edge's steps.
+   * Deliberate differences, each pinned by a test:
+   * - No night: rain falls at any hour, so every cell resolves.
+   * - The canopy raster is excluded — its march opacity is a light figure, and
+   *   folding it in would claim a dryness this model has not established.
+   * - Canopy prisms are re-opacified for rain (see `rainCanopyCastersFor`).
+   * - Building-backed answers below `RAIN_TILT_DOCK_ALTITUDE_DEG` pay
+   *   `RAIN_TILT_WALL_DOCK`: a wall only shelters at low rays, and low rays are
+   *   exactly where the reported wind has stopped describing canyon-level wind.
+   */
+  function sampleRainEdges(
+    edges: EdgeRef[],
+    direction: RainDirection,
+    when: Date = new Date()
+  ): EdgeShelter[] {
+    const plan = planBatch(edges);
+    if (plan.cells.length === 0) return [];
+    const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
+    const results: EdgeShelter[] = new Array(edges.length);
+
+    for (const cell of plan.cells) {
+      const bbox = queryBboxForCell(cell);
+      const resolved = resolve(bbox);
+      const canopy = resolveCanopy(bbox, when);
+      const score = scoreFor(resolved, canopy, null, altitudeRad);
+
+      // The index speaks in **radians** (SunCalc's convention for the sun path),
+      // and its azimuth points the direction shadows FALL. A rain ray arrives FROM
+      // the wind bearing, so the casters' "shadow" — the sheltered lee — must land
+      // opposite it: +180°. This rotation is locked by `shelter.test.ts` fixtures,
+      // which fail on either convention's mistake.
+      const rayAzimuth = ((direction.fromDeg + 180) * Math.PI) / 180;
+      const buildingIndex = resolved
+        ? buildShadowIndexFor(
+            preparedRainCastersFor(resolved.set.prisms),
+            rayAzimuth,
+            altitudeRad,
+            cell.mPerLat,
+            cell.mPerLng,
+            cell.region
+          )
+        : null;
+      const canopyIndex = canopy
+        ? buildShadowIndexFor(
+            preparedRainCastersFor(rainCanopyCastersFor(canopy.prisms)),
+            rayAzimuth,
+            altitudeRad,
+            cell.mPerLat,
+            cell.mPerLng,
+            cell.region
+          )
+        : null;
+
+
+      const wallDocked =
+        resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
+      const confidence = wallDocked
+        ? score.confidence * RAIN_TILT_WALL_DOCK
+        : score.confidence;
+
+      for (const i of cell.members) {
+        const edge = edges[i];
+        const leftOffset = plan.left[i];
+        const rightOffset = plan.right[i];
+        const steps = plan.steps[i];
+        const walk = (offset: [number, number]) => {
+          let sum = 0;
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps;
+            sum += pointShadow(
+              buildingIndex,
+              canopyIndex,
+              null,
+              edge.from[0] + t * (edge.to[0] - edge.from[0]) + offset[0],
+              edge.from[1] + t * (edge.to[1] - edge.from[1]) + offset[1]
+            );
+          }
+          return sum / (steps + 1);
+        };
+        results[i] = {
+          left: walk(leftOffset),
+          right: walk(rightOffset),
+          source: score.source,
+          confidence,
+          buildingSource: resolved?.source ?? null,
+          canopySources: {
+            osm: (canopy?.prisms.length ?? 0) > 0,
+            raster: false,
+          },
+        };
+      }
+    }
+    return results;
+  }
+
   function coverageEdges(edges: EdgeRef[], when: Date): Coverage {
     const plan = planBatch(edges);
     if (plan.cells.length === 0) return { source: "none", confidence: 1 };
@@ -1076,6 +1232,7 @@ export function createGeometryShadowField(
   return {
     shadowAt,
     sampleEdges,
+    sampleRainEdges,
     readyEdges,
     coverageEdges,
 

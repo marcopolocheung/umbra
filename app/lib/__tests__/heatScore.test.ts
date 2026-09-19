@@ -17,6 +17,8 @@ function weather(fields: Partial<WeatherHour> = {}): WeatherHour {
     tempC: 31,
     humidityPct: 60,
     windMs: 2,
+    windDirDeg: 220,
+    windGustMs: 4,
     cloudPct: 10,
     apparentTempC: 34,
     shortwaveWm2: 900,

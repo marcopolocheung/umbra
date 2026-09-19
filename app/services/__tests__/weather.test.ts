@@ -53,6 +53,8 @@ describe("parseWeatherHours", () => {
         temperature_2m: [31.4, 30.8],
         relative_humidity_2m: [55, 58],
         wind_speed_10m: [3.2, 2.9],
+        wind_direction_10m: [210, 235],
+        wind_gusts_10m: [6.4, 5.1],
         apparent_temperature: [35.1, 34.2],
         shortwave_radiation: [812, 640],
       },
@@ -63,6 +65,9 @@ describe("parseWeatherHours", () => {
     expect(hours[0].uvIndex).toBe(7.2);
     expect(hours[0].shortwaveWm2).toBe(812);
     expect(hours[1].apparentTempC).toBe(34.2);
+    // Wind-from bearing and gusts ride the same transposed row.
+    expect(hours[0].windDirDeg).toBe(210);
+    expect(hours[1].windGustMs).toBe(5.1);
   });
 
   it("marks a variable the response omits as null rather than zero", () => {
@@ -75,6 +80,8 @@ describe("parseWeatherHours", () => {
     expect(hour.uvIndex).toBeNull();
     expect(hour.tempC).toBeNull();
     expect(hour.shortwaveWm2).toBeNull();
+    expect(hour.windDirDeg).toBeNull();
+    expect(hour.windGustMs).toBeNull();
   });
 
   it("drops an hour whose timestamp will not parse", () => {
