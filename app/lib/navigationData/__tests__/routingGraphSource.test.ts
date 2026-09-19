@@ -128,6 +128,8 @@ async function publish(cells: CellSpec[]): Promise<Published> {
         id: "test",
         release: "test",
         url: "https://example.invalid/source",
+        bytes: 1000,
+        timestamp: "2026-09-18T12:00:00Z",
         sha256: "1".repeat(64),
       },
     ],
