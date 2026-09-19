@@ -21,10 +21,22 @@ import { buildRoutingGraphFromStreetShards } from "./routingGraphAdapter";
 import {
   acquireNavigationSnapshot,
   loadNavigationStreetShard,
-  selectNavigationShards,
+  selectNavigationShardsForBoxes,
   type NavigationRequestOptions,
   type NavigationSnapshot,
 } from "./remoteNavigation";
+import type { GeoBounds } from "./shardContract";
+
+/**
+ * How far from either trip endpoint a selected board/alight point can stand:
+ * the 1500 m transit candidate radius (`findBestTrainRoute`'s `maxWalkM` at
+ * its `useRouting` call site) plus the 400 m entrance-match box
+ * (`ENTRANCE_MATCH_MAX_M`), plus 100 m of snap margin. Access zones built
+ * with `zoneAround` and this radius bound the extra static coverage a transit
+ * calculation needs — two small boxes, never the rectangle spanning every
+ * candidate station.
+ */
+export const TRANSIT_ACCESS_RADIUS_M = 2000;
 
 function directedEdgeCount(graph: RoutingGraph): number {
   let count = 0;
@@ -50,6 +62,13 @@ function isAbort(error: unknown, signal?: AbortSignal): boolean {
  * never mixes generations even if the pointer is promoted mid-flight).
  * `undefined` acquires internally, as before; an explicit `null` skips the
  * static attempt and goes straight to Overpass.
+ *
+ * Pass `options.accessZones` when transit access/egress walks may leave the
+ * route-stop bbox: bounded zones around the trip endpoints (see
+ * `TRANSIT_ACCESS_RADIUS_M`) whose intersecting shards join the selection
+ * before enrichment, so board/alight walks route over the same verified,
+ * shadow-sampled graph. The Overpass fallback still fetches exactly the
+ * route-stop bbox — zones never widen it.
  */
 export async function fetchBestRoutingGraph(
   south: number,
@@ -57,7 +76,10 @@ export async function fetchBestRoutingGraph(
   north: number,
   east: number,
   signal?: AbortSignal,
-  options?: NavigationRequestOptions & { snapshot?: NavigationSnapshot | null },
+  options?: NavigationRequestOptions & {
+    snapshot?: NavigationSnapshot | null;
+    accessZones?: GeoBounds[];
+  },
 ): Promise<RoutingGraph> {
   const request: NavigationRequestOptions = { ...options, signal: options?.signal ?? signal };
   const overpass = (): Promise<RoutingGraph> =>
@@ -83,7 +105,11 @@ export async function fetchBestRoutingGraph(
   // the dataset being off is the default, not a fallback.
   if (!snapshot) return overpass();
 
-  const refs = selectNavigationShards(snapshot.manifest, { south, west, north, east });
+  const refs = selectNavigationShardsForBoxes(
+    snapshot.manifest,
+    { south, west, north, east },
+    options?.accessZones ?? [],
+  );
   if (!refs) return fallback("outside support");
 
   try {
