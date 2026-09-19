@@ -163,6 +163,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private lastSunAltDeg: number | null = null;
   private lastSunAzRad: number | null = null;
   private lastSunAltRad: number | null = null;
+/** True (default) draws the sun rendering; false turns the canvas into a no-op. */
+  private visuallyEnabled = true;
+
   private sunWorker: Worker | null = null;
 
   // Offscreen FBO for single-write shadow compositing
@@ -354,6 +357,18 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
   setSunExposure(_enabled: boolean, _opts?: { startDate: Date; endDate: Date; iterations: number }) {
     // Accumulation mode not supported in local renderer — no-op
+  }
+
+  setEnabled(enabled: boolean) {
+    if (enabled === this.visuallyEnabled) return;
+    this.visuallyEnabled = enabled;
+    // The geometry cache it comes back to may be stale — a disabled layer never
+    // saw the tiles or moves that happened while it was off.
+    if (enabled) {
+      this.buildingCache = null;
+      this.dirty = true;
+    }
+    this.map?.triggerRepaint();
   }
 
   on(event: string, callback: () => void) {
@@ -697,6 +712,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   render(gl: WebGL2RenderingContext | WebGLRenderingContext, options: maplibregl.CustomRenderMethodInput) {
     if (!this.map || !this.program || !this.positionBuffer || !this.u_matrix || !this.u_color) return;
     if (!this.quadProgram || !this.quadBuffer) return;
+
+    // Rain mode owns the map's exposure picture; this frame paints nothing and
+    // touches no GL state, so toggling back is a pure repaint.
+    if (!this.visuallyEnabled) return;
 
     // The depth ceiling texture and gl.MAX both require WebGL2 (guaranteed by MapLibre).
     const gl2 = gl as WebGL2RenderingContext;

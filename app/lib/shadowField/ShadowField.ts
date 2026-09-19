@@ -102,6 +102,16 @@ export interface EdgeShadow {
  * exact provenance and floor machinery; only the numbers' meaning changed, and the
  * UI says so when it shows them.
  */
+export interface RainGrid {
+  /** Row-major shelter fractions, row 0 = north edge. 0 = exposed, 1 = sheltered. */
+  values: Float32Array;
+  cols: number;
+  rows: number;
+  /** Source and confidence of the geometry that answered, same vocabulary as edges. */
+  source: ShadowSource;
+  confidence: number;
+}
+
 export interface EdgeShelter {
   left: number;
   right: number;
@@ -151,6 +161,21 @@ export interface ShadowField {
    * the canopy's leaf state exactly as `sampleEdges` does; omit it for now.
    */
   sampleRainEdges(edges: EdgeRef[], direction: RainDirection, when?: Date): EdgeShelter[];
+  /**
+   * Rain shelter rasterized over a rectangle for map painting.
+   *
+   * One direction per call, one resolution pass, one index build each for the
+   * building and canopy caster sets — the map layer's replacement for the
+   * renderer-based painter, which knows nothing about rain.
+   */
+  sampleRainGrid(
+    bounds: BBox,
+    cols: number,
+    rows: number,
+    direction: RainDirection,
+    when?: Date
+  ): RainGrid;
+  
   /** Preload the exact 2 km cells that `sampleEdges` will resolve. */
   readyEdges(edges: EdgeRef[], options?: ShadowReadyOptions): Promise<void>;
   /** Weakest provider coverage across the exact cells `sampleEdges` will use. */
@@ -1154,6 +1179,75 @@ export function createGeometryShadowField(
     return results;
   }
 
+  function sampleRainGrid(
+    bounds: BBox,
+    cols: number,
+    rows: number,
+    direction: RainDirection,
+    when: Date = new Date()
+  ): RainGrid {
+    const values = new Float32Array(cols * rows);
+    if (cols <= 0 || rows <= 0) {
+      return { values, cols, rows, source: "none", confidence: 0 };
+    }
+
+    // Resolve the whole painted area once, with the provider's own pad, so the
+    // index holds every caster that can reach a cell (mirrors `sampleEdges`).
+    const midLat = (bounds.south + bounds.north) / 2;
+    const { mPerLat, mPerLng } = metersPerDegree(midLat);
+    const padLng = QUERY_PAD_M / mPerLng;
+    const padLat = QUERY_PAD_M / mPerLat;
+    const padded: BBox = {
+      west: bounds.west - padLng,
+      east: bounds.east + padLng,
+      south: bounds.south - padLat,
+      north: bounds.north + padLat,
+    };
+    const resolved = resolve(padded);
+    const canopy = resolveCanopy(padded, when);
+    const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
+    const score = scoreFor(resolved, canopy, null, altitudeRad);
+    const rayAzimuth = ((direction.fromDeg + 180) * Math.PI) / 180;
+
+    const region: IndexRegion = { ...padded };
+    const buildingIndex = resolved
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(resolved.set.prisms),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region
+        )
+      : null;
+    const canopyIndex = canopy
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(rainCanopyCastersFor(canopy.prisms)),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region
+        )
+      : null;
+
+    const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
+    const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
+
+    const latStep = (bounds.north - bounds.south) / rows;
+    const lngStep = (bounds.east - bounds.west) / cols;
+    let k = 0;
+    for (let r = 0; r < rows; r++) {
+      const lat = bounds.north - (r + 0.5) * latStep;
+      for (let c = 0; c < cols; c++) {
+        const lng = bounds.west + (c + 0.5) * lngStep;
+        // A building pass wins opaque (1); canopy adds its rain-opacity fraction.
+        values[k++] = pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+      }
+    }
+    return { values, cols, rows, source: score.source, confidence };
+  }
+
   function coverageEdges(edges: EdgeRef[], when: Date): Coverage {
     const plan = planBatch(edges);
     if (plan.cells.length === 0) return { source: "none", confidence: 1 };
@@ -1233,6 +1327,7 @@ export function createGeometryShadowField(
     shadowAt,
     sampleEdges,
     sampleRainEdges,
+    sampleRainGrid,
     readyEdges,
     coverageEdges,
 
