@@ -449,6 +449,23 @@ export function useRouting({
         const tFetch = performance.now();
         updateProgress({ message: "Fetching walk network" });
 
+        // One route-scoped snapshot for streets and buildings alike, acquired
+        // before graph fetch and field readiness start in parallel. Both paths
+        // consume this immutable pin, so a pointer promotion mid-calculation
+        // cannot mix generations inside one route. Unavailable or invalid
+        // means static stays unbound and both paths take their current
+        // fallbacks; a caller abort still cancels the calculation.
+        let navSnapshot: NavigationSnapshot | null = null;
+        try {
+          navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
+        } catch {
+          if (calcSignal.aborted || myGen !== calcGenRef.current) return cancelled();
+          if (import.meta.env.DEV) {
+            console.log("[navigation] snapshot unavailable; static buildings off");
+          }
+        }
+        staticBuildingsRef.current?.bindSnapshot(navSnapshot);
+
         // Transit may board up to one access radius from either endpoint — the
         // candidate search reaches 1500 m and a door can stand a further
         // match box from its station — while the route-stop bbox above pads by
@@ -456,9 +473,13 @@ export function useRouting({
         // selection before enrichment, so access/egress walks route over the
         // same verified, shadow-sampled graph instead of snapping to whatever
         // reachable node happens to be nearest. Walk-only calculations (at or
-        // below the transit distance gate) select exactly as before.
+        // below the transit distance gate) select exactly as before, and so
+        // does every calculation with no bound snapshot: the Overpass graph
+        // can never reach the zones, so neither the primary street selection
+        // nor the shadow readiness area widens for them (the built tests pin
+        // this — the field preloads exactly the route bbox).
         const accessZones =
-          straightLineDistM > 500
+          navSnapshot && straightLineDistM > 500
             ? [
                 zoneAround(a[0], a[1], TRANSIT_ACCESS_RADIUS_M),
                 zoneAround(b[0], b[1], TRANSIT_ACCESS_RADIUS_M),
@@ -477,23 +498,6 @@ export function useRouting({
           QUERY_PAD_M,
         )!;
         const field = shadowFieldRef.current!;
-
-        // One route-scoped snapshot for streets and buildings alike, acquired
-        // before graph fetch and field readiness start in parallel. Both paths
-        // consume this immutable pin, so a pointer promotion mid-calculation
-        // cannot mix generations inside one route. Unavailable or invalid
-        // means static stays unbound and both paths take their current
-        // fallbacks; a caller abort still cancels the calculation.
-        let navSnapshot: NavigationSnapshot | null = null;
-        try {
-          navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
-        } catch {
-          if (calcSignal.aborted || myGen !== calcGenRef.current) return cancelled();
-          if (import.meta.env.DEV) {
-            console.log("[navigation] snapshot unavailable; static buildings off");
-          }
-        }
-        staticBuildingsRef.current?.bindSnapshot(navSnapshot);
 
         readinessAbort = new AbortController();
         const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
