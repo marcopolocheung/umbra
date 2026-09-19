@@ -28,8 +28,51 @@ npm run normalize      # PBF → work/streets.json; pages → work/buildings.ndj
 npm run build          # shards + notices + manifest + pointer candidate (default --grid z14)
 npm run build:dry      # same, no writes
 npm run verify         # re-reads final serialized bytes only (see src/verify.ts)
+npm run publish        # verification + upload plan; no bucket, no credentials, no writes
+npm run publish:execute    # upload the generation to R2 and promote current.json
 npm test               # hermetic node:test suite + vitest parity suite
 ```
+
+`publish --rollback <generation>` (or `npm run publish:rollback -- <generation>`)
+re-promotes a retained generation by uploading only its verified pointer —
+shards are never deleted, so any earlier promotion is one pointer away.
+
+## Publishing to R2
+
+`publish` follows the transit pipeline's S3-compatible R2 upload, under the
+`navigation/nyc/` prefix (part of the wire contract, not configuration):
+
+```sh
+export NAVIGATION_PREP_ROOT=$HOME/shade-prep-data-nyc-navigation
+export R2_ACCOUNT_ID=…          # account id
+export R2_ACCESS_KEY_ID=…       # dedicated R2 object read/write token for the bucket only
+export R2_SECRET_ACCESS_KEY=…   # never committed, never in the report
+export R2_NAVIGATION_BUCKET=shademap-nyc-navigation-staging
+export R2_PUBLIC_BASE=https://shademap-nyc-navigation-staging.marcoctpolo.workers.dev
+```
+
+`publish --execute <generation?>` is ordered so a failure at any point leaves
+the previous pointer serving:
+
+1. re-runs the independent verifier over final serialized bytes only;
+2. uploads every immutable object — manifest, notices, street shards, building
+   shards — resuming past any identical stored copy (ETag + size match);
+3. re-downloads one street and one building shard per borough
+   (all five boroughs) and proves stored bytes equal the manifest's exact
+   byte counts and SHA-256;
+4. reconciles the bucket inventory under the generation prefix against the
+   local verifier's object count, bytes, and per-key hash;
+5. promotes `navigation/nyc/current.json` strictly last, then verifies the
+   promoted pointer by re-download.
+
+Every run writes a publication report under `$NAVIGATION_PREP_ROOT/evidence/`
+(mode, generation, public base, manifest/pointer SHA-256, object counts and
+bytes, specimens, reconciliation, the previous pointer, and the exact
+rollback command). `publish --execute` also records the promoted pointer at
+`normalized/<generation>/current.json` next to its candidate.
+
+The delivery Worker in `cloudflare/navigation-data-worker/` is what browsers
+reach; the bucket stays private and is written only through this uploader.
 
 `tsx measure-grids.ts <generation> …` re-derives the z13/z14 selection
 measurement cited in the decision record; `build --dry-run --report-only`

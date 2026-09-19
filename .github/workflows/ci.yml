@@ -29,6 +29,7 @@ jobs:
       # private dependencies must be present before the root typecheck.
       - run: npm --prefix server/shadow-prep ci
       - run: npm --prefix server/transit-prep ci
+      - run: npm --prefix server/navigation-prep ci
 
       - run: npm run lint
 
@@ -56,6 +57,11 @@ jobs:
       # Same reason: the GTFS pipeline's suite is hermetic (no network, no env)
       # but lives outside root Vitest discovery, so it needs its own step.
       - run: npm --prefix server/transit-prep test
+
+      # The navigation producer's suite (including publication ordering and
+      # R2-store behavior) is hermetic too: committed fixtures, in-memory
+      # store, no network, no env.
+      - run: npm --prefix server/navigation-prep test
 
       # No secrets needed: Vite inlines absent VITE_* vars as undefined, and the
       # MapTiler key is only read at runtime for tile fetches.
