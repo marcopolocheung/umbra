@@ -2,6 +2,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouteOption } from "../../lib/routing";
+import { haversineMeters } from "../../lib/routing";
 import type { SavedRoute } from "../../lib/savedRoutes";
 import { downloadBlob } from "../../lib/exportRoute";
 import { geocodeReverse } from "../../lib/nominatim";
@@ -11,6 +12,7 @@ import {
   fetchStationEntranceBoxes,
 } from "../../lib/overpass";
 import { fetchBestTrainGraph } from "../../lib/transit/trainGraphSource";
+import { clearNavigationCache } from "../../lib/navigationData/remoteNavigation";
 import {
   sampleBuildingMaskBothSidewalks,
 } from "../../lib/shadowSampling";
@@ -1302,5 +1304,311 @@ describe("a transit option is not lost to an unreachable snap (#400)", () => {
 
     expect(result.current.filteredRoutes[0]?.label).toBe("Via Subway");
     expect(result.current.navWarning).toBeNull();
+  });
+});
+
+
+// ─── Static-backed transit access/egress (Session 5) ─────────────────────────
+
+/**
+ * Configured-NYC proof that subway access/egress walks route over the static,
+ * shadow-enriched street graph: Overpass streets are armed to fail, the
+ * published entry station (with doors) stands outside the route-stop bbox, and
+ * the Via Subway card must still appear with a bounded access walk.
+ */
+const NAV5_BASE = "https://navigation.test";
+const NAV5_GENERATION = "nyc-2026-09-19-abcdef123456";
+const NAV5_SUPPORT = { south: 1.29, west: 103.77, north: 1.31, east: 103.81 };
+
+interface Nav5Node {
+  id: number;
+  lat: number;
+  lon: number;
+  isIntersection: boolean;
+}
+
+interface Nav5Edge {
+  id: string;
+  from: number;
+  to: number;
+  tags: Record<string, string>;
+}
+
+function nav5ShardBody(
+  geometryBounds: { south: number; west: number; north: number; east: number },
+  nodes: Nav5Node[],
+  edges: Nav5Edge[],
+) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return {
+    version: 1,
+    dataset: "nyc-navigation",
+    generation: NAV5_GENERATION,
+    kind: "streets",
+    geometryBounds,
+    supportBounds: geometryBounds,
+    nodes,
+    edges: edges.map((edge) => ({
+      ...edge,
+      distanceM: haversineMeters(
+        [byId.get(edge.from)!.lon, byId.get(edge.from)!.lat],
+        [byId.get(edge.to)!.lon, byId.get(edge.to)!.lat],
+      ),
+    })),
+  };
+}
+
+async function nav5Sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Self-consistent pointer/manifest/shards with real digests (never Overpass). */
+async function publishNav5() {
+  const encoder = new TextEncoder();
+  const bodies = new Map<string, Uint8Array>();
+  const streetShards = [];
+  // The station cell ends at lon 103.7845; the walk bbox below starts at
+  // 103.785 — boarding happens strictly outside the route-stop bbox.
+  const cells: Array<{ key: string; body: ReturnType<typeof nav5ShardBody> }> = [
+    {
+      key: "streets/cell-station.json",
+      body: nav5ShardBody(
+        { south: 1.295, west: 103.772, north: 1.305, east: 103.7845 },
+        [
+          { id: 11, lat: 1.3, lon: 103.782, isIntersection: false },
+          { id: 12, lat: 1.3005, lon: 103.7825, isIntersection: false },
+          { id: 13, lat: 1.3, lon: 103.7845, isIntersection: true },
+        ],
+        [
+          { id: "s1-fwd", from: 11, to: 12, tags: { highway: "footway" } },
+          { id: "s1-bwd", from: 12, to: 11, tags: { highway: "footway" } },
+          { id: "s2-fwd", from: 12, to: 13, tags: { highway: "footway" } },
+          { id: "s2-bwd", from: 13, to: 12, tags: { highway: "footway" } },
+        ],
+      ),
+    },
+    {
+      key: "streets/cell-corridor.json",
+      body: nav5ShardBody(
+        { south: 1.295, west: 103.7845, north: 1.305, east: 103.806 },
+        [
+          // Ghost endpoint across the seam, owned by the station cell.
+          { id: 13, lat: 1.3, lon: 103.7845, isIntersection: true },
+          { id: 21, lat: 1.3, lon: 103.786, isIntersection: false },
+          { id: 22, lat: 1.3, lon: 103.795, isIntersection: false },
+          { id: 23, lat: 1.3, lon: 103.8, isIntersection: false },
+        ],
+        [
+          { id: "c1-fwd", from: 13, to: 21, tags: { highway: "residential" } },
+          { id: "c1-bwd", from: 21, to: 13, tags: { highway: "residential" } },
+          { id: "c2-fwd", from: 21, to: 22, tags: { highway: "residential" } },
+          { id: "c2-bwd", from: 22, to: 21, tags: { highway: "residential" } },
+          { id: "c3-fwd", from: 22, to: 23, tags: { highway: "residential" } },
+          { id: "c3-bwd", from: 23, to: 22, tags: { highway: "residential" } },
+        ],
+      ),
+    },
+  ];
+  for (const cell of cells) {
+    const bytes = encoder.encode(JSON.stringify(cell.body));
+    bodies.set(cell.key, bytes);
+    streetShards.push({
+      key: cell.key,
+      bytes: bytes.byteLength,
+      sha256: await nav5Sha256(bytes),
+      geometryBounds: cell.body.geometryBounds,
+      supportBounds: cell.body.supportBounds,
+      nodes: cell.body.nodes.length,
+      edges: cell.body.edges.length,
+    });
+  }
+  const manifestObj = {
+    version: 1,
+    dataset: "nyc-navigation",
+    generation: NAV5_GENERATION,
+    createdAt: "2026-09-19T12:00:00.000Z",
+    supportBounds: NAV5_SUPPORT,
+    recipe: "test-fixture-v1",
+    sources: [
+      {
+        id: "test",
+        release: "test",
+        url: "https://example.invalid/source",
+        sha256: "1".repeat(64),
+      },
+    ],
+    noticesPath: `navigation/nyc/${NAV5_GENERATION}/notices.json`,
+    noticesSha256: "2".repeat(64),
+    streetShards,
+    // The manifest contract requires a non-empty building list; the street
+    // source never requests it.
+    buildingShards: [
+      {
+        key: "buildings/cell-a.json",
+        bytes: 128,
+        sha256: "3".repeat(64),
+        geometryBounds: { south: 1.295, west: 103.786, north: 1.305, east: 103.806 },
+        supportBounds: { south: 1.295, west: 103.786, north: 1.305, east: 103.806 },
+        buildings: 0,
+        rings: 0,
+        missingHeights: 0,
+        maxHeightM: 0,
+      },
+    ],
+    budgets: { streetShardBytes: 5_000_000, buildingShardBytes: 5_000_000, totalBytes: 10_000_000 },
+  };
+  const manifestBytes = encoder.encode(JSON.stringify(manifestObj));
+  return {
+    pointer: {
+      version: 1,
+      dataset: "nyc-navigation",
+      generation: NAV5_GENERATION,
+      manifestPath: `navigation/nyc/${NAV5_GENERATION}/manifest.json`,
+      manifestSha256: await nav5Sha256(manifestBytes),
+    },
+    manifestBytes,
+    bodies,
+  };
+}
+
+/** Serves published navigation bytes through the global fetch, recording URLs. */
+function stubNav5Fetch(published: Awaited<ReturnType<typeof publishNav5>>, calls: string[]) {
+  return (async (url: unknown) => {
+    const href = String(url);
+    calls.push(href);
+    const bytes = (body: Uint8Array) => {
+      const copy = new Uint8Array(body.byteLength);
+      copy.set(body);
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => copy.buffer,
+      };
+    };
+    if (href.endsWith("/current.json"))
+      return bytes(new TextEncoder().encode(JSON.stringify(published.pointer)));
+    if (href.endsWith("/manifest.json")) return bytes(published.manifestBytes);
+    const key = href.split(`/navigation/nyc/${NAV5_GENERATION}/`)[1];
+    const body = key ? published.bodies.get(key) : undefined;
+    if (!body)
+      return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+    return bytes(body);
+  }) as unknown as typeof fetch;
+}
+
+/** Entry station outside the walk bbox with published doors; ride to the exit. */
+function offCorridorTrainGraph() {
+  const rail = (to: string) => ({ to, weightSec: 60, type: "rail" as const, line: "T" });
+  return {
+    stations: new Map([
+      [
+        "subway:E",
+        {
+          id: "subway:E",
+          name: "West End",
+          lat: 1.3,
+          lon: 103.782,
+          lines: ["T"],
+          entrances: [{ lat: 1.3005, lon: 103.7825 }],
+        },
+      ],
+      ["subway:M", { id: "subway:M", name: "Mid", lat: 1.3, lon: 103.791, lines: ["T"] }],
+      [
+        "subway:X",
+        {
+          id: "subway:X",
+          name: "East End",
+          lat: 1.3,
+          lon: 103.799,
+          lines: ["T"],
+          entrances: [],
+        },
+      ],
+    ]),
+    adj: new Map([
+      ["subway:E", [rail("subway:M")]],
+      ["subway:M", [rail("subway:E"), rail("subway:X")]],
+      ["subway:X", [rail("subway:M")]],
+    ]),
+    lineColors: new Map([["T", "#D82233"]]),
+    lineNames: new Map([["T", "Test Line"]]),
+    lineModes: new Map([["T", "subway" as const]]),
+  };
+}
+
+describe("transit access walks use the static street graph when configured", () => {
+  let navCalls: string[] = [];
+
+  beforeEach(async () => {
+    resetShadowStub();
+    clearNavigationCache();
+    vi.stubEnv("VITE_NAVIGATION_BASE", NAV5_BASE);
+    navCalls = [];
+    vi.stubGlobal("fetch", stubNav5Fetch(await publishNav5(), navCalls));
+    // Tripwire: any Overpass street fetch rejects instead of succeeding
+    // quietly through the fallback.
+    vi.mocked(fetchRoutingGraph).mockRejectedValue(new Error("proxy down"));
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(offCorridorTrainGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({
+      entrances: [],
+      failed: false,
+    } as never);
+  });
+
+  afterEach(() => {
+    clearNavigationCache();
+    vi.unstubAllGlobals();
+  });
+
+  it("offers Via Subway with a bounded static access walk and no Overpass streets", async () => {
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    // ~1.1 km apart, so the pipeline looks for a transit option at all.
+    act(() => result.current.handleSetWaypointA([103.79, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.8, 1.3], "End"));
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+
+    // Both walks routed over verified static shards: no street fallback fired.
+    expect(fetchRoutingGraph).not.toHaveBeenCalled();
+    // The access zone pulled the station cell, which the route-stop bbox
+    // ([103.785, 103.805]) cannot intersect on its own.
+    expect(navCalls.some((url) => url.includes("cell-station.json"))).toBe(true);
+    // Published doors stay authoritative: no legacy entrance fetch.
+    expect(fetchStationEntranceBoxes).not.toHaveBeenCalled();
+
+    const subway = result.current.filteredRoutes.find((route) => route.label === "Via Subway");
+    expect(subway).toBeDefined();
+    expect(subway?.legs?.map((leg) => leg.type)).toEqual(["walk", "transit", "walk"]);
+    // A bounded access walk to the published door (~0.9 km of static
+    // streets), not an unbounded snap to the corridor edge.
+    const walkA = subway?.legs?.[0];
+    expect(walkA?.distanceM).toBeGreaterThan(0);
+    expect(walkA?.distanceM ?? Infinity).toBeLessThan(1500);
+    // The board point is the published door, outside the route-stop bbox.
+    expect(subway?.mrtEntrances?.[0]).toEqual([103.7825, 1.3005]);
+    // The ride itself still comes from the TrainGraph implementation.
+    expect(subway?.legs?.[1].stops).toEqual(["West End", "Mid", "East End"]);
   });
 });

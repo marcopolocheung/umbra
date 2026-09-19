@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dijkstra, haversineMeters } from "../../routing";
 import type { GeoBounds } from "../shardContract";
 import { acquireNavigationSnapshot, clearNavigationCache } from "../remoteNavigation";
-import { fetchBestRoutingGraph } from "../routingGraphSource";
+import { fetchBestRoutingGraph, TRANSIT_ACCESS_RADIUS_M } from "../routingGraphSource";
 
 const generation = "nyc-2026-09-18-abcdef123456";
 const base = "https://navigation.test";
@@ -211,9 +211,9 @@ const overpassWay = {
 
 /** Counts Overpass proxy calls; answers one fixed way per bbox. */
 function stubOverpass() {
-  const calls: string[] = [];
-  const fetchMock = vi.fn().mockImplementation(async (url: unknown) => {
-    calls.push(String(url));
+  const calls: { url: string; body: string }[] = [];
+  const fetchMock = vi.fn().mockImplementation(async (url: unknown, init?: { body?: unknown }) => {
+    calls.push({ url: String(url), body: String(init?.body ?? "") });
     return {
       ok: true,
       status: 200,
@@ -437,5 +437,151 @@ describe("fetchBestRoutingGraph", () => {
     expect(graph.nodes.size).toBe(2);
     expect(overpassCalls).toHaveLength(1);
     expect(calls).toHaveLength(0);
+  });
+
+  it("bounds the transit access radius to the candidate reach plus the door box", () => {
+    // 1500 m candidate radius plus the 400 m entrance-match box, with a small
+    // snap margin. A wider radius silently multiplies every transit
+    // calculation's shard selection; a narrower one strands far doors off the
+    // static graph.
+    expect(TRANSIT_ACCESS_RADIUS_M).toBeGreaterThanOrEqual(1900);
+    expect(TRANSIT_ACCESS_RADIUS_M).toBeLessThanOrEqual(2500);
+  });
+
+  // The route-stop bbox below ends in the west cell in every zoned test: it
+  // intersects the west geometry ([-74.0, -73.99]) and stops short of the
+  // east cell's west edge (-73.99) without touching it.
+
+  it("covers a selected station outside the route-stop bbox through a bounded access zone", async () => {
+    // A subway entrance across the street-shard seam: the walk corridor ends
+    // in the west cell while boarding happens in the east one.
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn, calls } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+
+    const graph = await fetchBestRoutingGraph(
+      40.745,
+      -73.999,
+      40.755,
+      -73.992,
+      undefined,
+      {
+        fetchFn,
+        accessZones: [{ south: 40.746, west: -73.989, north: 40.754, east: -73.983 }],
+      },
+    );
+
+    expect(graph.nodes.size).toBe(4);
+    // The seam-crossing walk the access leg needs is one component.
+    const route = dijkstra(graph, 101, 104, 0);
+    expect(route?.nodeIds).toEqual([101, 102, 103, 104]);
+    expect(overpassCalls).toHaveLength(0);
+    // Streets verify; buildings are never requested by this source.
+    expect(calls.some((call) => call.url.includes("buildings/"))).toBe(false);
+  });
+
+  it("covers a destination-side bus stop outside the first endpoint cell", async () => {
+    // Mirror image: the corridor ends in the east cell while alighting stands
+    // in the west one. A bus stop carries no entrance geometry — the stop
+    // point itself is the boarding point — so the same zone union covers it.
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+
+    const graph = await fetchBestRoutingGraph(
+      40.745,
+      -73.988,
+      40.755,
+      -73.981,
+      undefined,
+      {
+        fetchFn,
+        accessZones: [{ south: 40.746, west: -73.999, north: 40.754, east: -73.994 }],
+      },
+    );
+
+    expect(graph.nodes.size).toBe(4);
+    const route = dijkstra(graph, 104, 101, 0);
+    expect(route?.nodeIds).toEqual([104, 103, 102, 101]);
+    expect(overpassCalls).toHaveLength(0);
+  });
+
+  it("leaves walk-only requests on exactly the route bbox", async () => {
+    // No accessZones: the east shard is never fetched and the graph holds the
+    // west cell alone. Trips at or below the transit distance gate take this
+    // path, so their routing is identical to before.
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn, calls } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+
+    const graph = await fetchBestRoutingGraph(40.745, -73.999, 40.755, -73.992, undefined, {
+      fetchFn,
+    });
+
+    expect(graph.nodes.size).toBe(3);
+    expect(graph.nodes.has(104)).toBe(false);
+    expect(calls.some((call) => call.url.includes("cell-east"))).toBe(false);
+    expect(overpassCalls).toHaveLength(0);
+  });
+
+  it("treats an access zone past support as best-effort, not failure", async () => {
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+
+    const graph = await fetchBestRoutingGraph(40.745, -73.999, 40.755, -73.992, undefined, {
+      fetchFn,
+      // Madrid: far outside the NYC support bounds.
+      accessZones: [{ south: 40.41, west: -3.71, north: 40.42, east: -3.69 }],
+    });
+
+    expect(graph.nodes.size).toBe(3);
+    expect(overpassCalls).toHaveLength(0);
+  });
+
+  it("falls back over the exact route bbox when an access-zone shard fails", async () => {
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn } = stubNavigationFetch(published, new Set(["streets/cell-east.json"]));
+    const overpassCalls = stubOverpass();
+
+    const graph = await fetchBestRoutingGraph(
+      // Fresh bbox west of every earlier fallback's cached bbox, so the
+      // Overpass cache cannot mask a duplicated upstream call.
+      40.745,
+      -73.999,
+      40.755,
+      -73.992,
+      undefined,
+      {
+        fetchFn,
+        accessZones: [{ south: 40.746, west: -73.989, north: 40.754, east: -73.983 }],
+      },
+    );
+
+    // Whole-request fallback: the Overpass graph answers, exactly once, for
+    // the route bbox — zones never widen the public-mirror query.
+    expect(graph.nodes.size).toBe(2);
+    expect(overpassCalls).toHaveLength(1);
+    const body = decodeURIComponent(overpassCalls[0]?.body ?? "");
+    expect(body).toContain("40.745,-73.999,40.755,-73.992");
+    expect(body).not.toContain("-73.989");
+    expect(body).not.toContain("-73.983");
+    expect(body).not.toContain("40.746");
+  });
+
+  it("does not launch fallback for zoned requests when the caller aborts", async () => {
+    const published = await publish([cellWest, cellEast]);
+    const { fetchFn } = stubNavigationFetch(published);
+    const overpassCalls = stubOverpass();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      fetchBestRoutingGraph(40.745, -73.999, 40.755, -73.992, controller.signal, {
+        fetchFn,
+        accessZones: [{ south: 40.746, west: -73.989, north: 40.754, east: -73.983 }],
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(overpassCalls).toHaveLength(0);
   });
 });

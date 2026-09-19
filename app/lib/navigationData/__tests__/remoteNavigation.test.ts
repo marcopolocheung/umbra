@@ -12,6 +12,8 @@ import {
   loadNavigationStreetShard,
   navigationApiBase,
   selectNavigationShards,
+  selectNavigationShardsForBoxes,
+  zoneAround,
   type NavigationSnapshot,
 } from "../remoteNavigation";
 
@@ -579,6 +581,80 @@ describe("selectNavigationShards", () => {
     expect(selection).not.toBeNull();
     expect(selection?.streets).toEqual([]);
     expect(selection?.buildings).toEqual([]);
+  });
+});
+
+describe("selectNavigationShardsForBoxes", () => {
+  async function snapshotManifest() {
+    const published = await publish(bodiesFor(generation));
+    const { fetchFn } = stubFetch(() => published);
+    return (await mustAcquire(fetchFn)).manifest;
+  }
+
+  // Inside street cell A only: B's west edge is -73.977.
+  const primary: GeoBounds = { south: 40.74, west: -73.999, north: 40.75, east: -73.985 };
+  // Inside street cell B only.
+  const zone: GeoBounds = { south: 40.74, west: -73.976, north: 40.75, east: -73.965 };
+
+  it("unions the primary bbox with bounded extra boxes", async () => {
+    const manifest = await snapshotManifest();
+    expect(
+      selectNavigationShardsForBoxes(manifest, primary, [zone])?.streets.map((ref) => ref.key).sort(),
+    ).toEqual(["streets/cell-a.json", "streets/cell-b.json"]);
+  });
+
+  it("matches single-bbox selection when no extras are given", async () => {
+    const manifest = await snapshotManifest();
+    expect(selectNavigationShardsForBoxes(manifest, primary, [])).toEqual(
+      selectNavigationShards(manifest, primary),
+    );
+  });
+
+  it("declines when the primary bbox leaves verified support, however covered the extras", async () => {
+    const manifest = await snapshotManifest();
+    const tokyo = { south: 35.65, west: 139.68, north: 35.7, east: 139.78 };
+    expect(selectNavigationShardsForBoxes(manifest, tokyo, [zone])).toBeNull();
+  });
+
+  it("treats extras past the support boundary as best-effort, not failure", async () => {
+    const manifest = await snapshotManifest();
+    const tokyo = { south: 35.65, west: 139.68, north: 35.7, east: 139.78 };
+    const selection = selectNavigationShardsForBoxes(manifest, primary, [tokyo]);
+    expect(selection?.streets.map((ref) => ref.key)).toEqual(["streets/cell-a.json"]);
+  });
+
+  it("pulls a building cell through a zone the primary cannot reach", async () => {
+    const manifest = await snapshotManifest();
+    // Building B's west edge (-73.975) stands ~1.2 km east of the primary's
+    // east edge — past default caster reach — but inside the zone.
+    const farPrimary: GeoBounds = { south: 40.745, west: -73.999, north: 40.75, east: -73.99 };
+    expect(
+      selectNavigationShards(manifest, farPrimary)?.buildings.map((ref) => ref.key),
+    ).toEqual(["buildings/cell-a.json"]);
+    expect(
+      selectNavigationShardsForBoxes(manifest, farPrimary, [zone])?.buildings
+        .map((ref) => ref.key)
+        .sort(),
+    ).toEqual(["buildings/cell-a.json", "buildings/cell-b.json"]);
+  });
+});
+
+describe("zoneAround", () => {
+  it("covers the endpoint and the full board/alight reach in metres", () => {
+    const lon = -73.99;
+    const lat = 40.75;
+    const zone = zoneAround(lon, lat, 2000);
+    expect(zone.south).toBeLessThan(lat);
+    expect(zone.north).toBeGreaterThan(lat);
+    expect(zone.west).toBeLessThan(lon);
+    expect(zone.east).toBeGreaterThan(lon);
+    // 2 km each way in latitude, to the metre the loader pads by.
+    expect(zone.north - zone.south).toBeCloseTo((2 * 2000) / 111_320, 6);
+    // A door at the reach edge (candidate radius plus match box) is inside;
+    // one past the radius is outside.
+    const mPerDegLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+    expect(lon + 1900 / mPerDegLon).toBeLessThan(zone.east);
+    expect(lon + 2100 / mPerDegLon).toBeGreaterThan(zone.east);
   });
 });
 

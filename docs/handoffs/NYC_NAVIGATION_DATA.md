@@ -315,6 +315,12 @@ the added edges through the same shadow sampling, sidewalk expansion, access fil
 indexing, and reachability preparation as the initial graph before either transit walk is searched.
 If that makes the hook state unsafe or duplicative, load the bounded access zones before the first
 enrichment pass instead; do not splice raw, unshadowed edges into `routingGraph`.
+(As built in Session 5: upfront zones only — `zoneAround` each endpoint with
+`TRANSIT_ACCESS_RADIUS_M = 2000` (1500 m candidate radius + 400 m door box + 100 m
+snap margin) joins the street selection and the shadow bbox before enrichment, so
+added edges pass through the unchanged sampling/sidewalk/index/reachability
+pipeline. The primary bbox must be covered; zones are best-effort. The Overpass
+fallback still fetches exactly the route-stop bbox, and no second load exists.)
 
 Published transit entrances remain authoritative. The old-generation entrance Overpass fallback
 stays for compatibility and is not evidence that street loading failed. A later transit
