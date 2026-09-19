@@ -17,12 +17,41 @@
  */
 
 export interface RoutingPhaseMs {
-  graphFetch: number; // fetchRoutingGraph (cache hit or network)
+  graphFetch: number; // whole tFetch span (cache hit or network)
+  /**
+   * Phase-0 graph-fetch attribution split (all optional; absent = not measured).
+   * `graphFetch` keeps its historic meaning — the whole `tFetch` wall-clock
+   * span — so old readers keep working. The three sub-phases account for that
+   * span: `navSnapshot` (pointer + manifest + digest verify), then
+   * `staticStreets` (street shard bytes + adapter build, Overpass fallback
+   * included), while `fieldReady` is the awaited `broadPreload` /
+   * `field.readyEdges` tail and therefore *overlaps* `staticStreets`. The
+   * invariant a reader can assert is:
+   *   navSnapshot + staticStreets + fieldReady <= graphFetch.
+   */
+  navSnapshot?: number;
+  staticStreets?: number;
+  fieldReady?: number;
   canvasRead: number; // legacy composited-map read; production routing keeps this at 0
   /** Readback of the renderer's building-only FBO; separate from composited canvas reads. */
   dedicatedMaskRead?: number;
   shadowSample: number; // edge shadow-factor sampling loop
-  dijkstra: number; // snap + all Dijkstra passes
+  dijkstra: number; // snap + graph build + walk search (kept for back-compat; see walkPareto)
+  /**
+   * Phase-0 transit audit split (all optional, 0/absent = phase did not run).
+   * `dijkstra` keeps its historic meaning (snap + build + walk search) so old
+   * readers keep working; `walkPareto` is the search-only portion of it, and
+   * the five transit phases cover the block after the walk options are built
+   * (`useRouting` transit branch) that previously fell into `total` unmeasured.
+   */
+  walkPareto?: number; // paretoRoutes (2-pt) or per-leg dijkstra loop (multi-pt)
+  transitFetch?: number; // fetchBestTrainGraph (shards or Overpass)
+  trainSearch?: number; // findBestTrainRoute across subway+bus
+  trainSearchSubway?: number; // subway slice of trainSearch
+  trainSearchBus?: number; // bus slice of trainSearch
+  entrances?: number; // entrance-box fetch + match + pick (subway only)
+  walkLegs?: number; // reachableFrom + snapToReachable + walkA/walkB dijkstras
+  busWait?: number; // bus boarding shadowAt + stop preloads + waitExposureFrom
   total: number; // wall-clock end-to-end
 }
 
@@ -46,9 +75,22 @@ export interface RoutingRunMetrics {
    */
   shadowFallbackShare: number;
   /** Edge-count shares, recorded before path selection. */
-  buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>>;
+  buildingProviderShares?: Partial<
+    Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>
+  >;
   /** The static building generation that answered, when any edge used it. */
   staticBuildingGeneration?: string | null;
+  /**
+   * Phase-0 transit audit counters (all optional; absent = phase did not run).
+   * Sizes, not coordinates — safe to log and to assert in benchmarks.
+   */
+  transitTried?: boolean; // transit branch entered (straight-line > 500 m, no partial)
+  transitStationCount?: number | null; // trainGraph.stations.size
+  transitLineCount?: number | null; // trainGraph.lineColors.size
+  entranceBoxCount?: number; // station boxes fetched (subway only)
+  entranceCount?: number; // doors returned (cache + network)
+  boardingStopCount?: number; // bus boardings sampled
+  busPreloadCount?: number; // bus stop ready() preloads issued (<= MAX_STOP_PRELOADS)
   canopySourceShares?: Partial<Record<"osm" | "raster" | "both" | "none", number>>;
   fallbackReason?: "low-confidence" | "mask-unavailable" | null;
   routes: RouteMetricSnapshot[];
@@ -95,21 +137,30 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
     const { phases, graphNodeCount, graphDirectedEdges } = m;
     console.groupCollapsed(
       `[Umbra] Route computed in ${phases.total.toFixed(0)} ms` +
-        ` | ${graphNodeCount} nodes, ${graphDirectedEdges} directed edges`
+        ` | ${graphNodeCount} nodes, ${graphDirectedEdges} directed edges`,
     );
     console.table({
       "Graph fetch (ms)": phases.graphFetch.toFixed(1),
+      "Nav snapshot (ms)": (phases.navSnapshot ?? 0).toFixed(1),
+      "Static streets (ms)": (phases.staticStreets ?? 0).toFixed(1),
+      "Field ready (ms)": (phases.fieldReady ?? 0).toFixed(1),
       "Canvas read (ms)": phases.canvasRead.toFixed(1),
       "Building mask read (ms)": (phases.dedicatedMaskRead ?? 0).toFixed(1),
       "Canvas fallback (%)": (m.shadowFallbackShare * 100).toFixed(1),
       "Shadow sample (ms)": phases.shadowSample.toFixed(1),
       "Dijkstra (ms)": phases.dijkstra.toFixed(1),
+      "Walk pareto (ms)": (phases.walkPareto ?? 0).toFixed(1),
+      "Transit fetch (ms)": (phases.transitFetch ?? 0).toFixed(1),
+      "Train search (ms)": (phases.trainSearch ?? 0).toFixed(1),
+      "Entrances (ms)": (phases.entrances ?? 0).toFixed(1),
+      "Walk legs (ms)": (phases.walkLegs ?? 0).toFixed(1),
+      "Bus wait (ms)": (phases.busWait ?? 0).toFixed(1),
       "Total (ms)": phases.total.toFixed(1),
     });
     if (m.shadowCoverageGainPp !== null) {
       console.log(
         `[KPI] Shadowed route is ${m.pathLengthDeltaPct!.toFixed(1)}% longer` +
-          ` and gains ${m.shadowCoverageGainPp.toFixed(1)} pp of shadow coverage`
+          ` and gains ${m.shadowCoverageGainPp.toFixed(1)} pp of shadow coverage`,
       );
     }
     console.groupEnd();
@@ -189,13 +240,9 @@ export function getMetricsSummary(): MetricsSummary | null {
     avgShadowSampleMs: avg(_history.map((h) => h.phases.shadowSample)),
     avgDijkstraMs: avg(_history.map((h) => h.phases.dijkstra)),
     avgShadowCoverageGainPp:
-      gainRuns.length > 0
-        ? avg(gainRuns.map((h) => h.shadowCoverageGainPp!))
-        : null,
+      gainRuns.length > 0 ? avg(gainRuns.map((h) => h.shadowCoverageGainPp!)) : null,
     avgPathLengthDeltaPct:
-      deltaRuns.length > 0
-        ? avg(deltaRuns.map((h) => h.pathLengthDeltaPct!))
-        : null,
+      deltaRuns.length > 0 ? avg(deltaRuns.map((h) => h.pathLengthDeltaPct!)) : null,
   };
 }
 
@@ -227,7 +274,6 @@ export function computeDerivedKpis(routes: RouteMetricSnapshot[]): {
   }
   return {
     shadowCoverageGainPp: (mostShadowed.shadowCoverage - shortest.shadowCoverage) * 100,
-    pathLengthDeltaPct:
-      ((mostShadowed.distanceM - shortest.distanceM) / shortest.distanceM) * 100,
+    pathLengthDeltaPct: ((mostShadowed.distanceM - shortest.distanceM) / shortest.distanceM) * 100,
   };
 }

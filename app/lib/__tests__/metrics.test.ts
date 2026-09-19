@@ -153,6 +153,79 @@ describe("window.__umbraMetrics", () => {
     expect(exposed.latest!.phases.total).toBe(30);
     expect(exposed.summary!.runs).toBe(2);
   });
+
+  it("preserves the Phase-0 graph-fetch attribution split when present, absent when not", () => {
+    recordRoutingRun(
+      run(100, {
+        phases: {
+          graphFetch: 10,
+          navSnapshot: 1,
+          staticStreets: 7,
+          fieldReady: 2,
+          canvasRead: 0,
+          shadowSample: 20,
+          dijkstra: 30,
+          total: 100,
+        },
+      }),
+    );
+
+    const latest = windowMetrics().latest!;
+    expect(latest.phases.graphFetch).toBe(10);
+    expect(latest.phases.navSnapshot).toBe(1);
+    expect(latest.phases.staticStreets).toBe(7);
+    expect(latest.phases.fieldReady).toBe(2);
+    // The split cannot exceed the span it attributes: the benchmark's sum
+    // invariant reads exactly this on live runs.
+    expect(
+      latest.phases.navSnapshot! + latest.phases.staticStreets! + latest.phases.fieldReady!,
+    ).toBeLessThanOrEqual(latest.phases.graphFetch);
+
+    recordRoutingRun(run(50));
+    expect(windowMetrics().latest!.phases.navSnapshot).toBeUndefined();
+    expect(windowMetrics().latest!.phases.staticStreets).toBeUndefined();
+    expect(windowMetrics().latest!.phases.fieldReady).toBeUndefined();
+  });
+
+  it("preserves the Phase-0 transit audit split when present, absent when not", () => {
+    recordRoutingRun(
+      run(100, {
+        phases: {
+          graphFetch: 10,
+          canvasRead: 0,
+          shadowSample: 20,
+          dijkstra: 30,
+          walkPareto: 25,
+          transitFetch: 5,
+          trainSearch: 15,
+          trainSearchSubway: 6,
+          trainSearchBus: 9,
+          entrances: 4,
+          walkLegs: 8,
+          busWait: 3,
+          total: 100,
+        },
+        transitTried: true,
+        transitStationCount: 200,
+        transitLineCount: 12,
+        entranceBoxCount: 2,
+        entranceCount: 14,
+        boardingStopCount: 3,
+        busPreloadCount: 1,
+      }),
+    );
+
+    const latest = windowMetrics().latest!;
+    expect(latest.phases.walkPareto).toBe(25);
+    expect(latest.phases.trainSearchSubway).toBe(6);
+    expect(latest.phases.trainSearchBus).toBe(9);
+    expect(latest.transitStationCount).toBe(200);
+    expect(latest.busPreloadCount).toBe(1);
+
+    recordRoutingRun(run(50));
+    expect(windowMetrics().latest!.phases.walkPareto).toBeUndefined();
+    expect(windowMetrics().latest!.transitTried).toBeUndefined();
+  });
 });
 
 describe("computeDerivedKpis", () => {
@@ -162,7 +235,7 @@ describe("computeDerivedKpis", () => {
       pathLengthDeltaPct: null,
     });
     expect(
-      computeDerivedKpis([{ label: "Shortest", distanceM: 1000, shadowCoverage: 0.2 }])
+      computeDerivedKpis([{ label: "Shortest", distanceM: 1000, shadowCoverage: 0.2 }]),
     ).toEqual({ shadowCoverageGainPp: null, pathLengthDeltaPct: null });
   });
 
@@ -182,7 +255,7 @@ describe("computeDerivedKpis", () => {
       computeDerivedKpis([
         { label: "Shortest", distanceM: 0, shadowCoverage: 0 },
         { label: "Most Shadowed", distanceM: 500, shadowCoverage: 0.5 },
-      ])
+      ]),
     ).toEqual({ shadowCoverageGainPp: null, pathLengthDeltaPct: null });
   });
 });

@@ -426,6 +426,32 @@ export function useRouting({
       let dedicatedMaskReadMs = 0;
       let shadowSampleMs = 0;
       let dijkstraMs = 0;
+      // Phase-0 transit audit split: walk search portion + the five transit
+      // phases that previously fell into `total` unmeasured. All additive —
+      // `dijkstraMs` keeps its historic meaning for back-compat readers.
+      let walkParetoMs = 0;
+      let transitFetchMs = 0;
+      let trainSearchMs = 0;
+      let trainSearchSubwayMs = 0;
+      let trainSearchBusMs = 0;
+      let entrancesMs = 0;
+      let walkLegsMs = 0;
+      let busWaitMs = 0;
+      let transitTried = false;
+      let transitStationCount: number | null = null;
+      let transitLineCount: number | null = null;
+      let entranceBoxCount = 0;
+      let entranceCount = 0;
+      let boardingStopCount = 0;
+      let busPreloadCount = 0;
+      // Phase-0 graph-fetch attribution split: the three pieces of the
+      // `tFetch` span that gate different fix decisions. `fieldReady`
+      // overlaps `staticStreets` by construction (the broad preload starts
+      // beside the street fetch), so the three never add to more than
+      // `graphFetch`.
+      let navSnapshotMs = 0;
+      let staticStreetsMs = 0;
+      let fieldReadyMs = 0;
       let readinessAbort: AbortController | null = null;
 
       try {
@@ -456,6 +482,7 @@ export function useRouting({
         // means static stays unbound and both paths take their current
         // fallbacks; a caller abort still cancels the calculation.
         let navSnapshot: NavigationSnapshot | null = null;
+        const tNavSnapshot = performance.now();
         try {
           navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
         } catch {
@@ -464,6 +491,7 @@ export function useRouting({
             console.log("[navigation] snapshot unavailable; static buildings off");
           }
         }
+        navSnapshotMs = performance.now() - tNavSnapshot;
         staticBuildingsRef.current?.bindSnapshot(navSnapshot);
 
         // Transit may board up to one access radius from either endpoint — the
@@ -508,6 +536,7 @@ export function useRouting({
 
         const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
+        const tStaticStreets = performance.now();
         try {
           graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal, {
             snapshot: navSnapshot,
@@ -517,6 +546,7 @@ export function useRouting({
           readinessAbort.abort();
           throw error;
         }
+        staticStreetsMs = performance.now() - tStaticStreets;
         // Enumerate as soon as the graph arrives. These exact cells, rather than the
         // graph's large enclosing rectangle, are what sampling and confidence use.
         const edgeBatch = routingEdgeBatch(graph);
@@ -524,10 +554,12 @@ export function useRouting({
         const edgeKeys = edgeBatch.keys;
         const edgeDistances = edgeBatch.distances;
         const directedEdgeCount = edgeBatch.directedCount;
+        const tFieldReady = performance.now();
         await Promise.all([
           broadPreload,
           field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
         ]);
+        fieldReadyMs = performance.now() - tFieldReady;
         graphFetchMs = performance.now() - tFetch;
         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
@@ -771,7 +803,9 @@ export function useRouting({
 
         if ((plan?.via ?? additionalWaypoints).length === 0) {
           updateProgress({ message: "Finding route choices" });
+          const tPareto = performance.now();
           const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
+          walkParetoMs += performance.now() - tPareto;
           dijkstraMs = performance.now() - tDijkstra;
 
           // Results are ordered [shortest, balanced, most shadowed] with duplicate
@@ -811,6 +845,7 @@ export function useRouting({
             total: totalRouteLegs,
           });
 
+          const tParetoMulti = performance.now();
           for (let si = 0; si < STRENGTHS.length; si++) {
             const strength = STRENGTHS[si];
             let totalDist = 0;
@@ -933,6 +968,7 @@ export function useRouting({
             });
           }
 
+          walkParetoMs += performance.now() - tParetoMulti;
           dijkstraMs = performance.now() - tDijkstra;
 
           options = options.filter(
@@ -958,6 +994,7 @@ export function useRouting({
         // told transit was considered rather than silently shown walking only.
         let transitNotice: string | null = null;
         if (!forcedPartial && straightLineDistM > 500) {
+          transitTried = true;
           try {
             updateProgress({ message: "Checking transit option" });
             const trainPadding = Math.max(padding, 0.015);
@@ -973,6 +1010,7 @@ export function useRouting({
                 trainNorth,
                 trainEast,
               });
+            const tTransitFetch = performance.now();
             const trainGraph = await fetchBestTrainGraph(
               trainSouth,
               trainWest,
@@ -980,6 +1018,11 @@ export function useRouting({
               trainEast,
               calcSignal,
             );
+            transitFetchMs += performance.now() - tTransitFetch;
+            if (trainGraph) {
+              transitStationCount = trainGraph.stations.size;
+              transitLineCount = trainGraph.lineColors.size;
+            }
             if (import.meta.env.DEV)
               console.log(
                 "[transit] trainGraph:",
@@ -1015,7 +1058,12 @@ export function useRouting({
               // spatial stubs are refused those are disconnected components —
               // so it returns no transit route at all, not merely a worse one.
               for (const transitMode of TRANSIT_MODES) {
+                const tModeSearch = performance.now();
                 const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure, transitMode);
+                const dtModeSearch = performance.now() - tModeSearch;
+                trainSearchMs += dtModeSearch;
+                if (transitMode === "subway") trainSearchSubwayMs += dtModeSearch;
+                else trainSearchBusMs += dtModeSearch;
                 if (import.meta.env.DEV)
                   console.log(
                     `[transit] bestTrain (${transitMode}):`,
@@ -1037,6 +1085,7 @@ export function useRouting({
                   // NYC shards carry each station's doors as OSM groups them
                   // (#430); fetching and matching by name or nearest point is
                   // what gave the Metro-North terminal's doors to the 7.
+                  const tEntrances = performance.now();
                   const endpoints = [bestTrain.entryStation, bestTrain.exitStation];
                   const entranceBoxes = endpoints
                     .filter((station) => station.entrances === undefined)
@@ -1118,6 +1167,9 @@ export function useRouting({
                     alightCandidates,
                     haversineMeters,
                   );
+                  entrancesMs += performance.now() - tEntrances;
+                  entranceBoxCount += entranceBoxes.length;
+                  entranceCount += entrances.length;
 
                   // Snap to somewhere the walker can actually reach. A station
                   // centroid, and sometimes a real entrance, sits on a fragment of
@@ -1131,6 +1183,7 @@ export function useRouting({
                   // alight snap too. `walkOpts` pins travel mode to walk, and walk
                   // prohibits no edge, so this set is exactly what dijkstra can
                   // traverse.
+                  const tWalkLegs = performance.now();
                   const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
                   const boardNodeId = snapToReachable(
                     [boardEntrance.lon, boardEntrance.lat],
@@ -1173,6 +1226,7 @@ export function useRouting({
                       "alightNodeId:",
                       alightNodeId,
                     );
+                  walkLegsMs += performance.now() - tWalkLegs;
 
                   if (!walkA || !walkB) {
                     if (import.meta.env.DEV)
@@ -1240,6 +1294,8 @@ export function useRouting({
                       return stop ? [{ waitSec: wait.waitSec, stop }] : [];
                     });
                     if (lineMode === "bus" && boardingStops.length > 0) {
+                      const tBusWait = performance.now();
+                      boardingStopCount += boardingStops.length;
                       // Sampled at the departure instant, which is when the
                       // waits themselves are priced — the published tables are
                       // hourly, and a time-dependent search is a different
@@ -1274,6 +1330,8 @@ export function useRouting({
                       }
                       if (unresolved.length > 0) samples = sampleAll();
                       waitExposure = waitExposureFrom(samples);
+                      busPreloadCount += unresolved.length;
+                      busWaitMs += performance.now() - tBusWait;
                     }
 
                     const legs: RouteLeg[] = [
@@ -1368,12 +1426,30 @@ export function useRouting({
           timestamp: Date.now(),
           phases: {
             graphFetch: graphFetchMs,
+            navSnapshot: navSnapshotMs,
+            staticStreets: staticStreetsMs,
+            fieldReady: fieldReadyMs,
             canvasRead: canvasReadMs,
             dedicatedMaskRead: dedicatedMaskReadMs,
             shadowSample: shadowSampleMs,
             dijkstra: dijkstraMs,
+            walkPareto: walkParetoMs,
+            transitFetch: transitFetchMs,
+            trainSearch: trainSearchMs,
+            trainSearchSubway: trainSearchSubwayMs,
+            trainSearchBus: trainSearchBusMs,
+            entrances: entrancesMs,
+            walkLegs: walkLegsMs,
+            busWait: busWaitMs,
             total: performance.now() - t0,
           },
+          transitTried,
+          transitStationCount,
+          transitLineCount,
+          entranceBoxCount,
+          entranceCount,
+          boardingStopCount,
+          busPreloadCount,
           graphNodeCount: graph.nodes.size,
           graphDirectedEdges: directedEdgeCount,
           shadowFallbackShare: edgeRefs.length > 0 ? canvasFallbackEdges / edgeRefs.length : 0,
