@@ -1,10 +1,7 @@
 import type { Page } from "@playwright/test";
 import { fixtureBasemapStyle } from "../fixtures/basemapStyle";
 import { overpassGridResponse } from "../fixtures/overpassGrid";
-import {
-  transitFixtureArtifacts,
-  type TransitFixtureKind,
-} from "../fixtures/transitShards";
+import { transitFixtureArtifacts, type TransitFixtureKind } from "../fixtures/transitShards";
 
 // Midtown Manhattan at z17 on the June solstice morning: dense towers, low sun,
 // long shadows. Fixed on purpose — the assertions are pixel counts, and a moving
@@ -69,10 +66,7 @@ const MAPTILER_STYLE_URL = "**api.maptiler.com/maps/outdoor-v2/style.json*";
  * registered matching route, so the blanket MapTiler abort goes in *before* the
  * style handler that has to win.
  */
-export async function stubNetwork(
-  page: Page,
-  opts: StubNetworkOptions
-): Promise<void> {
+export async function stubNetwork(page: Page, opts: StubNetworkOptions): Promise<void> {
   const transit = transitFixtureArtifacts(opts.transit ?? "fixture");
   if (opts.basemap === "fixture") {
     // Nothing should reach MapTiler once the style is stubbed. Abort rather than
@@ -84,7 +78,7 @@ export async function stubNetwork(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(fixtureBasemapStyle()),
-      })
+      }),
     );
   }
 
@@ -112,7 +106,7 @@ export async function stubNetwork(
       status: 200,
       contentType: "application/json",
       body: overpassGridResponse,
-    })
+    }),
   );
 
   // Reverse-geocoding the two waypoints is the app's only Nominatim call on this

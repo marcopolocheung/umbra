@@ -37,7 +37,10 @@ import {
   type TransitShard,
   type TransitShardRef,
 } from "../transit/shardContract";
-import { buildTransitShardFixture, TRANSIT_SCALE_COUNTS } from "../../../e2e/fixtures/transitShards";
+import {
+  buildTransitShardFixture,
+  TRANSIT_SCALE_COUNTS,
+} from "../../../e2e/fixtures/transitShards";
 import { MinHeap } from "../minHeap";
 
 // ─── Walking graphs ─────────────────────────────────────────────────────────
@@ -85,7 +88,13 @@ function streetGrid(rows: number, cols: number): RoutingGraph {
 /** The two corners of each walk case, and the 5-stop chain for the 12-pass loop. */
 function walkFixture(nodes: number) {
   const corners = [0, nodes - 1];
-  const via = [0, Math.floor((nodes - 1) * 0.25), Math.floor((nodes - 1) * 0.5), Math.floor((nodes - 1) * 0.75), nodes - 1];
+  const via = [
+    0,
+    Math.floor((nodes - 1) * 0.25),
+    Math.floor((nodes - 1) * 0.5),
+    Math.floor((nodes - 1) * 0.75),
+    nodes - 1,
+  ];
   const strengths = [0, 0.5, 1.0];
   return { corners, via, strengths };
 }
@@ -104,7 +113,11 @@ function parseFixture() {
   return { manifest, shards, subwayStops };
 }
 
-function parseOneShard(artifacts: ReturnType<typeof buildTransitShardFixture>, _manifest: TransitManifest, ref: TransitShardRef): TransitShard {
+function parseOneShard(
+  artifacts: ReturnType<typeof buildTransitShardFixture>,
+  _manifest: TransitManifest,
+  ref: TransitShardRef,
+): TransitShard {
   const body = artifacts.shards.get(ref.key);
   if (!body) throw new Error(`fixture is missing shard ${ref.key}`);
   return parseTransitShard(JSON.parse(body), ref);
@@ -131,7 +144,10 @@ const train = trainGraphs();
 const GRID_A: [number, number] = [-73.9871, 40.7518];
 const GRID_B: [number, number] = [-73.9809, 40.7562];
 // SHARE_URL pins 2026-06-21 at 09:00 in America/New_York — a Sunday.
-const DEPARTURE: TrainDepartureOptions = { at: new Date("2026-06-21T13:00:00Z"), utcOffsetMin: -240 };
+const DEPARTURE: TrainDepartureOptions = {
+  at: new Date("2026-06-21T13:00:00Z"),
+  utcOffsetMin: -240,
+};
 
 // The city-crossing trip the scale rows measure: outer-borough anchors on the
 // synthetic E chain (~33 km east and west of the grid), so each pair-wise
@@ -227,7 +243,13 @@ function oneToManySearches(graph: TrainGraph, mode: "subway" | "bus"): number {
         }
         const changing = arrivedOn !== FOOT && arrivedOn !== TRANSFER;
         const changeSec = changing ? (graph.stations.get(id)?.changeSec ?? 0) : 0;
-        const reading = readHeadway(graph.headways, route, edge.direction, DEPARTURE.at!, DEPARTURE.utcOffsetMin!);
+        const reading = readHeadway(
+          graph.headways,
+          route,
+          edge.direction,
+          DEPARTURE.at!,
+          DEPARTURE.utcOffsetMin!,
+        );
         if (reading.kind === "no-service") continue;
         const waitSec = reading.kind === "published" ? reading.medianSec / 2 : 0;
         const boardCost = cost + edge.weightSec + changeSec + waitSec;
@@ -238,7 +260,6 @@ function oneToManySearches(graph: TrainGraph, mode: "subway" | "bus"): number {
         }
       }
     }
-
   }
 
   return best;
@@ -258,7 +279,9 @@ const walkSizes = [
   const pairWise = pairwiseSearches(train.subway, "subway");
   const oneToMany = oneToManySearches(train.subway, "subway");
   if (!Number.isFinite(pairWise) || !Number.isFinite(oneToMany)) {
-    throw new Error(`train search self-check found no city-crossing answer (${pairWise}, ${oneToMany})`);
+    throw new Error(
+      `train search self-check found no city-crossing answer (${pairWise}, ${oneToMany})`,
+    );
   }
   if (Math.abs(pairWise - oneToMany) > 1e-9) {
     throw new Error(
@@ -274,9 +297,13 @@ describe("walk search — paretoRoutes, 2-point", () => {
   for (const size of walkSizes) {
     const graph = streetGrid(size.rows, size.cols);
     const { corners } = walkFixture(size.rows * size.cols);
-    bench(size.label, () => {
-      paretoRoutes(graph, corners[0], corners[1]);
-    }, heavy);
+    bench(
+      size.label,
+      () => {
+        paretoRoutes(graph, corners[0], corners[1]);
+      },
+      heavy,
+    );
   }
 });
 
@@ -284,21 +311,29 @@ describe("walk search — per-leg 12-pass loop (5-stop shape × 3 strengths)", (
   for (const size of walkSizes) {
     const graph = streetGrid(size.rows, size.cols);
     const { via, strengths } = walkFixture(size.rows * size.cols);
-    bench(size.label, () => {
-      for (const strength of strengths) {
-        for (let leg = 0; leg + 1 < via.length; leg++) {
-          dijkstra(graph, via[leg], via[leg + 1], strength);
+    bench(
+      size.label,
+      () => {
+        for (const strength of strengths) {
+          for (let leg = 0; leg + 1 < via.length; leg++) {
+            dijkstra(graph, via[leg], via[leg + 1], strength);
+          }
         }
-      }
-    }, heavy);
+      },
+      heavy,
+    );
   }
 });
 
 describe("walk reachability — reachableFrom, city-size", () => {
   const graph = streetGrid(140, 120);
-  bench("16,800 nodes, whole grid reachable", () => {
-    reachableFrom(graph, 0);
-  }, light);
+  bench(
+    "16,800 nodes, whole grid reachable",
+    () => {
+      reachableFrom(graph, 0);
+    },
+    light,
+  );
 });
 
 const trainCases = [
@@ -334,20 +369,32 @@ const trainCases = [
 
 describe("train search — findBestTrainRoute", () => {
   for (const topic of trainCases) {
-    bench(topic.label, () => {
-      for (const mode of topic.modes) {
-        findBestTrainRoute(topic.from, topic.to, topic.graph, 1500, 5, DEPARTURE, mode);
-      }
-    }, heavy);
+    bench(
+      topic.label,
+      () => {
+        for (const mode of topic.modes) {
+          findBestTrainRoute(topic.from, topic.to, topic.graph, 1500, 5, DEPARTURE, mode);
+        }
+      },
+      heavy,
+    );
   }
 });
 
 describe("train search — 25 pair-wise vs one-entry-per-search, city-crossing", () => {
-  bench("pair-wise (25 trainDijkstra runs, as shipped)", () => {
-    pairwiseSearches(train.subway, "subway");
-  }, { time: 0, iterations: 20, warmupIterations: 2 });
+  bench(
+    "pair-wise (25 trainDijkstra runs, as shipped)",
+    () => {
+      pairwiseSearches(train.subway, "subway");
+    },
+    { time: 0, iterations: 20, warmupIterations: 2 },
+  );
 
-  bench("one-to-many (one search per entry, replicated locally)", () => {
-    oneToManySearches(train.subway, "subway");
-  }, { time: 0, iterations: 20, warmupIterations: 2 });
+  bench(
+    "one-to-many (one search per entry, replicated locally)",
+    () => {
+      oneToManySearches(train.subway, "subway");
+    },
+    { time: 0, iterations: 20, warmupIterations: 2 },
+  );
 });

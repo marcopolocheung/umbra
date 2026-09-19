@@ -83,7 +83,15 @@ const shard = {
   // Both directions, because a row missing for the direction being boarded is
   // read as "no trips scheduled" and refuses the boarding outright.
   headways: [
-    { route: "E", direction: 0, dayType: "weekday", hour: 9, medianSec: 300, trips: 12, services: 1 },
+    {
+      route: "E",
+      direction: 0,
+      dayType: "weekday",
+      hour: 9,
+      medianSec: 300,
+      trips: 12,
+      services: 1,
+    },
     { route: "E", direction: 0, dayType: "sunday", hour: 9, medianSec: 600, trips: 6, services: 1 },
     { route: "E", direction: 1, dayType: "sunday", hour: 9, medianSec: 600, trips: 6, services: 1 },
   ],
@@ -299,7 +307,8 @@ function buildSubwayShard(counts: TransitShardFixtureCounts, rnd: () => number):
     if (transferIds.has(i)) continue;
     let best = transferStops[0];
     for (const candidate of transferStops) {
-      if (Math.abs(i - stops.indexOf(candidate)) < Math.abs(i - stops.indexOf(best))) best = candidate;
+      if (Math.abs(i - stops.indexOf(candidate)) < Math.abs(i - stops.indexOf(best)))
+        best = candidate;
     }
     const walkSec = Math.round(haversineM(stops[i], best) / 1.4);
     transfers.push({ from: `subway:${i}`, to: best.id, minSec: walkSec, kind: "gtfs" });
@@ -320,8 +329,22 @@ function buildSubwayShard(counts: TransitShardFixtureCounts, rnd: () => number):
     stops: stops.map((stop) => ({ ...stop, entrances: [] })),
     edges: [...eEdges, ...line1Edges],
     routes: [
-      { id: "E", shortName: "E", longName: "Synthetic E Line", type: 1, color: "0F52BA", textColor: "FFFFFF" },
-      { id: "1", shortName: "1", longName: "Synthetic 1 Line", type: 1, color: "EE352E", textColor: "FFFFFF" },
+      {
+        id: "E",
+        shortName: "E",
+        longName: "Synthetic E Line",
+        type: 1,
+        color: "0F52BA",
+        textColor: "FFFFFF",
+      },
+      {
+        id: "1",
+        shortName: "1",
+        longName: "Synthetic 1 Line",
+        type: 1,
+        color: "EE352E",
+        textColor: "FFFFFF",
+      },
     ],
     headways: headwayRows(360 + Math.round(rnd() * 240)),
     transfers,
@@ -335,7 +358,10 @@ function buildSubwayShard(counts: TransitShardFixtureCounts, rnd: () => number):
  * live in a scatter region south of the bench grid, far enough that the bench's
  * nearest-five candidate scan always prefers the corridor.
  */
-function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): Map<string, unknown> {
+function buildBusShards(
+  counts: TransitShardFixtureCounts,
+  rnd: () => number,
+): Map<string, unknown> {
   const LIN = 29; // lines per scatter row
   const STOPS_PER_LINE = 20;
   const ROWS = Math.ceil((counts.busLines - 1) / LIN);
@@ -346,7 +372,7 @@ function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): M
   // 40.7518: the nearest scatter stop stays > 5 km from either waypoint, so
   // the bench's nearest-five candidate scan always prefers the corridor.
   const INVERSE_M_LAT = 110_900;
-  const rowStepM = Math.floor((40.744 - scatterSouth) * INVERSE_M_LAT / ROWS / 5) * 5; // metre/row
+  const rowStepM = Math.floor(((40.744 - scatterSouth) * INVERSE_M_LAT) / ROWS / 5) * 5; // metre/row
   let remaining = counts.busStops - counts.corridorStops;
   const lines: SyntheticStop[][] = [];
 
@@ -387,7 +413,9 @@ function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): M
 
   const lineColor = (i: number) => {
     if (i === 1) return TRANSIT_LINE_COLOR;
-    return Math.floor(rnd() * 0xffffff).toString(16).padStart(6, "0");
+    return Math.floor(rnd() * 0xffffff)
+      .toString(16)
+      .padStart(6, "0");
   };
 
   // Even split over the shard count; shard keys a-f like the real build's.
@@ -398,7 +426,12 @@ function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): M
     const slice = lines.slice(shard * perShard, (shard + 1) * perShard);
     if (slice.length === 0) continue;
     const stopsOfShard = slice.flat();
-    const mkBusEdge = (from: SyntheticStop, to: SyntheticStop, route: string, direction: number) => ({
+    const mkBusEdge = (
+      from: SyntheticStop,
+      to: SyntheticStop,
+      route: string,
+      direction: number,
+    ) => ({
       from: from.id,
       to: to.id,
       route,
@@ -428,7 +461,15 @@ function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): M
       const medianSec = 240 + Math.round(rnd() * 480);
       for (const dayType of ["weekday", "sunday"]) {
         for (const direction of [0, 1]) {
-          headways.push({ route: routeId, direction, dayType, hour: 9, medianSec, trips: Math.max(2, Math.round(3600 / medianSec)), services: 1 });
+          headways.push({
+            route: routeId,
+            direction,
+            dayType,
+            hour: 9,
+            medianSec,
+            trips: Math.max(2, Math.round(3600 / medianSec)),
+            services: 1,
+          });
         }
       }
     }
@@ -451,7 +492,7 @@ function buildBusShards(counts: TransitShardFixtureCounts, rnd: () => number): M
  * Sizes default to the pinned NYC-scale counts; pass `0` to omit a mode.
  */
 export function buildTransitShardFixture(
-  options: TransitShardFixtureOptions = {}
+  options: TransitShardFixtureOptions = {},
 ): TransitShardFixtureArtifacts {
   const {
     subwayStations = TRANSIT_SCALE_COUNTS.subwayStations,
@@ -460,7 +501,9 @@ export function buildTransitShardFixture(
   } = options;
 
   if (subwayStations !== 0 && subwayStations !== TRANSIT_SCALE_COUNTS.subwayStations)
-    throw new Error(`subwayStations must be 0 or ${TRANSIT_SCALE_COUNTS.subwayStations} (got ${subwayStations})`);
+    throw new Error(
+      `subwayStations must be 0 or ${TRANSIT_SCALE_COUNTS.subwayStations} (got ${subwayStations})`,
+    );
   if (busStops !== 0 && busStops !== TRANSIT_SCALE_COUNTS.busStops)
     throw new Error(`busStops must be 0 or ${TRANSIT_SCALE_COUNTS.busStops} (got ${busStops})`);
 
@@ -492,7 +535,7 @@ export function buildTransitShardFixture(
         west: Number.POSITIVE_INFINITY,
         north: Number.NEGATIVE_INFINITY,
         east: Number.NEGATIVE_INFINITY,
-      }
+      },
     );
 
   const manifestShards: {
@@ -539,12 +582,24 @@ export function buildTransitShardFixture(
   const schedulesAsOf: Record<string, unknown> = {};
   const headwayDates: Record<string, unknown> = { referenceDate: "20260621" };
   if (subwayStations > 0) {
-    feeds.push({ id: "subway", version: "e2e", startDate: "20260101", endDate: "20270101", sha256: "0".repeat(64) });
+    feeds.push({
+      id: "subway",
+      version: "e2e",
+      startDate: "20260101",
+      endDate: "20270101",
+      sha256: "0".repeat(64),
+    });
     schedulesAsOf.subway = { version: "e2e", startDate: "20260101", endDate: "20270101" };
     headwayDates.subway = headwayBlock("subway");
   }
   if (busStops > 0) {
-    feeds.push({ id: "bus", version: "e2e", startDate: "20260101", endDate: "20270101", sha256: "0".repeat(64) });
+    feeds.push({
+      id: "bus",
+      version: "e2e",
+      startDate: "20260101",
+      endDate: "20270101",
+      sha256: "0".repeat(64),
+    });
     schedulesAsOf.bus = { version: "e2e", startDate: "20260101", endDate: "20270101" };
     headwayDates.bus = headwayBlock("bus");
   }
@@ -585,7 +640,11 @@ export type TransitFixtureKind = "fixture" | "scale" | "scale-bus-only";
 /** The three-hop artifacts for a fixture kind, ready for `stubNetwork` to serve. */
 export function transitFixtureArtifacts(kind: TransitFixtureKind): TransitShardFixtureArtifacts {
   if (kind === "fixture") {
-    return { pointer: transitPointerJson, manifest: transitManifestJson, shards: new Map([["subway.json", transitShardJson]]) };
+    return {
+      pointer: transitPointerJson,
+      manifest: transitManifestJson,
+      shards: new Map([["subway.json", transitShardJson]]),
+    };
   }
   if (kind === "scale") return buildTransitShardFixture({});
   return buildTransitShardFixture({ subwayStations: 0, busStops: TRANSIT_SCALE_COUNTS.busStops });

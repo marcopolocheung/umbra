@@ -177,8 +177,9 @@ describe("window.__umbraMetrics", () => {
     expect(latest.phases.fieldReady).toBe(2);
     // The split cannot exceed the span it attributes: the benchmark's sum
     // invariant reads exactly this on live runs.
-    expect(latest.phases.navSnapshot! + latest.phases.staticStreets! + latest.phases.fieldReady!)
-      .toBeLessThanOrEqual(latest.phases.graphFetch);
+    expect(
+      latest.phases.navSnapshot! + latest.phases.staticStreets! + latest.phases.fieldReady!,
+    ).toBeLessThanOrEqual(latest.phases.graphFetch);
 
     recordRoutingRun(run(50));
     expect(windowMetrics().latest!.phases.navSnapshot).toBeUndefined();
@@ -234,7 +235,7 @@ describe("computeDerivedKpis", () => {
       pathLengthDeltaPct: null,
     });
     expect(
-      computeDerivedKpis([{ label: "Shortest", distanceM: 1000, shadowCoverage: 0.2 }])
+      computeDerivedKpis([{ label: "Shortest", distanceM: 1000, shadowCoverage: 0.2 }]),
     ).toEqual({ shadowCoverageGainPp: null, pathLengthDeltaPct: null });
   });
 
@@ -254,7 +255,7 @@ describe("computeDerivedKpis", () => {
       computeDerivedKpis([
         { label: "Shortest", distanceM: 0, shadowCoverage: 0 },
         { label: "Most Shadowed", distanceM: 500, shadowCoverage: 0.5 },
-      ])
+      ]),
     ).toEqual({ shadowCoverageGainPp: null, pathLengthDeltaPct: null });
   });
 });

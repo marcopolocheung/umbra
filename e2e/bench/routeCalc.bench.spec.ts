@@ -136,7 +136,7 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
 }
 
 async function readLatestShape(
-  page: Page
+  page: Page,
 ): Promise<{ graphNodeCount: number; graphDirectedEdges: number; routeLabels: string[] }> {
   return page.evaluate(() => {
     const m = (
@@ -205,7 +205,7 @@ async function loadAndSettle(
         mask = next;
         return drift;
       },
-      { timeout: 15_000, message: "the shadow field never settled" }
+      { timeout: 15_000, message: "the shadow field never settled" },
     )
     .toBeLessThan(0.005);
 }
@@ -221,7 +221,7 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<void> {
             .__umbraMetrics;
           return m?.history.length ?? 0;
         }),
-      { timeout: 60_000, message: "a route calculation never completed" }
+      { timeout: 60_000, message: "a route calculation never completed" },
     )
     .toBe(runsBefore + 1);
 }
@@ -390,23 +390,24 @@ test.afterAll(() => {
           "walk legs",
           "bus wait",
         ],
-        phaseRows
+        phaseRows,
       ) +
       "\n\nPhase columns are medians in ms and do not sum to the total: the phases " +
-      "are timed inside one wall-clock span that also covers work between them.\n"
+      "are timed inside one wall-clock span that also covers work between them.\n",
   );
 
   for (const r of results) {
     const fallback = stats(r.samples.map((s) => s.shadowFallbackShare)).p50;
     console.log(
       `${r.name}: ${r.graphNodeCount} nodes, ${r.graphDirectedEdges} directed edges, ` +
-        `routes [${r.routeLabels.join(", ")}], median canvas fallback ${pct(fallback * 100)}%`
+        `routes [${r.routeLabels.join(", ")}], median canvas fallback ${pct(fallback * 100)}%`,
     );
     // Every run in order, not just the aggregate. A median hides the difference
     // between noise and a monotonic climb, and a warm scenario is a series of
     // calculations on one page — exactly where a climb would show up.
     console.log(`  totals in order: ${r.samples.map((s) => ms(s.total)).join(", ")}`);
-    const fetchSum = (s: PhaseSample) => (s.navSnapshot ?? 0) + (s.staticStreets ?? 0) + (s.fieldReady ?? 0);
+    const fetchSum = (s: PhaseSample) =>
+      (s.navSnapshot ?? 0) + (s.staticStreets ?? 0) + (s.fieldReady ?? 0);
     console.log(`  nav snapshot:    ${r.samples.map((s) => ms(s.navSnapshot ?? 0)).join(", ")}`);
     console.log(`  static streets:  ${r.samples.map((s) => ms(s.staticStreets ?? 0)).join(", ")}`);
     console.log(`  field ready:     ${r.samples.map((s) => ms(s.fieldReady ?? 0)).join(", ")}`);
@@ -416,7 +417,7 @@ test.afterAll(() => {
     const subSum = stats(r.samples.map(fetchSum));
     console.log(
       `  fetch sub-sum:   median ${ms(subSum.p50)} (< graphFetch median ${ms(g.p50)}; ` +
-        `field ready overlaps the street fetch)`
+        `field ready overlaps the street fetch)`,
     );
     console.log(`  canvas read:     ${r.samples.map((s) => ms(s.canvasRead)).join(", ")}`);
     console.log(`  dijkstra:        ${r.samples.map((s) => ms(s.dijkstra)).join(", ")}`);
@@ -430,7 +431,7 @@ test.afterAll(() => {
     // claim about every run, and a median of 0 is consistent with half of them
     // being non-zero. Whatever is asserted from this has to be readable here.
     console.log(
-      `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`
+      `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`,
     );
   }
 
@@ -452,13 +453,17 @@ test.afterAll(() => {
     if (!r.appSummary) continue;
     const t = totals.get(r.name)!;
     expect(r.appSummary.runs, `${r.name}: run count`).toBe(t.n);
-    expect(r.appSummary.p50TotalMs, `${r.name}: p50 disagrees with window.__umbraMetrics`)
-      .toBeCloseTo(t.p50, 6);
-    expect(r.appSummary.p95TotalMs, `${r.name}: p95 disagrees with window.__umbraMetrics`)
-      .toBeCloseTo(t.p95, 6);
+    expect(
+      r.appSummary.p50TotalMs,
+      `${r.name}: p50 disagrees with window.__umbraMetrics`,
+    ).toBeCloseTo(t.p50, 6);
+    expect(
+      r.appSummary.p95TotalMs,
+      `${r.name}: p95 disagrees with window.__umbraMetrics`,
+    ).toBeCloseTo(t.p95, 6);
   }
 
   console.log(
-    `\nvia waypoints for the 5-point shape: ${VIA_WAYPOINTS.map((v) => v.join(",")).join(" ")}\n`
+    `\nvia waypoints for the 5-point shape: ${VIA_WAYPOINTS.map((v) => v.join(",")).join(" ")}\n`,
   );
 });

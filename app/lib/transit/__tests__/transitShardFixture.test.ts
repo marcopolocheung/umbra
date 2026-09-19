@@ -53,7 +53,9 @@ function fixture() {
   const artifacts = buildTransitShardFixture({});
   const pointer = parseTransitPointer(JSON.parse(artifacts.pointer));
   const manifest = parseTransitManifest(JSON.parse(artifacts.manifest), pointer.generation);
-  const shards = manifest.shards.map((ref) => parseTransitShard(JSON.parse(artifacts.shards.get(ref.key)!), ref));
+  const shards = manifest.shards.map((ref) =>
+    parseTransitShard(JSON.parse(artifacts.shards.get(ref.key)!), ref),
+  );
   return { artifacts, pointer, manifest, shards };
 }
 
@@ -63,7 +65,9 @@ describe("buildTransitShardFixture — digest chain", () => {
     expect(sha256(artifacts.manifest)).toBe(pointer.manifestSha256);
     // One seed, one dataset. Updating this constant is a deliberate fixture
     // change; nothing routine gets to rewrite it silently.
-    expect(pointer.manifestSha256).toBe("5d6883ae892ff541252e304f7a3f268e3e155249fd62eed27abc2cc683b7788e");
+    expect(pointer.manifestSha256).toBe(
+      "5d6883ae892ff541252e304f7a3f268e3e155249fd62eed27abc2cc683b7788e",
+    );
     for (const ref of JSON.parse(artifacts.manifest).shards) {
       expect(sha256(artifacts.shards.get(ref.key)!)).toBe(ref.sha256);
       expect(Buffer.byteLength(artifacts.shards.get(ref.key)!, "utf8")).toBe(ref.bytes);
@@ -140,8 +144,13 @@ describe("buildTransitShardFixture — determinism", () => {
   });
 
   it("omits a mode cleanly when its count is zero", () => {
-    const busOnly = buildTransitShardFixture({ subwayStations: 0, busStops: TRANSIT_SCALE_COUNTS.busStops });
-    const manifest = JSON.parse(busOnly.manifest) as TransitManifest & { shards: { key: string }[] };
+    const busOnly = buildTransitShardFixture({
+      subwayStations: 0,
+      busStops: TRANSIT_SCALE_COUNTS.busStops,
+    });
+    const manifest = JSON.parse(busOnly.manifest) as TransitManifest & {
+      shards: { key: string }[];
+    };
     expect(manifest.shards.some((ref) => ref.key === "subway.json")).toBe(false);
     expect(transitFixtureArtifacts("scale-bus-only").shards.has("subway.json")).toBe(false);
     expect(transitFixtureArtifacts("fixture").shards.has("subway.json")).toBe(true);
@@ -177,9 +186,7 @@ describe("buildTransitShardFixture — geometry facts the bench relies on", () =
   it("publishes hourly-9 Sunday headways for every line the search can board", () => {
     const { shards } = fixture();
     const corridorRows = (shard: TransitShard, routeId: string) =>
-      shard.headways.filter(
-        (h) => h.route === routeId && h.dayType === "sunday" && h.hour === 9,
-      );
+      shard.headways.filter((h) => h.route === routeId && h.dayType === "sunday" && h.hour === 9);
     const subway = shards.find((shard) => shard.kind === "subway")!;
     for (const direction of [0, 1]) {
       expect(corridorRows(subway, "E").some((h) => h.direction === direction)).toBe(true);
@@ -195,7 +202,15 @@ describe("buildTransitShardFixture — geometry facts the bench relies on", () =
     const { manifest, shards } = fixture();
     const combined = buildTrainGraphFromShards(shards, manifest.headwayDates)!;
     const departure = { at: new Date("2026-06-21T13:00:00Z"), utcOffsetMin: -240 };
-    const subway = findBestTrainRoute(WAYPOINT_A, WAYPOINT_B, combined, 1500, 5, departure, "subway");
+    const subway = findBestTrainRoute(
+      WAYPOINT_A,
+      WAYPOINT_B,
+      combined,
+      1500,
+      5,
+      departure,
+      "subway",
+    );
     const bus = findBestTrainRoute(WAYPOINT_A, WAYPOINT_B, combined, 1500, 5, departure, "bus");
     expect(subway).not.toBeNull();
     expect(subway!.path.stationIds.length).toBeGreaterThanOrEqual(3);

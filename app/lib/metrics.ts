@@ -75,7 +75,9 @@ export interface RoutingRunMetrics {
    */
   shadowFallbackShare: number;
   /** Edge-count shares, recorded before path selection. */
-  buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>>;
+  buildingProviderShares?: Partial<
+    Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>
+  >;
   /** The static building generation that answered, when any edge used it. */
   staticBuildingGeneration?: string | null;
   /**
@@ -135,7 +137,7 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
     const { phases, graphNodeCount, graphDirectedEdges } = m;
     console.groupCollapsed(
       `[Umbra] Route computed in ${phases.total.toFixed(0)} ms` +
-        ` | ${graphNodeCount} nodes, ${graphDirectedEdges} directed edges`
+        ` | ${graphNodeCount} nodes, ${graphDirectedEdges} directed edges`,
     );
     console.table({
       "Graph fetch (ms)": phases.graphFetch.toFixed(1),
@@ -158,7 +160,7 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
     if (m.shadowCoverageGainPp !== null) {
       console.log(
         `[KPI] Shadowed route is ${m.pathLengthDeltaPct!.toFixed(1)}% longer` +
-          ` and gains ${m.shadowCoverageGainPp.toFixed(1)} pp of shadow coverage`
+          ` and gains ${m.shadowCoverageGainPp.toFixed(1)} pp of shadow coverage`,
       );
     }
     console.groupEnd();
@@ -238,13 +240,9 @@ export function getMetricsSummary(): MetricsSummary | null {
     avgShadowSampleMs: avg(_history.map((h) => h.phases.shadowSample)),
     avgDijkstraMs: avg(_history.map((h) => h.phases.dijkstra)),
     avgShadowCoverageGainPp:
-      gainRuns.length > 0
-        ? avg(gainRuns.map((h) => h.shadowCoverageGainPp!))
-        : null,
+      gainRuns.length > 0 ? avg(gainRuns.map((h) => h.shadowCoverageGainPp!)) : null,
     avgPathLengthDeltaPct:
-      deltaRuns.length > 0
-        ? avg(deltaRuns.map((h) => h.pathLengthDeltaPct!))
-        : null,
+      deltaRuns.length > 0 ? avg(deltaRuns.map((h) => h.pathLengthDeltaPct!)) : null,
   };
 }
 
@@ -276,7 +274,6 @@ export function computeDerivedKpis(routes: RouteMetricSnapshot[]): {
   }
   return {
     shadowCoverageGainPp: (mostShadowed.shadowCoverage - shortest.shadowCoverage) * 100,
-    pathLengthDeltaPct:
-      ((mostShadowed.distanceM - shortest.distanceM) / shortest.distanceM) * 100,
+    pathLengthDeltaPct: ((mostShadowed.distanceM - shortest.distanceM) / shortest.distanceM) * 100,
   };
 }
