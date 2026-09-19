@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type maplibregl from "maplibre-gl";
-import { boxAround, fetchRoutingGraph, fetchStationEntranceBoxes } from "../lib/overpass";
+import { boxAround, fetchStationEntranceBoxes } from "../lib/overpass";
 import {
   dijkstra,
   paretoRoutes,
@@ -33,6 +33,7 @@ import {
   ENTRANCE_MATCH_MAX_M,
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
+import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
@@ -431,7 +432,7 @@ export function useRouting({
         const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
         try {
-          graph = await fetchRoutingGraph(south, west, north, east, calcSignal);
+          graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal);
         } catch (error) {
           readinessAbort.abort();
           throw error;
