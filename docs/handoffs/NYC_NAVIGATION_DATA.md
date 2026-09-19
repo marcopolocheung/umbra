@@ -220,6 +220,9 @@ make seams exact regardless of grid size:
 - keep original numeric OSM node ids;
 - assign every edge to one owner cell, and include any referenced endpoint as a ghost node;
 - select owner cells intersecting the requested route bbox plus a declared halo;
+  (As built in Checkpoint 2: no halo — streets select by geometry intersecting the
+  bbox exactly, and seam connectivity is the producer's ghost-node job. See
+  `selectNavigationShards` in `app/lib/navigationData/remoteNavigation.ts`.)
 - merge by stable node id and stable edge identity, deduplicating exact duplicates;
 - reject conflicting coordinates or edge tags for the same identity;
 - preserve cross-boundary edges and intersection flags;
@@ -233,9 +236,10 @@ pedestrian areas, turn restrictions, private paths, or topology repair need sepa
 PRs with route fixtures. A data migration must not quietly change routing policy.
 
 The initial client request should cover the route stops using the same bbox semantics as today,
-plus the chosen shard halo. If missing edges near bbox limits remain material, measure adaptive
-expansion rather than downloading all NYC. Abort and supersession must stop stale graphs from
-being published to the active calculation.
+plus the chosen shard halo. (As built in Checkpoint 2: streets carry no halo; ghost nodes
+cover the seams. Adaptive expansion stays future work.) If missing edges near bbox limits
+remain material, measure adaptive expansion rather than downloading all NYC. Abort and
+supersession must stop stale graphs from being published to the active calculation.
 
 ### Building sharding and shadow reach
 
@@ -290,7 +294,7 @@ Create `fetchBestRoutingGraph`, parallel to `fetchBestTrainGraph`, and replace t
 `fetchRoutingGraph` call in `useRouting`. It should:
 
 1. attempt the static NYC dataset only when manifest support fully covers the requested bbox and
-   required halo;
+   required halo (as built: the bbox exactly — Checkpoint 2 ships no street halo);
 2. return one merged static `RoutingGraph` only after every selected shard verifies;
 3. fall back to the current `fetchRoutingGraph` outside NYC, when unconfigured, or on a
    non-abort static failure; and
