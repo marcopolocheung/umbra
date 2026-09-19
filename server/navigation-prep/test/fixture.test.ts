@@ -21,12 +21,21 @@ test("source plan keeps real acquisition outside git and receipts strict", () =>
       id: "osm",
       release: "r",
       url: "https://example.test/osm.pbf",
+      bytes: 1000,
+      timestamp: "2026-09-18T00:00:00Z",
       sha256: "a".repeat(64),
     }),
     true,
   );
   assert.equal(
-    isSourceReceipt({ id: "osm", release: "r", url: "file:///tmp/osm", sha256: "a".repeat(64) }),
+    isSourceReceipt({
+      id: "osm",
+      release: "r",
+      url: "file:///tmp/osm",
+      bytes: 1000,
+      timestamp: "2026-09-18T00:00:00Z",
+      sha256: "a".repeat(64),
+    }),
     false,
   );
   assert.equal(

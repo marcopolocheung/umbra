@@ -27,8 +27,17 @@ export interface NavigationPointer {
 
 export interface NavigationSourceReceipt {
   id: string;
+  /**
+   * Human-readable upstream release identity (extract date, feed window,
+   * catalog update stamp, …).
+   */
   release: string;
+  /** HTTPS download/query URL the bytes came from. */
   url: string;
+  /** Exact downstream byte count of the pinned artifact. */
+  bytes: number;
+  /** Upstream-provided timestamp (ISO 8601, or the source's HTTP date). */
+  timestamp: string;
   sha256: string;
 }
 
@@ -147,10 +156,17 @@ export interface NavigationNotices {
 /** Metadata should remain small enough to fetch before any spatial shard. */
 export const MAX_MANIFEST_BYTES = 512_000;
 export const MAX_NOTICES_BYTES = 128_000;
-/** Provisional v1 envelopes; the producer records measured budgets in the manifest. */
+/**
+ * z14-shaped envelopes, measured on the first citywide generation
+ * (2026-09-18 snapshot): largest street shard 4.75 MB, largest building
+ * shard 3.54 MB, citywide total 855.4 MB. The 5 MB per-shard caps are the
+ * measured decision from the z13/z14 comparison in
+ * docs/notes/nyc-navigation-data-city.md; the total leaves ~2.3× headroom
+ * for source growth before the next measured adjustment.
+ */
 export const MAX_STREET_SHARD_BYTES = 5_000_000;
 export const MAX_BUILDING_SHARD_BYTES = 5_000_000;
-export const MAX_TOTAL_BYTES = 100_000_000;
+export const MAX_TOTAL_BYTES = 2_000_000_000;
 
 const generationPattern = /^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -261,7 +277,11 @@ export function parseNavigationPointer(value: unknown): NavigationPointer {
 
 function parseSourceReceipt(value: unknown): NavigationSourceReceipt {
   if (!isRecord(value)) throw new Error("invalid NYC navigation source receipt");
-  assertKeys(value, ["id", "release", "url", "sha256"], "invalid NYC navigation source receipt");
+  assertKeys(
+    value,
+    ["id", "release", "url", "bytes", "timestamp", "sha256"],
+    "invalid NYC navigation source receipt",
+  );
   const url = parseString(value.url, "invalid NYC navigation source receipt");
   let parsedUrl: URL;
   try {
@@ -271,10 +291,18 @@ function parseSourceReceipt(value: unknown): NavigationSourceReceipt {
   }
   if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:")
     throw new Error("invalid NYC navigation source receipt");
+  if (
+    !isPositiveInt(value.bytes) ||
+    typeof value.timestamp !== "string" ||
+    value.timestamp.length === 0
+  )
+    throw new Error("invalid NYC navigation source receipt");
   return {
     id: parseString(value.id, "invalid NYC navigation source receipt"),
     release: parseString(value.release, "invalid NYC navigation source receipt"),
     url,
+    bytes: value.bytes,
+    timestamp: value.timestamp,
     sha256: parseSha256(value.sha256, "invalid NYC navigation source receipt"),
   };
 }

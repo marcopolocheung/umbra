@@ -8,11 +8,22 @@
   "scripts": {
     "plan": "tsx src/cli.ts plan",
     "fixture": "tsx src/cli.ts fixture",
-    "test": "tsx --test test/*.test.ts"
+    "acquire": "tsx src/cli.ts acquire --execute",
+    "acquire:plan": "tsx src/cli.ts acquire --plan",
+    "validate": "tsx src/cli.ts validate",
+    "normalize": "tsx src/cli.ts normalize",
+    "build": "tsx src/cli.ts build",
+    "build:dry": "tsx src/cli.ts build --dry-run",
+    "verify": "tsx src/cli.ts verify",
+    "test": "tsx --test test/fixture.test.ts test/buildings.test.ts test/sharding.test.ts test/buildDeterminism.test.ts && vitest run --config vitest.parity.config.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "osm-pbf-parser": "^2.3.0"
   }
 }
