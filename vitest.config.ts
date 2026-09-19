@@ -7,6 +7,7 @@ export default defineConfig({
       "app/{lib,services,hooks,components}/**/__tests__/**/*.test.{ts,tsx}",
       // Pure Worker allow-list/gating logic (no workerd APIs at import time).
       "cloudflare/shadow-data-worker/src/**/*.test.ts",
+      "cloudflare/navigation-data-worker/src/**/*.test.ts",
     ],
     coverage: {
       provider: "v8",
