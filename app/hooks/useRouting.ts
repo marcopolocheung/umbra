@@ -33,11 +33,15 @@ import {
   ENTRANCE_MATCH_MAX_M,
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
-import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
+import {
+  fetchBestRoutingGraph,
+  TRANSIT_ACCESS_RADIUS_M,
+} from "../lib/navigationData/routingGraphSource";
 import { createNycStaticPrismProvider } from "../lib/navigationData/buildingProvider";
 import type { NycStaticBuildingProvider } from "../lib/navigationData/buildingProvider";
 import {
   acquireNavigationSnapshot,
+  zoneAround,
   type NavigationSnapshot,
 } from "../lib/navigationData/remoteNavigation";
 import { utcOffsetMinAt } from "../lib/timezone";
@@ -445,15 +449,6 @@ export function useRouting({
         const tFetch = performance.now();
         updateProgress({ message: "Fetching walk network" });
 
-        // The area the field must be able to speak for: every node the graph fetch can
-        // return, padded exactly as `sampleEdges` will pad internally. Loading one area
-        // and resolving another makes a provider decline geometry it actually holds.
-        const shadowBbox = bboxAroundEdges(
-          [{ from: [west, south], to: [east, north] }],
-          QUERY_PAD_M,
-        )!;
-        const field = shadowFieldRef.current!;
-
         // One route-scoped snapshot for streets and buildings alike, acquired
         // before graph fetch and field readiness start in parallel. Both paths
         // consume this immutable pin, so a pointer promotion mid-calculation
@@ -471,6 +466,39 @@ export function useRouting({
         }
         staticBuildingsRef.current?.bindSnapshot(navSnapshot);
 
+        // Transit may board up to one access radius from either endpoint — the
+        // candidate search reaches 1500 m and a door can stand a further
+        // match box from its station — while the route-stop bbox above pads by
+        // under a kilometre. Those bounded endpoint zones join the static
+        // selection before enrichment, so access/egress walks route over the
+        // same verified, shadow-sampled graph instead of snapping to whatever
+        // reachable node happens to be nearest. Walk-only calculations (at or
+        // below the transit distance gate) select exactly as before, and so
+        // does every calculation with no bound snapshot: the Overpass graph
+        // can never reach the zones, so neither the primary street selection
+        // nor the shadow readiness area widens for them (the built tests pin
+        // this — the field preloads exactly the route bbox).
+        const accessZones =
+          navSnapshot && straightLineDistM > 500
+            ? [
+                zoneAround(a[0], a[1], TRANSIT_ACCESS_RADIUS_M),
+                zoneAround(b[0], b[1], TRANSIT_ACCESS_RADIUS_M),
+              ]
+            : [];
+        const coverSouth = Math.min(south, ...accessZones.map((zone) => zone.south));
+        const coverNorth = Math.max(north, ...accessZones.map((zone) => zone.north));
+        const coverWest = Math.min(west, ...accessZones.map((zone) => zone.west));
+        const coverEast = Math.max(east, ...accessZones.map((zone) => zone.east));
+
+        // The area the field must be able to speak for: every node the graph fetch can
+        // return, padded exactly as `sampleEdges` will pad internally. Loading one area
+        // and resolving another makes a provider decline geometry it actually holds.
+        const shadowBbox = bboxAroundEdges(
+          [{ from: [coverWest, coverSouth], to: [coverEast, coverNorth] }],
+          QUERY_PAD_M,
+        )!;
+        const field = shadowFieldRef.current!;
+
         readinessAbort = new AbortController();
         const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
         const readyOptions = {
@@ -483,6 +511,7 @@ export function useRouting({
         try {
           graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal, {
             snapshot: navSnapshot,
+            accessZones,
           });
         } catch (error) {
           readinessAbort.abort();
