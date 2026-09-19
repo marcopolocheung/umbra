@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
-import { fetchRoutingGraph } from "../lib/overpass";
+import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
 import {
   bfsReachable,
   connectRouteEndpoints,
@@ -301,7 +301,7 @@ export function useSketch({
       const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
       let graph: RoutingGraph;
       try {
-        graph = await fetchRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal);
+        graph = await fetchBestRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal);
       } catch (error) {
         readinessAbort.abort();
         throw error;
