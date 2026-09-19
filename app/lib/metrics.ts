@@ -46,7 +46,9 @@ export interface RoutingRunMetrics {
    */
   shadowFallbackShare: number;
   /** Edge-count shares, recorded before path selection. */
-  buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "dedicated-mask" | "none", number>>;
+  buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none", number>>;
+  /** The static building generation that answered, when any edge used it. */
+  staticBuildingGeneration?: string | null;
   canopySourceShares?: Partial<Record<"osm" | "raster" | "both" | "none", number>>;
   fallbackReason?: "low-confidence" | "mask-unavailable" | null;
   routes: RouteMetricSnapshot[];

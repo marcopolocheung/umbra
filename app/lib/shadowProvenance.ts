@@ -158,6 +158,7 @@ function baseLabel(p: ShadowProvenance): string {
   switch (p.dominant) {
     case "tiles":
     case "overpass":
+    case "nyc-static":
       return "from building geometry";
     // Named rather than left to fall through to "source unknown", which is what A7
     // emitting these two would otherwise have made every tree-lined route say. The
