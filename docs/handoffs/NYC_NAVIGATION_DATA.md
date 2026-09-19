@@ -443,6 +443,27 @@ then publish the pointer last. Retain the previous generation. The serving Worke
 the navigation pointer and immutable navigation objects, support CORS for intended origins, set
 correct JSON/cache headers, and expose no raw acquisition directory or write/list operation.
 
+(As built: delivery/publication extend the existing
+`cloudflare/shadow-data-worker` into the single NYC R2 origin instead of a
+dedicated Worker — an explicit waiver of this track's "avoid touching
+`cloudflare/shadow-data-worker/**`" rule, judged against the alternatives
+after Session 7. Serving code and the CORS/cache/rejection policy consolidate
+in the one Worker the app already depends on; storage stays separate: the new
+private `shademap-nyc-navigation-staging` bucket binds as `NAVIGATION_DATA`,
+navigation keys carry none of `_shadow`'s marker/legacy gating, and browser
+loads stay under `/navigation/nyc` with no `.smb`/`_shadow` surface.
+`server/navigation-prep/src/publish.ts` runs the
+verifier, uploads manifest/notices/shards first (resuming on ETag+size), then
+re-downloads one street and one building shard per borough, reconciles bucket
+inventory against the verifier, promotes `navigation/nyc/current.json`
+strictly last, and records the previous pointer plus the exact rollback
+command (`publish <generation> --rollback`, pointer-only). The R2 bucket stays
+private; uploads use S3 credentials named `R2_NAVIGATION_BUCKET`,
+`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. The prod
+`current.json` promotion remains unexecuted until those credentials are
+available — the generation `nyc-2026-09-18-9f2924750af1` is verified locally
+and its dry-run plan is reproducible, but nothing has been uploaded, so no
+fabricated evidence exists.)
 ### Checkpoint 6 — benchmark, browser smoke, and guarded rollout
 
 Use the existing performance instrumentation but split its combined phase so reports distinguish:

@@ -1,8 +1,19 @@
-# Private NYC shadow-data staging Worker
+# NYC shadow-data + navigation-data delivery Worker
 
-This Worker exposes only browser-packed, immutable `.smb` tiles from a private
-R2 bucket. It never exposes `normalized/` candidates, raw sources, bucket
-listing, or write operations.
+This Worker is the single public origin for NYC R2-backed datasets, backed by
+two private buckets. It never exposes `normalized/` candidates, raw sources,
+bucket listing, or write operations.
+
+- `_shadow/**` — browser-packed `.smb` tiles and their manifest/generation
+  artifacts, from `SHADOW_TILES` (`shademap-nyc-shadow-staging`), with the
+  generation-root marker gating and `LEGACY_GENERATIONS` grandfathering below.
+- `navigation/nyc/**` — the published NYC static-streets/building-prisms
+  dataset, from `NAVIGATION_DATA` (`shademap-nyc-navigation-staging`). This
+  branch has none of `_shadow`'s marker/legacy machinery: its integrity chain
+  is pointer → manifest → shards, verified by the browser loader against the
+  manifest's SHA-256, and its producer promotes `current.json` strictly last
+  after reconciling every immutable object (see
+  `server/navigation-prep/README.md`).
 
 `ALLOWED_ORIGIN` is pinned to the current deployed web app,
 `https://shademapnav.vercel.app`. Change it only when the web app moves.
@@ -14,6 +25,7 @@ staging resources:
 cd cloudflare/shadow-data-worker
 npx wrangler login
 npx wrangler r2 bucket create shademap-nyc-shadow-staging
+npx wrangler r2 bucket create shademap-nyc-navigation-staging   # empty + private until navigation publishes
 npx wrangler deploy
 ```
 
@@ -23,6 +35,12 @@ The Worker endpoints are:
 /_shadow/current.json
 /_shadow/generations/nyc-<normalization-id>/manifest.json
 /_shadow/generations/nyc-<normalization-id>/tiles/18-<x>-<y>.smb
+
+/navigation/nyc/current.json
+/navigation/nyc/nyc-<date>-<12-hex>/manifest.json
+/navigation/nyc/nyc-<date>-<12-hex>/notices.json
+/navigation/nyc/nyc-<date>-<12-hex>/streets/<cell>.json
+/navigation/nyc/nyc-<date>-<12-hex>/buildings/<cell>.json
 ```
 
 `current.json` is short-cached for rollout, while generation tile objects are
