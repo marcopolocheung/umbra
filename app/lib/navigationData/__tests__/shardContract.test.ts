@@ -42,7 +42,7 @@ function manifest(overrides: Partial<NavigationManifest> = {}): NavigationManife
     supportBounds: bounds,
     recipe: "test",
     sources: [
-      { id: "osm", release: "test", url: "https://example.test/osm.pbf", sha256: "c".repeat(64) },
+      { id: "osm", release: "test", url: "https://example.test/osm.pbf", bytes: 1000, timestamp: "2026-09-18T00:00:00Z", sha256: "c".repeat(64) },
     ],
     noticesPath: `navigation/nyc/${generation}/notices.json`,
     noticesSha256: "d".repeat(64),
