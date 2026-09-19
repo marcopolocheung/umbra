@@ -68,7 +68,8 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
-import { verticalRainDirection } from "../lib/rain/direction";
+import { directionForWindReport, verticalRainDirection } from "../lib/rain/direction";
+import { fetchWeatherForecast, nearestWeatherHour } from "../services/weather";
 import { MAX_STOP_PRELOADS, waitExposureFrom } from "../lib/transitWaitExposure";
 import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
@@ -215,6 +216,8 @@ export function useRouting({
   );
   const [navError, setNavError] = useState<string | null>(null);
   const [routeSolarIntensity, setRouteSolarIntensity] = useState<number | null>(null);
+  /** Wind (from-bearing, m/s) the last rain calculation priced, for the card to state. */
+  const [routeWind, setRouteWind] = useState<{ dirDeg: number | null; windMs: number | null } | null>(null);
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -609,16 +612,35 @@ export function useRouting({
         // rebuild those indices and re-triangulate every prism whose shadow straddles
         // a slice boundary.
         const rainObjective = rainModeRef.current;
+        const midLat = (a[1] + b[1]) / 2;
+        const midLng = (a[0] + b[0]) / 2;
+        // Wind-driven v1: tilt the shelter ray by the forecast wind at the trip's
+        // midpoint (D2's shared cache, one more reader not one more request; the
+        // nearest hour that actually carries a direction). Failure or absence
+        // falls back to the vertical v0 ray — rain around a buildingless field.
+        let rainDirection = verticalRainDirection();
+        let routeWindNow: { dirDeg: number | null; windMs: number | null } | null = null;
+        if (rainObjective) {
+          try {
+            const hours = await fetchWeatherForecast(midLat, midLng, { signal: calcSignal });
+            const hour = nearestWeatherHour(hours, dateRef.current, "windDirDeg");
+            if (hour?.windDirDeg != null) {
+              routeWindNow = { dirDeg: hour.windDirDeg, windMs: hour.windMs };
+              rainDirection = directionForWindReport(hour.windDirDeg, hour.windMs);
+            }
+          } catch {
+            // No forecast: stay vertical rather than guessing a tilt.
+          }
+          if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
+        }
         updateProgress({
           message: rainObjective ? "Sampling street rain shelter" : "Sampling street shadow",
           current: 0,
           total: edgeRefs.length,
         });
-        // v0 pricing is the windless (vertical) direction; the wind-tilted v1 exists
-        // behind the same call and is not wired to the UI yet.
         const fieldShadow = edgeRefs.length > 0
           ? rainObjective
-            ? field.sampleRainEdges(edgeRefs, verticalRainDirection(), dateRef.current)
+            ? field.sampleRainEdges(edgeRefs, rainDirection, dateRef.current)
             : field.sampleEdges(edgeRefs, dateRef.current)
           : [];
         if (myGen !== calcGenRef.current) return cancelled();
@@ -796,8 +818,6 @@ export function useRouting({
           });
         }
 
-        const midLat = (a[1] + b[1]) / 2;
-        const midLng = (a[0] + b[0]) / 2;
         const solarIntensity = computeSolarIntensity(dateRef.current, midLat, midLng);
         const CROSSING_PENALTY_M = 15;
         const travelMode = travelModeRef.current;
@@ -1490,6 +1510,7 @@ export function useRouting({
         setNavRoutes(options);
         setSelectedRouteIndex(0);
         setRouteSolarIntensity(solarIntensity);
+        setRouteWind(rainObjective ? routeWindNow : null);
         setRoutePreview(null);
         seam.current.setSketchPoints([]);
         seam.current.setNavWarning(
@@ -1668,6 +1689,7 @@ export function useRouting({
     routePreview,
     navError,
     routeSolarIntensity,
+    routeWind,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,

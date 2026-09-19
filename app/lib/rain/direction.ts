@@ -59,6 +59,24 @@ export function verticalRainDirection(): RainDirection {
  * sustained speed at the reported height. The tilt is `atan(u / v_terminal)`, which
  * for the constant fall speed means ~27° at 4.5 m/s and ~45° at 9 m/s.
  */
+/**
+ * The routing seam: a `WeatherHour`'s wind fields, or the vertical default.
+ *
+ * `windDirDeg` null means the forecast carried no direction → v0 semantics; a
+ * missing sustained speed falls to the gust and then to zero — vertical.
+ */
+export function directionForWindReport(dirDeg: number | null, windMs: number | null): RainDirection {
+  if (dirDeg === null || dirDeg === undefined) return verticalRainDirection();
+  const ms = Number.isFinite(windMs) ? (windMs as number) : 0;
+  return rainDirectionFromWind(dirDeg, ms);
+}
+
+/** Eight-point compass label for a meteorological from-bearing. */
+export function windFromLabel(deg: number): string {
+  const names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+  return names[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
 export function rainDirectionFromWind(windFromDeg: number, windMs: number): RainDirection {
   const finiteMs = Number.isFinite(windMs) ? Math.max(0, windMs) : 0;
   // With no wind there is no bearing, and every caller must agree on that: the
