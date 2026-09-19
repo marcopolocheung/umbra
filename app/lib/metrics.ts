@@ -17,7 +17,21 @@
  */
 
 export interface RoutingPhaseMs {
-  graphFetch: number; // fetchRoutingGraph (cache hit or network)
+  graphFetch: number; // whole tFetch span (cache hit or network)
+  /**
+   * Phase-0 graph-fetch attribution split (all optional; absent = not measured).
+   * `graphFetch` keeps its historic meaning — the whole `tFetch` wall-clock
+   * span — so old readers keep working. The three sub-phases account for that
+   * span: `navSnapshot` (pointer + manifest + digest verify), then
+   * `staticStreets` (street shard bytes + adapter build, Overpass fallback
+   * included), while `fieldReady` is the awaited `broadPreload` /
+   * `field.readyEdges` tail and therefore *overlaps* `staticStreets`. The
+   * invariant a reader can assert is:
+   *   navSnapshot + staticStreets + fieldReady <= graphFetch.
+   */
+  navSnapshot?: number;
+  staticStreets?: number;
+  fieldReady?: number;
   canvasRead: number; // legacy composited-map read; production routing keeps this at 0
   /** Readback of the renderer's building-only FBO; separate from composited canvas reads. */
   dedicatedMaskRead?: number;
@@ -125,6 +139,9 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
     );
     console.table({
       "Graph fetch (ms)": phases.graphFetch.toFixed(1),
+      "Nav snapshot (ms)": (phases.navSnapshot ?? 0).toFixed(1),
+      "Static streets (ms)": (phases.staticStreets ?? 0).toFixed(1),
+      "Field ready (ms)": (phases.fieldReady ?? 0).toFixed(1),
       "Canvas read (ms)": phases.canvasRead.toFixed(1),
       "Building mask read (ms)": (phases.dedicatedMaskRead ?? 0).toFixed(1),
       "Canvas fallback (%)": (m.shadowFallbackShare * 100).toFixed(1),

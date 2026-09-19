@@ -444,6 +444,14 @@ export function useRouting({
       let entranceCount = 0;
       let boardingStopCount = 0;
       let busPreloadCount = 0;
+      // Phase-0 graph-fetch attribution split: the three pieces of the
+      // `tFetch` span that gate different fix decisions. `fieldReady`
+      // overlaps `staticStreets` by construction (the broad preload starts
+      // beside the street fetch), so the three never add to more than
+      // `graphFetch`.
+      let navSnapshotMs = 0;
+      let staticStreetsMs = 0;
+      let fieldReadyMs = 0;
       let readinessAbort: AbortController | null = null;
 
       try {
@@ -474,6 +482,7 @@ export function useRouting({
         // means static stays unbound and both paths take their current
         // fallbacks; a caller abort still cancels the calculation.
         let navSnapshot: NavigationSnapshot | null = null;
+        const tNavSnapshot = performance.now();
         try {
           navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
         } catch {
@@ -482,6 +491,7 @@ export function useRouting({
             console.log("[navigation] snapshot unavailable; static buildings off");
           }
         }
+        navSnapshotMs = performance.now() - tNavSnapshot;
         staticBuildingsRef.current?.bindSnapshot(navSnapshot);
 
         // Transit may board up to one access radius from either endpoint — the
@@ -526,6 +536,7 @@ export function useRouting({
 
         const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
+        const tStaticStreets = performance.now();
         try {
           graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal, {
             snapshot: navSnapshot,
@@ -535,6 +546,7 @@ export function useRouting({
           readinessAbort.abort();
           throw error;
         }
+        staticStreetsMs = performance.now() - tStaticStreets;
         // Enumerate as soon as the graph arrives. These exact cells, rather than the
         // graph's large enclosing rectangle, are what sampling and confidence use.
         const edgeBatch = routingEdgeBatch(graph);
@@ -542,10 +554,12 @@ export function useRouting({
         const edgeKeys = edgeBatch.keys;
         const edgeDistances = edgeBatch.distances;
         const directedEdgeCount = edgeBatch.directedCount;
+        const tFieldReady = performance.now();
         await Promise.all([
           broadPreload,
           field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
         ]);
+        fieldReadyMs = performance.now() - tFieldReady;
         graphFetchMs = performance.now() - tFetch;
         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
@@ -1412,6 +1426,9 @@ export function useRouting({
           timestamp: Date.now(),
           phases: {
             graphFetch: graphFetchMs,
+            navSnapshot: navSnapshotMs,
+            staticStreets: staticStreetsMs,
+            fieldReady: fieldReadyMs,
             canvasRead: canvasReadMs,
             dedicatedMaskRead: dedicatedMaskReadMs,
             shadowSample: shadowSampleMs,
