@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { RouteOption } from "../routing";
+import type { RouteLeg, RouteOption } from "../routing";
 import {
   routeExposureLine,
   routeExposureMinutes,
+  routeExposureScope,
+  routeShadowLabel,
   routeTradeoffLine,
   shortestRoute,
+  transitOutdoorExposure,
 } from "../routeTradeoff";
+import type { TransitWaitExposure } from "../transitWaitExposure";
 
 function route(
   label: string,
@@ -109,7 +113,7 @@ describe("routeExposureLine", () => {
 describe("routeExposureMinutes", () => {
   it("splits the trip into sunlit and shadowed minutes at walking pace", () => {
     // 840 m at 1.4 m/s is 10 minutes; 25% shadow leaves 7.5 of them in the sun.
-    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Shortest", 840, 0.25));
+    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Shortest", 840, 0.25))!;
 
     expect(sunMinutes).toBeCloseTo(7.5, 10);
     expect(shadowMinutes).toBeCloseTo(2.5, 10);
@@ -118,16 +122,132 @@ describe("routeExposureMinutes", () => {
   it("reports shadowed minutes rather than dropping them", () => {
     // A fully shadowed route is not a zero-exposure route: the UV model still charges
     // it for diffuse sky, and the heat model still has to know how long it lasts.
-    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Most shadowed", 840, 1));
+    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Most shadowed", 840, 1))!;
 
     expect(sunMinutes).toBe(0);
     expect(shadowMinutes).toBeCloseTo(10, 10);
   });
 
   it("never returns a negative half", () => {
-    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Odd", 840, 1.4));
+    const { sunMinutes, shadowMinutes } = routeExposureMinutes(route("Odd", 840, 1.4))!;
 
     expect(sunMinutes).toBeGreaterThanOrEqual(0);
     expect(shadowMinutes).toBeGreaterThanOrEqual(0);
+  });
+});
+
+const LINE: GeoJSON.Feature<GeoJSON.LineString> = {
+  type: "Feature",
+  properties: {},
+  geometry: { type: "LineString", coordinates: [] },
+};
+
+function walkLeg(distanceM: number, shadowCoverage: number): RouteLeg {
+  return { type: "walk", geojson: LINE, distanceM, shadowCoverage };
+}
+
+/** A 20-minute ride, so any test that sees it in the minutes fails loudly. */
+function rideLeg(waitSec?: number, waitExposure?: TransitWaitExposure): RouteLeg {
+  return {
+    type: "transit",
+    geojson: LINE,
+    travelTimeSec: 1200,
+    ...(waitSec != null ? { waitSec } : {}),
+    ...(waitExposure ? { waitExposure } : {}),
+    sunExposure: 0.25,
+    sunExposureCoverage: 1,
+    aboveGroundShare: 1,
+  };
+}
+
+function transitRoute(legs: RouteLeg[]): RouteOption {
+  const walkM = legs.reduce((sum, leg) => sum + (leg.distanceM ?? 0), 0);
+  return {
+    ...route("Via Bus", walkM, 0, 2400),
+    shadowCoverage: transitOutdoorExposure(legs).shadow,
+    legs,
+  };
+}
+
+describe("transit exposure — time outdoors, not walk metres", () => {
+  it("counts a wait in full sun while it covers zero metres", () => {
+    // 840 m fully shadowed is 10 min; 6 min at a stop in full sun is 6 more.
+    const bus = transitRoute([
+      walkLeg(420, 1),
+      rideLeg(360, { shadow: 0, coverage: 1, boardings: 1 }),
+      walkLeg(420, 1),
+    ]);
+    const minutes = routeExposureMinutes(bus)!;
+
+    expect(minutes.sunMinutes).toBeCloseTo(6, 10);
+    expect(minutes.shadowMinutes).toBeCloseTo(10, 10);
+    expect(routeShadowLabel(bus)).toBe("63% shadow on foot");
+    expect(routeExposureLine(bus)).toBe("6 min in sun");
+  });
+
+  it("never counts the ride, however exposed its track", () => {
+    // The ride is fully above ground and twenty minutes long; only the walks count.
+    const subway = transitRoute([walkLeg(420, 0.5), rideLeg(240), walkLeg(420, 0.5)]);
+    const minutes = routeExposureMinutes(subway)!;
+
+    expect(minutes.sunMinutes + minutes.shadowMinutes).toBeCloseTo(10, 10);
+  });
+
+  it("does not count an unmodelled platform wait, and says so", () => {
+    const subway = transitRoute([walkLeg(420, 0.5), rideLeg(240), walkLeg(420, 0.5)]);
+
+    expect(routeShadowLabel(subway)).toBe("50% shadow on foot");
+    expect(routeExposureScope(subway)).toBe("walk only; wait and ride not counted");
+  });
+
+  it("names the wait in its scope where the stop was sampled", () => {
+    const bus = transitRoute([
+      walkLeg(420, 1),
+      rideLeg(360, { shadow: 0, coverage: 1, boardings: 1 }),
+      walkLeg(420, 1),
+    ]);
+
+    expect(routeExposureScope(bus)).toBe("walk and stop wait only; ride not counted");
+  });
+
+  it("says unknown rather than quoting the walk when a stop went unanswered", () => {
+    // 3 min walked, 10 min at stops the field could not answer for.
+    const bus = transitRoute([
+      walkLeg(126, 1),
+      rideLeg(600, { coverage: 0.2, boardings: 2 }),
+      walkLeg(126, 1),
+    ]);
+    const walk = route("Shortest", 1000, 0.2);
+
+    expect(transitOutdoorExposure(bus.legs!).known).toBe(false);
+    expect(routeExposureMinutes(bus)).toBeNull();
+    expect(routeShadowLabel(bus)).toBe("shadow unknown");
+    expect(routeExposureLine(bus)).toBe("time in sun unknown");
+    expect(routeTradeoffLine(bus, walk)).toBe("+28 min, sun exposure unknown");
+    expect(routeTradeoffLine(bus, bus)).toBe("Shortest baseline, shadow unknown");
+  });
+
+  it("never lends an unanswered wait the walk's shade, however short the wait", () => {
+    // 10 min walked in full shadow, 2 min at a stop nobody could see. Giving the
+    // stop the walk's share would call two possibly sunny minutes shaded.
+    const bus = transitRoute([
+      walkLeg(420, 1),
+      rideLeg(120, { coverage: 0.5, boardings: 1 }),
+      walkLeg(420, 1),
+    ]);
+
+    expect(routeExposureMinutes(bus)).toBeNull();
+    expect(routeShadowLabel(bus)).toBe("shadow unknown");
+  });
+
+  it("reports under a minute, not unknown, for a trip with no time outdoors", () => {
+    const subway = transitRoute([walkLeg(0, 1), rideLeg(240), walkLeg(0, 1)]);
+
+    expect(routeExposureLine(subway)).toBe("under a minute in sun");
+  });
+
+  it("leaves walk routes exactly as they were", () => {
+    expect(routeShadowLabel(route("Shortest", 1000, 0.25))).toBe("25% shadow");
+    expect(routeExposureScope(route("Shortest", 1000, 0.25))).toBeNull();
   });
 });

@@ -75,6 +75,7 @@ import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExpo
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
+import { transitOutdoorExposure } from "../lib/routeTradeoff";
 import type { TravelModeId } from "../lib/travelMode";
 import type { StopEntry } from "../lib/trip/types";
 import { routeBounds } from "../lib/routeBounds";
@@ -1472,12 +1473,10 @@ export function useRouting({
 
                     const totalWalkDistM = walkA.distanceM + walkB.distanceM;
                     const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
-                    const shadowCov =
-                      totalWalkDistM > 0
-                        ? (walkA.distanceM * walkA.shadowCoverage +
-                            walkB.distanceM * walkB.shadowCoverage) /
-                          totalWalkDistM
-                        : 0;
+                    // Time outdoors — both walks and a sampled stop wait —
+                    // weighted by seconds, not the walks alone. The ride keeps
+                    // its own words on the card (docs/notes/transit-headline-exposure.md).
+                    const shadowCov = transitOutdoorExposure(legs).shadow;
 
                     const combinedGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
                       type: "Feature",
