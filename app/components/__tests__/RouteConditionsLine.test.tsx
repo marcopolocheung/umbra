@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import RouteConditionsLine, { formatMinuteRange } from "../RouteConditionsLine";
 import type { WeatherHour } from "../../lib/heat/types";
 import type { RouteOption } from "../../lib/routing";
+import type { TransitWaitExposure } from "../../lib/transitWaitExposure";
 
 afterEach(cleanup);
 
@@ -94,6 +95,42 @@ describe("RouteConditionsLine", () => {
 
     expect(container.textContent).not.toMatch(/burn/i);
     expect(container.textContent).toMatch(/blocks the direct beam, not the diffuse sky/);
+  });
+});
+
+describe("RouteConditionsLine on a transit route", () => {
+  const line = route(0, 0).geojson;
+
+  function busRoute(waitExposure: TransitWaitExposure): RouteOption {
+    return {
+      ...route(840, 1),
+      legs: [
+        { type: "walk", geojson: line, distanceM: 420, shadowCoverage: 1 },
+        { type: "transit", geojson: line, travelTimeSec: 1200, waitSec: 360, waitExposure },
+        { type: "walk", geojson: line, distanceM: 420, shadowCoverage: 1 },
+      ],
+    };
+  }
+
+  it("counts the wait in the dose and says the ride is not counted", () => {
+    render(
+      <RouteConditionsLine route={busRoute({ shadow: 0, coverage: 1, boardings: 1 })} weather={HOT} />,
+    );
+
+    // 6 min at the stop in full sun, plus 10 min of shadowed walk at 20–60% of
+    // full sun: 8–12 min. Without the wait it would be 2–6.
+    expect(screen.getByText(/8–12 min/)).toBeTruthy();
+    expect(screen.getByText("Sun figures: walk and stop wait only; ride not counted.")).toBeTruthy();
+  });
+
+  it("estimates nothing when the sun at a stop is unknown", () => {
+    render(<RouteConditionsLine route={busRoute({ coverage: 0.2, boardings: 1 })} weather={HOT} />);
+
+    expect(screen.getByText("heat and sun not estimated")).toBeTruthy();
+    expect(screen.queryByText(/heat stress/)).toBeNull();
+    expect(screen.queryByText(/of full sun/)).toBeNull();
+    // The forecast's UV beside "not estimated" would read as a contradiction.
+    expect(screen.queryByText(/UV \d/)).toBeNull();
   });
 });
 
