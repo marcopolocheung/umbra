@@ -26,6 +26,7 @@ import {
 import { directionForWindReport } from '../rain/direction';
 import { rainOpacityForLightOpacity } from '../rain/opacity';
 import { canopyShadowTriangles } from '../rain/canopyCast';
+import { runRoofExclusion } from '../rain/rainPass';
 
 // Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
 // SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
@@ -1001,7 +1002,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     // ── Pass B + C: Height-aware roof exclusion ──
     const roofVertexCount = geo.roofVerts.length / 2;
-    if (!geo.sunBelowHorizon && roofVertexCount > 0 &&
+    if (runRoofExclusion(rain, geo.sunBelowHorizon, roofVertexCount) &&
         this.heightProgram && this.shadowHeightBuffer &&
         this.heightFbo && this.heightFboTexture &&
         this.roofProgram && this.roofPosBuffer && this.roofHeightBuffer) {
