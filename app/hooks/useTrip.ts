@@ -14,6 +14,7 @@ import {
 } from "../lib/trip/trip";
 import type { StopEntry, Trip } from "../lib/trip/types";
 import type { TravelModeId } from "../lib/travelMode";
+import { token } from "../lib/css-tokens";
 import { zoneAt } from "../lib/tzLookup";
 import type { NavSeam } from "./useRouting";
 
@@ -539,7 +540,8 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
       dragActiveRef.current = false;
       dragStartPos.current = null;
 
-      const color = slot === "A" ? "#22c55e" : "#ef4444";
+      // Strata: origin and destination pins are carmine chrome, never data greens/reds.
+      const color = token("color-chrome");
 
       function onMove(e: PointerEvent) {
         const { clientX: x, clientY: y } = e;

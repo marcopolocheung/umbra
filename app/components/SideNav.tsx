@@ -29,8 +29,8 @@ export default function SideNav({ activeTab, onTabChange, children }: SideNavPro
               onClick={() => onTabChange(tab.id)}
               className={`flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl text-[11px] tracking-tight flex-1 transition-all duration-150 active:scale-95 ${
                 active
-                  ? "text-amber-900 font-bold bg-amber-50/50"
-                  : "text-slate-500 font-medium hover:bg-amber-50 hover:text-amber-700"
+                  ? "text-chrome font-bold bg-chrome-soft"
+                  : "text-ink-muted font-medium hover:bg-chrome-soft hover:text-chrome"
               }`}
             >
               <span
@@ -46,7 +46,7 @@ export default function SideNav({ activeTab, onTabChange, children }: SideNavPro
       </nav>
 
       {/* Phase-dependent content */}
-      <div className="mt-6 flex-1 overflow-y-auto overflow-x-hidden md-scrollbar min-h-0">
+      <div className="mt-6 flex-1 overflow-y-auto overflow-x-hidden strata-scrollbar min-h-0">
         {children}
       </div>
     </div>

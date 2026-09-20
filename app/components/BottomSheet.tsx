@@ -151,11 +151,9 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         height: displayHeight,
         touchAction: "none",
         willChange: "height",
-        background: "rgba(255,255,255,0.92)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderTop: "1px solid rgba(215,195,172,0.15)",
-        borderRadius: "16px 16px 0 0",
+        background: "var(--color-raised)",
+        borderTop: "1px solid var(--color-hairline)",
+        borderRadius: "14px 14px 0 0",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -163,11 +161,11 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
     >
       {/* Drag handle */}
       <div className="flex h-11 items-center justify-center cursor-grab active:cursor-grabbing shrink-0">
-        <div className="w-8 h-1 rounded-full" style={{ background: "var(--md-outline-variant)" }} />
+        <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-hairline)" }} />
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 md-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 strata-scrollbar">
         {children}
       </div>
     </div>

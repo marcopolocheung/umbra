@@ -48,19 +48,19 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-amber-50"
-          style={{ background: "var(--md-surface-container-low)", color: "var(--md-on-surface-variant)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-chrome-soft"
+          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="Back to route options"
           aria-label="Back to route options"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
         </button>
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--md-on-surface)" }}>Navigating</h2>
+        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Navigating</h2>
         <button
           type="button"
           onClick={onExit}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
-          style={{ background: "var(--md-surface-container-low)", color: "var(--md-on-surface-variant)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
+          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="End navigation"
           aria-label="End navigation"
         >
@@ -71,26 +71,26 @@ export default function NavigationStatusPanel({
       <div
         className="rounded-xl border p-4"
         style={{
-          background: "rgba(34,197,94,0.08)",
-          borderColor: "rgba(34,197,94,0.22)",
-          color: "var(--md-on-surface)",
+          background: "var(--color-shade-soft)",
+          borderColor: "var(--color-shade-mid)",
+          color: "var(--color-ink)",
         }}
       >
         <div className="flex items-start gap-3">
           <span
             className="material-symbols-outlined mt-0.5 rounded-full p-2 text-[20px]"
-            style={{ background: "#22c55e", color: "white" }}
+            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
           >
             navigation
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#15803d" }}>
+            <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--color-shade)" }}>
               Navigation active
             </div>
-            <div className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--md-on-surface)" }}>
+            <div className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
               {route?.label ?? "No route selected"}
             </div>
-            <div className="mt-1 truncate text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>
+            <div className="mt-1 truncate text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
               To {destination}
             </div>
           </div>
@@ -99,49 +99,49 @@ export default function NavigationStatusPanel({
 
       {route ? (
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg p-3" style={{ background: "var(--md-surface-container-low)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Distance</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--md-on-surface)" }}>{formatDistance(route.distanceM)}</div>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
+            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--md-surface-container-low)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Shadow</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--md-on-surface)" }}>{shadowPct}%</div>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Shadow</div>
+            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct}%</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--md-surface-container-low)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Turns</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--md-on-surface)" }}>{route.turnCount}</div>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
+            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{route.turnCount}</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--md-surface-container-low)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
               {duration ? "Time" : "Shadow breaks"}
             </div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--md-on-surface)" }}>
+            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
               {duration ?? route.shadowTransitions}
             </div>
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--md-outline-variant)", color: "var(--md-on-surface-variant)" }}>
+        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink-muted)" }}>
           Pick a complete route before starting navigation.
         </div>
       )}
 
-      <div className="rounded-xl p-3" style={{ background: "var(--md-surface-container-low)" }}>
+      <div className="rounded-xl p-3" style={{ background: "var(--color-canvas)" }}>
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--md-primary)" }}>trip_origin</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-chrome)" }}>trip_origin</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Start</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--md-on-surface)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
+            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>
               {waypointALabel ?? coordLabel(waypointA)}
             </div>
           </div>
         </div>
-        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--md-outline-variant)" }} />
+        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-hairline)" }} />
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--md-error)" }}>location_on</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-danger)" }}>location_on</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Destination</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--md-on-surface)" }}>{destination}</div>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
+            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>
           </div>
         </div>
       </div>
@@ -151,7 +151,7 @@ export default function NavigationStatusPanel({
         onClick={onArrive}
         disabled={!route}
         className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ background: "#22c55e", color: "white" }}
+        style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
       >
         <span className="material-symbols-outlined text-base">flag</span>
         ARRIVED

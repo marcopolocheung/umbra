@@ -15,27 +15,23 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U1 — research + design-language candidates. Open for owner review:
-  PR [#470](https://github.com/marcopolocheung/umbrapriv/pull/470) (umbrapriv) · port PR [#51](https://github.com/marcopolocheung/umbra/pull/51). **Owner's merge = sign-off
-  on the recommended candidate (Canopy), per D2.**
-- **Implemented:** U0 (harness, PR #465). U1 deliverables in this PR: sourced research notes
-  (a)–(e) in `docs/notes/design-research-*.md`; `docs/design/decision.md` with three
-  candidates (Strata / Helios / Canopy) on the restrained-vs-playful axis, each with palette
-  chips, type specimen, elevation/radius rules, route-card/timeline/search-pill vignettes and
-  mood references; rendered assets under `docs/design/candidates/<name>/`; `docs/design/language.md`
-  skeleton whose first sentence records the choice once merging signs it off.
-- **Port note:** this mirror carries the U1 docs only; the U0 harness files (shot
-  runner, token lint, design-audit skill, pre-approved settings) live in umbrapriv and are not
-  ported here yet.
-- **Recommended:** Strata (owner review comment 2026-09-20) — colourway: Carmine by default,
-  with Signal and Nocturne as rendered alternatives (decision.md §2b, assets under
-  `docs/design/candidates/strata/palettes/<name>/`); merge to accept, name another candidate
-  or colourway in a merge comment otherwise.
+- **Active checkpoint:** U2 — implement Strata (Carmine). Open for owner review on the
+  public-mirror port branch `port/design-u2-strata-carmine` (PR #PORTNUM); the private
+  umbrapriv PR carries the same change plus the U0 screenshot harness, which this mirror
+  deliberately omits. **Never merged without the owner's visual sign-off (D2).**
+- **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
+  port #51). U2's code: Strata/Carmine token registry in `app/globals.css` (chrome-only
+  carmine lattice, route/sun/shade data colours, two elevation levels, radius overrides),
+  `docs/design/language.md` as canonical spec, `--md-*` tokens/helpers deleted,
+  `NavigationPanel.tsx` (deprecated) deleted, every inventoried literal migrated so
+  `npm run design:check` exits 0, `.claude/rules/design-language.md` now states the
+  enforcement path, before/after phone shots under `docs/design/shots/u2/`.
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
-- **Blocked on:** nothing — U2 starts after the sign-off merge.
-- **Next action:** owner review of U1; then U2 implements the chosen language.
-- **Last verified:** 2026-09-20 — U1 is docs-only; no app code changed; docs derived from
-  sources fetched 2026-09-20 (verified-vs-inferred labelled per note).
+- **Blocked on:** U3 starts after the U2 sign-off merge.
+- **Next action:** owner review of U2; then U3 redesigns the route card in the U2 language.
+- **Last verified:** 2026-09-20 — U2 leaves `node scripts/verify/design-tokens.mjs --all`
+  clean (exit 0); shadow-canvas suites (agreement/v2/adapter, 108 tests) green —
+  invariant #5 holds; smoke e2e updated to count the Strata route-blue line and passes.
 
 ---
 

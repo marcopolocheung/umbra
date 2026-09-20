@@ -10,6 +10,7 @@ import { escapeHtml, renderPlaceInfoHtml } from "./placePopup";
 import { createShadowLayer } from "../lib/shadow/createShadowLayer";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle, type CanopyLegendState } from "../lib/canopyRaster/canopyLayer";
+import { token } from "../lib/css-tokens";
 import CanopyLegend from "./CanopyLegend";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
@@ -211,7 +212,7 @@ function computeSolarAzimuth(date: Date, latDeg: number, lngDeg: number): number
  * markers can no longer disagree. This was a private copy of the same orbital
  * math anchored on `noon.setHours(12, 0, 0, 0)` — the *browser's* local noon, not
  * the map's — which slipped a solar day whenever the map was far from the viewer
- * (#225). The error was small, at most ~0.5° near an equinox, but it was real and
+ * (issue 225). The error was small, at most ~0.5° near an equinox, but it was real and
  * it was invisible.
  */
 function computeSunriseSetAzimuths(
@@ -344,25 +345,25 @@ const SunCompass = memo(function SunCompass({ sunViz, showSunLines }: { sunViz: 
             x1={riseGx} y1={riseGy}
             x2={setGx}  y2={setGy}
           >
-            <stop offset="0%"   stopColor="#c2410c" stopOpacity="0.30" />
-            <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0.30" />
+            <stop offset="0%"   stopColor={token("color-sun")} stopOpacity="0.30" />
+            <stop offset="100%" stopColor={token("color-route")} stopOpacity="0.30" />
           </linearGradient>
         </defs>
         {nightPath
-          ? <path d={nightPath} fill="#374151" fillOpacity="0.22" />
-          : <circle cx={CX} cy={CY} r={R} fill="#374151" fillOpacity="0.22" />
+          ? <path d={nightPath} fill={token("color-ink")} fillOpacity="0.22" />
+          : <circle cx={CX} cy={CY} r={R} fill={token("color-ink")} fillOpacity="0.22" />
         }
         {dayPath && <path d={dayPath} fill="url(#sunDayGrad)" />}
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="color-mix(in srgb, var(--color-raised) 18%, transparent)" strokeWidth="1.5" />
         {riseScreen !== null && (
-          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} stroke="#c2410c" strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} stroke={token("color-sun")} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         {setScreen !== null && (
-          <line x1={CX} y1={CY} x2={setLx} y2={setLy} stroke="#1e40af" strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={setLx} y2={setLy} stroke={token("color-route")} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         <polygon
           points={`${tipX.toFixed(2)},${tipY.toFixed(2)} ${b1x.toFixed(2)},${b1y.toFixed(2)} ${b2x.toFixed(2)},${b2y.toFixed(2)}`}
-          fill="#fde047" fillOpacity="0.92"
+          fill={token("color-sun")} fillOpacity="0.92"
         />
         <text
           x={sunEmX.toFixed(2)} y={sunEmY.toFixed(2)}
@@ -491,25 +492,25 @@ export default function MapView({
     loading: boolean
   ): string => {
     if (loading) {
-      return `<div class="text-xs text-white/90">Loading…</div>`;
+      return `<div class="text-xs text-ink-muted">Loading…</div>`;
     }
 
     // If Foursquare isn't available/configured, show a friendly inline message.
     if (!info) {
       if (isFoursquareRateLimited()) {
-        return `<div class="text-xs text-white/85">Foursquare rate limit reached. Try again shortly.</div>`;
+        return `<div class="text-xs text-ink-muted">Foursquare rate limit reached. Try again shortly.</div>`;
       }
       const status = getFoursquareApiStatus();
       if (status === "missing_key") {
-        return `<div class="text-xs text-white/85">Foursquare API key not configured.</div>`;
+        return `<div class="text-xs text-ink-muted">Foursquare API key not configured.</div>`;
       }
       if (status === "unauthorized" || status === "forbidden") {
-        return `<div class="text-xs text-white/85">Foursquare API key unauthorized.</div>`;
+        return `<div class="text-xs text-ink-muted">Foursquare API key unauthorized.</div>`;
       }
       if (fallbackAddress) {
-        return `<div class="text-xs text-white/90 font-medium">${escapeHtml(fallbackAddress)}</div>`;
+        return `<div class="text-xs text-ink font-medium">${escapeHtml(fallbackAddress)}</div>`;
       }
-      return `<div class="text-xs text-white/85">No place found.</div>`;
+      return `<div class="text-xs text-ink-muted">No place found.</div>`;
     }
 
     return renderPlaceInfoHtml(info, fallbackAddress);
@@ -735,7 +736,7 @@ export default function MapView({
         source: "sketch-line",
         layout: { visibility: "none" },
         paint: {
-          "line-color": "#facc15",
+          "line-color": token("color-route"),
           "line-width": 2.5,
           "line-dasharray": [4, 3],
           "line-opacity": 0.85,
@@ -753,7 +754,7 @@ export default function MapView({
         source: "sketch-preview",
         layout: { visibility: "none" },
         paint: {
-          "line-color": "#facc15",
+          "line-color": token("color-route"),
           "line-width": 1.5,
           "line-opacity": 0.45,
         },
@@ -770,7 +771,7 @@ export default function MapView({
         type: "line",
         source: "nav-route",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#f59e0b", "line-width": 4, "line-opacity": 0.9 },
+        paint: { "line-color": token("color-route"), "line-width": 4, "line-opacity": 0.9 },
       });
       const navSrc = map.getSource("nav-route") as maplibregl.GeoJSONSource;
       const current = navRouteRef.current;
@@ -948,7 +949,7 @@ export default function MapView({
       if (markerARef.current) {
         markerARef.current.setLngLat(navWaypoints.a);
       } else {
-        const mA = new maplibregl.Marker({ color: "#22c55e", draggable: true })
+        const mA = new maplibregl.Marker({ color: token("color-chrome"), draggable: true })
           .setLngLat(navWaypoints.a)
           .addTo(map);
         mA.on('dragend', () => {
@@ -966,7 +967,7 @@ export default function MapView({
       if (markerBRef.current) {
         markerBRef.current.setLngLat(navWaypoints.b);
       } else {
-        const mB = new maplibregl.Marker({ color: "#ef4444", draggable: true })
+        const mB = new maplibregl.Marker({ color: token("color-chrome"), draggable: true })
           .setLngLat(navWaypoints.b)
           .addTo(map);
         mB.on('dragend', () => {
@@ -992,9 +993,9 @@ export default function MapView({
       const el = document.createElement("div");
       el.style.cssText = `
         width:22px;height:22px;border-radius:50%;
-        background:#6b7280;border:2px solid white;
+        background:var(--color-raised);border:2px solid var(--color-chrome);
         display:flex;align-items:center;justify-content:center;
-        font-size:10px;font-weight:700;color:white;cursor:pointer;
+        font-size:10px;font-weight:700;color:var(--color-chrome);cursor:pointer;
       `;
       el.textContent = String(i + 1);
       const marker = new maplibregl.Marker({ element: el })
@@ -1016,12 +1017,12 @@ export default function MapView({
       el.style.cssText = `
         width:26px;height:26px;border-radius:50% 50% 50% 0;
         transform:rotate(-45deg);
-        background:#d97706;border:2px solid white;
-        box-shadow:0 2px 6px rgba(0,0,0,0.4);
+        background:var(--color-chrome);border:2px solid var(--color-raised);
+        box-shadow:0 2px 6px color-mix(in srgb, var(--color-ink) 40%, transparent);
         display:flex;align-items:center;justify-content:center;cursor:pointer;
       `;
       const inner = document.createElement("span");
-      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:white;`;
+      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-chrome);`;
       inner.textContent = String(i + 1);
       el.appendChild(inner);
 
@@ -1029,7 +1030,7 @@ export default function MapView({
         .setLngLat([pin.lng, pin.lat]);
       if (pin.label) {
         marker.setPopup(
-          new maplibregl.Popup({ offset: 28, closeButton: false }).setText(
+          new maplibregl.Popup({ offset: 28, closeButton: false, className: "sketch-point-popup" }).setText(
             `${i + 1}. ${pin.label}`
           )
         );
@@ -1064,15 +1065,15 @@ export default function MapView({
     pulse.style.cssText = `
       position: absolute;
       width: 36px; height: 36px; border-radius: 50%;
-      background: rgba(59, 130, 246, 0.25);
+      background: color-mix(in srgb, var(--color-route) 25%, transparent);
       animation: userLocationPulse 1.8s ease-out infinite;
     `;
 
     const dot = document.createElement("div");
     dot.style.cssText = `
       width: 14px; height: 14px; border-radius: 50%;
-      background: #3b82f6; border: 2.5px solid white;
-      box-shadow: 0 0 6px rgba(59,130,246,0.7);
+      background: var(--color-route); border: 2.5px solid var(--color-raised);
+      box-shadow: 0 0 6px color-mix(in srgb, var(--color-route) 70%, transparent);
       position: relative; z-index: 1;
     `;
 
@@ -1174,7 +1175,7 @@ export default function MapView({
 
     // Create new markers only for newly added points
     for (let i = existing.length; i < newCount; i++) {
-      const marker = new maplibregl.Marker({ color: "#facc15" })
+      const marker = new maplibregl.Marker({ color: token("color-chrome") })
         .setLngLat(sketchPoints[i].coord)
         .addTo(map);
 
@@ -1248,7 +1249,7 @@ export default function MapView({
 
     for (const wp of simplifiedWaypoints) {
       const addr = getSketchAddressForCoord(wp);
-      const marker = new maplibregl.Marker({ color: "#facc15" })
+      const marker = new maplibregl.Marker({ color: token("color-chrome") })
         .setLngLat(wp)
         .addTo(map);
 
@@ -1372,9 +1373,9 @@ export default function MapView({
           source: "train-route-stops",
           paint: {
             "circle-radius": 6,
-            "circle-color": "#ffffff",
+            "circle-color": token("color-raised"),
             "circle-stroke-width": 2,
-            "circle-stroke-color": "#555555",
+            "circle-stroke-color": token("color-ink-muted"),
           },
         });
       }
@@ -1398,9 +1399,9 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 12,
-            "circle-color": "#ffffff",
+            "circle-color": token("color-raised"),
             "circle-stroke-width": 3,
-            "circle-stroke-color": "#333333",
+            "circle-stroke-color": token("color-ink"),
           },
         });
         map.addLayer({
@@ -1409,7 +1410,7 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 5,
-            "circle-color": "#333333",
+            "circle-color": token("color-ink"),
           },
         });
       }
@@ -1448,10 +1449,10 @@ export default function MapView({
       const el = document.createElement("div");
       el.style.cssText = [
         "width:26px", "height:26px", "border-radius:50%",
-        "background:#ffffff", "border:3px solid #3b82f6",
-        "box-shadow:0 0 0 5px rgba(59,130,246,0.25)",
+        "background:var(--color-raised)", "border:3px solid var(--color-route)",
+        "box-shadow:0 0 0 5px color-mix(in srgb, var(--color-route) 25%, transparent)",
         "display:flex", "align-items:center", "justify-content:center",
-        "font-size:11px", "font-weight:700", "color:#1d4ed8",
+        "font-size:11px", "font-weight:700", "color:var(--color-route)",
         "font-family:sans-serif", "cursor:default",
       ].join(";");
       el.textContent = "M";
@@ -1484,7 +1485,7 @@ export default function MapView({
         type: "line",
         source: "mrt-entrance-connector",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#3b82f6", "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
+        paint: { "line-color": token("color-route"), "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
       });
 
       bringNavOverlaysToFront(map);

@@ -1,3 +1,4 @@
+import { token } from "../lib/css-tokens";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
@@ -77,10 +78,10 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
     <div
       className={`flex gap-1.5 items-start rounded-lg text-xs transition-all ${
         selected
-          ? 'bg-white/80 backdrop-blur-xl p-4 shadow-xl border-l-4'
-          : 'bg-white/60 backdrop-blur-md p-3 border-l-4 border-slate-200 hover:bg-white/70'
+          ? 'bg-raised p-4 shadow-level-2 border-l-4'
+          : 'bg-raised p-3 border-l-4 border-hairline hover:bg-raised-warm'
       }`}
-      style={selected ? { borderColor: "var(--md-primary)" } : undefined}
+      style={selected ? { borderColor: "var(--color-chrome)" } : undefined}
     >
       <button
         type="button"
@@ -93,14 +94,14 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           <span className="flex items-center gap-1.5">
             <span
               className={`font-semibold ${selected ? 'text-sm' : ''}`}
-              style={{ color: selected ? "var(--md-on-surface)" : "var(--md-on-surface-variant)" }}
+              style={{ color: selected ? "var(--color-ink)" : "var(--color-ink-muted)" }}
             >
               {r.label}
             </span>
             {recommended && (
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
-                style={{ background: "var(--md-primary-container)", color: "var(--md-on-primary-container)" }}
+                style={{ background: "var(--color-chrome-soft)", color: "var(--color-chrome)" }}
               >
                 Recommended
               </span>
@@ -108,7 +109,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             {isPartial && (
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
-                style={{ background: "rgba(217,119,6,0.12)", color: "#92400e" }}
+                style={{ background: "var(--color-sun-soft)", color: "var(--color-sun)" }}
               >
                 Partial
               </span>
@@ -121,10 +122,10 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             style={
               shadowKnown
                 ? {
-                    background: selected ? "var(--md-primary-container)" : "rgba(130,85,0,0.08)",
-                    color: selected ? "var(--md-on-surface)" : "var(--md-on-surface-variant)",
+                    background: selected ? "var(--color-chrome-soft)" : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+                    color: selected ? "var(--color-ink)" : "var(--color-ink-muted)",
                   }
-                : { borderColor: "var(--md-on-surface-variant)", color: "var(--md-on-surface-variant)" }
+                : { borderColor: "var(--color-ink-muted)", color: "var(--color-ink-muted)" }
             }
           >
             {rainCard ? `${shadowPct}% dry` : routeShadowLabel(r)}
@@ -132,7 +133,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         </div>
 
         {r.partial && (
-          <div className="mt-1 text-[11px] font-medium" style={{ color: "#a16207" }}>
+          <div className="mt-1 text-[11px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
             {partialRouteNotice(r.partial)}
           </div>
         )}
@@ -140,39 +141,39 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         {/* Shadow bar */}
         <div className="mt-2 flex items-center gap-2">
           {shadowKnown ? (
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(130,85,0,0.08)" }}>
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--color-ink) 8%, transparent)" }}>
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
                   width: `${shadowPct}%`,
-                  background: rainCard ? "rgba(14,116,144,0.55)" : "var(--md-primary-container)",
+                  background: rainCard ? "var(--color-route-mid)" : "var(--color-shade)",
                 }}
               />
             </div>
           ) : (
             <div
               className="flex-1 h-1.5 rounded-full border border-dashed"
-              style={{ borderColor: "var(--md-on-surface-variant)" }}
+              style={{ borderColor: "var(--color-ink-muted)" }}
             />
           )}
-          <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: "var(--md-on-surface-variant)" }}>
+          <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: "var(--color-ink-muted)" }}>
             {formatDist(r.distanceM)}
           </span>
         </div>
 
-        <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+        <div className="mt-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
           {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
           {!rainCard && exposureScope && ` · ${exposureScope}`}
         </div>
 
         {roughLine && (
-          <div className="mt-1 text-[10px] font-medium" style={{ color: "#a16207" }}>
+          <div className="mt-1 text-[10px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
             {roughLine}
           </div>
         )}
 
         {shadowSource && (
-          <div className="mt-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="mt-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
             {shadowSource}
           </div>
         )}
@@ -180,47 +181,47 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         {/* Metrics grid — only on selected */}
         {selected && (
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Distance</div>
-              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{formatDist(r.distanceM)}</div>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{formatDist(r.distanceM)}</div>
             </div>
             {streak && (
-              <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>
+              <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
                   {rainCard ? "Continuous Wet" : "Continuous Shadow"}
                 </div>
-                <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{streak}</div>
+                <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{streak}</div>
               </div>
             )}
             {detour && (
-              <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Detour Ratio</div>
-                <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{detour}</div>
+              <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Detour Ratio</div>
+                <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{detour}</div>
               </div>
             )}
-            <div className="rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
                 {rainCard ? "Wet Breaks" : "Shadow Breaks"}
               </div>
-              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--md-on-surface)" }}>{transitions}</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{transitions}</div>
             </div>
           </div>
         )}
 
         {selected && r.legs && r.legs.length > 1 && (
-          <div className="mt-3 rounded-lg p-2" style={{ background: "var(--md-surface-container-low)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--md-on-surface-variant)" }}>Journey Legs</div>
+          <div className="mt-3 rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
             <div className="mt-1 flex flex-col gap-1">
               {r.legs.map((leg, index) => {
                 const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
                 return (
                   <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
-                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--md-primary-container)", color: "var(--md-on-primary-container)" }}>
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-chrome-soft)", color: "var(--color-chrome)" }}>
                       {index + 1}
                     </span>
                     <span className="min-w-0">
-                      <span className="font-semibold" style={{ color: "var(--md-on-surface)" }}>{summary.title}</span>
-                      <span style={{ color: "var(--md-on-surface-variant)" }}> · {summary.detail}</span>
+                      <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>
+                      <span style={{ color: "var(--color-ink-muted)" }}> · {summary.detail}</span>
                     </span>
                   </div>
                 );
@@ -231,7 +232,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
 
         {/* Compact metrics — only on unselected */}
         {!selected && (streak || detour || r.turnCount > 0) && (
-          <div className="text-[10px] mt-1 flex flex-wrap gap-x-2" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-[10px] mt-1 flex flex-wrap gap-x-2" style={{ color: "var(--color-ink-muted)" }}>
             {streak && <span>{streak}</span>}
             <span>{transitions}</span>
             {detour && <span>{detour} detour</span>}
@@ -242,7 +243,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         {/* Transit info */}
         {r.legs?.find((l: RouteLeg) => l.type === 'transit') && (() => {
           const tLeg = r.legs!.find((l: RouteLeg) => l.type === 'transit')!;
-          const lineColor = tLeg.lineColor ?? '#0070BD';
+          const lineColor = tLeg.lineColor ?? token("color-route");
           const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
           const stopCount = (tLeg.stops?.length ?? 2) - 1;
           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
@@ -254,16 +255,16 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           const notes = riderFacingNotes(r.transitProvenance);
           const expired = isTimetableExpired(r.transitProvenance);
           const sunColor = {
-            enclosed: "#0e7490",
-            shaded: "#15803d",
-            sunny: "#a16207",
-            unknown: "var(--md-on-surface-variant)",
+            enclosed: token("color-route"),
+            shaded: token("color-shade"),
+            sunny: token("color-sun"),
+            unknown: "var(--color-ink-muted)",
           }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
           return (
-            <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--md-on-surface-variant)" }}>
+            <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
               <div className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: lineColor }} />
-                <span style={{ color: "var(--md-on-surface)" }}>{lineName}</span>
+                <span style={{ color: "var(--color-ink)" }}>{lineName}</span>
                 <span style={{ opacity: 0.4 }}>·</span>
                 <span>{stopCount} stop{stopCount !== 1 ? 's' : ''}</span>
               </div>
@@ -287,7 +288,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
                   >
                     info
                   </span>
-                  <span style={expired ? { color: "#b45309" } : undefined}>
+                  <span style={expired ? { color: "var(--color-sun)" } : undefined}>
                     {expired ? `${scheduleLine} — this timetable has expired` : scheduleLine}
                   </span>
                 </div>
@@ -302,7 +303,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           type="button"
           onClick={onSave}
           title="Save this route"
-          className="shrink-0 mt-0.5 p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 transition-all"
+          className="shrink-0 mt-0.5 p-1.5 rounded-lg text-ink-faint hover:text-chrome hover:bg-chrome-soft transition-all"
         >
           <span className="material-symbols-outlined text-base">bookmark</span>
         </button>
@@ -310,15 +311,15 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
 
       {onExport && !isPartial && (
         <div className="relative group/export shrink-0 mt-0.5">
-          <button type="button" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 transition-colors" title="Export route">
+          <button type="button" className="p-1.5 rounded-lg text-ink-faint hover:text-ink-muted transition-colors" title="Export route">
             <span className="material-symbols-outlined text-base">download</span>
           </button>
           <div
             className="hidden group-hover/export:flex absolute right-0 top-full mt-1 flex-col rounded-lg shadow-xl z-30 min-w-max border"
-            style={{ background: "white", borderColor: "var(--md-outline-variant)" }}
+            style={{ background: "white", borderColor: "var(--color-hairline)" }}
           >
-            <button type="button" onClick={() => onExport("gpx")} className="px-3 py-1.5 text-[11px] hover:bg-amber-50 text-left transition-colors" style={{ color: "var(--md-on-surface)" }}>GPX</button>
-            <button type="button" onClick={() => onExport("geojson")} className="px-3 py-1.5 text-[11px] hover:bg-amber-50 text-left transition-colors" style={{ color: "var(--md-on-surface)" }}>GeoJSON</button>
+            <button type="button" onClick={() => onExport("gpx")} className="px-3 py-1.5 text-[11px] hover:bg-chrome-soft text-left transition-colors" style={{ color: "var(--color-ink)" }}>GPX</button>
+            <button type="button" onClick={() => onExport("geojson")} className="px-3 py-1.5 text-[11px] hover:bg-chrome-soft text-left transition-colors" style={{ color: "var(--color-ink)" }}>GeoJSON</button>
           </div>
         </div>
       )}

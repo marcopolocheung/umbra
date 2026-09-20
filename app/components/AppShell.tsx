@@ -46,15 +46,14 @@ export default function AppShell({
   }, [resizeMap]);
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--md-surface)" }}>
+    <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--color-canvas)" }}>
       {/* Collapsible sidebar — desktop only */}
       <aside
-        className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40 w-[408px]"
+        className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40 w-sidebar"
         style={{
-          background: "rgba(248,249,250,0.70)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          boxShadow: "4px 0 24px rgba(130,85,0,0.05)",
+          background: "var(--color-raised)",
+          borderRight: "1px solid var(--color-hairline)",
+          boxShadow: "var(--shadow-level-2)",
           transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
           transition: "transform 300ms ease-in-out",
         }}
@@ -69,16 +68,14 @@ export default function AppShell({
           onClick={onSidebarToggle}
           className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-full w-8 h-16 rounded-r-xl flex items-center justify-center hover:brightness-95 transition-[filter]"
           style={{
-            background: "rgba(248,249,250,0.90)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            boxShadow: "4px 0 16px rgba(130,85,0,0.08)",
+            background: "var(--color-raised)",
+            boxShadow: "var(--shadow-level-1)",
           }}
           aria-label={sidebarOpen ? "Close panel" : "Open panel"}
         >
           <span
             className="material-symbols-outlined text-base"
-            style={{ color: "var(--md-on-surface-variant)" }}
+            style={{ color: "var(--color-ink-muted)" }}
           >
             {sidebarOpen ? "chevron_left" : "chevron_right"}
           </span>

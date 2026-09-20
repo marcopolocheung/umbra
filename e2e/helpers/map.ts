@@ -49,9 +49,11 @@ export function maskDiff(before: boolean[], after: boolean[]): number {
 }
 
 /**
- * Pixels of the nav route line (#f59e0b at 0.9 opacity over the basemap).
- * Counted at full resolution in-page: the line is 4 px wide, so the sampling
- * grid used for shadow would step straight over it.
+ * Pixels of the nav route line. Strata (U2) paints routes in --color-route
+ * #155FD6 at 0.9 opacity; the predicate hunts the blue-dominant composite,
+ * deliberately narrower than the app shadow-predicate so shadow wash does not
+ * count as a route line. Counted in-page at full resolution: the line is 4 px
+ * wide, so the shadow sampling grid would step straight over it.
  */
 export async function countRouteLinePixels(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -69,7 +71,7 @@ export async function countRouteLinePixels(page: Page): Promise<number> {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
-      if (r > 200 && g > 110 && g < 200 && b < 90 && r - b > 140) count++;
+      if (r < 120 && g < 190 && b > 180 && b > r + 60 && b > g + 40) count++;
     }
     return count;
   });

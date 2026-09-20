@@ -16,9 +16,9 @@ export default function SettingsPanel({
       <button type="button"
         onClick={() => setOpen((o) => !o)}
         className={`text-xs px-3 py-1.5 rounded-lg transition-colors border ${
-          open ? "bg-slate-50" : "bg-white hover:bg-slate-50"
+          open ? "bg-canvas" : "bg-raised hover:bg-canvas"
         }`}
-        style={{ borderColor: "var(--md-outline-variant)", color: "var(--md-on-surface)" }}
+        style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
         title="Settings"
       >
         <span className="material-symbols-outlined text-sm align-middle mr-1">settings</span>
@@ -27,41 +27,41 @@ export default function SettingsPanel({
 
       {open && (
         <div
-          className="rounded-lg p-3 flex flex-col gap-3 text-xs min-w-[200px] border"
+          className="rounded-lg p-3 flex flex-col gap-3 text-xs min-w-panel-min border"
           style={{
-            background: "white",
-            color: "var(--md-on-surface)",
-            borderColor: "var(--md-outline-variant)",
-            boxShadow: "var(--md-shadow)",
+            background: "var(--color-raised)",
+            color: "var(--color-ink)",
+            borderColor: "var(--color-hairline)",
+            boxShadow: "var(--shadow-level-1)",
           }}
         >
-          <div className="uppercase tracking-widest text-[9px] font-bold" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="uppercase tracking-widest text-[9px] font-bold" style={{ color: "var(--color-ink-muted)" }}>
             Display
           </div>
 
           <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
-            <span style={{ color: "var(--md-on-surface)" }}>Sun direction lines</span>
+            <span style={{ color: "var(--color-ink)" }}>Sun direction lines</span>
             <input
               type="checkbox"
               checked={showSunLines}
               onChange={(e) => onShowSunLinesChange(e.target.checked)}
-              className="accent-amber-500 w-4 h-4"
+              className="accent-chrome w-4 h-4"
             />
           </label>
 
           {showSunLines && (
-            <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--md-outline-variant)" }}>
+            <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--color-hairline)" }}>
               <div className="flex items-center gap-2">
-                <span className="text-yellow-500 text-sm leading-none">☀</span>
-                <span style={{ color: "var(--md-on-surface-variant)" }}>Current sun (overlay)</span>
+                <span className="text-sun text-sm leading-none">☀</span>
+                <span style={{ color: "var(--color-ink-muted)" }}>Current sun (overlay)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "#c2410c" }} />
-                <span style={{ color: "var(--md-on-surface-variant)" }}>Sunrise</span>
+                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-sun)" }} />
+                <span style={{ color: "var(--color-ink-muted)" }}>Sunrise</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "#1e40af" }} />
-                <span style={{ color: "var(--md-on-surface-variant)" }}>Sunset</span>
+                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-route)" }} />
+                <span style={{ color: "var(--color-ink-muted)" }}>Sunset</span>
               </div>
             </div>
           )}

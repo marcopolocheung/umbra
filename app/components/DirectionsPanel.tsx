@@ -18,7 +18,7 @@ const SolarPill = memo(function SolarPill({ intensity }: { intensity: number }) 
     return (
       <div
         className="text-xs px-2.5 py-1 rounded-full self-start"
-        style={{ background: "rgba(100,116,139,0.1)", color: "var(--md-on-surface-variant)" }}
+        style={{ background: "color-mix(in srgb, var(--color-ink) 8%, transparent)", color: "var(--color-ink-muted)" }}
       >
         Low sun — shadow routing minimal
       </div>
@@ -28,7 +28,7 @@ const SolarPill = memo(function SolarPill({ intensity }: { intensity: number }) 
     return (
       <div
         className="text-xs px-2.5 py-1 rounded-full self-start"
-        style={{ background: "rgba(255,171,0,0.12)", color: "#92400e" }}
+        style={{ background: "var(--color-sun-soft)", color: "var(--color-sun)" }}
       >
         Moderate solar load
       </div>
@@ -37,7 +37,7 @@ const SolarPill = memo(function SolarPill({ intensity }: { intensity: number }) 
   return (
     <div
       className="text-xs px-2.5 py-1 rounded-full self-start"
-      style={{ background: "var(--md-primary-container)", color: "var(--md-on-primary-container)" }}
+      style={{ background: "var(--color-sun)", color: "var(--color-on-sun)" }}
     >
       High solar load — shadow matters
     </div>
@@ -157,17 +157,17 @@ export default function DirectionsPanel({
       <div className="flex items-center justify-between">
         <button type="button"
           onClick={onBack}
-          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-amber-50"
-          style={{ background: "var(--md-surface-container-low)", color: "var(--md-on-surface-variant)" }}
+          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-chrome-soft"
+          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="Back"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
         </button>
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--md-on-surface)" }}>Directions</h2>
+        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Directions</h2>
         {/* Walk / Transit tabs */}
         <div
           className="flex rounded-lg overflow-hidden border"
-          style={{ borderColor: "var(--md-outline-variant)" }}
+          style={{ borderColor: "var(--color-hairline)" }}
         >
           {(['walk', 'transit'] as const).map((mode) => (
             <button type="button"
@@ -176,10 +176,10 @@ export default function DirectionsPanel({
               disabled={mode === 'transit' && !canTransit}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 routeMode === mode
-                  ? 'text-amber-900 bg-amber-50'
-                  : 'hover:bg-slate-50'
+                  ? 'text-chrome bg-chrome-soft'
+                  : 'hover:bg-canvas'
               } disabled:opacity-40 disabled:cursor-not-allowed`}
-              style={routeMode !== mode ? { color: "var(--md-on-surface-variant)" } : undefined}
+              style={routeMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
               title={mode === 'transit' && !canTransit ? 'Too close for transit' : undefined}
             >
               {mode === 'walk' ? 'Walk' : 'Transit'}
@@ -192,7 +192,7 @@ export default function DirectionsPanel({
       {onRainModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--md-outline-variant)" }}
+          style={{ borderColor: "var(--color-hairline)" }}
           data-testid="rain-mode-selector"
         >
           {([false, true] as const).map((rain) => (
@@ -201,9 +201,9 @@ export default function DirectionsPanel({
               onClick={() => onRainModeChange(rain)}
               aria-pressed={rainMode === rain}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                rainMode === rain ? 'text-cyan-900 bg-cyan-50' : 'hover:bg-slate-50'
+                rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-canvas'
               }`}
-              style={rainMode !== rain ? { color: "var(--md-on-surface-variant)" } : undefined}
+              style={rainMode !== rain ? { color: "var(--color-ink-muted)" } : undefined}
               title={rain ? 'Route away from rain (experimental)' : 'Route by sun exposure'}
             >
               {rain ? 'Rain' : 'Sun'}
@@ -212,7 +212,7 @@ export default function DirectionsPanel({
         </div>
       )}
       {rainMode && onRainIntensityChange && (
-        <label className="flex items-center gap-2 self-start text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+        <label className="flex items-center gap-2 self-start text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
           <input
             type="range"
             min={0}
@@ -231,7 +231,7 @@ export default function DirectionsPanel({
       {routeMode === 'walk' && onTravelModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--md-outline-variant)" }}
+          style={{ borderColor: "var(--color-hairline)" }}
           data-testid="travel-mode-selector"
         >
           {(Object.keys(TRAVEL_MODE_POLICIES) as TravelModeId[]).map((mode) => (
@@ -242,10 +242,10 @@ export default function DirectionsPanel({
               aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
               className={`px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
-                  ? 'text-amber-900 bg-amber-50'
-                  : 'hover:bg-slate-50'
+                  ? 'text-chrome bg-chrome-soft'
+                  : 'hover:bg-canvas'
               }`}
-              style={travelMode !== mode ? { color: "var(--md-on-surface-variant)" } : undefined}
+              style={travelMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
               title={mode === 'walk' ? undefined : mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : 'Avoids steps and rough surfaces — for scooters and skateboards'}
             >
               {TRAVEL_MODE_POLICIES[mode].label}
@@ -268,7 +268,7 @@ export default function DirectionsPanel({
       {/* Waypoint inputs */}
       <div
         className="rounded-xl p-4 flex flex-col gap-2"
-        style={{ background: "var(--md-surface-container-low)" }}
+        style={{ background: "var(--color-canvas)" }}
       >
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
@@ -286,8 +286,8 @@ export default function DirectionsPanel({
             aria-pressed={pendingSlot === 'A'}
             onPointerDown={() => onPinDragStart?.('A')}
             onClick={() => activateWaypointSlot('A')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-amber-50"
-            style={{ color: pendingSlot === 'A' ? "var(--md-primary)" : "var(--md-on-surface-variant)" }}
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-chrome-soft"
+            style={{ color: pendingSlot === 'A' ? "var(--color-chrome)" : "var(--color-ink-muted)" }}
             title="Place start waypoint on map"
           >
             <span className="material-symbols-outlined text-base">add_location</span>
@@ -298,7 +298,7 @@ export default function DirectionsPanel({
         <div className="flex justify-center">
           <button type="button"
             onClick={onSwapWaypoints}
-            className="text-slate-400 hover:text-amber-700 transition-colors p-1 hover:bg-amber-50 rounded-lg"
+            className="text-ink-faint hover:text-chrome transition-colors p-1 hover:bg-chrome-soft rounded-lg"
             title="Swap waypoints"
           >
             <span className="material-symbols-outlined text-lg">swap_vert</span>
@@ -325,8 +325,8 @@ export default function DirectionsPanel({
             disabled={drawMode}
             onPointerDown={() => !drawMode && onPinDragStart?.('B')}
             onClick={() => activateWaypointSlot('B')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-amber-50 disabled:cursor-not-allowed"
-            style={{ color: pendingSlot === 'B' ? "var(--md-primary)" : "var(--md-on-surface-variant)" }}
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-chrome-soft disabled:cursor-not-allowed"
+            style={{ color: pendingSlot === 'B' ? "var(--color-chrome)" : "var(--color-ink-muted)" }}
             title="Place destination waypoint on map"
           >
             <span className="material-symbols-outlined text-base">add_location</span>
@@ -336,14 +336,14 @@ export default function DirectionsPanel({
 
       {/* Additional waypoints */}
       {(additionalWaypoints ?? []).length > 0 || addingStop ? (
-        <div className="pl-4 flex flex-col gap-1 text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+        <div className="pl-4 flex flex-col gap-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
           <div className="flex items-center justify-between">
             <span className="text-[10px]" style={{ opacity: 0.6 }}>Stops between start and destination</span>
             {!addingStop && onAddAdditionalWaypoint && (
               <button type="button"
                 onClick={() => setAddingStop(true)}
-                className="text-[10px] font-medium hover:text-amber-700 transition-colors"
-                style={{ color: "var(--md-primary)" }}
+                className="text-[10px] font-medium hover:text-chrome transition-colors"
+                style={{ color: "var(--color-chrome)" }}
               >
                 Add stop
               </button>
@@ -351,18 +351,18 @@ export default function DirectionsPanel({
           </div>
           {(additionalWaypoints ?? []).map((wp, i) => (
             <div key={i} className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded-full text-white text-[9px] flex items-center justify-center shrink-0" style={{ background: "var(--md-primary)" }}>{i + 1}</span>
-              <span className="flex-1 tabular-nums truncate" style={{ color: "var(--md-on-surface)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
+              <span className="w-4 h-4 rounded-full text-on-chrome text-[9px] flex items-center justify-center shrink-0" style={{ background: "var(--color-chrome)" }}>{i + 1}</span>
+              <span className="flex-1 tabular-nums truncate" style={{ color: "var(--color-ink)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
               <button type="button"
                 onClick={() => onRemoveAdditionalWaypoint?.(i)}
-                className="text-slate-300 hover:text-red-500 transition-colors px-0.5"
+                className="text-ink-faint hover:text-danger transition-colors px-0.5"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
           ))}
           {addingStop && onAddAdditionalWaypoint && (
-            <div className="mt-1 rounded-lg border px-2 py-1" style={{ borderColor: "var(--md-outline-variant)" }}>
+            <div className="mt-1 rounded-lg border px-2 py-1" style={{ borderColor: "var(--color-hairline)" }}>
               <WaypointInput
                 label={null}
                 placeholder="Stop — type an address or place"
@@ -379,8 +379,8 @@ export default function DirectionsPanel({
       ) : onAddAdditionalWaypoint ? (
         <button type="button"
           onClick={() => setAddingStop(true)}
-          className="ml-4 self-start flex items-center gap-1 text-[11px] font-medium hover:text-amber-700 transition-colors"
-          style={{ color: "var(--md-primary)" }}
+          className="ml-4 self-start flex items-center gap-1 text-[11px] font-medium hover:text-chrome transition-colors"
+          style={{ color: "var(--color-chrome)" }}
         >
           <span className="material-symbols-outlined text-sm">add_location</span>
           Add stop
@@ -388,28 +388,28 @@ export default function DirectionsPanel({
       ) : null}
 
       {/* Route input — Search / Draw segmented control */}
-      <div className="border-t pt-2" style={{ borderColor: "var(--md-outline-variant)" }}>
+      <div className="border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
         <div className="flex items-center justify-between">
-          <span className="text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>Route input</span>
+          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Route input</span>
           <div
             className="flex rounded-lg overflow-hidden border"
-            style={{ borderColor: "var(--md-outline-variant)" }}
+            style={{ borderColor: "var(--color-hairline)" }}
           >
             <button type="button"
               onClick={() => drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                !drawMode ? 'text-amber-900 bg-amber-50' : 'hover:bg-slate-50'
+                !drawMode ? 'text-chrome bg-chrome-soft' : 'hover:bg-canvas'
               }`}
-              style={drawMode ? { color: "var(--md-on-surface-variant)" } : undefined}
+              style={drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
               Search
             </button>
             <button type="button"
               onClick={() => !drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                drawMode ? 'text-amber-900 bg-amber-50' : 'hover:bg-slate-50'
+                drawMode ? 'text-chrome bg-chrome-soft' : 'hover:bg-canvas'
               }`}
-              style={!drawMode ? { color: "var(--md-on-surface-variant)" } : undefined}
+              style={!drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
               Draw
             </button>
@@ -417,9 +417,9 @@ export default function DirectionsPanel({
         </div>
         {drawMode && (
           <div className="mt-2 flex items-center justify-between">
-            <p className="text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>
+            <p className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
               {sketchPointCount > 0 ? (
-                <span className="tabular-nums" style={{ color: "var(--md-primary)" }}>
+                <span className="tabular-nums" style={{ color: "var(--color-chrome)" }}>
                   {sketchPointCount} point{sketchPointCount !== 1 ? "s" : ""} drawn
                 </span>
               ) : (
@@ -429,8 +429,8 @@ export default function DirectionsPanel({
             {sketchPointCount > 0 && onClearSketch && (
               <button type="button"
                 onClick={onClearSketch}
-                className="text-[11px] transition-colors hover:text-amber-700"
-                style={{ color: "var(--md-on-surface-variant)" }}
+                className="text-[11px] transition-colors hover:text-chrome"
+                style={{ color: "var(--color-ink-muted)" }}
               >
                 Clear sketch
               </button>
@@ -440,10 +440,10 @@ export default function DirectionsPanel({
       </div>
 
       {/* Shadow preference slider */}
-      <div className="border-t pt-2" style={{ borderColor: "var(--md-outline-variant)" }}>
+      <div className="border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>Shadow preference</span>
-          <span className="text-[11px] font-medium" style={{ color: "var(--md-on-surface)" }}>{shadowLabel}</span>
+          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Shadow preference</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--color-ink)" }}>{shadowLabel}</span>
         </div>
         <input
           type="range"
@@ -452,12 +452,12 @@ export default function DirectionsPanel({
           step="0.01"
           value={shadowPreference}
           onChange={(e) => onShadowPreferenceChange?.(parseFloat(e.target.value))}
-          className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-amber-700"
-          style={{ background: "var(--md-surface-container-low)" }}
+          className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-chrome"
+          style={{ background: "var(--color-canvas)" }}
         />
         <div className="flex justify-between mt-1">
-          <span className="text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>Fastest</span>
-          <span className="text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>Most shadowed</span>
+          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
+          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>Most shadowed</span>
         </div>
       </div>
 
@@ -467,7 +467,7 @@ export default function DirectionsPanel({
           onClick={onCalculate}
           disabled={drawMode ? sketchPointCount < 2 || isCalculating : !waypointA || !waypointB || isCalculating}
           className="flex-1 px-2 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
-          style={{ background: "var(--md-primary)", color: "var(--md-on-primary)" }}
+          style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
         >
           {isCalculating && (
             <svg aria-hidden="true" focusable="false" className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -484,9 +484,9 @@ export default function DirectionsPanel({
           aria-live="polite"
           className="rounded-lg border px-3 py-2 text-[11px]"
           style={{
-            background: "var(--md-surface-container-low)",
-            borderColor: "var(--md-outline-variant)",
-            color: "var(--md-on-surface-variant)",
+            background: "var(--color-canvas)",
+            borderColor: "var(--color-hairline)",
+            color: "var(--color-ink-muted)",
           }}
         >
           <div className="flex items-center justify-between gap-3">
@@ -501,11 +501,11 @@ export default function DirectionsPanel({
               aria-valuemax={100}
               aria-valuenow={Math.round(progressPercent)}
               className="mt-2 h-1.5 overflow-hidden rounded-full"
-              style={{ background: "rgba(100,116,139,0.16)" }}
+              style={{ background: "color-mix(in srgb, var(--color-ink) 16%, transparent)" }}
             >
               <div
                 className="h-full rounded-full transition-[width]"
-                style={{ width: `${progressPercent}%`, background: "var(--md-primary)" }}
+                style={{ width: `${progressPercent}%`, background: "var(--color-chrome)" }}
               />
             </div>
           )}
@@ -514,7 +514,7 @@ export default function DirectionsPanel({
 
       {/* Route cards — hidden on desktop when FloatingRouteCards is used */}
       {!hideRouteCards && routes.length > 0 && (
-        <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--md-outline-variant)" }}>
+        <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
           {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
           <RouteTradeoffSummary
             route={selectedRoute}
@@ -545,7 +545,7 @@ export default function DirectionsPanel({
             <button type="button"
               onClick={onStartNavigation}
               className="mt-2 w-full px-3 py-2.5 rounded-lg text-sm font-bold transition-colors"
-              style={{ background: "#22c55e", color: "white" }}
+              style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
             >
               START NAVIGATING
             </button>
@@ -555,14 +555,14 @@ export default function DirectionsPanel({
 
       {/* Warning */}
       {warning && (
-        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "#a16207", borderColor: "var(--md-outline-variant)" }}>
+        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-sun-strong)", borderColor: "var(--color-hairline)" }}>
           {warning}
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--md-error)", borderColor: "var(--md-outline-variant)" }}>
+        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-danger)", borderColor: "var(--color-hairline)" }}>
           {error}
         </div>
       )}

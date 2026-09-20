@@ -161,10 +161,10 @@ export default function AccumulationPanel({
         onClick={toggle}
         className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
           accumulation.enabled
-            ? "bg-amber-500/90 text-white font-medium"
-            : "bg-white border border-slate-200 hover:bg-amber-50"
+            ? "bg-chrome text-on-chrome font-medium"
+             : "bg-raised border border-hairline hover:bg-chrome-soft"
         }`}
-        style={!accumulation.enabled ? { color: "var(--md-on-surface)" } : undefined}
+        style={!accumulation.enabled ? { color: "var(--color-ink)" } : undefined}
       >
         <span className="material-symbols-outlined text-sm align-middle mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>wb_sunny</span>
         Sun Exposure
@@ -172,16 +172,16 @@ export default function AccumulationPanel({
 
       {open && (
         <div
-          className="border rounded-lg p-3 flex flex-col gap-2 text-xs min-w-[240px]"
+          className="border rounded-lg p-3 flex flex-col gap-2 text-xs min-w-panel-min"
           style={{
-            background: "white",
-            borderColor: "var(--md-outline-variant)",
-            color: "var(--md-on-surface)",
-            boxShadow: "var(--md-shadow)",
+            background: "var(--color-raised)",
+            borderColor: "var(--color-hairline)",
+            color: "var(--color-ink)",
+            boxShadow: "var(--shadow-level-1)",
           }}
         >
           <div className="flex items-center gap-2">
-            <span className="w-12" style={{ color: "var(--md-on-surface-variant)" }}>From</span>
+            <span className="w-12" style={{ color: "var(--color-ink-muted)" }}>From</span>
             <DateInput
               ariaLabel="Sun exposure start date"
               date={accumulation.startDate}
@@ -189,7 +189,7 @@ export default function AccumulationPanel({
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-12" style={{ color: "var(--md-on-surface-variant)" }}>To</span>
+            <span className="w-12" style={{ color: "var(--color-ink-muted)" }}>To</span>
             <DateInput
               ariaLabel="Sun exposure end date"
               date={accumulation.endDate}
@@ -197,7 +197,7 @@ export default function AccumulationPanel({
             />
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor={qualityInputId} className="w-12" style={{ color: "var(--md-on-surface-variant)" }}>Quality</label>
+            <label htmlFor={qualityInputId} className="w-12" style={{ color: "var(--color-ink-muted)" }}>Quality</label>
             <input
               id={qualityInputId}
               type="range"
@@ -208,13 +208,13 @@ export default function AccumulationPanel({
               onChange={(e) =>
                 onChange({ ...accumulation, iterations: Number(e.target.value) })
               }
-              className="flex-1 accent-amber-500"
+              className="flex-1 accent-chrome"
             />
             <span className="w-20 text-right leading-tight">
-              <span style={{ color: "var(--md-on-surface)" }}>
+              <span style={{ color: "var(--color-ink)" }}>
                 {qualityLabel(accumulation.iterations)}
               </span>
-              <span className="text-[10px] ml-1" style={{ color: "var(--md-on-surface-variant)" }}>
+              <span className="text-[10px] ml-1" style={{ color: "var(--color-ink-muted)" }}>
                 ({accumulation.iterations})
               </span>
             </span>
@@ -224,13 +224,21 @@ export default function AccumulationPanel({
             <div
               className="h-2 rounded"
               style={{
-                background:
-                  "linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff8800, #ff0000)",
+                background: [
+                  "linear-gradient(to right,",
+                  " var(--color-route),",
+                  " color-mix(in srgb, var(--color-route) 50%, var(--color-shade)),",
+                  " var(--color-shade),",
+                  " color-mix(in srgb, var(--color-shade) 50%, var(--color-sun)),",
+                  " var(--color-sun),",
+                  " color-mix(in srgb, var(--color-sun) 50%, var(--color-danger)),",
+                  " var(--color-danger))",
+                ].join(" "),
               }}
             />
             <div
               className="flex justify-between text-[9px] tabular-nums px-px"
-              style={{ color: "var(--md-on-surface-variant)" }}
+              style={{ color: "var(--color-ink-muted)" }}
             >
               <span>0h</span>
               <span>3h</span>
@@ -243,7 +251,7 @@ export default function AccumulationPanel({
           <button type="button"
             onClick={exportGeoTIFF}
             className="mt-1 transition-colors rounded px-3 py-1.5 text-center font-medium"
-            style={{ background: "var(--md-primary)", color: "var(--md-on-primary)" }}
+            style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
           >
             Export GeoTIFF
           </button>

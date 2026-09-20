@@ -44,15 +44,15 @@ export default function RainRouteSummary({ route, rainIntensity, wind = null }: 
       <div className="flex flex-wrap items-center gap-x-1.5">
         <span
           className="text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: "rgba(100,116,139,0.14)", color: "var(--md-on-surface-variant)" }}
+          style={{ background: "color-mix(in srgb, var(--color-ink) 14%, transparent)", color: "var(--color-ink-muted)" }}
         >
           Experimental
         </span>
-        <span className="text-xs font-semibold" style={{ color: "var(--md-on-surface)" }}>
+        <span className="text-xs font-semibold" style={{ color: "var(--color-ink)" }}>
           {rainDryPct(route)}% covered · {rainExposureLine(route, rainIntensity)}
         </span>
       </div>
-      <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+      <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
         {windText ?? "No wind forecast — shelter priced as vertical rain."} Wind is
         reported above street level and treated as a prior. Numbers are ordinal at your
         intensity setting.
@@ -63,7 +63,7 @@ export default function RainRouteSummary({ route, rainIntensity, wind = null }: 
         rel="noreferrer"
         aria-label="How rain shelter is estimated (opens in a new tab)"
         className="inline-flex min-h-11 items-center self-start text-xs underline underline-offset-2"
-        style={{ color: "var(--md-on-surface-variant)" }}
+        style={{ color: "var(--color-ink-muted)" }}
       >
         How this is estimated
       </a>
