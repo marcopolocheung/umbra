@@ -202,8 +202,13 @@ export interface TransitTransfer {
   from: string;
   to: string;
   minSec: number;
-  /** `gtfs` is the agency's own transfer; `spatial` is an unvalidated stub. */
-  kind: "gtfs" | "spatial";
+  /**
+   * `gtfs` is the agency's own transfer; `spatial` is an unvalidated stub;
+   * `walked` is a stub the producer routed over OSM's pedestrian ways from one
+   * of the station's own doors, and its `minSec` is that walk. A shard that
+   * predates `walked` simply has none.
+   */
+  kind: "gtfs" | "spatial" | "walked";
 }
 
 export interface TransitShard {
@@ -599,7 +604,7 @@ function parseTransfer(value: unknown): TransitTransfer {
     typeof value.from !== "string" ||
     typeof value.to !== "string" ||
     !isNonNegativeInt(value.minSec) ||
-    (value.kind !== "gtfs" && value.kind !== "spatial")
+    (value.kind !== "gtfs" && value.kind !== "spatial" && value.kind !== "walked")
   )
     throw new Error("invalid NYC transit transfer");
   return { from: value.from, to: value.to, minSec: value.minSec, kind: value.kind };

@@ -200,21 +200,19 @@ export function buildTrainGraphFromShards(
 
   for (const shard of usable) {
     for (const transfer of shard.transfers) {
-      // The published spatial stubs are every bus stop within 200 m of a
-      // station, nearest 10 kept, timed at 1.4 m/s on a straight line. Nothing
-      // checks a walkable path exists between the two, and at 271 of 454
-      // stations the cap of 10 binds, so *which* stops connect is arbitrary.
+      // A spatial stub is a bus stop within 200 m of a station, timed at
+      // 1.4 m/s on a straight line that nothing checked. Refusing them here is
+      // deliberate and explicit (#419), so a straight-line guess is never
+      // something a rider is routed across.
       //
-      // All 5,172 of them are inert today only because no loaded edge serves a
-      // bus stop — they would all go live in one step the moment a bus shard
-      // loads beside this one. Refusing them here is deliberate and explicit,
-      // so that bus routing can ship without shipping 5,172 unvalidated claims,
-      // and so re-enabling them is a decision someone makes rather than a side
-      // effect of loading a shard. It needs no republish: the stubs stay
-      // published and this is purely which of them the client will route on.
+      // A `walked` transfer is the same pair once the producer has routed it
+      // over OSM's pedestrian ways from one of the station's own doors, within
+      // a published detour ratio, and timed the walk it found. That is a claim
+      // `verify` re-derives before publish, so it is routed on.
       if (transfer.kind === "spatial") continue;
       if (!stations.has(transfer.from) || !stations.has(transfer.to)) continue;
-      // The agency's own published transfer time, not a stand-in.
+      // The agency's own published transfer time, or the routed walk — never a
+      // stand-in.
       adj.get(transfer.from)!.push({
         to: transfer.to,
         weightSec: transfer.minSec,

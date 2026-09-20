@@ -9,7 +9,7 @@
 import { normalizeBus, type BusNormalized } from "./normalizeBus";
 import { normalizeSubway, type SubwayNormalized } from "./normalizeSubway";
 import { FEED_SOURCES } from "./sources";
-import { buildSpatialStubs, SPATIAL_TRANSFER_CAP_PER_STATION, SPATIAL_TRANSFER_RADIUS_M, SPATIAL_WALK_MPS } from "./transfers";
+import { buildSpatialStubs, SPATIAL_TRANSFER_RADIUS_M, SPATIAL_WALK_MPS } from "./transfers";
 import type {
   DayType,
   FeedVersion,
@@ -25,6 +25,7 @@ import { attachEntrances, type EntranceStats } from "./entrances";
 import { readOsm } from "./osm";
 import { attachStructure, buildStructureIndex, type StructureStats } from "./structure";
 import { requireRoot, sha256, writeJson } from "./util";
+import { buildFootwayGraph, promoteWalkable, WALK_PARAMS, type WalkedStats } from "./walkability";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -86,11 +87,21 @@ export interface GenerationManifest {
   budgets: { shardBytes: number; totalBytes: number };
   constants: {
     spatialTransferRadiusM: number;
-    spatialTransferCapPerStation: number;
     spatialWalkMps: number;
     subwayMaxKmh: number;
     busMaxKmh: number;
+    /** The walkability check's own parameters, when it ran. See walkability.ts. */
+    walkedDetourRatio?: number;
+    walkedDetourSlackM?: number;
+    walkedSnapM?: number;
+    walkedFootwayRadiusM?: number;
   };
+  /**
+   * What the walkability check found, and the exact OSM bytes it routed on, so
+   * `verify` can route every stub again and demand the same answer. Absent
+   * when the OSM cache predates footways: then no stub is walked.
+   */
+  walkedTransfers?: WalkedStats & { footwaysSha256: string };
   notes: string[];
 }
 
@@ -281,6 +292,8 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   structure?: StructureStats;
   /** Absent when the OSM cache predates stop areas; the shard then ships no entrances. */
   entrances?: EntranceStats;
+  /** Absent when the OSM cache predates footways; every stub then stays spatial. */
+  walked?: WalkedStats;
 }> {
   const root = requireRoot();
   const { subway, bus, stubs, referenceDate } = await normalizeAll(options);
@@ -289,6 +302,8 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
   const objects: { key: string; value: unknown }[] = [];
   let structureStats: StructureStats | undefined;
   let entranceStats: EntranceStats | undefined;
+  let walked: (WalkedStats & { footwaysSha256: string }) | undefined;
+  let footwayRadiusM: number | undefined;
   if (subway) {
     // All spatial stubs touch a subway node by construction; they ship with
     // the subway shard, along with the bus stops they reference, so the
@@ -342,13 +357,23 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       }
     }
 
+    // After the doors: a walk is routed from a station's own doors, so a
+    // generation without them promotes nothing.
+    let transfers = stubs;
+    if (osm?.footways && osm.footwaysSha256) {
+      const promoted = promoteWalkable(stubs, allSubwayStops, buildFootwayGraph(osm.footways));
+      transfers = promoted.transfers;
+      walked = { ...promoted.stats, footwaysSha256: osm.footwaysSha256 };
+      footwayRadiusM = osm.receipt.footways?.radiusM;
+    }
+
     objects.push({
       key: "subway.json",
       value: {
         ...subway,
         stops: allSubwayStops,
         edges,
-        transfers: [...subway.transfers, ...stubs],
+        transfers: [...subway.transfers, ...transfers],
       },
     });
   }
@@ -426,11 +451,19 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     budgets: { shardBytes: SHARD_BUDGET_BYTES, totalBytes: TOTAL_BUDGET_BYTES },
     constants: {
       spatialTransferRadiusM: SPATIAL_TRANSFER_RADIUS_M,
-      spatialTransferCapPerStation: SPATIAL_TRANSFER_CAP_PER_STATION,
       spatialWalkMps: SPATIAL_WALK_MPS,
       subwayMaxKmh: 80,
       busMaxKmh: 60,
+      ...(walked
+        ? {
+            walkedDetourRatio: WALK_PARAMS.detourRatio,
+            walkedDetourSlackM: WALK_PARAMS.detourSlackM,
+            walkedSnapM: WALK_PARAMS.snapM,
+            ...(footwayRadiusM !== undefined ? { walkedFootwayRadiusM: footwayRadiusM } : {}),
+          }
+        : {}),
     },
+    ...(walked ? { walkedTransfers: walked } : {}),
     notes: [
       `Each headway table is one representative date's schedule, chosen as the most common service pattern on or after ${referenceDate} (see headwayDates); calendar_dates exceptions are applied, so holidays, school-holiday variants and pick boundaries run a different timetable than the table shows.`,
       "Bus travel times are scheduled, not traffic-aware; no realtime data is used.",
@@ -441,6 +474,11 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
       ...(structureStats
         ? [
             "Subway edge structure is joined from OpenStreetMap, not from GTFS, which carries none. Shares are sampled along the straight line between the two stops and sum to at most 1; the shortfall is the part no OSM way matched. An edge carrying no structure field at all is unknown, which is not the same as at_grade: at_grade means a matched OSM way that is tagged neither tunnel nor bridge nor cutting nor embankment.",
+          ]
+        : []),
+      ...(walked
+        ? [
+            "A change between subway and bus is offered only where OpenStreetMap's footpaths connect one of the station's own doors to the stop by a path at most walkedDetourRatio times the straight line plus walkedDetourSlackM (see constants). Its time is that walk at spatialWalkMps, with the station interior taken as a straight line from the station point to the door, so stairs, fare control and waiting to cross are not included and the time is a lower bound. A station with no mapped door offers no such change.",
           ]
         : []),
       ...(entranceStats
@@ -457,6 +495,7 @@ export async function buildGeneration(options?: NormalizeOptions): Promise<{
     directory,
     structure: structureStats,
     ...(entranceStats ? { entrances: entranceStats } : {}),
+    ...(walked ? { walked } : {}),
   };
 }
 

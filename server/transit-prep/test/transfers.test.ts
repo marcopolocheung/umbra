@@ -19,17 +19,17 @@ test("links stops within radius in both directions with walk time", () => {
   }
 });
 
-test("caps stubs per station by distance", () => {
+test("keeps every stop within the radius, nearest first, uncapped", () => {
+  // The old cap of 10 decided which stops connect by rank alone; the radius
+  // is the only bound now, and walkability.ts decides which ones are real.
   const crowd: StopNode[] = Array.from({ length: 20 }, (_, i) => ({
     id: `bus:C${i}`,
     name: `Crowd ${i}`,
     lat: 40.75 + (i + 1) * 0.0001,
     lon: -73.99,
   }));
-  const stubs = buildSpatialStubs([station], crowd, { radiusM: 5000, cap: 5 });
-  // 5 nearest × 2 directions.
-  assert.equal(stubs.length, 10);
-  const ids = new Set(stubs.map((s) => (s.from === station.id ? s.to : s.from)));
-  assert.ok(ids.has("bus:C0"));
-  assert.ok(!ids.has("bus:C19"));
+  const stubs = buildSpatialStubs([station], crowd, { radiusM: 5000 });
+  assert.equal(stubs.length, 40);
+  assert.equal(stubs[0]?.to, "bus:C0");
+  assert.equal(stubs[38]?.to, "bus:C19");
 });

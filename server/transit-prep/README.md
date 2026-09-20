@@ -53,7 +53,7 @@ evidence/<command>-<ts>.json
 export TRANSIT_PREP_ROOT=$HOME/shade-prep-data-nyc-transit   # absolute, outside git
 npm run acquire:plan   # HEAD-check sizes/dates, no writes
 npm run acquire        # download (skip-if-SHA-matches) + refresh work dirs
-npm run osm            # fetch + cache the OSM subway geometry and stop areas the structure and entrance joins need
+npm run osm            # fetch + cache the OSM subway geometry, stop areas and station-area footways the structure, entrance and walkability steps need
 npm run receipts       # (re)assemble raw/source-receipts.json
 npm run validate       # schemas, bbox, integrity, cross-feed pins
 npm run normalize      # stats only (also: -- --only subway|bus)
@@ -85,6 +85,19 @@ point; no field at all means a cache from before stop areas, which is unknown. `
 and `entrance=emergency` are dropped and `entrance=exit` is marked `exitOnly`. `open=no` is
 **not** a closure here: all 31 NYC entrances with it are `door=hinged|swinging`, a door kept
 shut, and at four stations it is the only door.
+
+## Subway↔bus transfers
+
+Bus feeds publish no transfers, so `transfers.ts` pairs every bus stop within 200 m of a
+station (uncapped) as a straight-line `spatial` stub, which the client refuses (#419).
+`walkability.ts` promotes a stub to `walked` when OSM's pedestrian ways connect one of the
+station's own doors (exit-only doors only when leaving) to the stop within 1.5 × the
+door-to-stop straight line + 50 m, each point joining the network within 20 m. It publishes
+`walkM` (station point → door straight, then the routed street path) and `minSec` = `walkM`
+at 1.4 m/s. A station with no door walks nothing. The parameters and the SHA-256 of
+`raw/osm/footways.json` go in the manifest (`constants.walked*`, `walkedTransfers`), and
+`verify` re-routes every stub on those bytes and fails on any difference, so it needs the
+same OSM cache the build used.
 
 ## Segment structure (tunnel / viaduct / at grade)
 

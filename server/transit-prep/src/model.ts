@@ -98,8 +98,18 @@ export interface TransferEdge {
   from: string;
   to: string;
   minSec: number;
-  /** "gtfs" (transfers.txt) or "spatial" (nearest-stop stub). */
-  kind: "gtfs" | "spatial";
+  /**
+   * "gtfs" (transfers.txt), "spatial" (a straight-line nearest-stop stub,
+   * unvalidated) or "walked" (a spatial stub OSM's pedestrian network can walk,
+   * `walkability.ts`). A client that predates "walked" must still read "gtfs"
+   * and "spatial" exactly as before.
+   */
+  kind: "gtfs" | "spatial" | "walked";
+  /**
+   * Walked only: the routed walk in whole metres, station point → door →
+   * pavement → stop, which `minSec` is derived from. Absent on every other kind.
+   */
+  walkM?: number;
 }
 
 export interface FeedVersion {
