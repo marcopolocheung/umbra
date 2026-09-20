@@ -128,12 +128,14 @@ export function useShadowFieldPrewarm({
       })();
     };
 
-    // Once now — the camera may already be the shared link's — and once on each
-    // "camera stopped" signal, so waiting for the URL camera never warms the
-    // default world view instead.
+    // Now — the camera may already be the shared link's — and again on every
+    // "camera settled" signal, so the chosen camera never warms the default
+    // world view instead and a user landing on the bare app still gets a prewarm
+    // when their first search or pin jump settles the camera. The one-per-
+    // generation guard in `tryPrewarm` keeps a pan from re-firing anything.
     tryPrewarm();
-    map.once("moveend", tryPrewarm);
-    map.once("idle", tryPrewarm);
+    map.on("moveend", tryPrewarm);
+    map.on("idle", tryPrewarm);
 
     return () => {
       disposed = true;
