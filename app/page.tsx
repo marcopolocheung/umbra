@@ -37,14 +37,6 @@ import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { directionForWindReport } from "./lib/rain/direction";
-import {
-  ensureRainMapLayer,
-  rainGridFeatureCollection,
-  RAIN_GRID_COLS,
-  RAIN_GRID_ROWS,
-  setRainMapData,
-} from "./lib/rain/rainMapLayer";
-import type { BBox } from "./lib/shadowField/ShadowField";
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import type { MapObject } from "./lib/agent/receipts";
@@ -340,58 +332,22 @@ export default function Home() {
   // already fetched for this location, matched to the hour the timeline is showing.
   const heatWeather = useWeatherHour(mapCenter, date);
 
-  // Rain mode repurposes the map: the sun canvas steps aside (resources intact) and
-  // the shelter grid paints blue where direct rain reaches. The grid is the same
-  // fraction routing pays for, priced at the map centre's wind for the timeline hour.
-  const rainWindKey =
-    heatWeather?.windDirDeg != null && heatWeather.windMs !== null
-      ? `${Math.round(heatWeather.windDirDeg / 5) * 5}|${Math.round(heatWeather.windMs)}`
-      : "none";
+  // The Sun/Rain toggle now also switches the canvas: rain aims the painter's ray
+  // at the forecast wind (vertical when unknown) instead of the sun, and paints
+  // wet-blue where that ray reaches. setEnabled keeps the same layer alive, so the
+  // switch is a repaint, not a rebuild.
   useEffect(() => {
-    const map = mapRef.current;
-    shadowLayerRef.current?.setEnabled?.(!rainMode);
-    if (!rainMode || !map || !shadowField) return;
+    const layer = shadowLayerRef.current;
+    if (!layer) return;
+    layer.setEnabled?.(true);
+    layer.setHazard?.(rainMode ? "rain" : "sun");
+  }, [rainMode]);
+  useEffect(() => {
+    const layer = shadowLayerRef.current;
+    if (!rainMode || !layer) return;
+    layer.setRainWind?.(heatWeather?.windDirDeg ?? null, heatWeather?.windMs ?? null);
+  }, [rainMode, heatWeather]);
 
-    try {
-      ensureRainMapLayer(map);
-    } catch {
-      // Style not settled yet; the next moveend pass adds it.
-    }
-
-    const repaint = () => {
-      const bounds = map.getBounds();
-      const rainBbox: BBox = {
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-      };
-      const direction = directionForWindReport(
-        heatWeather?.windDirDeg ?? null,
-        heatWeather?.windMs ?? null,
-      );
-      const grid = shadowField.sampleRainGrid(
-        rainBbox,
-        RAIN_GRID_COLS,
-        RAIN_GRID_ROWS,
-        direction,
-        date,
-      );
-      setRainMapData(map, rainGridFeatureCollection(grid, rainBbox));
-    };
-
-    repaint();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const onMoveEnd = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(repaint, 200);
-    };
-    map.on("moveend", onMoveEnd);
-    return () => {
-      map.off("moveend", onMoveEnd);
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [rainMode, rainWindKey, heatWeather, shadowField, date, mapRef]);
 
   const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
