@@ -219,3 +219,29 @@ Local gates on this branch: lint (no new warnings), typecheck (only the
 pre-existing S3 error), `useNavigation`/`routing`/`metrics`/`ShadowField`
 vitest targets green, full vitest with only the three pre-existing failures,
 build, e2e 5/5, and the three bench passes above.
+
+
+---
+
+## Port to the `umbra` mirror
+
+This branch reproduces PR 1 on `marcopolocheung/umbra`
+(`feat/a2-field-ready-off-path`). File contents are identical to the canonical
+PR at `f5da0bb`; the canonical measurement hashes remain quoted above, and the
+port's own commits on this mirror are `d6e8b95` and `35e4399`. The A2 PR 2
+port continues from this branch.
+
+---
+
+## PR 2 port to the `umbra` mirror
+
+This branch reproduces PR 2 on `marcopolocheung/umbra`
+(`feat/a2-edge-cell-readiness`, continuing the ported PR 1 branch). The
+`useRouting`/`useSketch`/`useShadowFieldPrewarm`/`useNavigation.test` changes
+and the note text are identical to the canonical PR; only the two
+comment-sync hunks for `app/lib/metrics.ts` and
+`e2e/bench/routeCalc.bench.spec.ts` were omitted, because this mirror's
+`main` never received the Phase-0 attribution instrumentation those comments
+describe (`useRouting` was adapted accordingly: same cells-first ordering,
+without the attribution timer brackets). The measurements above are canonical;
+the port's own commit here is `7756652`.
