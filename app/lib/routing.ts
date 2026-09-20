@@ -222,6 +222,13 @@ export interface DijkstraOptions {
   straightLineDistM?: number; // for detourRatio; defaults to 0 → ratio = 1.0
   maxDetourFactor?: number;   // paretoRoutes only: search budget = shortest distance
                               // × this factor + the mode-scaled flat below; default 2.0
+  /**
+   * paretoRoutes only: cap on the Pareto-set kept per node, default 20. The A3
+   * budget-sweep harness (`navigationScale.bench.ts`) and the A3 operating-point
+   * retune are the only callers that pass it — production callers never do, so
+   * shipped behavior stays exactly MAX_LABELS_PER_NODE = 20.
+   */
+  maxLabelsPerNode?: number;
   travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
   /** "sun" (default) prices `shadowFactor`; "rain" prices `shelterFactor`. */
   objective?: ExposureObjective;
@@ -792,7 +799,7 @@ export function paretoRoutes(
   endId: number,
   options: DijkstraOptions = {}
 ): RouteResult[] {
-  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, travelMode = "walk", objective = "sun" } = options;
+  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, maxLabelsPerNode = 20, travelMode = "walk", objective = "sun" } = options;
   const rain = objective === "rain";
   /** The bi-criterion the labels accumulate: shadowed metres, or sheltered metres. */
   const exposureFactor = (edge: GraphEdge): number =>
@@ -848,8 +855,6 @@ export function paretoRoutes(
     return lbl;
   };
 
-  const MAX_LABELS_PER_NODE = 20;
-
   // Per-node Pareto set: array of label IDs, sorted distM asc (→ shadowM necessarily
   // asc too — a later label with less shadow would be dominated by an earlier one).
   const paretoSets = new Map<number, number[]>();
@@ -880,7 +885,7 @@ export function paretoRoutes(
       }
     }
     // If at capacity, reject if incoming would be the new worst (tail)
-    if (set.length >= MAX_LABELS_PER_NODE) {
+    if (set.length >= maxLabelsPerNode) {
       const worstDistM = allLabels[set[set.length - 1]].distM;
       if (incoming.distM >= worstDistM) return false;
       allLabels[set[set.length - 1]].evicted = true;
