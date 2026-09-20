@@ -179,6 +179,11 @@ exposure metrics — the variables Umbra sells — and never for chrome decorati
 
 ## 6. Recommendation
 
+> **SUPERSEDED AT THE U2 REVIEW (2026-09-20):** the owner went with **Canopy (§4)** — the
+> original recommendation below was written when Strata/Carmine held the owner's vote; U2's
+> implementation was reworked to Canopy and `docs/design/language.md` records the new choice.
+> The §0 review thread carries the dated trail.
+
 > **RECOMMENDATION: adopt Strata — the visual system the owner already likes — in the Carmine
 > colourway by default** (cream canvas, carmine chrome, blue route, warm sun: §2b-i).
 > Carmine is chosen as default because it is the faithful devotion.club translation, keeps
