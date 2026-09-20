@@ -27,6 +27,7 @@ import { directionForWindReport } from '../rain/direction';
 import { rainOpacityForLightOpacity } from '../rain/opacity';
 import { canopyShadowTriangles } from '../rain/canopyCast';
 import { runRoofExclusion } from '../rain/rainPass';
+import { RAIN_WET_ALPHA, RAIN_WET_RGB } from '../rain/rainComposite';
 
 // Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
 // SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
@@ -220,6 +221,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private quadTexLoc: WebGLUniformLocation | null = null;
   private quadInvertLoc: WebGLUniformLocation | null = null;
   private quadAlphaScaleLoc: WebGLUniformLocation | null = null;
+  private quadWetColorLoc: WebGLUniformLocation | null = null;
 
   // Canopy pass: the painter's only fractional casters (rain mode).
   private canopyProgram: WebGLProgram | null = null;
@@ -812,13 +814,19 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       uniform sampler2D u_texture;
       uniform float u_invert;
       uniform float u_alphaScale;
+      uniform vec3 u_wetColor;
       varying vec2 v_uv;
       void main() {
         vec4 t = texture2D(u_texture, v_uv);
         if (u_invert > 0.5) {
-          // Rain: alpha carried coverage (see Pass A), so exposed = 1 - coverage.
+          // Rain alpha = coverage × wetAlpha. The FBO carries no colour where
+          // nothing covers, so the wet tint must come from the uniform — the
+          // previous FBO-RGB version painted transparent there.
           float exposed = max(0.0, 1.0 - t.a / u_alphaScale);
-          gl_FragColor = vec4(t.rgb * exposed, t.a * exposed);
+          gl_FragColor = vec4(
+            u_wetColor * u_alphaScale * exposed,
+            u_alphaScale * exposed
+          );
         } else {
           gl_FragColor = t;
         }
@@ -829,6 +837,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.quadTexLoc = gl.getUniformLocation(this.quadProgram, 'u_texture');
     this.quadInvertLoc = gl.getUniformLocation(this.quadProgram, 'u_invert');
     this.quadAlphaScaleLoc = gl.getUniformLocation(this.quadProgram, 'u_alphaScale');
+    this.quadWetColorLoc = gl.getUniformLocation(this.quadProgram, 'u_wetColor');
     this.quadBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -1085,7 +1094,13 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.uniform1f(this.quadInvertLoc, rain ? 1 : 0);
     gl2.uniform1f(
       this.quadAlphaScaleLoc,
-      rain ? LocalShadowAdapter.RAIN_WET_ALPHA : 1,
+      rain ? RAIN_WET_ALPHA : 1,
+    );
+    gl2.uniform3f(
+      this.quadWetColorLoc,
+      RAIN_WET_RGB[0],
+      RAIN_WET_RGB[1],
+      RAIN_WET_RGB[2],
     );
 
     gl2.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
