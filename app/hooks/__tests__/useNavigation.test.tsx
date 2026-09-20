@@ -830,30 +830,42 @@ describe("routing reads the shadow field (A4b)", () => {
     expect(result.current.navRoutes.length).toBeGreaterThan(0);
   });
 
-  it("passes one route signal and absolute deadline to both readiness phases", async () => {
+  it("readies the exact edge cells first and shares one signal and deadline with the broad fallback", async () => {
+    // A2 PR 2: `readyEdges` runs first; the broad bbox is a fallback the hook
+    // attempts only when the cells cannot speak confidently.
+    shadowStub.coverage = { source: "none", confidence: 0 };
     const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
 
     await runRouteWith(map);
 
     expect(shadowStub.readyCalls.map((call) => call.kind)).toEqual([
-      "broad",
       "edges",
+      "broad",
     ]);
-    const [broad, edges] = shadowStub.readyCalls;
+    const [edges, broad] = shadowStub.readyCalls;
     expect(broad.options?.signal).toBe(edges.options?.signal);
     expect(broad.options?.deadlineAt).toBe(edges.options?.deadlineAt);
     expect(broad.options?.deadlineAt).toBeGreaterThan(Date.now());
   });
 
-  it("aborts readiness on graph failure without hiding the graph error", async () => {
-    shadowStub.readyGate = new Promise<void>(() => {});
+  it("skips the broad readiness when the edge cells already speak", async () => {
+    shadowStub.coverage = { source: "tiles", confidence: 0.8 };
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+
+    await runRouteWith(map);
+
+    expect(shadowStub.readyCalls.map((call) => call.kind)).toEqual(["edges"]);
+  });
+
+  it("keeps the graph failure visible, with no readiness phase yet started", async () => {
     vi.mocked(fetchRoutingGraph).mockRejectedValue(new Error("Overpass is down"));
     const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
 
     const result = await runRouteWith(map);
 
-    expect(shadowStub.readyCalls).toHaveLength(1);
-    expect(shadowStub.readyCalls[0].options?.signal?.aborted).toBe(true);
+    // A2 PR 2: the edge cells are only known once the graph exists, so a failed
+    // graph fetch starts no readiness work and the error surfaces unchanged.
+    expect(shadowStub.readyCalls).toHaveLength(0);
     expect(result.current.navError).toBe("Overpass is down");
   });
 
@@ -1910,20 +1922,25 @@ describe("long trips without a static snapshot keep the exact route-bbox area", 
       expect(options?.accessZones ?? []).toEqual([]);
     }
 
-    // The field preloads exactly the route bbox the Overpass graph can return
-    // (padded as `sampleEdges` pads), not that bbox plus the ±2 km zones.
-    // Mirror the hook's own padding arithmetic so the expected double matches.
-    const padding = Math.max(
-      0.005,
-      Math.min(0.008, (haversineMeters([103.8, 1.3], [103.81, 1.3]) / 111000) * 0.3),
-    );
-    const [broad] = shadowStub.readyCalls;
-    expect(broad?.kind).toBe("broad");
-    expect(broad?.bbox).toEqual(
-      bboxAroundEdges(
-        [{ from: [103.8 - padding, 1.3 - padding], to: [103.81 + padding, 1.3 + padding] }],
-        QUERY_PAD_M,
-      ),
-    );
+    // A2 PR 2: the exact edge cells are requested first, and the broad bbox is
+    // only a fallback when the cells cannot speak — pin the fallback's exact
+    // area when it runs. (The field's per-cell bbox keys are the field's own
+    // concern, so the edge-call pin is "edges first", below.)
+    const kinds = shadowStub.readyCalls.map((call) => call.kind);
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds[0]).toBe("edges");
+    if (kinds.includes("broad")) {
+      const padding = Math.max(
+        0.005,
+        Math.min(0.008, (haversineMeters([103.8, 1.3], [103.81, 1.3]) / 111000) * 0.3),
+      );
+      const broad = shadowStub.readyCalls.find((call) => call.kind === "broad");
+      expect(broad?.bbox).toEqual(
+        bboxAroundEdges(
+          [{ from: [103.8 - padding, 1.3 - padding], to: [103.81 + padding, 1.3 + padding] }],
+          QUERY_PAD_M,
+        ),
+      );
+    }
   });
 });
