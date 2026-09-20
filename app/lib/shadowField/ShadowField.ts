@@ -1302,15 +1302,33 @@ export function createGeometryShadowField(
     const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
     const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
 
+    // Each cell averages a 4×4 mini-grid of point answers rather than trusting
+    // its centre. A coarse cell (zoomed out, one cell spans several blocks) used
+    // to read "fully exposed" whenever its centre missed the one building inside
+    // it, washing the whole map blue until the viewport zoomed to block scale.
+    // The average is the cell's sheltered share — the same semantics the route
+    // cards show — and makes the wash's structure appear as it zooms in instead
+    // of popping at one zoom level.
+    const SUB_SAMPLES = 4;
     const latStep = (bounds.north - bounds.south) / rows;
     const lngStep = (bounds.east - bounds.west) / cols;
+    const subLatStep = latStep / SUB_SAMPLES;
+    const subLngStep = lngStep / SUB_SAMPLES;
     let k = 0;
     for (let r = 0; r < rows; r++) {
-      const lat = bounds.north - (r + 0.5) * latStep;
+      const latTop = bounds.north - r * latStep;
       for (let c = 0; c < cols; c++) {
-        const lng = bounds.west + (c + 0.5) * lngStep;
-        // A building pass wins opaque (1); canopy adds its rain-opacity fraction.
-        values[k++] = pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+        const lngLeft = bounds.west + c * lngStep;
+        let sum = 0;
+        for (let sr = 0; sr < SUB_SAMPLES; sr++) {
+          const lat = latTop - (sr + 0.5) * subLatStep;
+          for (let sc = 0; sc < SUB_SAMPLES; sc++) {
+            const lng = lngLeft + (sc + 0.5) * subLngStep;
+            // A building pass wins opaque (1); canopy adds its rain-opacity fraction.
+            sum += pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+          }
+        }
+        values[k++] = sum / (SUB_SAMPLES * SUB_SAMPLES);
       }
     }
     return { values, cols, rows, source: score.source, confidence };
