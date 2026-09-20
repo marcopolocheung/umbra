@@ -15,26 +15,24 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U2 — implement the chosen language. Open for owner review on the
-  public-mirror port branch `port/design-u2-strata-carmine`: PR
-  [#60](https://github.com/marcopolocheung/umbra/pull/60) — private PR
-  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) carries the same change; this
-  mirror deliberately omits the U0 screenshot harness and the developer hooks around it.
-  **The owner re-picked Canopy during U2 review (was Strata/Carmine) and both open PRs were
-  reworked to Canopy. Merge = visual sign-off (D2); never self-merged.**
+- **Active checkpoint:** U2 — implement the chosen language. Open for owner review:
+  PR [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) (umbrapriv) · port PR
+  [#60](https://github.com/marcopolocheung/umbra/pull/60) (public mirror). **The owner
+  re-picked Canopy during U2 review (was Strata/Carmine) and the open PRs were reworked to
+  Canopy — merge is the visual sign-off (D2); never self-merged.**
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
-  port #51). U2's code: **Canopy** token registry in `app/globals.css` (amber reserved for sun
-  data, route/sun/shade data colours, two elevation levels, radius overrides),
-  `docs/design/language.md` as canonical spec, `--md-*` tokens/helpers deleted,
+  port #51). U2's code: **Canopy** token registry in `app/globals.css` (amber reserved for
+  sun data, zero decorative accents, route/sun/shade data colours, two elevation levels,
+  radius 12/16/20 + 999 search pill), `docs/design/language.md` as canonical spec, `--md-*` tokens/helpers deleted,
   `NavigationPanel.tsx` (deprecated) deleted, every inventoried literal migrated so
   `npm run design:check` exits 0, `.claude/rules/design-language.md` now states the
   enforcement path, before/after phone shots under `docs/design/shots/u2/`.
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
 - **Blocked on:** U3 starts after the U2 sign-off merge.
 - **Next action:** owner review of U2; then U3 redesigns the route card in the U2 language.
-- **Last verified:** 2026-09-20 — U2 leaves `node scripts/verify/design-tokens.mjs --all`
+- **Last verified:** 2026-09-20 (Canopy rework) — U2 leaves `node scripts/verify/design-tokens.mjs --all`
   clean (exit 0); shadow-canvas suites (agreement/v2/adapter, 108 tests) green —
-  invariant #5 holds; smoke e2e updated to count the Strata route-blue line and passes.
+  invariant #5 holds; smoke e2e updated to count the new route-blue line and passes.
 
 ---
 

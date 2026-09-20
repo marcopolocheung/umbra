@@ -25,7 +25,7 @@ for (const match of registryCss.matchAll(TOKEN_RE)) {
 export function token(name: string): string {
   const value = registry.get(name);
   if (value === undefined) {
-    throw new Error(`Strata token --${name} is not declared in app/globals.css`);
+    throw new Error(`Canopy token --${name} is not declared in app/globals.css`);
   }
   return value;
 }
