@@ -894,7 +894,7 @@ export async function fetchTrainGraph(
 
 // ─── Dijkstra ───────────────────────────────────────────────────────────────
 
-/** Search-state key: station id, this separator, then what the rider arrived on. */
+/** Search-state key: station id, this separator, what the rider arrived on, then the boardings so far. */
 const STATE_SEP = "\u0000";
 /** On the street, not yet boarded anything. */
 const ARRIVED_ON_FOOT = "";
@@ -907,16 +907,27 @@ const ARRIVED_BY_TRANSFER = "\u0001";
  */
 const ARRIVED_BY_WALK = "\u0002";
 
-function stateKey(stationId: string, arrivedOn: string): string {
-  return `${stationId}${STATE_SEP}${arrivedOn}`;
+function stateKey(stationId: string, arrivedOn: string, boardings: number): string {
+  return `${stationId}${STATE_SEP}${arrivedOn}${STATE_SEP}${boardings}`;
 }
+
+function boardingsOfState(key: string): number {
+  return Number(key.slice(key.lastIndexOf(STATE_SEP) + 1));
+}
+
+/**
+ * How many rides one per-mode search may board before the path is pruned.
+ * Every additional boarding is another priced wait, so a path that needs
+ * more rides than this is the same failure as no path — only louder.
+ */
+export const MAX_TRANSIT_BOARDINGS = 5;
 
 function stationOfState(key: string): string {
   return key.slice(0, key.indexOf(STATE_SEP));
 }
 
 function arrivalOfState(key: string): string {
-  return key.slice(key.indexOf(STATE_SEP) + 1);
+  return key.slice(key.indexOf(STATE_SEP) + 1, key.lastIndexOf(STATE_SEP));
 }
 
 /**
@@ -961,13 +972,18 @@ function boardingCost(
 /**
  * Fastest path on the train graph, in seconds.
  *
- * The state is `(station, what the rider arrived on)`, not the station alone. A
- * station-keyed search cannot see a change of line made inside one node — no
- * transfer edge is traversed going from the N to the Q at Union Sq — so it
- * charged nothing for one, and it could not charge a wait that depends on which
- * route is boarded either. The states are the (station, route) pairs some edge
- * actually serves, 956 of them for the published NYC subway against its 496
- * stations.
+ * The state is `(station, what the rider arrived on, boardings so far)`, not the
+ * station alone. A station-keyed search cannot see a change of line made inside
+ * one node — no transfer edge is traversed going from the N to the Q at Union
+ * Sq — so it charged nothing for one, and it could not charge a wait that
+ * depends on which route is boarded either. One `(station, route)` pair per
+ * boarding count exists per journey, and `MAX_TRANSIT_BOARDINGS` caps that
+ * third dimension. The route-only pairs number 956 for the published NYC
+ * subway against its 496 stations.
+ *
+ * With `mode`, a rail edge whose line is not that mode is refused outright, so
+ * a bus search cannot ride the subway and a subway search cannot board a bus.
+ * Transfer edges stay on — they carry no line and no mode.
  *
  * That count is why this used to scan an array for its minimum, and why it no
  * longer does. Bus shards take the search to 27,662 states, and
@@ -986,7 +1002,8 @@ export function trainDijkstra(
   graph: TrainGraph,
   startId: string,
   endId: string,
-  opts: TrainDepartureOptions = {}
+  opts: TrainDepartureOptions = {},
+  mode?: TrainMode
 ): TrainPathResult | null {
   if (startId === endId) return null;
 
@@ -1010,7 +1027,7 @@ export function trainDijkstra(
   );
   let seq = 0;
 
-  const startKey = stateKey(startId, ARRIVED_ON_FOOT);
+  const startKey = stateKey(startId, ARRIVED_ON_FOOT, 0);
   dist.set(startKey, 0);
   pq.push({ key: startKey, cost: 0, seq: seq++ });
 
@@ -1022,6 +1039,7 @@ export function trainDijkstra(
     if (cost > (dist.get(key) ?? Infinity)) continue;
     const id = stationOfState(key);
     const arrivedOn = arrivalOfState(key);
+    const boardings = boardingsOfState(key);
     // States pop in cost order, so the first one standing at the destination is
     // the cheapest way to be standing there, whatever it arrived on — except
     // on foot from a subway↔bus change, which would end a ride at the wrong
@@ -1041,8 +1059,15 @@ export function trainDijkstra(
         (arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK)
       )
         continue;
+      // Only the searched mode may be ridden; changes on foot or by transfer
+      // stay, because they carry no line of their own.
+      if (mode && edge.type === "rail" && graph.lineModes.get(edge.line ?? "") !== mode)
+        continue;
       const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
       if (boarding === null) continue;
+      const boarded = edge.type === "rail" && arrivedOn !== (edge.line ?? "");
+      const nextBoardings = boardings + (boarded ? 1 : 0);
+      if (nextBoardings > MAX_TRANSIT_BOARDINGS) continue;
       const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
       // Any other transfer carries "on foot" and "just walked" through
       // unchanged: nothing has been ridden since, so an agency transfer
@@ -1056,7 +1081,8 @@ export function trainDijkstra(
             ? arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK
               ? arrivedOn
               : ARRIVED_BY_TRANSFER
-            : (edge.line ?? ARRIVED_ON_FOOT)
+            : (edge.line ?? ARRIVED_ON_FOOT),
+        nextBoardings
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, newCost);
@@ -1251,7 +1277,7 @@ export function findBestTrainRoute(
     for (const exit of exitCandidates) {
       if (entry.id === exit.id) continue;
 
-      const path = trainDijkstra(graph, entry.id, exit.id, opts);
+      const path = trainDijkstra(graph, entry.id, exit.id, opts, mode);
       if (!path) continue;
 
       // Need at least 3 stations (entry + 1 intermediate + exit) to be useful
