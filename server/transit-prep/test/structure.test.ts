@@ -144,6 +144,24 @@ test("yard and crossover track is excluded by not being in any route relation", 
   );
 });
 
+test("a platform in the route relation is not track, so it cannot read as at grade", () => {
+  // 34 St-Herald Sq: the Q's running track is all tunnel=yes, but its platforms
+  // are PTv2 members of the route relation tagged location=underground and not
+  // tunnel. Read as track they put "6% above ground" on Times Sq to Union Sq.
+  const ways = [
+    wayAlong(1, 40.7003, -74.0, -73.99, { railway: "subway", tunnel: "yes" }),
+    wayAlong(2, 40.7, -74.0, -73.998, { railway: "platform", public_transport: "platform", location: "underground" }),
+  ];
+  const withPlatform = relation(100, "Q", [1]);
+  withPlatform.members?.push({ type: "way", ref: 2, role: "platform" });
+  const index = buildStructureIndex([withPlatform], ways);
+  assert.equal(index.get("Q")?.length, 1);
+  assert.deepEqual(
+    classifySegment(stop("a", 40.7, -74.0), stop("b", 40.7, -73.99), index.get("Q")),
+    { underground: 1 },
+  );
+});
+
 test("a segment only glancing its track is undetermined, not an 11% measurement", () => {
   // Without a coverage floor one matching sample out of nine yields
   // {underground: 0.11}, which reads as a measurement of a segment that was

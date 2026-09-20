@@ -123,6 +123,17 @@ interface Candidate {
 export type StructureIndex = Map<string, Candidate[]>;
 
 /**
+ * A platform is a member of its route relation (PTv2) but is not track, and it
+ * is usually tagged `location=underground` rather than `tunnel`, so read as
+ * track it becomes at grade. It sits beside the rails at every station, where
+ * the straight-line samples start and end: 962 of the 3,665 route-relation ways
+ * are platforms, and they put an at-grade sliver on 515 all-tunnel edges.
+ */
+function isPlatform(tags: Record<string, string> = {}): boolean {
+  return tags.railway === "platform" || tags.public_transport === "platform";
+}
+
+/**
  * Groups OSM ways by the service that runs over them.
  *
  * Route-relation membership is also what keeps yards, sidings and crossovers
@@ -152,7 +163,7 @@ export function buildStructureIndex(
   const index: StructureIndex = new Map();
   for (const way of ways) {
     const refs = refsByWay.get(way.id);
-    if (!refs || !way.geometry || way.geometry.length < 2) continue;
+    if (!refs || !way.geometry || way.geometry.length < 2 || isPlatform(way.tags)) continue;
     const candidate: Candidate = {
       id: way.id,
       geometry: way.geometry,

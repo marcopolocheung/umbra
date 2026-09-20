@@ -851,17 +851,41 @@ were considered and deliberately deferred for want of that evidence:
 
 ### E. Small, real, and each one a trap for someone
 
-- **The 500 m transit threshold is three unshared literals** — `useNavigation.ts:390`,
-  `useRouting.ts:865`, `:876` — that must stay in sync, and **nothing tests that transit is
-  withheld below it**. 3C's plan called for extracting a named constant and it was not done.
-- **`at_grade` slivers put a number on a ride that is wholly underground.** Times Sq → Union Sq
-  reads "6% above ground" because a stray untagged OSM way near a station is read as at grade
-  under the closed-world convention. The label threshold is `< 5% above ground → "underground"`,
-  which is a shade too tight against the measured 1.2% error floor. Either raise it to ~10%, or
-  stop reading an untagged match as `at_grade` when the rest of the segment is tunnel — the
-  second attacks the cause and is inference on inference, so measure first.
-- **#421 — `RemoteTileController.test.ts` is timing-flaky** under full-suite load and fails on
-  `main`. It makes the third gate non-deterministic, which trains people to re-run until green.
+- **The 500 m transit threshold** *(in review — #437)* becomes `MIN_TRANSIT_DISTANCE_M` in
+  `trainGraph.ts`, read by `useNavigation`'s `canTransit` and both `useRouting` sites. A
+  behavioural test puts the trip's end 25 m either side of it and checks both the picker and
+  whether the pipeline fetches a train graph, so the three sites cannot drift apart again.
+- **`at_grade` slivers** *(fixed in the pipeline — #438; live once a generation built from it is
+  promoted, and until then Times Sq → Union Sq still reads "6% above ground")*. Measured before
+  picking, and neither option held, because the sliver was never a stray untagged way. `way(r)`
+  returns every member of a subway route relation, PTv2 lists **platforms** as members, and NYC's
+  are tagged `location=underground`, not `tunnel`: 962 of the 3,665 ways the join read were
+  platforms, beside the rails at every station where the straight-line samples start and end.
+  Re-running the real join on the OSM cache behind `nyc-2026-09-18-cced8384c90f` (it reproduces
+  the published shard 1,949/1,949), over all 608,766 reportable one-route subway rides:
+
+  | | today | (a) 10% | (a) 25% | platforms excluded |
+  |---|---|---|---|---|
+  | wholly-underground rides (Manhattan below 110 St) given a % above ground | 56% of 8,011 | 35% | 4% | **0%** of 8,005 |
+  | all-tunnel edges carrying an `at_grade` sliver | 515 | — | — | 6 |
+
+  (a) fails both ways: at 10% a third of underground rides still read above ground, and after the
+  fix ~66,000 rides that genuinely touch elevated track sit between 5% and 10% — the F from
+  W 4 St to Smith-9 Sts reads 6.2%, the G from Court Sq to Church Av 9.7% — which 10% would call
+  underground. So the label threshold stays at 5% here, **but 5% is now an open question, not a
+  settled one:** its stated basis was the 1.2% error floor, which is gone, and after the fix
+  ~42,700 rides that touch elevated, open-cut or embankment track read under 5% and are labelled
+  "underground" (mostly the A and the 4; also the G from Court Sq to Smith-9 Sts, 4.1%, which ends
+  on the Culver Viaduct). Deciding what a short surfaced stretch should read as is its own item.
+  The 7 to Flushing still reads 75%; SIR's 39
+  at-grade edges, the A's 7 and the L's at East 105 St are unchanged; the 6 remaining slivers are
+  real portals (the L at Wilson Av, SIR at St George, the D near 9 Av). **3B-1's "1.2% error
+  rate" was a platform too:** E 50 St ↔ 7 Av now reads `underground: 1`, so the rate on the E, C
+  and G is 0. Four B/D edges between Broadway-Lafayette and Grand St drop under the 50% coverage
+  floor and become unknown, which is the honest answer.
+- **#421** *(in review — #433)*: the tests waited a fixed ~150 ms while each load does real
+  `crypto.subtle` and `DecompressionStream` work; they now wait on the controller's own events.
+  Not a controller race — with the timeout lifted every test completes under load.
 - **The straight-chord bullet that used to sit here is now item F**, promoted out of this list and
   corrected: it is a shard-contract change, and its claim that the subway was the safe case and the
   bus the visible one is the opposite of what the feeds say.
