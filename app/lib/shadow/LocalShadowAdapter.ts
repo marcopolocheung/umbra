@@ -1103,6 +1103,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
 
     // ── Pass D: Composite FBO texture onto main canvas ──
+    // The sun composite must go through the FBO; the rain *ground* picture is a
+    // basemap fill layer (see rainMapLayer.ts) so the streets never lose the map
+    // beneath them. The custom canvas keeps only the 3D building paint.
+    if (!rain) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
@@ -1130,6 +1134,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     gl2.drawArrays(gl.TRIANGLES, 0, 6);
+
+    }
 
     // ── Pass E: extruded buildings, painted with the shadow field ──
     // Flat-on there is nothing to paint — the roofs are all you would see, and the
