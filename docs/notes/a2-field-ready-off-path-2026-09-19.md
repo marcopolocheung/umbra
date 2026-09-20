@@ -160,3 +160,62 @@ warnings, none added), `npm run typecheck` (only the pre-existing
 vitest + full vitest (only the three pre-existing transit-access failures,
 reproduced on `main`), `npm run build`, `npm run e2e` (5/5, incl. published
 transit), and three `bench:route` passes above.
+
+---
+
+# PR 2 — readiness narrowed to the actual edge cells
+
+Branch `feat/a2-edge-cell-readiness`, off `main` after PR 1 merged (#455).
+Same machine, same protocol, three consecutive passes (`a2pr2-*.log`).
+
+## Change
+
+`useRouting` and the sketch twin no longer start the broad
+`field.ready(shadowBbox)` beside the street fetch. `field.readyEdges(edgeRefs)`
+runs first, as soon as the graph is enumerated, and the broad bbox is loaded
+only when `coverageEdges(...).confidence < LOW_CONFIDENCE` — i.e. when a
+subset of the exact cells cannot speak. Same `readyOptions` object, same
+`ROUTE_READINESS_BUDGET_MS` deadline, same abort wiring. The page-load
+prewarm's camera listeners now persist so the bare-app-then-search flow also
+gets its one prewarm per generation, and the three readiness-ordering pins in
+`useNavigation.test.tsx` are re-pinned to the new semantics.
+
+## Acceptance — PR 1's warm table under the shrink
+
+| Scenario | PR 1 fieldReady | PR 2 fieldReady | PR 2 p50 total |
+|---|---:|---:|---:|
+| 2-point warm | 0.3 | **0.8** | **48.6** |
+| 5-point warm | 0.3 | **0.5** | **1807.3** |
+| transit-2pt warm | 0.3 | **1.0** | **74.9** |
+
+Per-run warm sequences (30 runs each across the three passes):
+
+| Scenario | PR 2 fieldReady (ms) |
+|---|---|
+| 2-point warm | 2, 0, 1, 6, 1, 1, 0, 0, 1, 0, 2, 1, 0, 0, 1, 0, 0, 0, 1, 1, 2, 1, 1, 0, 1, 1, 1, 2, 0, 1 |
+| 5-point warm | 1, 0, 0, 3, 5, 0, 4, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 6, 0, 1, 0, 0, 0, 0, 0, 0, 1 |
+| transit-2pt warm | 2, 2, 1, 1, 1, 1, 1, 3, 1, 2, 4, 1, 1, 1, 0, 6, 1, 2, 2, 1, 2, 2, 1, 1, 1, 0, 0, 1, 2, 1 |
+
+All 90 warm runs ≤ 6.2 ms — the <200 ms target and the zero-over-600 gate hold
+under the shrink, and the bimodality stays gone (30/0/0 in every bucket).
+
+## The cold tail, honestly
+
+Keyless cold rows move within fixture noise: 2-point cold `fieldReady`
+932.8 ms vs PR 1's 915.1 ms (+18 ms), totals 1019.2 vs 995.9. The heavy cold
+run is one raster-admission cycle either way; PR 2's ordering removes the
+*second* (broad) admission per run, but the keyless harness cannot show that
+win because its broad admission is an instantly-declined Overpass ask. The
+shrink's measurable surface is the configured NYC static/Overpass path —
+broad shard/cell selection outside the actual edge cells — which stays
+unmeasured by design until A4 turns the static path on in the bench. Warm is
+the session's gate, and warm is what this PR reproduces on one-machine data.
+
+CLIMB, median of the passes: 2-pt 0.58, 5-pt 1.83, transit 0.63. The 5-pt
+swing is `shadowSample` (899.7 ms median), with `fieldReady` a constant
+sub-millisecond row — same conclusion as PR 1.
+
+Local gates on this branch: lint (no new warnings), typecheck (only the
+pre-existing S3 error), `useNavigation`/`routing`/`metrics`/`ShadowField`
+vitest targets green, full vitest with only the three pre-existing failures,
+build, e2e 5/5, and the three bench passes above.
