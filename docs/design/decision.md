@@ -9,6 +9,16 @@
 > blue-dominant under `isBlueDominantShadowPixel` (CLAUDE.md invariant #5), mobile 390×844
 > first (D8), no app code in this PR.
 
+## 0. Owner review thread (kept current)
+
+- **2026-09-20, owner:** "I think I like strata the most. The designs (UI wise) are really good
+  and useful, but I'm stuck on the color schemes … use devotion.club as inspiration … bold and
+  saturated colors … I do want this color scheme to be a little unique."
+- Response in this update: the Strata *UI* is unchanged; three **colourways** of Strata are
+  added in §2b (Carmine / Signal / Nocturne, rendered to PNG) with devotion.club's palette
+  isolated and credited. Recommendation in §6 now defaults to **Strata + Carmine**; picking a
+  different colourway is a one-line change at merge.
+
 ## 1. The axis this decision is about
 
 Restrained/evidence (Google Maps, Mapbox/Apple) versus playful/branded (Waze/Tzel), with
@@ -47,6 +57,41 @@ emphasis style.*
   Color*; Mapbox *Standard core style*; Apple Maps HIG (muted emphasis); Undercover.
 - **Character.** Legible in direct sun, zero style risk, zero personality debt. The route blue
   and the amber both keep meaning. Differentiation is limited to content quality.
+
+### 2b. Strata colourways — same UI, three colour schemes (added at owner request)
+
+> Palette DNA isolated from https://www.devotion.club/ (CSS `:root` vars, fetched 2026-09-20):
+> `#a40000` carmine primary · `#f3f0ea` cream secondary · `#1a062e` dark aubergine ·
+> `#03210a` dark green, plus vivid accents `#ea384c`, `#3898ec`. Their energy is **one massive
+> saturated accent on cream, with near-black undertone panels**. Nothing below changes shape,
+> type, radii or elevation — tokens only. All assets: `candidates/strata/palettes/<name>/`.
+
+**2b-i — Carmine (default).** Cream canvas `#F6F2E9`, aubergine-tinged ink `#211629`,
+hairline `#E8DFD0`, brand/chrome carmine `#A40000` (eyebrows, rank chip, selection, origin/dest
+pins), route blue deepened to `#155FD6`, sun `#B34A00`, shade `#187C46`. Contrast vs raised —
+ink 17.0, ink2 7.2, brand 8.0, route 5.7, sun 5.3, shade 5.2, danger 8.0 — every body pair AA.
+Carmine is **chrome-only**: it never encodes a data state (route stays blue, sun/shade stay warm/green), which keeps invariant #5 and the honesty guardrail untouched.
+`candidates/strata/palettes/carmine/vignette-phone.png` · `palette.png` · `moodboard.png`.
+
+**2b-ii — Signal (loudest legal on white).** Pure-white raised `#FFFFFF`, ink `#141217`,
+vivid magenta-red brand `#D8003F` (from devotion's `#ea384c` family, deepened to hit 5.3:1),
+saturated sun `#B34D00` (5.3), shade `#0A7D4C` (5.2), route `#1D6EE0` (4.8). Every named
+colour is audited to AA text on white — the "bold saturated" brief beaten as far as
+accessibility lets, and no pair fails.
+`candidates/strata/palettes/signal/vignette-phone.png` · `palette.png` · `moodboard.png`.
+
+**2b-iii — Nocturne (devotion's dark plane).** Aubergine canvas `#150827` / raised `#1D0B33`,
+cream ink `#F3F0EA` (their exact type-on-dark pair), pink-red brand `#FF4D6D`, lightened
+route `#6BB1FF` (8.2), sun `#FFB84D` (10.6), shade `#63D79B` (10.2) — all AA on dark.
+The boldest and most unique (few shipping map apps are aubergine-black), and the only one with
+a real trade-off: dark surfaces cost more effort in direct sun (glare hides hairlines; note
+(c)), so the timeline/search treat over-map surfaces harder. Best as a night/theme accent
+or a committed brand bet.
+`candidates/strata/palettes/nocturne/vignette-phone.png` · `palette.png` · `moodboard.png`.
+
+Severity-honest note: Carmine and Signal keep the Strata outdoor-legibility profile; Nocturne
+trades a little of it for distinctiveness. Pairings reuse the same role map as Strata §2, so
+U2's token work is colour-swap identical for all three.
 
 ## 3. Candidate B — **Helios** (playful pole)
 
@@ -128,23 +173,25 @@ exposure metrics — the variables Umbra sells — and never for chrome decorati
 
 ## 6. Recommendation
 
-> **RECOMMENDATION: adopt Candidate C — "Canopy" — as Umbra's design language.**
-> Quiet by default, warm only where the sun matters: it preserves every WCAG AA contrast a
-> restrained system buys, keeps the blue shadow layer and the honesty guardrail intact, and
-> still gives the product its one vivid hook (amber for sun/exposure) worth shipping.
-> **Merge this PR to accept Canopy.** To choose Strata or Helios instead, name the alternative
-> in one merge comment and merge — the first sentence of `docs/design/language.md` is edited
-> to match before U2 starts.
+> **RECOMMENDATION: adopt Strata — the visual system the owner already likes — in the Carmine
+> colourway by default** (cream canvas, carmine chrome, blue route, warm sun: §2b-i).
+> Carmine is chosen as default because it is the faithful devotion.club translation, keeps
+> Strata's full outdoor-AA profile, and spends its one saturated colour on chrome (where a
+> bold accent helps) rather than on data (where it would fight the blue shadow layer).
+> **Merge this PR to sign off Strata + Carmine.** To pick Signal or Nocturne instead, name the
+> colourway in one merge comment; to keep a different language entirely, name Canopy or Helios
+> the same way. The first sentence of `docs/design/language.md` is edited to match the merged
+> choice, then U2 starts.
 
-Trade-offs, stated: adopting Canopy gives up Helios's brand-first aesthetic differentiation
-(final row of §5) and Strata's zero-allowance simplicity; adopting Strata saves the smallest
-amount of U2 work but leaves Umbra visually anonymous next to any municipal shade app;
-adopting Helios maximizes distinctiveness but makes warm-theme states permanently
-verification-heavy and increases the risk that P1 (self-clamour) returns. Canopy is the only
-candidate whose single accent is defined by data semantics rather than taste — which is the
-part a lint (U2) can enforce without a committee.
+Trade-offs, stated: Strata+Carmine trades Helios's brand-first differentiation for
+legibility headroom and gives up some of devotion.club's crisp white-and-black contrast by
+staying cream (cream wins on glare outdoors, per research (c)). Against plain Strata it adds
+a red that must be policed as chrome-only — one extra rule in the token registry, cheap under
+the lint from `design-research-tokens-and-lint.md`. Signal is the pick if 'a little unique'
+should read louder; Nocturne is the pick if the dark aubergine plane is the brand bet, at a
+sun-legibility cost.
 
-**U2 cost mechanics** (whichever wins): register the palette as semantic tokens in
+**U2 cost mechanics** (unchanged, whichever wins): register the palette as semantic tokens in
 `app/globals.css` Tailwind `@theme`, delete superseded `--md-*` tokens, migrate the inventoried
 literals (`NavigationPanel.tsx:233,799`, `DirectionsPanel.tsx:21,31,504,558`,
 `app/about/page.tsx:5`, popup styles), tighten `npm run design:check` to ban raw colours and

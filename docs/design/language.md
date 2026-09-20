@@ -1,9 +1,11 @@
 # Umbra Design Language — canonical spec (Track U)
 
-> **Chosen:** **Canopy — "quiet by default, warm where the sun matters"** — as recommended in
-> `docs/design/decision.md` §6. **The owner's merge of that decision PR is the sign-off; this
-> sentence records it.** Before that merge, this is a skeleton; after U2, this file is the
-> single source of truth and `.claude/rules/design-language.md` stops being advisory.
+> **Chosen, pending the merge:** **Strata** (the owner's pick, review comment 2026-09-20) in the
+> **Carmine** colourway by default — see `docs/design/decision.md` §6 and §2b. **The owner's
+> merge of that decision PR is the sign-off and locks both candidate and colourway; this
+> sentence is edited to match a merge comment naming Signal / Nocturne / Canopy / Helios.**
+> Before that merge, this is a skeleton; after U2, this file is the single source of truth and
+> `.claude/rules/design-language.md` stops being advisory.
 
 ## Status: skeleton (U1)
 

@@ -16,7 +16,7 @@ accordingly. Subagents stay read-only here, per the repo rule.
 ## Current state
 
 - **Active checkpoint:** U1 — research + design-language candidates. Open for owner review:
-  primary PR [#470](https://github.com/marcopolocheung/umbrapriv/pull/470) · this port PR [#51](https://github.com/marcopolocheung/umbra/pull/51). **Owner's merge = sign-off
+  PR [#470](https://github.com/marcopolocheung/umbrapriv/pull/470) (umbrapriv) · port PR [#51](https://github.com/marcopolocheung/umbra/pull/51). **Owner's merge = sign-off
   on the recommended candidate (Canopy), per D2.**
 - **Implemented:** U0 (harness, PR #465). U1 deliverables in this PR: sourced research notes
   (a)–(e) in `docs/notes/design-research-*.md`; `docs/design/decision.md` with three
@@ -24,11 +24,13 @@ accordingly. Subagents stay read-only here, per the repo rule.
   chips, type specimen, elevation/radius rules, route-card/timeline/search-pill vignettes and
   mood references; rendered assets under `docs/design/candidates/<name>/`; `docs/design/language.md`
   skeleton whose first sentence records the choice once merging signs it off.
-- **Port note:** this mirror carries the U1 docs only; the U0 harness files (shot runner,
-  token lint, design-audit skill, pre-approved settings) live in umbrapriv and are not ported
-  here yet.
-- **Recommended:** Canopy (decision.md §6) with trade-offs; merge to accept, name another
-  candidate in a merge comment otherwise.
+- **Port note:** this mirror carries the U1 docs only; the U0 harness files (shot
+  runner, token lint, design-audit skill, pre-approved settings) live in umbrapriv and are not
+  ported here yet.
+- **Recommended:** Strata (owner review comment 2026-09-20) — colourway: Carmine by default,
+  with Signal and Nocturne as rendered alternatives (decision.md §2b, assets under
+  `docs/design/candidates/strata/palettes/<name>/`); merge to accept, name another candidate
+  or colourway in a merge comment otherwise.
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
 - **Blocked on:** nothing — U2 starts after the sign-off merge.
 - **Next action:** owner review of U1; then U2 implements the chosen language.
