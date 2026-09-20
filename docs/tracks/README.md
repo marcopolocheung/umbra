@@ -32,8 +32,10 @@ session hands off to the next.
 /track b
 ```
 
-Tracks are `a`–`h` plus `p`. `h` (Sun Budget) is gated on A6+G2; `p` (Publication) is
-unblocked and owns the cheapest work on the board — see `docs/ROADMAP.md` §3.
+Tracks are `a`–`h` plus `p` and `u`. `h` (Sun Budget) is gated on A6+G2; `p` (Publication) is
+unblocked and owns the cheapest work on the board — see `docs/ROADMAP.md` §3. `u` (UI &
+Design Language) is the design wave: strictly sequential, mobile-first, every PR visually
+reviewed by the owner — read `docs/handoffs/DESIGN_LANGUAGE.md` before starting it.
 
 …or to resume a specific checkpoint:
 
