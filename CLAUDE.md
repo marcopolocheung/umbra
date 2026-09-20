@@ -28,6 +28,8 @@ npm run lint       # biome lint — blocks on errors, ~180 known findings are "w
 npm run format     # biome format --write (never yet run repo-wide; see biome.json)
 npm run build      # vite build → dist/
 npm run e2e        # playwright test — one browser smoke test; no API key needed
+npm run shots       # phone-viewport screenshots of key UI states → out/shots/ (Track U)
+npm run design:check # token-registry lint — off-registry colours/arbitrary sizes (Track U)
 ```
 
 `npm run e2e` needs its browser installed once: `npx playwright install --with-deps chromium`
@@ -165,6 +167,7 @@ approach needs to change.
 | Sketch / draw-route mode | `app/hooks/useSketch.ts` (`calculateSketchRoute`), `MapView.tsx` (sketch layers) |
 | Train/transit routing | `app/lib/trainGraph.ts`, `app/hooks/useRouting.ts` (`calculateRoute`) |
 | Search, geocoding, place details | `app/components/SearchBar.tsx`, `app/services/foursquare.ts` |
+| Design language, global styles, copy voice | `docs/design/language.md` (Track U) — advisory until U2 lands it | `app/globals.css` (token registry), component styles |
 | Map layers, markers, popups, 3D | `.claude/rules/components-and-map.md` | `app/components/MapView.tsx` |
 | Sun-exposure mode, GeoTIFF export | `app/components/AccumulationPanel.tsx` |
 | Screen flow / app phases |  `app/hooks/useAppState.ts`, `app/page.tsx` |

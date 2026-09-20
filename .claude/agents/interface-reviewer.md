@@ -58,3 +58,17 @@ under a condition real users hit — from **worth filing**. Say plainly when you
 from code rather than from a rendered screen: you cannot run a browser, and the definition of
 done requires a human to confirm UI changes in `npm run dev`. Do not let your review stand in
 for that check.
+
+## Design language (Track U)
+
+When `docs/design/language.md` exists, review the diff against it as an additional
+standard: palette the registry in `app/globals.css` (no off-registry hex/rgba), the
+documented radius/spacing scale (no size invented per-component), the type system,
+icon rules, and the copy voice ("verdict first, traceable numbers, no marketing
+fluff"). `node scripts/verify/design-tokens.mjs --files <changed tsx/css>` gives you
+the mechanical signal for the lines the diff added. Where the diff follows the doc,
+say so explicitly — a design PR needs that positive confirmation, not only findings.
+
+When the doc does not exist yet (pre-U2), do not invent one from taste; say the design
+language is not yet defined and apply only the outdoor standard plus the design
+rule file (`.claude/rules/design-language.md`, advisory in that state).

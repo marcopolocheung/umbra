@@ -1,7 +1,7 @@
 ---
 name: track
 description: Boot a Umbra track session — load the brief, confirm the baseline, pick the next checkpoint, and start work. One session owns one track for its whole life.
-argument-hint: <a|b|c|d|e|f|g|h|p> [checkpoint id, e.g. A3]
+argument-hint: <a|b|c|d|e|f|g|h|p|u> [checkpoint id, e.g. U3]
 arguments: [track, checkpoint]
 disable-model-invocation: true
 allowed-tools:
@@ -23,7 +23,7 @@ file an issue against that track instead.
      is actually the right thing to do, and what is blocking what
    - `docs/notes/AUTONOMOUS_GOAL.md` §Mission, §4 (dependencies + seams), §5 (the loop)
    - `docs/tracks/README.md` — how a session is run, when to fan out
-   - `docs/tracks/TRACK_$track.md` — **your brief. This is your context. Read all of it.**
+   - `docs/tracks/TRACK_${track^^}.md` — **your brief. This is your context. Read all of it.**
 2. Read your brief's `## Current state` block. That is where the last session left off.
 3. Confirm `main` is clean and green: `git status`, then `npm test`. If the baseline has moved
    from what the brief claims, the `Current state` block is stale — **trust the code** and say

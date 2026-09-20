@@ -39,7 +39,19 @@
       "WebFetch(domain:wiki.openstreetmap.org)",
       "WebFetch(domain:overpass-api.de)",
       "WebFetch(domain:open-meteo.com)",
-      "WebFetch(domain:maplibre.org)"
+      "WebFetch(domain:maplibre.org)",
+      "Bash(node scripts/verify/design-tokens.mjs*)",
+      "Bash(npm run design:check*)",
+      "Bash(npm run shots*)",
+      "WebFetch(domain:blog.mapbox.com)",
+      "WebFetch(domain:design.google)",
+      "WebFetch(domain:developer.apple.com)",
+      "WebFetch(domain:hack.gov.sg)",
+      "WebFetch(domain:mapbox.com)",
+      "WebFetch(domain:pentagram.com)",
+      "WebFetch(domain:rainviewer.com)",
+      "WebFetch(domain:shademap.app)",
+      "WebFetch(domain:tzel.app)"
     ],
     "ask": [
       "Bash(git push --force*)",
