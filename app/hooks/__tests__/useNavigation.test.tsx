@@ -15,6 +15,7 @@ import { fetchBestTrainGraph } from "../../lib/transit/trainGraphSource";
 import { clearNavigationCache } from "../../lib/navigationData/remoteNavigation";
 import { fetchBestRoutingGraph } from "../../lib/navigationData/routingGraphSource";
 import { bboxAroundEdges, QUERY_PAD_M } from "../../lib/shadowField/ShadowField";
+import { MIN_TRANSIT_DISTANCE_M } from "../../lib/trainGraph";
 import {
   sampleBuildingMaskBothSidewalks,
 } from "../../lib/shadowSampling";
@@ -1016,6 +1017,69 @@ describe("a route index from the panel resolves against the list the panel shows
   });
 });
 
+
+describe("transit is withheld under MIN_TRANSIT_DISTANCE_M and considered over it", () => {
+  beforeEach(() => {
+    resetShadowStub();
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
+    vi.mocked(fetchStationEntrances).mockResolvedValue([] as never);
+    vi.mocked(fetchStationEntranceBoxes).mockResolvedValue({ entrances: [], failed: false } as never);
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
+  });
+
+  /** A point due east of the corridor's start, `metres` away by `haversineMeters`. */
+  const eastOfStart = (metres: number): [number, number] => [
+    103.8 + (metres / ((6371000 * Math.PI) / 180)) / Math.cos((1.3 * Math.PI) / 180),
+    1.3,
+  ];
+
+  async function calculateTransitTo(end: [number, number]) {
+    const { map } = fakeMap({
+      pitch: 0,
+      boundsAtPitch: () => ({ west: 100, south: -1, east: 107, north: 5 }),
+    });
+    const { result } = renderHook(() =>
+      useNavigation({
+        mapRef: { current: map as never },
+        shadowLayerRef: {
+          current: {
+            readBuildingShadowMask: () => ({
+              data: new Uint8Array(64),
+              width: 8,
+              height: 8,
+              pixelRatioX: 1,
+              pixelRatioY: 1,
+            }),
+          } as never,
+        },
+        dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+        setDate: vi.fn(),
+      }),
+    );
+    act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB(end, "End"));
+    const offered = result.current.canTransit;
+    // Asked for anyway, so the pipeline's own gate is tested and not just the picker's.
+    act(() => result.current.handleRouteModeChange("transit"));
+    await act(async () => {
+      result.current.handleCalculateRoute();
+    });
+    await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+    return offered;
+  }
+
+  it("neither offers nor computes transit just under the threshold", async () => {
+    const offered = await calculateTransitTo(eastOfStart(MIN_TRANSIT_DISTANCE_M - 25));
+    expect(offered).toBe(false);
+    expect(fetchBestTrainGraph).not.toHaveBeenCalled();
+  });
+
+  it("offers and computes transit just over it", async () => {
+    const offered = await calculateTransitTo(eastOfStart(MIN_TRANSIT_DISTANCE_M + 25));
+    expect(offered).toBe(true);
+    expect(fetchBestTrainGraph).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("entrances are fetched for the chosen stations, not the whole route (#401)", () => {
   beforeEach(() => {
