@@ -329,6 +329,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   setDate(date: Date) {
     this.currentDate = date;
 
+    // Rain does not read the ephemeris; scrubbing the timeline must not spin the
+    // sun worker (and its dirty check) just to compute a direction nothing draws.
+    if (this.hazardMode === "rain") return;
+
     if (this.map && this.sunWorker) {
       // Phase 4: Delegate sun computation to worker — dirty check happens in onmessage
       const center = this.map.getCenter();
