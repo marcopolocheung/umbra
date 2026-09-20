@@ -76,3 +76,8 @@ issues/
 /server/navigation-prep/node_modules/
 /server/transit-prep/node_modules/
 /shade-prep-data/
+
+# Playwright route-benchmark builds (one out-dir per webServer entry).
+bench-dist/
+# The nav-smoke project's own preview build (the keyless build keeps /dist).
+nav-dist/

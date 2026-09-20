@@ -1,10 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
-import { SAMPLE_STEP, stubNetwork } from "../helpers/scenario";
+import { SAMPLE_STEP, stubNetwork, type StubNetworkOptions } from "../helpers/scenario";
 import { sampleMapCanvas, shadowMask, shadowedFraction } from "../helpers/map";
 import { markdownTable, ms, pct, stats, type Stats } from "./stats";
 import {
   COLD_REPEATS,
+  CROSS_BOROUGH_URL,
   FIVE_POINT_URL,
+  LONG_MANHATTAN_URL,
+  TRANSIT_TWO_POINT_URL,
   TWO_POINT_URL,
   VIA_WAYPOINTS,
   WARM_REPEATS,
@@ -38,6 +41,18 @@ import {
  *   `dijkstra` per leg at several shadow strengths. It is a different algorithm,
  *   not a bigger version of the same one.
  *
+ * A third shape, **transit 2-point**, runs the same bi-criteria walk search
+ * over the ~950 m `TRANSIT_WAYPOINT` pair at the 500 m transit gate, where the
+ * app fetches the transit graph and searches it per mode. Each transit
+ * scenario names the dataset its stub serves: the 3-station smoke fixture, or
+ * the seeded NYC-scale generator (~500 subway stations, ~16.4 k bus stops).
+ *
+ * The graph-fetch phase now splits into `navSnapshot` (pointer + manifest +
+ * digest), `staticStreets` (street shards + adapter build, Overpass fallback
+ * included) and `fieldReady` (the awaited field-readiness tail of the fetch
+ * span). `graphFetch` stays the whole span for back-compat readers; the split
+ * is what lets one decision gate a fix per phase.
+ *
  * And two cache states: **cold** is the first calculation after a page load,
  * carrying the Overpass fetch and the first shadow build; **warm** reuses the
  * module-level graph cache in `overpass.ts`, which is what a user gets on every
@@ -46,11 +61,63 @@ import {
 
 interface PhaseSample {
   graphFetch: number;
+  /** Phase-0 graph-fetch attribution split — absent on runs recorded before it. */
+  navSnapshot?: number;
+  staticStreets?: number;
+  fieldReady?: number;
   canvasRead: number;
   shadowSample: number;
   dijkstra: number;
+  /** Phase-0 transit audit split — absent on runs recorded before it landed. */
+  walkPareto?: number;
+  transitFetch?: number;
+  trainSearch?: number;
+  trainSearchSubway?: number;
+  trainSearchBus?: number;
+  entrances?: number;
+  walkLegs?: number;
+  busWait?: number;
+  /** Phase-0 static-build audit — the evidence the nav-static scenarios actually served. */
+  nycStaticShare?: number;
+  staticGeneration?: string | null;
+  /** Checkpoint 6 static-navigation phase split (0 = phase did not run). */
+  pointer?: number;
+  manifest?: number;
+  streetTransfer?: number;
+  streetVerify?: number;
+  streetDecode?: number;
+  streetMerge?: number;
+  buildingTransfer?: number;
+  buildingVerify?: number;
+  buildingDecode?: number;
+  buildingConvert?: number;
+  shadowIndexPrep?: number;
+  /** Checkpoint 6 navigation record — counts and bytes, no coordinates. */
+  nav?: NavigationSample;
   total: number;
   shadowFallbackShare: number;
+}
+
+interface NavigationSample {
+  streetSource: string;
+  streetFallbackReason: string | null;
+  generation: string | null;
+  snapshotGenerationCacheHit: boolean;
+  streetShardsServed: number;
+  streetShardsFetched: number;
+  buildingShardsServed: number;
+  buildingShardsFetched: number;
+  streetTransferBytes: number;
+  buildingTransferBytes: number;
+  streetDecodedBytesEstimate: number;
+  buildingDecodedBytesEstimate: number;
+  streetRefNodes: number;
+  streetRefEdges: number;
+  streetMergedNodes: number;
+  streetMergedEdges: number;
+  buildingRefCount: number;
+  buildingPrismCount: number;
+  buildingPrismCacheHit: boolean;
 }
 
 interface AppSummary {
@@ -60,12 +127,28 @@ interface AppSummary {
   p95TotalMs: number;
 }
 
+interface ResourceTotals {
+  count: number;
+  transferBytes: number;
+  encodedBytes: number;
+}
+
+interface RunFootprint {
+  /** JS heap (Chromium), sampled right before the click and right after the run arrived. */
+  heapBeforeBytes: number;
+  heapAfterBytes: number;
+  /** Resources resolved between the click and the run's arrival. */
+  resources: ResourceTotals;
+}
+
 interface ScenarioResult {
   name: string;
   samples: PhaseSample[];
   graphNodeCount: number;
   graphDirectedEdges: number;
   routeLabels: string[];
+  /** Per-run request/byte/memory observations, one per measured run. */
+  footprints: RunFootprint[];
   /** Only warm scenarios have one: a reload wipes the app's history buffer. */
   appSummary: AppSummary | null;
 }
@@ -81,25 +164,100 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
           history: {
             phases: Record<string, number>;
             shadowFallbackShare: number;
+            buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static", number>>;
+            staticBuildingGeneration?: string | null;
+            navigation?:
+              | {
+                  streetSource: string;
+                  streetFallbackReason: string | null;
+                  generation: string | null;
+                  snapshotGenerationCacheHit: boolean;
+                  streetShardsServed: number;
+                  streetShardsFetched: number;
+                  buildingShardsServed: number;
+                  buildingShardsFetched: number;
+                  streetTransferBytes: number;
+                  buildingTransferBytes: number;
+                  streetDecodedBytesEstimate: number;
+                  buildingDecodedBytesEstimate: number;
+                  streetRefNodes: number;
+                  streetRefEdges: number;
+                  streetMergedNodes: number;
+                  streetMergedEdges: number;
+                  buildingRefCount: number;
+                  buildingPrismCount: number;
+                  buildingPrismCacheHit: boolean;
+                }
+              | undefined;
           }[];
         };
       }
     ).__umbraMetrics;
     if (!m) return [];
     // The buffer is newest-first; the benchmark wants chronological order.
-    return [...m.history].reverse().map((h) => ({
-      graphFetch: h.phases.graphFetch,
-      canvasRead: h.phases.canvasRead,
-      shadowSample: h.phases.shadowSample,
-      dijkstra: h.phases.dijkstra,
-      total: h.phases.total,
-      shadowFallbackShare: h.shadowFallbackShare,
-    }));
+    return [...m.history].reverse().map((h) => {
+      const nav = h.navigation;
+      return {
+        graphFetch: h.phases.graphFetch,
+        navSnapshot: h.phases.navSnapshot ?? 0,
+        staticStreets: h.phases.staticStreets ?? 0,
+        fieldReady: h.phases.fieldReady ?? 0,
+        canvasRead: h.phases.canvasRead,
+        shadowSample: h.phases.shadowSample,
+        dijkstra: h.phases.dijkstra,
+        walkPareto: h.phases.walkPareto ?? 0,
+        transitFetch: h.phases.transitFetch ?? 0,
+        trainSearch: h.phases.trainSearch ?? 0,
+        trainSearchSubway: h.phases.trainSearchSubway ?? 0,
+        trainSearchBus: h.phases.trainSearchBus ?? 0,
+        entrances: h.phases.entrances ?? 0,
+        walkLegs: h.phases.walkLegs ?? 0,
+        busWait: h.phases.busWait ?? 0,
+        pointer: h.phases.pointer ?? 0,
+        manifest: h.phases.manifest ?? 0,
+        streetTransfer: h.phases.streetTransfer ?? 0,
+        streetVerify: h.phases.streetVerify ?? 0,
+        streetDecode: h.phases.streetDecode ?? 0,
+        streetMerge: h.phases.streetMerge ?? 0,
+        buildingTransfer: h.phases.buildingTransfer ?? 0,
+        buildingVerify: h.phases.buildingVerify ?? 0,
+        buildingDecode: h.phases.buildingDecode ?? 0,
+        buildingConvert: h.phases.buildingConvert ?? 0,
+        shadowIndexPrep: h.phases.shadowIndexPrep ?? 0,
+        nav: nav
+          ? {
+              streetSource: nav.streetSource,
+              streetFallbackReason: nav.streetFallbackReason,
+              generation: nav.generation,
+              snapshotGenerationCacheHit: nav.snapshotGenerationCacheHit,
+              streetShardsServed: nav.streetShardsServed,
+              streetShardsFetched: nav.streetShardsFetched,
+              buildingShardsServed: nav.buildingShardsServed,
+              buildingShardsFetched: nav.buildingShardsFetched,
+              streetTransferBytes: nav.streetTransferBytes,
+              buildingTransferBytes: nav.buildingTransferBytes,
+              streetDecodedBytesEstimate: nav.streetDecodedBytesEstimate,
+              buildingDecodedBytesEstimate: nav.buildingDecodedBytesEstimate,
+              streetRefNodes: nav.streetRefNodes,
+              streetRefEdges: nav.streetRefEdges,
+              streetMergedNodes: nav.streetMergedNodes,
+              streetMergedEdges: nav.streetMergedEdges,
+              buildingRefCount: nav.buildingRefCount,
+              buildingPrismCount: nav.buildingPrismCount,
+              buildingPrismCacheHit: nav.buildingPrismCacheHit,
+            }
+          : undefined,
+        nycStaticShare: h.buildingProviderShares?.["nyc-static"] ?? 0,
+        staticGeneration: h.staticBuildingGeneration ?? null,
+        total: h.phases.total,
+        shadowFallbackShare: h.shadowFallbackShare,
+      };
+    });
   });
 }
 
 async function readLatestShape(
-  page: Page
+  page: Page,
 ): Promise<{ graphNodeCount: number; graphDirectedEdges: number; routeLabels: string[] }> {
   return page.evaluate(() => {
     const m = (
@@ -143,8 +301,12 @@ async function clearAppMetrics(page: Page): Promise<void> {
  * and the shadow field has stopped changing on its own. Timing a calculation
  * against a half-built shadow field would measure the load, not the route.
  */
-async function loadAndSettle(page: Page, url: string): Promise<void> {
-  await stubNetwork(page, { basemap: "fixture" });
+async function loadAndSettle(
+  page: Page,
+  url: string,
+  opts: StubNetworkOptions = { basemap: "fixture" },
+): Promise<void> {
+  await stubNetwork(page, opts);
   await page.goto(url);
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
 
@@ -164,13 +326,26 @@ async function loadAndSettle(page: Page, url: string): Promise<void> {
         mask = next;
         return drift;
       },
-      { timeout: 15_000, message: "the shadow field never settled" }
+      { timeout: 15_000, message: "the shadow field never settled" },
     )
     .toBeLessThan(0.005);
 }
 
 /** Click Find Shadowed Route and wait for the run count to advance by one. */
-async function calculateOnce(page: Page, runsBefore: number): Promise<void> {
+async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootprint> {
+  const before = await page.evaluate(() => {
+    const mem = (
+      performance as unknown as {
+        memory?: { usedJSHeapSize: number };
+      }
+    ).memory;
+    return {
+      heapBeforeBytes: mem?.usedJSHeapSize ?? NaN,
+      resources: (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).map(
+        (e) => ({ name: e.name, transferSize: e.transferSize, encodedBodySize: e.encodedBodySize }),
+      ),
+    };
+  });
   await page.getByRole("button", { name: "Find Shadowed Route" }).click();
   await expect
     .poll(
@@ -180,9 +355,42 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<void> {
             .__umbraMetrics;
           return m?.history.length ?? 0;
         }),
-      { timeout: 60_000, message: "a route calculation never completed" }
+      { timeout: 120_000, message: "a route calculation never completed" },
     )
     .toBe(runsBefore + 1);
+  const after = await page.evaluate(() => {
+    const mem = (
+      performance as unknown as {
+        memory?: { usedJSHeapSize: number };
+      }
+    ).memory;
+    return {
+      heapAfterBytes: mem?.usedJSHeapSize ?? NaN,
+      resources: (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).map(
+        (e) => ({ name: e.name, transferSize: e.transferSize, encodedBodySize: e.encodedBodySize }),
+      ),
+    };
+  });
+  const sum = (rows: { transferSize: number; encodedBodySize: number }[]) =>
+    rows.reduce(
+      (acc, row) => ({
+        count: acc.count + 1,
+        transfer: acc.transfer + row.transferSize,
+        encoded: acc.encoded + row.encodedBodySize,
+      }),
+      { count: 0, transfer: 0, encoded: 0 },
+    );
+  const beforeTotals = sum(before.resources);
+  const afterTotals = sum(after.resources);
+  return {
+    heapBeforeBytes: before.heapBeforeBytes,
+    heapAfterBytes: after.heapAfterBytes,
+    resources: {
+      count: afterTotals.count - beforeTotals.count,
+      transferBytes: afterTotals.transfer - beforeTotals.transfer,
+      encodedBytes: afterTotals.encoded - beforeTotals.encoded,
+    },
+  };
 }
 
 /**
@@ -190,20 +398,27 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<void> {
  * `overpass.ts`, so a reload is the only honest reset — clearing the metrics
  * buffer would leave the graph cached and quietly measure a warm run.
  */
-async function benchCold(page: Page, name: string, url: string, repeats: number) {
+async function benchCold(
+  page: Page,
+  name: string,
+  url: string,
+  repeats: number,
+  opts: StubNetworkOptions = { basemap: "fixture" },
+) {
   const samples: PhaseSample[] = [];
+  const footprints: RunFootprint[] = [];
   let shape = { graphNodeCount: 0, graphDirectedEdges: 0, routeLabels: [] as string[] };
 
   for (let i = 0; i < repeats; i++) {
-    await loadAndSettle(page, url);
-    await calculateOnce(page, 0);
+    await loadAndSettle(page, url, opts);
+    footprints.push(await calculateOnce(page, 0));
     const history = await readHistory(page);
     expect(history, `${name}: expected exactly one run on a fresh page`).toHaveLength(1);
     samples.push(history[0]);
     shape = await readLatestShape(page);
   }
 
-  results.push({ name, samples, ...shape, appSummary: null });
+  results.push({ name, samples, ...shape, footprints, appSummary: null });
 }
 
 /**
@@ -211,13 +426,20 @@ async function benchCold(page: Page, name: string, url: string, repeats: number)
  * cache, then `clearMetrics()` and the measured repeats. The reset is what #183
  * added — without it the warm-up's own timing sits inside the aggregate.
  */
-async function benchWarm(page: Page, name: string, url: string, repeats: number) {
-  await loadAndSettle(page, url);
+async function benchWarm(
+  page: Page,
+  name: string,
+  url: string,
+  repeats: number,
+  opts: StubNetworkOptions = { basemap: "fixture" },
+) {
+  await loadAndSettle(page, url, opts);
   await calculateOnce(page, 0); // warm-up: fetches and caches the graph
   await clearAppMetrics(page);
 
+  const footprints: RunFootprint[] = [];
   for (let i = 0; i < repeats; i++) {
-    await calculateOnce(page, i);
+    footprints.push(await calculateOnce(page, i));
   }
 
   const samples = await readHistory(page);
@@ -227,6 +449,7 @@ async function benchWarm(page: Page, name: string, url: string, repeats: number)
     name,
     samples,
     ...(await readLatestShape(page)),
+    footprints,
     appSummary: await readAppSummary(page),
   });
 }
@@ -249,6 +472,195 @@ test("5-point, cache-warm", async ({ page }) => {
   await benchWarm(page, "5-point warm", FIVE_POINT_URL, WARM_REPEATS);
 });
 
+// Transit 2-point scenarios: the ~950 m TRANSIT_WAYPOINT pair crosses the
+// 500 m gate the walk-only pair is deliberately under, so the transit branch
+// runs. `fixture` exercises it on the 3-station smoke line and the seeded
+// NYC-scale dataset exercises it at ~500 stations / ~16.4 k stops, with the
+// bus-only showcase proving the bus search is not degenerate (the corridor
+// answer). Repeat counts are the shared COLD/WARM constants, unchanged.
+test("transit 2-point, fixture", async ({ page }) => {
+  await benchCold(page, "transit-2pt fixture", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "fixture",
+  });
+});
+
+test("transit 2-point, NYC-scale", async ({ page }) => {
+  await benchCold(page, "transit-2pt NYC-scale", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "scale",
+  });
+});
+
+test("transit 2-point, NYC-scale bus-only showcase", async ({ page }) => {
+  await benchCold(page, "transit-2pt NYC-scale bus-only", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "scale-bus-only",
+  });
+});
+
+test("transit 2-point, cache-warm", async ({ page }) => {
+  await benchWarm(page, "transit-2pt warm", TRANSIT_TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    transit: "scale",
+  });
+});
+
+// Nav-static scenarios (latency session A4): the same shapes as their keyless
+// counterparts, with the published NYC navigation dataset configured and a
+// seeded pointer → manifest → street/building shard fixture served behind it.
+// Each row sits beside its committed keyless twin, so the difference between
+// the two rows is the static path alone: `navSnapshot` (pointer + manifest +
+// digest) and `staticStreets` (street shard bytes + verified adapter build,
+// no Overpass fallback), with `fieldReady` carrying the static building
+// prism load. The existing scenario set is deliberately untouched above.
+test("nav-static 2-point, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static 2-pt cold", TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static 2-point, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static 2-pt warm", TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static NYC-scale, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static NYC-scale", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "scale",
+    navigation: "scale",
+  });
+});
+
+// ── Checkpoint 6 case set ─────────────────────────────────────────────────────
+//
+// The task's five fixed cases: short Manhattan, longer Manhattan, cross-borough
+// (walk), subway, and bus — each measured cold and warm on both the static
+// path (nav-static rows, for the ones above that only had one side) and the
+// current Overpass fallback (keyless rows). The existing scenario set above
+// supplies short-Manhattan (2-point / nav-static 2-pt) and the subway/bus
+// keyless cold rows (transit NYC-scale / NYC-scale bus-only); everything below
+// fills the remaining cells so each case has both paths at both cache states.
+//
+// Long and cross-borough keyless rows ride the city-scale `large` Overpass
+// grid (`LARGE_ROWS×LARGE_COLS`, same lattice and extent as the fixture's
+// `boroughs` profile) so the fallback graph is the static graph's twin rather
+// than the 121-node midtown stub.
+
+test("route-long, cache-cold", async ({ page }) => {
+  await benchCold(page, "route-long cold", LONG_MANHATTAN_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    overpass: "large",
+  });
+});
+
+test("route-long, cache-warm", async ({ page }) => {
+  await benchWarm(page, "route-long warm", LONG_MANHATTAN_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    overpass: "large",
+  });
+});
+
+test("cross-borough, cache-cold", async ({ page }) => {
+  await benchCold(page, "cross-borough cold", CROSS_BOROUGH_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    overpass: "large",
+  });
+});
+
+test("cross-borough, cache-warm", async ({ page }) => {
+  await benchWarm(page, "cross-borough warm", CROSS_BOROUGH_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    overpass: "large",
+  });
+});
+
+test("nav-static route-long, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static route-long cold", LONG_MANHATTAN_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static route-long, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static route-long warm", LONG_MANHATTAN_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static cross-borough, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static cross-borough cold", CROSS_BOROUGH_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    navigation: "boroughs",
+  });
+});
+
+test("nav-static cross-borough, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static cross-borough warm", CROSS_BOROUGH_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    navigation: "boroughs",
+  });
+});
+
+// Subway case: the 3-station subway-only fixture (the bus keyless rows already
+// exist above as the NYC-scale bus-only scenario).
+test("subway, cache-warm", async ({ page }) => {
+  await benchWarm(page, "transit-2pt fixture warm", TRANSIT_TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    transit: "fixture",
+  });
+});
+
+test("bus-only, cache-warm", async ({ page }) => {
+  await benchWarm(
+    page,
+    "transit-2pt NYC-scale bus-only warm",
+    TRANSIT_TWO_POINT_URL,
+    WARM_REPEATS,
+    {
+      basemap: "fixture",
+      transit: "scale-bus-only",
+    },
+  );
+});
+
+test("nav-static subway, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static subway cold", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static subway, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static subway warm", TRANSIT_TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    transit: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static bus-only, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static bus-only cold", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "scale-bus-only",
+    navigation: "scale",
+  });
+});
+
+test("nav-static bus-only, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static bus-only warm", TRANSIT_TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    transit: "scale-bus-only",
+    navigation: "scale",
+  });
+});
+
 test.afterAll(() => {
   if (results.length === 0) return;
 
@@ -265,9 +677,18 @@ test.afterAll(() => {
       ms(t.p95),
       `±${pct(t.spreadPct)}%`,
       phase((s) => s.graphFetch),
+      phase((s) => s.navSnapshot ?? 0),
+      phase((s) => s.staticStreets ?? 0),
+      phase((s) => s.fieldReady ?? 0),
       phase((s) => s.canvasRead),
       phase((s) => s.shadowSample),
       phase((s) => s.dijkstra),
+      phase((s) => s.walkPareto ?? 0),
+      phase((s) => s.transitFetch ?? 0),
+      phase((s) => s.trainSearch ?? 0),
+      phase((s) => s.entrances ?? 0),
+      phase((s) => s.walkLegs ?? 0),
+      phase((s) => s.busWait ?? 0),
     ];
   });
 
@@ -281,34 +702,208 @@ test.afterAll(() => {
           "p95 total (ms)",
           "spread",
           "graph fetch",
+          "nav snapshot",
+          "static streets",
+          "field ready",
           "canvas read",
           "shadow sample",
           "dijkstra",
+          "walk pareto",
+          "transit fetch",
+          "train search",
+          "entrances",
+          "walk legs",
+          "bus wait",
         ],
-        phaseRows
+        phaseRows,
       ) +
       "\n\nPhase columns are medians in ms and do not sum to the total: the phases " +
-      "are timed inside one wall-clock span that also covers work between them.\n"
+      "are timed inside one wall-clock span that also covers work between them.\n",
   );
 
   for (const r of results) {
     const fallback = stats(r.samples.map((s) => s.shadowFallbackShare)).p50;
     console.log(
       `${r.name}: ${r.graphNodeCount} nodes, ${r.graphDirectedEdges} directed edges, ` +
-        `routes [${r.routeLabels.join(", ")}], median canvas fallback ${pct(fallback * 100)}%`
+        `routes [${r.routeLabels.join(", ")}], median canvas fallback ${pct(fallback * 100)}%`,
     );
     // Every run in order, not just the aggregate. A median hides the difference
     // between noise and a monotonic climb, and a warm scenario is a series of
     // calculations on one page — exactly where a climb would show up.
     console.log(`  totals in order: ${r.samples.map((s) => ms(s.total)).join(", ")}`);
+    const fetchSum = (s: PhaseSample) =>
+      (s.navSnapshot ?? 0) + (s.staticStreets ?? 0) + (s.fieldReady ?? 0);
+    console.log(`  nav snapshot:    ${r.samples.map((s) => ms(s.navSnapshot ?? 0)).join(", ")}`);
+    console.log(`  static streets:  ${r.samples.map((s) => ms(s.staticStreets ?? 0)).join(", ")}`);
+    console.log(`  field ready:     ${r.samples.map((s) => ms(s.fieldReady ?? 0)).join(", ")}`);
+    // The sum invariant: the three sub-phases attribute the graph-fetch span,
+    // The three sub-phases attribute the graph-fetch span and never exceed it.
+    // Post-A2-PR2 the field-ready tail no longer overlaps the street fetch:
+    // exact edge cells are readied first, the broad fallback only when needed.
+    const g = stats(r.samples.map((s) => s.graphFetch));
+    const subSum = stats(r.samples.map(fetchSum));
+    console.log(
+      `  fetch sub-sum:   median ${ms(subSum.p50)} (< graphFetch median ${ms(g.p50)}; ` +
+        `field ready: edge cells first, broad bbox fallback)`,
+    );
     console.log(`  canvas read:     ${r.samples.map((s) => ms(s.canvasRead)).join(", ")}`);
     console.log(`  dijkstra:        ${r.samples.map((s) => ms(s.dijkstra)).join(", ")}`);
+    console.log(`  walk pareto:     ${r.samples.map((s) => ms(s.walkPareto ?? 0)).join(", ")}`);
+    console.log(`  transit fetch:   ${r.samples.map((s) => ms(s.transitFetch ?? 0)).join(", ")}`);
+    console.log(`  train search:    ${r.samples.map((s) => ms(s.trainSearch ?? 0)).join(", ")}`);
+    console.log(`  entrances:       ${r.samples.map((s) => ms(s.entrances ?? 0)).join(", ")}`);
+    console.log(`  walk legs:       ${r.samples.map((s) => ms(s.walkLegs ?? 0)).join(", ")}`);
+    console.log(`  bus wait:        ${r.samples.map((s) => ms(s.busWait ?? 0)).join(", ")}`);
     // Per-run, not just the median: "the pixel sampler answered no edges" is a
     // claim about every run, and a median of 0 is consistent with half of them
     // being non-zero. Whatever is asserted from this has to be readable here.
     console.log(
-      `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`
+      `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`,
     );
+    // Whether the static dataset answered: A4's whole question is the real
+    // shard path, so a zero share on a nav-static scenario is a broken stub
+    // (or a silent fallback), and that has to be visible, not guessed.
+    console.log(
+      `  nyc-static share: ${r.samples.map((s) => pct((s.nycStaticShare ?? 0) * 100)).join("%, ")}%`,
+    );
+    console.log(
+      `  static generation: ${r.samples.map((s) => s.staticGeneration ?? "…").join(", ")}`,
+    );
+  }
+
+  // Checkpoint 6: the static-navigation phase split — one median column per
+  // phase, printed beside the per-run sequences below.
+  const navPhaseRows = results.map((r) => {
+    const phase = (pick: (s: PhaseSample) => number) => ms(stats(r.samples.map(pick)).p50);
+    return [
+      r.name,
+      phase((s) => s.pointer ?? 0),
+      phase((s) => s.manifest ?? 0),
+      phase((s) => s.streetTransfer ?? 0),
+      phase((s) => s.streetVerify ?? 0),
+      phase((s) => s.streetDecode ?? 0),
+      phase((s) => s.streetMerge ?? 0),
+      phase((s) => s.buildingTransfer ?? 0),
+      phase((s) => s.buildingVerify ?? 0),
+      phase((s) => s.buildingDecode ?? 0),
+      phase((s) => s.buildingConvert ?? 0),
+      phase((s) => s.shadowIndexPrep ?? 0),
+      pct(
+        stats(r.samples.map((s) => ((s.shadowIndexPrep ?? 0) / Math.max(1, s.shadowSample)) * 100))
+          .p50,
+      ),
+    ];
+  });
+  console.log(
+    `\n### Static-navigation phase split (Checkpoint 6) — ${new Date().toISOString().slice(0, 10)}\n\n` +
+      markdownTable(
+        [
+          "Scenario",
+          "pointer",
+          "manifest",
+          "street xfer",
+          "digest verify",
+          "decode/parse",
+          "graph merge",
+          "building xfer",
+          "building verify",
+          "building decode",
+          "prism convert",
+          "shadow idx prep",
+          "idx prep / sample %",
+        ],
+        navPhaseRows,
+      ) +
+      "\n\nPhase columns are medians in ms; `shadow sample` (the existing column) spans both " +
+      "index preparation and the per-point sidewalk walk, and the last column shows the " +
+      "preparation share.\n",
+  );
+  for (const r of results) {
+    console.log(`\n${r.name} — navigation record per run (order):`);
+    const nav = (fmt: (n: NavigationSample) => string) =>
+      r.samples.map((s) => (s.nav ? ` ${fmt(s.nav)}` : " …")).join("\n" + "  ");
+    console.log(
+      `  source:        ${nav((n) => `${n.streetSource}${n.streetFallbackReason ? ` (${n.streetFallbackReason})` : ""}`)}`,
+    );
+    console.log(`  generation:    ${nav((n) => n.generation ?? "none")}`);
+    console.log(`  gen-cache hit: ${nav((n) => (n.snapshotGenerationCacheHit ? "hit" : "miss"))}`);
+    console.log(
+      `  street shards: ${nav((n) => `${n.streetShardsServed} served / ${n.streetShardsFetched} fetched`)}`,
+    );
+    console.log(
+      `  street bytes:  ${nav((n) => `${Math.round(n.streetTransferBytes / 1024)} KiB transfer / ${Math.round(n.streetDecodedBytesEstimate / 1024)} KiB decoded (est)`)}`,
+    );
+    console.log(
+      `  street refs:   ${nav((n) => `${n.streetRefNodes} nodes / ${n.streetRefEdges} edges`)}`,
+    );
+    console.log(
+      `  street merged: ${nav((n) => `${n.streetMergedNodes} nodes / ${n.streetMergedEdges} directed edges`)}`,
+    );
+    console.log(
+      `  building:      ${nav((n) => `${n.buildingShardsServed} served / ${n.buildingShardsFetched} fetched`)}`,
+    );
+    console.log(
+      `  building B:    ${nav((n) => `${Math.round(n.buildingTransferBytes / 1024)} KiB transfer / ${Math.round(n.buildingDecodedBytesEstimate / 1024)} KiB decoded (est)`)}`,
+    );
+    console.log(
+      `  prisms:        ${nav((n) => `${n.buildingPrismCount} (ref ${n.buildingRefCount}, cache ${n.buildingPrismCacheHit ? "hit" : "miss"})`)}`,
+    );
+    console.log(`  phase sums in order:`);
+    console.log(
+      `    pointer/manifest: ${r.samples.map((s) => ms((s.pointer ?? 0) + (s.manifest ?? 0))).join(", ")}`,
+    );
+    console.log(
+      `    street pipe:      ${r.samples.map((s) => ms((s.streetTransfer ?? 0) + (s.streetVerify ?? 0) + (s.streetDecode ?? 0) + (s.streetMerge ?? 0))).join(", ")}`,
+    );
+    console.log(
+      `    building pipe:    ${r.samples.map((s) => ms((s.buildingTransfer ?? 0) + (s.buildingVerify ?? 0) + (s.buildingDecode ?? 0) + (s.buildingConvert ?? 0))).join(", ")}`,
+    );
+    console.log(
+      `    shadow idx prep:  ${r.samples.map((s) => ms(s.shadowIndexPrep ?? 0)).join(", ")}`,
+    );
+  }
+
+  // Memory and request observations: per-run values, medians reported.
+  console.log(
+    `\n### Run footprints — ${new Date().toISOString().slice(0, 10)}\n\n` +
+      markdownTable(
+        [
+          "Scenario",
+          "heap delta p50 (MiB)",
+          "heap delta p95 (MiB)",
+          "req/run p50",
+          "transfer p50 (KiB)",
+          "encoded p50 (KiB)",
+        ],
+        results.map((r) => {
+          const heapDeltas = r.footprints.map(
+            (f) => (f.heapAfterBytes - f.heapBeforeBytes) / 1048576,
+          );
+          const reqs = r.footprints.map((f) => f.resources.count);
+          const transfer = r.footprints.map((f) => f.resources.transferBytes / 1024);
+          const encoded = r.footprints.map((f) => f.resources.encodedBytes / 1024);
+          return [
+            r.name,
+            ms(stats(heapDeltas).p50),
+            ms(stats(heapDeltas).p95),
+            String(Math.round(stats(reqs).p50 * 10) / 10),
+            ms(stats(transfer).p50),
+            ms(stats(encoded).p50),
+          ];
+        }),
+      ) +
+      "\n\nHeap is usedJSHeapSize sampled around each run (headers apart from the\ndelta are Chromium's transferSize/encodedBodySize sums over the resources\nresolved between the click and the recorded run; navigation-only shard bytes\nare in the per-run record above).\n",
+  );
+
+  // CLIMB: monotonic degradation across the warm series, as mean(last 3) /
+  // mean(first 3) of the totals. A ratio near 1 is a flat series; the gating
+  // table in the baseline note reads this against its 1.5 trigger.
+  for (const r of results) {
+    if (!r.appSummary) continue;
+    const totalsInOrder = r.samples.map((s) => s.total);
+    const mean = (xs: number[]) => xs.reduce((sum, x) => sum + x, 0) / xs.length;
+    const climb = mean(totalsInOrder.slice(-3)) / mean(totalsInOrder.slice(0, 3));
+    console.log(`  CLIMB ${r.name}: ${climb.toFixed(2)}`);
   }
 
   // The app's own summary and this harness must agree about the same runs. They
@@ -318,13 +913,17 @@ test.afterAll(() => {
     if (!r.appSummary) continue;
     const t = totals.get(r.name)!;
     expect(r.appSummary.runs, `${r.name}: run count`).toBe(t.n);
-    expect(r.appSummary.p50TotalMs, `${r.name}: p50 disagrees with window.__umbraMetrics`)
-      .toBeCloseTo(t.p50, 6);
-    expect(r.appSummary.p95TotalMs, `${r.name}: p95 disagrees with window.__umbraMetrics`)
-      .toBeCloseTo(t.p95, 6);
+    expect(
+      r.appSummary.p50TotalMs,
+      `${r.name}: p50 disagrees with window.__umbraMetrics`,
+    ).toBeCloseTo(t.p50, 6);
+    expect(
+      r.appSummary.p95TotalMs,
+      `${r.name}: p95 disagrees with window.__umbraMetrics`,
+    ).toBeCloseTo(t.p95, 6);
   }
 
   console.log(
-    `\nvia waypoints for the 5-point shape: ${VIA_WAYPOINTS.map((v) => v.join(",")).join(" ")}\n`
+    `\nvia waypoints for the 5-point shape: ${VIA_WAYPOINTS.map((v) => v.join(",")).join(" ")}\n`,
   );
 });

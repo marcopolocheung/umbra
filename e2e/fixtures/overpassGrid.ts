@@ -69,6 +69,53 @@ function buildGrid(): OverpassWay[] {
 export const overpassGridResponse = JSON.stringify({ elements: buildGrid() });
 
 /**
+ * A city-scale grid for the Checkpoint 6 cross-borough fallback row: the same
+ * 45 m lattice shape and extent (`LARGE_ROWS`/`LARGE_COLS`) the `boroughs`
+ * navigation fixture generates for the static twin, so the static/fallback
+ * comparison holds graph size constant. Distinct id space from the small
+ * grid (which this file also serves) so the two can never collide inside the
+ * Overpass module cache.
+ */
+export const LARGE_ROWS = 280;
+export const LARGE_COLS = 120;
+const LARGE_SOUTH = 40.74;
+const LARGE_WEST = -73.995;
+const largeNodeId = (row: number, col: number) => 5_000_000 + row * 1_000 + col;
+const largeLat = (row: number) => Number((LARGE_SOUTH + row * LAT_STEP).toFixed(6));
+const largeLon = (col: number) => Number((LARGE_WEST + col * LNG_STEP).toFixed(6));
+
+function buildLargeGrid(): OverpassWay[] {
+  const ways: OverpassWay[] = [];
+  for (let row = 0; row < LARGE_ROWS; row++) {
+    ways.push({
+      type: "way",
+      id: 900_000 + row,
+      nodes: Array.from({ length: LARGE_COLS }, (_, col) => largeNodeId(row, col)),
+      geometry: Array.from({ length: LARGE_COLS }, (_, col) => ({
+        lat: largeLat(row),
+        lon: largeLon(col),
+      })),
+      tags: { highway: "residential" },
+    });
+  }
+  for (let col = 0; col < LARGE_COLS; col++) {
+    ways.push({
+      type: "way",
+      id: 1_000_000 + col,
+      nodes: Array.from({ length: LARGE_ROWS }, (_, row) => largeNodeId(row, col)),
+      geometry: Array.from({ length: LARGE_ROWS }, (_, row) => ({
+        lat: largeLat(row),
+        lon: largeLon(col),
+      })),
+      tags: { highway: "footway" },
+    });
+  }
+  return ways;
+}
+
+export const overpassGridResponseLarge = JSON.stringify({ elements: buildLargeGrid() });
+
+/**
  * The same grid as a `RoutingGraph`, for the detour sweep in `e2e/bench/`.
  *
  * It is **constructed**, not parsed. `fetchRoutingGraph` holds the parser, and

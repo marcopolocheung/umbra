@@ -9,6 +9,11 @@ export const hasMapTilerKey = !!loadEnv("production", process.cwd(), "VITE_")
 
 const PORT = 4173;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+// The static-navigation project's own port and out-dir: its build inlines
+// `VITE_NAVIGATION_BASE`, which a single shared build cannot toggle per
+// scenario (the bench config made the same split for the same reason).
+const NAV_PORT = 4174;
+const NAV_BASE_URL = `http://127.0.0.1:${NAV_PORT}`;
 
 export default defineConfig({
   // Say which projects will run. A reader who sees one test instead of two should
@@ -22,7 +27,16 @@ export default defineConfig({
   // G2's benchmark has its own config (`playwright.bench.config.ts`). It measures
   // and commits a baseline rather than gating a build, takes minutes, and is
   // meaningful only on one machine — so `npm run e2e`, and therefore CI, skips it.
-  testIgnore: ["**/bench/**", "**/shadowV2Debug.spec.ts"],
+  // Design shots live in `playwright.shots.config.ts` (`npm run shots`) and are
+  // review artifacts, not CI gates.
+  testIgnore: [
+    "**/bench/**",
+    "**/shadowV2Debug.spec.ts",
+    "**/shots/**",
+    // Runs on the static-navigation build only (its own project below): a
+    // keyless build must never depend on `VITE_NAVIGATION_BASE` being set.
+    "**/navSmoke.spec.ts",
+  ],
   // Flake budget: one retry, then fail. A browser test that needs more retries
   // than that is noise, and noisy CI is worse than no CI.
   retries: 1,
@@ -68,24 +82,53 @@ export default defineConfig({
     // Same assertions, real tiles. The only check that the app still parses
     // MapTiler's actual building schema.
     ...(hasMapTilerKey ? [{ name: "smoke-live" }] : []),
+    // Checkpoint 6 hermetic scenario: the same fixture basemap, but the build
+    // inlines `VITE_NAVIGATION_BASE` and the spec stubs pointer/manifest/shards
+    // while street/building Overpass queries are forced to fail. It proves the
+    // static NYC path end to end and that the visible map still renders.
+    {
+      name: "nav-smoke",
+      testMatch: ["**/navSmoke.spec.ts"],
+      // The global ignore lists navSmoke so the keyless projects never pick
+      // it up; this project's own (empty) ignore overrides that.
+      testIgnore: [],
+      use: { baseURL: NAV_BASE_URL },
+    },
   ],
   // Runs against the production build, not the dev server: `import.meta.env.DEV`
   // picks the prod Overpass path, and only the built bundle proves the app the
-  // deploy ships actually boots.
-  webServer: {
-    // --host pins the bind address to the one the poll below dials. Left to
-    // default, `vite preview` binds the name `localhost`, which on Node 17+
-    // can resolve to ::1 while Playwright waits on 127.0.0.1 and times out.
-    command: `npm run build && npm run start -- --host 127.0.0.1 --port ${PORT} --strictPort`,
-    // Without this the transit client is compiled out entirely (`configuredBase`
-    // returns undefined), and the transit test would pass for the wrong reason.
-    // `stubNetwork` serves this origin from `fixtures/transitShards.ts`.
-    env: { VITE_TRANSIT_BASE: "https://transit.e2e.test" },
-    url: BASE_URL,
-    // Never reuse: a preview server already on this port would serve an old
-    // dist/ and quietly skip the build, so the test would pass against code
-    // that is not the code in the tree.
-    reuseExistingServer: false,
-    timeout: 240_000,
-  },
+  // deploy ships actually boots. Two servers, one per project family: the
+  // keyless build on 4173 and the static-navigation build on 4174, each with
+  // its own out-dir so the second build cannot empty the first's bundle while
+  // the first server is serving from it.
+  webServer: [
+    {
+      // --host pins the bind address to the one the poll below dials. Left to
+      // default, `vite preview` binds the name `localhost`, which on Node 17+
+      // can resolve to ::1 while Playwright waits on 127.0.0.1 and times out.
+      command: `npm run build -- --outDir dist && npm run start -- --outDir dist --host 127.0.0.1 --port ${PORT} --strictPort`,
+      // Without this the transit client is compiled out entirely (`configuredBase`
+      // returns undefined), and the transit test would pass for the wrong reason.
+      // `stubNetwork` serves this origin from `fixtures/transitShards.ts`.
+      env: { VITE_TRANSIT_BASE: "https://transit.e2e.test" },
+      url: BASE_URL,
+      // Never reuse: a preview server already on this port would serve an old
+      // dist/ and quietly skip the build, so the test would pass against code
+      // that is not the code in the tree.
+      reuseExistingServer: false,
+      timeout: 240_000,
+    },
+    {
+      command: `npm run build -- --outDir nav-dist && npm run start -- --outDir nav-dist --host 127.0.0.1 --port ${NAV_PORT} --strictPort`,
+      // Both bases must match `e2e/helpers/scenario.ts`; the navigation origin
+      // is stubbed with the seeded pointer → manifest → shard fixture.
+      env: {
+        VITE_TRANSIT_BASE: "https://transit.e2e.test",
+        VITE_NAVIGATION_BASE: "https://navigation.e2e.test",
+      },
+      url: NAV_BASE_URL,
+      reuseExistingServer: false,
+      timeout: 240_000,
+    },
+  ],
 });

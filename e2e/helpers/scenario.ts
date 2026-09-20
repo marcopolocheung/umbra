@@ -1,11 +1,11 @@
 import type { Page } from "@playwright/test";
 import { fixtureBasemapStyle } from "../fixtures/basemapStyle";
-import { overpassGridResponse } from "../fixtures/overpassGrid";
 import {
-  transitManifestJson,
-  transitPointerJson,
-  transitShardJson,
-} from "../fixtures/transitShards";
+  navigationFixtureArtifacts,
+  type NavigationFixtureKind,
+} from "../fixtures/navigationShards";
+import { overpassGridResponse, overpassGridResponseLarge } from "../fixtures/overpassGrid";
+import { transitFixtureArtifacts, type TransitFixtureKind } from "../fixtures/transitShards";
 
 // Midtown Manhattan at z17 on the June solstice morning: dense towers, low sun,
 // long shadows. Fixed on purpose — the assertions are pixel counts, and a moving
@@ -29,6 +29,9 @@ export const TRANSIT_WAYPOINT_B: [number, number] = [-73.9809, 40.7562];
 
 /** Must match `VITE_TRANSIT_BASE` in `playwright.config.ts`'s webServer env. */
 export const TRANSIT_BASE = "https://transit.e2e.test";
+
+/** Must match `VITE_NAVIGATION_BASE` in `playwright.bench.config.ts`'s webServer env. */
+export const NAVIGATION_BASE = "https://navigation.e2e.test";
 
 export const SHARE_URL =
   `/?lat=${CENTER.lat}&lng=${CENTER.lng}&z=${CENTER.zoom}` +
@@ -55,6 +58,37 @@ export const SAMPLE_STEP = 8;
 /** Which basemap the run is testing against. See `playwright.config.ts`. */
 export type Basemap = "fixture" | "live";
 
+/** Which transit dataset the stub serves. `fixture` is the 3-station smoke line. */
+/**
+ * How the Overpass stub answers.
+ *
+ * `fixture` (default): every query gets the 11×11 smoke grid, as before.
+ * `failRouting`: street-graph, building-footprint, and station-entrance
+ * queries fail (410); tree/woodland canopy queries are left on the `fixture`
+ * answer — the hermetic navigation scenario's way of proving street/building
+ * Overpass requests were forced to fail without silently taking canopy down
+ * with them.
+ * `large`: street queries get the city-scale `LARGE_ROWS×LARGE_COLS` grid
+ * (the keyless twin of the `boroughs` navigation fixture); building and
+ * canopy queries keep the fixture answer.
+ */
+export type OverpassKind = "fixture" | "failRouting" | "large";
+
+export type StubNetworkOptions = {
+  basemap: Basemap;
+  transit?: TransitFixtureKind;
+  /**
+   * Which static navigation dataset the stub serves. `off` (the default)
+   * aborts the navigation origin so the unconfigured-build path — immediate
+   * Overpass fallback, no static request — stays what the scenario measures;
+   * `scale` serves the seeded pointer → manifest → street/building shard
+   * fixture the latency-attribution bench (session A4) times. Only meaningful
+   * in builds that set `VITE_NAVIGATION_BASE` (the bench config).
+   */
+  navigation?: NavigationFixtureKind;
+  overpass?: OverpassKind;
+};
+
 const MAPTILER_STYLE_URL = "**api.maptiler.com/maps/outdoor-v2/style.json*";
 
 /**
@@ -64,7 +98,9 @@ const MAPTILER_STYLE_URL = "**api.maptiler.com/maps/outdoor-v2/style.json*";
  * registered matching route, so the blanket MapTiler abort goes in *before* the
  * style handler that has to win.
  */
-export async function stubNetwork(page: Page, opts: { basemap: Basemap }): Promise<void> {
+export async function stubNetwork(page: Page, opts: StubNetworkOptions): Promise<void> {
+  const transit = transitFixtureArtifacts(opts.transit ?? "fixture");
+  const navigation = navigationFixtureArtifacts(opts.navigation ?? "off");
   if (opts.basemap === "fixture") {
     // Nothing should reach MapTiler once the style is stubbed. Abort rather than
     // let a stray request quietly hit the network (or 403 without a key), so a
@@ -75,36 +111,98 @@ export async function stubNetwork(page: Page, opts: { basemap: Basemap }): Promi
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(fixtureBasemapStyle()),
-      })
+      }),
     );
   }
 
   // The published transit dataset, served from the fixture rather than R2. The
   // bucket's CORS allowlist covers the deployed origin and localhost:5173, not
   // the 127.0.0.1 this suite runs on, so a real fetch could never work here —
-  // and CI must stay hermetic anyway.
+  // and CI must stay hermetic anyway. `opts.transit` picks which dataset the
+  // run loads: the 3-station smoke line, or the seeded NYC-scale generator.
   await page.route(`${TRANSIT_BASE}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
+    const key = path.slice(path.lastIndexOf("/") + 1);
     const body = path.endsWith("/current.json")
-      ? transitPointerJson
+      ? transit.pointer
       : path.endsWith("/manifest.json")
-        ? transitManifestJson
-        : path.endsWith("/subway.json")
-          ? transitShardJson
-          : null;
+        ? transit.manifest
+        : (transit.shards.get(key) ?? null);
     if (body === null) return route.fulfill({ status: 404, body: "" });
     return route.fulfill({ status: 200, contentType: "application/json", body });
   });
 
+  // The published static NYC navigation dataset, served from the fixture
+  // rather than the delivery Worker. `opts.navigation` picks which dataset the
+  // run loads: the keyless default is off — the bench always builds with
+  // `VITE_NAVIGATION_BASE` set (the config's env cannot differ per scenario),
+  // so off must make the static attempt fail instantly and fall back to
+  // Overpass, which is what the committed keyless columns measured. `scale`
+  // serves the seeded pointer → manifest → street/building shards fixture.
+  if (!navigation) {
+    await page.route(`${NAVIGATION_BASE}/**`, (route) => route.abort());
+  } else {
+    await page.route(`${NAVIGATION_BASE}/**`, (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/current.json"))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: navigation.pointer,
+        });
+      if (path.endsWith("/manifest.json"))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: navigation.manifest,
+        });
+      if (path.endsWith("/notices.json"))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: navigation.notices,
+        });
+      const street = path.match(/\/streets\/([a-z0-9-]+\.json)$/);
+      if (street) {
+        const body = navigation.streetShards.get(`streets/${street[1]}`) ?? null;
+        if (body === null) return route.fulfill({ status: 404, body: "" });
+        return route.fulfill({ status: 200, contentType: "application/json", body });
+      }
+      const building = path.match(/\/buildings\/([a-z0-9-]+\.json)$/);
+      if (building) {
+        const body = navigation.buildingShards.get(`buildings/${building[1]}`) ?? null;
+        if (body === null) return route.fulfill({ status: 404, body: "" });
+        return route.fulfill({ status: 200, contentType: "application/json", body });
+      }
+      return route.fulfill({ status: 404, body: "" });
+    });
+  }
+
   // Overpass is stubbed in both projects: the public instance rate-limits and
-  // its graph changes month to month.
-  await page.route("**/api/overpass", (route) =>
-    route.fulfill({
+  // its graph changes month to month. The request body names the consumer, so
+  // the hermetic navigation scenario can fail routing queries alone while
+  // canopy keeps its existing answer (see `OverpassKind`).
+  const overpassKind = opts.overpass ?? "fixture";
+  await page.route("**/api/overpass", (route) => {
+    // The body is `data=<url-encoded query>`; classify the decoded query,
+    // exactly as the smoke test reads it.
+    const body = decodeURIComponent(route.request().postData() ?? "");
+    const isStreet = /way\["highway"~/.test(body);
+    const isBuilding = /way\["building"\]|relation\["building"\]/.test(body);
+    const isEntrance = /subway_entrance/.test(body);
+    if (overpassKind === "failRouting" && (isStreet || isBuilding || isEntrance)) {
+      return route.fulfill({
+        status: 410,
+        contentType: "application/json",
+        body: JSON.stringify({ remark: "routing queries are blocked in this scenario" }),
+      });
+    }
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: overpassGridResponse,
-    })
-  );
+      body: overpassKind === "large" && isStreet ? overpassGridResponseLarge : overpassGridResponse,
+    });
+  });
 
   // Reverse-geocoding the two waypoints is the app's only Nominatim call on this
   // path. `vite preview` serves no serverless functions, so /api/nominatim would

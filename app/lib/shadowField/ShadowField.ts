@@ -151,9 +151,23 @@ export interface ShadowReadyOptions {
   deadlineAt?: number;
 }
 
+/**
+ * Optional per-call timing probe for `sampleEdges` (Checkpoint 6).
+ *
+ * The shadow sample span is two stacked jobs: one-time per-cell preparation
+ * (caster triangulation through `prepareShadowCasters` plus the region-filtered
+ * shadow index for this sun and these edges), then the per-point sidewalk walk.
+ * Passing a collector records only the preparation part; the caller already
+ * times the whole call as `shadowSample`.
+ */
+export interface ShadowIndexPhases {
+  /** Milliseconds spent preparing casters and building the per-cell index. */
+  shadowIndexPrepMs: number;
+}
+
 export interface ShadowField {
   shadowAt(lng: number, lat: number, when: Date): ShadowSample;
-  sampleEdges(edges: EdgeRef[], when: Date): EdgeShadow[];
+  sampleEdges(edges: EdgeRef[], when: Date, phases?: ShadowIndexPhases): EdgeShadow[];
   /**
    * Rain shelter for each edge's two sidewalks, from the same providers.
    *
@@ -682,6 +696,7 @@ function sunCellsAt(
     canopy: PrismSet | null;
     raster: CanopyHeightField | null;
   }>,
+  phases?: ShadowIndexPhases,
 ): SunCell[] {
   const out = new Array<SunCell>(edgeCount);
   for (let cellIndex = 0; cellIndex < plan.cells.length; cellIndex++) {
@@ -694,8 +709,12 @@ function sunCellsAt(
             from, sun.azimuth, sun.altitude, cell.mPerLat, cell.mPerLng, cell.region
           )
         : null;
+    // The preparation span: triangulate (WeakMap-cached per prism array) and
+    // assemble the region-filtered index this cell's samples will walk.
+    const tPrep = globalThis.performance?.now?.() ?? 0;
     const index = build(source.resolved ? preparedCastersFor(source.resolved.set.prisms) : null);
     const canopyIndex = build(source.canopy ? preparedCastersFor(source.canopy.prisms) : null);
+    if (phases) phases.shadowIndexPrepMs += (globalThis.performance?.now?.() ?? 0) - tPrep;
     const rasterShade =
       source.raster && sun.altitude > 0
         ? source.raster.shadeFor(sun.azimuth, sun.altitude, when)
@@ -1135,7 +1154,7 @@ export function createGeometryShadowField(
     });
   }
 
-  function sampleEdges(edges: EdgeRef[], when: Date): EdgeShadow[] {
+  function sampleEdges(edges: EdgeRef[], when: Date, phases?: ShadowIndexPhases): EdgeShadow[] {
     const plan = planBatch(edges);
     const sources = plan.cells.map((cell) => {
       const bbox = queryBboxForCell(cell);
@@ -1144,7 +1163,7 @@ export function createGeometryShadowField(
       return { resolved, canopy, raster: maskedRaster(resolveRaster(bbox), resolved) };
     });
     return sampleEdgesWithSun(
-      edges, plan, sunCellsAt(plan, edges.length, when, sources)
+      edges, plan, sunCellsAt(plan, edges.length, when, sources, phases)
     );
   }
 
@@ -1302,6 +1321,8 @@ export function createGeometryShadowField(
     const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
     const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
 
+    const latStep = (bounds.north - bounds.south) / rows;
+    const lngStep = (bounds.east - bounds.west) / cols;
     // Each cell averages a 4×4 mini-grid of point answers rather than trusting
     // its centre. A coarse cell (zoomed out, one cell spans several blocks) used
     // to read "fully exposed" whenever its centre missed the one building inside
@@ -1310,8 +1331,6 @@ export function createGeometryShadowField(
     // cards show — and makes the wash's structure appear as it zooms in instead
     // of popping at one zoom level.
     const SUB_SAMPLES = 4;
-    const latStep = (bounds.north - bounds.south) / rows;
-    const lngStep = (bounds.east - bounds.west) / cols;
     const subLatStep = latStep / SUB_SAMPLES;
     const subLngStep = lngStep / SUB_SAMPLES;
     let k = 0;

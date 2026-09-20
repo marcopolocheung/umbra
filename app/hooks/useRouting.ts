@@ -22,7 +22,12 @@ import type {
   RoutingGraph,
   SketchPoint,
 } from "../lib/routing";
-import { recordRoutingRun, computeDerivedKpis } from "../lib/metrics";
+import {
+  recordRoutingRun,
+  computeDerivedKpis,
+  navigationRecordFrom,
+  recordNavigationDecline,
+} from "../lib/metrics";
 import { snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
@@ -45,6 +50,7 @@ import {
   zoneAround,
   type NavigationSnapshot,
 } from "../lib/navigationData/remoteNavigation";
+import { newNavigationPhases } from "../lib/navigationData/navigationPhases";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
@@ -443,7 +449,38 @@ export function useRouting({
       let dedicatedMaskReadMs = 0;
       let shadowSampleMs = 0;
       let dijkstraMs = 0;
+      // Phase-0 transit audit split: walk search portion + the five transit
+      // phases that previously fell into `total` unmeasured. All additive —
+      // `dijkstraMs` keeps its historic meaning for back-compat readers.
+      let walkParetoMs = 0;
+      let transitFetchMs = 0;
+      let trainSearchMs = 0;
+      let trainSearchSubwayMs = 0;
+      let trainSearchBusMs = 0;
+      let entrancesMs = 0;
+      let walkLegsMs = 0;
+      let busWaitMs = 0;
+      let transitTried = false;
+      let transitStationCount: number | null = null;
+      let transitLineCount: number | null = null;
+      let entranceBoxCount = 0;
+      let entranceCount = 0;
+      let boardingStopCount = 0;
+      let busPreloadCount = 0;
+      // Phase-0 graph-fetch attribution split: the three pieces of the
+      // `tFetch` span that gate different fix decisions. `fieldReady`
+      // overlaps `staticStreets` by construction (the broad preload starts
+      // beside the street fetch), so the three never add to more than
+      // `graphFetch`.
+      let navSnapshotMs = 0;
+      let staticStreetsMs = 0;
+      let fieldReadyMs = 0;
       let readinessAbort: AbortController | null = null;
+      // Checkpoint 6: the per-calculation collector that the navigation loaders,
+      // the static building provider, and SampleEdges' index build all report
+      // into. Counts, bytes, durations and source labels only — never
+      // coordinates — so it is the one shape recorded into routing metrics.
+      const navPhases = newNavigationPhases();
 
       try {
         const straightLineDistM = haversineMeters(a, b);
@@ -473,15 +510,20 @@ export function useRouting({
         // means static stays unbound and both paths take their current
         // fallbacks; a caller abort still cancels the calculation.
         let navSnapshot: NavigationSnapshot | null = null;
+        const tNavSnapshot = performance.now();
         try {
-          navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal });
+          navSnapshot = await acquireNavigationSnapshot({ signal: calcSignal, report: navPhases });
         } catch {
           if (calcSignal.aborted || myGen !== calcGenRef.current) return cancelled();
           if (import.meta.env.DEV) {
             console.log("[navigation] snapshot unavailable; static buildings off");
           }
         }
+        navSnapshotMs = performance.now() - tNavSnapshot;
         staticBuildingsRef.current?.bindSnapshot(navSnapshot);
+        // The building provider binds the same route-scoped collector beside
+        // the same snapshot lease: one calculation, one phase ledger.
+        staticBuildingsRef.current?.bindReport(navPhases);
 
         // Transit may board up to one access radius from either endpoint — the
         // candidate search reaches 1500 m and a door can stand a further
@@ -523,17 +565,23 @@ export function useRouting({
           deadlineAt: Date.now() + ROUTE_READINESS_BUDGET_MS,
         };
 
+        // The broad route-bbox preload starts beside the street fetch instead
+        // of after the edge-cell readiness — both slide under the same budget
+        // and deadline so neither can outlive the calculation.
         const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
+        const tStaticStreets = performance.now();
         try {
           graph = await fetchBestRoutingGraph(south, west, north, east, calcSignal, {
             snapshot: navSnapshot,
             accessZones,
+            report: navPhases,
           });
         } catch (error) {
           readinessAbort.abort();
           throw error;
         }
+        staticStreetsMs = performance.now() - tStaticStreets;
         // Enumerate as soon as the graph arrives. These exact cells, rather than the
         // graph's large enclosing rectangle, are what sampling and confidence use.
         const edgeBatch = routingEdgeBatch(graph);
@@ -541,10 +589,23 @@ export function useRouting({
         const edgeKeys = edgeBatch.keys;
         const edgeDistances = edgeBatch.distances;
         const directedEdgeCount = edgeBatch.directedCount;
+        const tFieldReady = performance.now();
+        // Readiness for the exact cells the graph actually holds, not the big
+        // enclosing rectangle (A2 PR 2). The broad preload launched beside the
+        // street fetch waits here; the broad `shadowBbox` load below is a
+        // fallback that only runs when a subset of those cells cannot speak —
+        // same deadline object, same budget, same abort wiring as before.
         await Promise.all([
           broadPreload,
           field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
         ]);
+        const coverage =
+          field.coverageEdges?.(edgeRefs, dateRef.current) ??
+          field.coverage(shadowBbox, dateRef.current);
+        if (coverage.confidence < LOW_CONFIDENCE) {
+          await field.ready(shadowBbox, readyOptions).catch(() => {});
+        }
+        fieldReadyMs = performance.now() - tFieldReady;
         graphFetchMs = performance.now() - tFetch;
         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
@@ -552,9 +613,6 @@ export function useRouting({
         // whole point of A4b: when geometry can answer, the mid-calculation `fitBounds`
         // jump and the full-canvas readback are both pure cost. The camera work stays
         // exactly as PR #160 left it on the path that still needs pixels.
-        const coverage =
-          field.coverageEdges?.(edgeRefs, dateRef.current) ??
-          field.coverage(shadowBbox, dateRef.current);
         // Rain never falls back to the renderer: the canvas paints *shadow*, and
         // reading it as shelter would invent dryness. A rain edge the field cannot
         // answer keeps its real (low) confidence and reads exposed, honestly.
@@ -648,7 +706,7 @@ export function useRouting({
         const fieldShadow = edgeRefs.length > 0
           ? rainObjective
             ? field.sampleRainEdges(edgeRefs, rainDirection, dateRef.current)
-            : field.sampleEdges(edgeRefs, dateRef.current)
+            : field.sampleEdges(edgeRefs, dateRef.current, navPhases)
           : [];
         if (myGen !== calcGenRef.current) return cancelled();
 
@@ -842,7 +900,9 @@ export function useRouting({
 
         if ((plan?.via ?? additionalWaypoints).length === 0) {
           updateProgress({ message: "Finding route choices" });
+          const tPareto = performance.now();
           const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
+          walkParetoMs += performance.now() - tPareto;
           dijkstraMs = performance.now() - tDijkstra;
 
           // Results are ordered [shortest, balanced, most exposed] with duplicate
@@ -890,6 +950,7 @@ export function useRouting({
           const STRENGTHS = [0, 0.5, 1.0];
           options = [];
 
+          const tParetoMulti = performance.now();
           for (let si = 0; si < STRENGTHS.length; si++) {
             const strength = STRENGTHS[si];
             let totalDist = 0;
@@ -1033,6 +1094,7 @@ export function useRouting({
             });
           }
 
+          walkParetoMs += performance.now() - tParetoMulti;
           dijkstraMs = performance.now() - tDijkstra;
 
           // A1: the one browser yield for the whole multi-leg loop. The loop
@@ -1065,6 +1127,7 @@ export function useRouting({
         // told transit was considered rather than silently shown walking only.
         let transitNotice: string | null = null;
         if (!forcedPartial && straightLineDistM > MIN_TRANSIT_DISTANCE_M) {
+          transitTried = true;
           try {
             updateProgress({ message: "Checking transit option" });
             const trainPadding = Math.max(padding, 0.015);
@@ -1080,6 +1143,7 @@ export function useRouting({
                 trainNorth,
                 trainEast,
               });
+            const tTransitFetch = performance.now();
             const trainGraph = await fetchBestTrainGraph(
               trainSouth,
               trainWest,
@@ -1087,6 +1151,11 @@ export function useRouting({
               trainEast,
               calcSignal,
             );
+            transitFetchMs += performance.now() - tTransitFetch;
+            if (trainGraph) {
+              transitStationCount = trainGraph.stations.size;
+              transitLineCount = trainGraph.lineColors.size;
+            }
             if (import.meta.env.DEV)
               console.log(
                 "[transit] trainGraph:",
@@ -1132,7 +1201,12 @@ export function useRouting({
                 ),
               );
               for (const transitMode of TRANSIT_MODES) {
+                const tModeSearch = performance.now();
                 const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure, transitMode);
+                const dtModeSearch = performance.now() - tModeSearch;
+                trainSearchMs += dtModeSearch;
+                if (transitMode === "subway") trainSearchSubwayMs += dtModeSearch;
+                else trainSearchBusMs += dtModeSearch;
                 if (import.meta.env.DEV)
                   console.log(
                     `[transit] bestTrain (${transitMode}):`,
@@ -1154,6 +1228,7 @@ export function useRouting({
                   // NYC shards carry each station's doors as OSM groups them
                   // (#430); fetching and matching by name or nearest point is
                   // what gave the Metro-North terminal's doors to the 7.
+                  const tEntrances = performance.now();
                   const endpoints = [bestTrain.entryStation, bestTrain.exitStation];
                   const entranceBoxes = endpoints
                     .filter((station) => station.entrances === undefined)
@@ -1235,6 +1310,9 @@ export function useRouting({
                     alightCandidates,
                     haversineMeters,
                   );
+                  entrancesMs += performance.now() - tEntrances;
+                  entranceBoxCount += entranceBoxes.length;
+                  entranceCount += entrances.length;
 
                   // Snap to somewhere the walker can actually reach. A station
                   // centroid, and sometimes a real entrance, sits on a fragment of
@@ -1248,6 +1326,7 @@ export function useRouting({
                   // alight snap too. `walkOpts` pins travel mode to walk, and walk
                   // prohibits no edge, so this set is exactly what dijkstra can
                   // traverse.
+                  const tWalkLegs = performance.now();
                   const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
                   const boardNodeId = snapToReachable(
                     [boardEntrance.lon, boardEntrance.lat],
@@ -1290,6 +1369,7 @@ export function useRouting({
                       "alightNodeId:",
                       alightNodeId,
                     );
+                  walkLegsMs += performance.now() - tWalkLegs;
 
                   if (!walkA || !walkB) {
                     if (import.meta.env.DEV)
@@ -1357,6 +1437,8 @@ export function useRouting({
                       return stop ? [{ waitSec: wait.waitSec, stop }] : [];
                     });
                     if (lineMode === "bus" && boardingStops.length > 0) {
+                      const tBusWait = performance.now();
+                      boardingStopCount += boardingStops.length;
                       // Sampled at the departure instant, which is when the
                       // waits themselves are priced — the published tables are
                       // hourly, and a time-dependent search is a different
@@ -1391,6 +1473,8 @@ export function useRouting({
                       }
                       if (unresolved.length > 0) samples = sampleAll();
                       waitExposure = waitExposureFrom(samples);
+                      busPreloadCount += unresolved.length;
+                      busWaitMs += performance.now() - tBusWait;
                     }
 
                     const legs: RouteLeg[] = [
@@ -1490,12 +1574,41 @@ export function useRouting({
           timestamp: Date.now(),
           phases: {
             graphFetch: graphFetchMs,
+            navSnapshot: navSnapshotMs,
+            staticStreets: staticStreetsMs,
+            fieldReady: fieldReadyMs,
+            pointer: navPhases.pointerMs,
+            manifest: navPhases.manifestMs,
+            streetTransfer: navPhases.streetTransferMs,
+            streetVerify: navPhases.streetVerifyMs,
+            streetDecode: navPhases.streetDecodeMs,
+            streetMerge: navPhases.streetMergeMs,
+            buildingTransfer: navPhases.buildingTransferMs,
+            buildingVerify: navPhases.buildingVerifyMs,
+            buildingDecode: navPhases.buildingDecodeMs,
+            buildingConvert: navPhases.buildingConvertMs,
+            shadowIndexPrep: navPhases.shadowIndexPrepMs,
             canvasRead: canvasReadMs,
             dedicatedMaskRead: dedicatedMaskReadMs,
             shadowSample: shadowSampleMs,
             dijkstra: dijkstraMs,
+            walkPareto: walkParetoMs,
+            transitFetch: transitFetchMs,
+            trainSearch: trainSearchMs,
+            trainSearchSubway: trainSearchSubwayMs,
+            trainSearchBus: trainSearchBusMs,
+            entrances: entrancesMs,
+            walkLegs: walkLegsMs,
+            busWait: busWaitMs,
             total: performance.now() - t0,
           },
+          transitTried,
+          transitStationCount,
+          transitLineCount,
+          entranceBoxCount,
+          entranceCount,
+          boardingStopCount,
+          busPreloadCount,
           graphNodeCount: graph.nodes.size,
           graphDirectedEdges: directedEdgeCount,
           shadowFallbackShare: edgeRefs.length > 0 ? canvasFallbackEdges / edgeRefs.length : 0,
@@ -1509,6 +1622,9 @@ export function useRouting({
           staticBuildingGeneration: buildingProviders.includes("nyc-static")
             ? (navSnapshot?.generation ?? null)
             : null,
+          // Checkpoint 6 navigation record — the same per-calculation ledger,
+          // re-published through the metrics surface (counts/bytes only).
+          navigation: navigationRecordFrom(navPhases),
           canopySourceShares: {
             osm: shareOf(canopyProviders, "osm"),
             raster: shareOf(canopyProviders, "raster"),
@@ -1569,6 +1685,18 @@ export function useRouting({
         readinessAbort?.abort();
         if (e instanceof DOMException && e.name === "AbortError") return cancelled();
         if (calcSignal.aborted) return cancelled();
+        // A calculation that did not finish on the static dataset is still
+        // worth counting — fallback share is what gates removing the routine
+        // Overpass path, and a failed calculation is where the decline reason
+        // is visible. Counts and labels only, no coordinates.
+        if (navPhases.streetSource !== "nyc-static") {
+          recordNavigationDecline({
+            timestamp: Date.now(),
+            streetSource: navPhases.streetSource,
+            reason: navPhases.streetFallbackReason,
+            generation: navPhases.generation,
+          });
+        }
         const message = e instanceof Error ? e.message : "Routing failed";
         setNavError(message);
         if (/No walkable path found|connected walkable street/.test(message)) {

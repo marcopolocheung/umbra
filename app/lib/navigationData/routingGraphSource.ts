@@ -20,7 +20,7 @@ import type { RoutingGraph } from "../routing";
 import { buildRoutingGraphFromStreetShards } from "./routingGraphAdapter";
 import {
   acquireNavigationSnapshot,
-  loadNavigationStreetShard,
+  loadNavigationStreetShards,
   selectNavigationShardsForBoxes,
   type NavigationRequestOptions,
   type NavigationSnapshot,
@@ -82,10 +82,17 @@ export async function fetchBestRoutingGraph(
   },
 ): Promise<RoutingGraph> {
   const request: NavigationRequestOptions = { ...options, signal: options?.signal ?? signal };
-  const overpass = (): Promise<RoutingGraph> =>
-    fetchRoutingGraph(south, west, north, east, request.signal);
+  const report = options?.report;
+  const overpass = (): Promise<RoutingGraph> => {
+    if (report) report.streetSource = "overpass";
+    return fetchRoutingGraph(south, west, north, east, request.signal);
+  };
   const fallback = (reason: string): Promise<RoutingGraph> => {
     // Reason names shard keys and statuses only — never coordinates or route data.
+    if (report) {
+      report.streetSource = "overpass";
+      report.streetFallbackReason = reason;
+    }
     if (import.meta.env.DEV) console.log(`[navigation] static streets unavailable (${reason}); using Overpass`);
     return overpass();
   };
@@ -113,10 +120,19 @@ export async function fetchBestRoutingGraph(
   if (!refs) return fallback("outside support");
 
   try {
-    const shards = await Promise.all(
-      refs.streets.map((ref) => loadNavigationStreetShard(snapshot, ref, request)),
-    );
+    // Selected refs go through the generation decoded cache: a recalculation
+    // over a covered area verifies once and merges thereafter, instead of
+    // re-transferring and re-decoding the same bytes every time.
+    const shards = await loadNavigationStreetShards(snapshot, refs.streets, request);
+    const tMerge = globalThis.performance?.now?.() ?? 0;
     const graph = buildRoutingGraphFromStreetShards(shards);
+    if (report) {
+      report.streetMergeMs += (globalThis.performance?.now?.() ?? 0) - tMerge;
+      report.streetSource = "nyc-static";
+      report.generation = snapshot.generation;
+      report.streetMergedNodes = graph.nodes.size;
+      report.streetMergedEdges = directedEdgeCount(graph);
+    }
     if (graph.nodes.size === 0) return fallback("empty static selection");
     if (import.meta.env.DEV) {
       console.log(
