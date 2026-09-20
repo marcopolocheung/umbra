@@ -77,6 +77,7 @@ import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
 import { transitOutdoorExposure } from "../lib/routeTradeoff";
+import { transitOptionDominated } from "../lib/transit/transitGate";
 import type { TravelModeId } from "../lib/travelMode";
 import type { StopEntry } from "../lib/trip/types";
 import { routeBounds } from "../lib/routeBounds";
@@ -1120,6 +1121,16 @@ export function useRouting({
               // candidates at one end and subway at the other, and since the
               // spatial stubs are refused those are disconnected components —
               // so it returns no transit route at all, not merely a worse one.
+
+              // The walk a transit offer may not be dominated by: beyond the
+              // gate below (twice the time, or the walk plus fifteen minutes),
+              // an offer is suppressed instead of burying the walk cards.
+              const quickestWalkSec = Math.min(
+                ...routesForMode(options, "walk").map(
+                  (option) =>
+                    option.totalTimeSec ?? travelTimeSeconds(option.distanceM, "walk"),
+                ),
+              );
               for (const transitMode of TRANSIT_MODES) {
                 const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure, transitMode);
                 if (import.meta.env.DEV)
@@ -1413,6 +1424,13 @@ export function useRouting({
 
                     const totalWalkDistM = walkA.distanceM + walkB.distanceM;
                     const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
+                    if (transitOptionDominated(totalTimeSec, quickestWalkSec)) {
+                      transitNotice =
+                        transitMode === "bus"
+                          ? `Via Bus would take about ${Math.round(totalTimeSec / 60)} min against a ${Math.round(quickestWalkSec / 60)} min walk, so it is not offered.`
+                          : `Via Subway would take about ${Math.round(totalTimeSec / 60)} min against a ${Math.round(quickestWalkSec / 60)} min walk, so it is not offered.`;
+                      continue;
+                    }
                     // Time outdoors — both walks and a sampled stop wait —
                     // weighted by seconds, not the walks alone. The ride keeps
                     // its own words on the card (docs/notes/transit-headline-exposure.md).
