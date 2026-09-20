@@ -37,6 +37,14 @@ import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { directionForWindReport, windFromLabel } from "./lib/rain/direction";
+import {
+  ensureRainMapLayer,
+  RAIN_GRID_COLS,
+  RAIN_GRID_ROWS,
+  rainGridFeatureCollection,
+  setRainMapData,
+} from "./lib/rain/rainMapLayer";
+import type { BBox } from "./lib/shadowField/ShadowField";
 import { createOverpassCanopyProvider } from "./lib/shadowField/providers";
 
 import { useAgent } from "./hooks/useAgent";
@@ -349,6 +357,65 @@ export default function Home() {
     if (!rainMode || !layer) return;
     layer.setRainWind?.(heatWeather?.windDirDeg ?? null, heatWeather?.windMs ?? null);
   }, [rainMode, heatWeather]);
+
+  // The rain *ground* picture as a basemap fill: the same shelter grid routing
+  // pays for, preloaded the way routing preloads it, composited by the style
+  // renderer so the map below is never destroyed by a custom pass.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const clear = () =>
+      setRainMapData(map, { type: "FeatureCollection", features: [] });
+    if (!rainMode) {
+      clear();
+      return;
+    }
+    try {
+      ensureRainMapLayer(map);
+    } catch {
+      // Style not settled yet; the next moveend pass reconciles.
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const repaint = async () => {
+      const bounds = map.getBounds();
+      const bbox: BBox = {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      };
+      try {
+        await shadowField?.ready(bbox, { deadlineAt: Date.now() + 2500 });
+      } catch {
+        // Providers may refuse; the grid then honestly reports what it has.
+      }
+      if (cancelled || !shadowField) return;
+      const direction = directionForWindReport(
+        heatWeather?.windDirDeg ?? null,
+        heatWeather?.windMs ?? null,
+      );
+      const grid = shadowField.sampleRainGrid(
+        bbox,
+        RAIN_GRID_COLS,
+        RAIN_GRID_ROWS,
+        direction,
+        date,
+      );
+      setRainMapData(map, rainGridFeatureCollection(grid, bbox));
+    };
+    repaint();
+    const onMoveEnd = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(repaint, 250);
+    };
+    map.on("moveend", onMoveEnd);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      map.off("moveend", onMoveEnd);
+    };
+  }, [rainMode, heatWeather, shadowField, date, mapRef]);
 
   // Canopy supply for the rain canvas: the same Overpass crowns routing pays
   // for, re-opacified inside the painter. Loaded per viewport with the same

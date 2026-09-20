@@ -15,6 +15,7 @@
 import type maplibregl from "maplibre-gl";
 import type { GeoJSON } from "geojson";
 import type { BBox, RainGrid } from "../shadowField/ShadowField";
+import { RAIN_WET_ALPHA, RAIN_WET_RGB } from "./rainComposite";
 
 export const RAIN_LAYER_ID = "local-rain-layer";
 export const RAIN_SOURCE_ID = "local-rain-source";
@@ -65,9 +66,9 @@ export function ensureRainMapLayer(map: maplibregl.Map): void {
       source: RAIN_SOURCE_ID,
       layout: {},
       paint: {
-        "fill-color": "#2563eb",
-        // Blue = the share of direct rain the cell does not block.
-        "fill-opacity": ["*", ["-", 1, ["get", "shelter"]], 0.5],
+        "fill-color": `rgb(${RAIN_WET_RGB.map((c) => Math.round(c * 255)).join(", ")})`,
+          // Blue = the share of direct rain the cell does not block.
+          "fill-opacity": ["*", ["-", 1, ["get", "shelter"]], RAIN_WET_ALPHA],
         "fill-outline-color": "rgba(37, 99, 235, 0)",
       },
     },
