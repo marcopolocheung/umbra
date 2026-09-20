@@ -39,9 +39,10 @@ import {
   type PrismSet,
   prismsFromFootprints,
 } from "../shadowField/geometry";
+import type { NavigationPhases } from "./navigationPhases";
 import {
   DEFAULT_CASTER_REACH_M,
-  loadNavigationBuildingShard,
+  loadNavigationBuildingShards,
   selectNavigationShards,
   type NavigationRequestOptions,
   type NavigationSnapshot,
@@ -104,6 +105,12 @@ export interface NycStaticBuildingProvider extends PrismProvider {
   source: "nyc-static";
   generation: string | null;
   bindSnapshot(snapshot: NavigationSnapshot | null): void;
+  /**
+   * Binds the per-calculation phase collector. The provider is long-lived and
+   * shared; a calculation binds its collector beside `bindSnapshot` and the
+   * next bind replaces it, exactly like the generation lease it accompanies.
+   */
+  bindReport(report: NavigationPhases | null): void;
 }
 
 function abortError(): Error {
@@ -133,6 +140,7 @@ export function createNycStaticPrismProvider(
   const casterReachM = opts?.casterReachM ?? DEFAULT_CASTER_REACH_M;
   const missingHeightM = opts?.missingHeightM ?? NYC_UNKNOWN_HEIGHT_M;
   let bound: NavigationSnapshot | null = null;
+  let boundReport: NavigationPhases | null = null;
   const cache: PublishedSelection[] = [];
 
   function lookup(bbox: BBox): PrismSet | null {
@@ -154,9 +162,13 @@ export function createNycStaticPrismProvider(
    * only when still bound to the snapshot the load started from, so a load
    * overtaken by a generation rollover cannot publish stale data under it.
    */
-  function publish(bbox: BBox, set: PrismSet, snapshot: NavigationSnapshot): void {
+  function publish(bbox: BBox, set: PrismSet, snapshot: NavigationSnapshot, report: NavigationPhases | null): void {
     if (bound !== snapshot) return;
     cache.unshift({ coverage: { ...bbox }, set });
+    if (report) {
+      report.buildingPrismCount = set.prisms.length;
+      report.generation = snapshot.generation;
+    }
     if (cache.length > STATIC_CACHE_ENTRIES) cache.length = STATIC_CACHE_ENTRIES;
     if (import.meta.env.DEV) {
       console.log(
@@ -173,6 +185,10 @@ export function createNycStaticPrismProvider(
 
     get generation() {
       return bound?.generation ?? null;
+    },
+
+    bindReport(report: NavigationPhases | null) {
+      boundReport = report;
     },
 
     bindSnapshot(snapshot: NavigationSnapshot | null) {
@@ -192,7 +208,15 @@ export function createNycStaticPrismProvider(
       const snapshot = bound;
       if (!snapshot) return;
       if (signal?.aborted) throw abortError();
-      if (lookup(bbox)) return;
+      if (lookup(bbox)) {
+        // The synchronous prism cache answered: nothing fetched, nothing
+        // decoded. Counted as a hit rather than as a fake transfer.
+        if (boundReport) boundReport.buildingPrismCacheHit = true;
+        return;
+      }
+      // Captured beside `snapshot`: a mid-flight rebind to a new calculation
+      // stops its loads from attributing phases to the old one's collector.
+      const report = boundReport;
 
       // Caster-reach selection, not centroid containment: a tall footprint
       // outside the route bbox still casts onto it, and the producer assigns
@@ -204,9 +228,14 @@ export function createNycStaticPrismProvider(
 
       let shards: NavigationBuildingShard[];
       try {
-        shards = await Promise.all(
-          refs.buildings.map((ref) => loadNavigationBuildingShard(snapshot, ref, { fetchFn, signal })),
-        );
+        // Selected refs go through the same generation decoded cache the street
+        // path uses: a second query over a different padded bbox serves the
+        // verified shard from memory instead of transferring it again.
+        shards = await loadNavigationBuildingShards(snapshot, refs.buildings, {
+          fetchFn,
+          signal,
+          report: report ?? undefined,
+        });
       } catch (error) {
         // A caller abort is not a static failure: rethrow without launching
         // fallback network work. A missing or corrupt shard leaves nothing
@@ -215,6 +244,7 @@ export function createNycStaticPrismProvider(
         if (signal?.aborted) throw error instanceof Error ? error : abortError();
         return;
       }
+      const tConvert = globalThis.performance?.now?.() ?? 0;
       if (signal?.aborted) throw abortError();
 
       // Whole footprints, seam-safe: every ring of every selected shard is
@@ -233,7 +263,9 @@ export function createNycStaticPrismProvider(
           footprints.push(toFootprint(building, missingHeightM));
         }
       }
-      publish(bbox, prismsFromFootprints(footprints), snapshot);
+      const set = prismsFromFootprints(footprints);
+      if (report) report.buildingConvertMs += (globalThis.performance?.now?.() ?? 0) - tConvert;
+      publish(bbox, set, snapshot, report);
     },
   };
 

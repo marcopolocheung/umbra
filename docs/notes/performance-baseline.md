@@ -54,6 +54,14 @@ upgrades to the real zone when the chunk lands. The 0.67 kB is the loader plus t
 
 Method and accuracy trade-off: [`timezone.md`](./timezone.md).
 
+## Route Calculation — static NYC navigation (Checkpoint 6)
+
+Moved to [`nyc-navigation-checkpoint6-2026-09-20.md`](./nyc-navigation-checkpoint6-2026-09-20.md)
+on 2026-09-20: the per-phase split of the static navigation path, cold/warm
+static-vs-Overpass p50/p95 for the five fixed cases, shard byte/count records,
+and the one tuning decision those measurements gate. Visible MapLibre
+rendering is unchanged by that work.
+
 ## Shadow Sampling
 
 `ShadowField.sampleEdges` — the call routing makes once per calculation, and the

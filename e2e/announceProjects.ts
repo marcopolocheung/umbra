@@ -13,8 +13,10 @@ import { hasMapTilerKey } from "../playwright.config";
 export default function announceProjects(): void {
   console.log(
     hasMapTilerKey
-      ? "[e2e] running `smoke` (fixture basemap) and `smoke-live` (real MapTiler tiles)."
-      : "[e2e] running `smoke` (fixture basemap). `smoke-live` needs VITE_MAPTILER_API_KEY " +
-          "and is skipped — it is the only check on MapTiler's real building schema."
+      ? "[e2e] running `smoke` (fixture basemap), `nav-smoke` (static NYC navigation), " +
+          "and `smoke-live` (real MapTiler tiles)."
+      : "[e2e] running `smoke` (fixture basemap) and `nav-smoke` (static NYC navigation). " +
+          "`smoke-live` needs VITE_MAPTILER_API_KEY and is skipped — it is the only check " +
+          "on MapTiler's real building schema.",
   );
 }

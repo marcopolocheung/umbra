@@ -9,9 +9,11 @@ import baseConfig from "./playwright.config";
  * that true mechanically rather than by convention: `npm run e2e` cannot pick it
  * up, and CI — which runs `npm run e2e` — never spends four minutes on it.
  *
- * It also runs keyless only. G1's `smoke-live` project exists to check MapTiler's
- * real building schema; real tile fetches inside a performance number would put
- * network variance inside the baseline.
+ * The keyless project runs exactly the scenario set the Phase-0 note
+ * committed; the `bench-nav` project adds the `nav-static` scenarios the A4
+ * session uses to time the real static street/building fetch. Real MapTiler
+ * tile fetches still never enter a performance number: network variance inside
+ * the baseline is the thing G2 exists to keep out.
  *
  * The canonical environment is a developer machine, not a GitHub runner: a 2-core
  * runner on SwiftShader is roughly 3x slower, so a before/after comparison has to
@@ -36,5 +38,45 @@ export default defineConfig({
   // Cold scenarios pay a full page load per repeat, and the map has to paint
   // under SwiftShader before each one counts.
   timeout: 600_000,
-  projects: [{ name: "bench" }],
+  // Two projects share one spec against two builds — the keyless build and the
+  // static-navigation build — because `VITE_*` values are baked into the
+  // bundle and the Phase-0 keyless columns must stay the measurements of a
+  // build that performs **no** navigation-data request at all. A single build
+  // whose env cannot differ per scenario would force every keyless run through
+  // an aborted pointer fetch first, pushing its `navSnapshot` column off zero
+  // by however long the renderer stays busy after the previous calculation —
+  // possible on the per-leg 5-point loop, impossible to keep comparable.
+  // `bench` runs the committed scenario set against the keyless build;
+  // `bench-nav` runs the `nav-static` additions against the configured build.
+  projects: [
+    { name: "bench", grepInvert: /nav-static/, use: { baseURL: "http://127.0.0.1:4191" } },
+    { name: "bench-nav", grep: /nav-static/, use: { baseURL: "http://127.0.0.1:4192" } },
+  ],
+  // Two preview servers, one per project build, on ports (4191/4192) chosen to
+  // stay clear of the smoke suite's 4173 — another session's preview there
+  // used to collide with, or be killed alongside, these. Never reuse either: a
+  // preview server already on one of these ports would serve an old build and
+  // quietly skip the rebuild. The builds use sibling top-level out-dirs, not nested
+  // `dist/…` both under one `vite build --emptyOutDir` — the second build
+  // empties its own out-dir and would otherwise delete the first one's
+  // already-served bundle. Both env bases must match `e2e/helpers/scenario.ts`.
+  webServer: [
+    {
+      command: `npm run build -- --outDir bench-dist/keyless && npm run start -- --outDir bench-dist/keyless --host 127.0.0.1 --port 4191 --strictPort`,
+      env: { VITE_TRANSIT_BASE: "https://transit.e2e.test" },
+      url: "http://127.0.0.1:4191",
+      reuseExistingServer: false,
+      timeout: 240_000,
+    },
+    {
+      command: `npm run build -- --outDir bench-dist/nav && npm run start -- --outDir bench-dist/nav --host 127.0.0.1 --port 4192 --strictPort`,
+      env: {
+        VITE_TRANSIT_BASE: "https://transit.e2e.test",
+        VITE_NAVIGATION_BASE: "https://navigation.e2e.test",
+      },
+      url: "http://127.0.0.1:4192",
+      reuseExistingServer: false,
+      timeout: 240_000,
+    },
+  ],
 });

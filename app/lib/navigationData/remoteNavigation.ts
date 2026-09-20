@@ -14,6 +14,11 @@
  */
 
 import {
+  estimateBuildingShardDecodedBytes,
+  estimateStreetShardDecodedBytes,
+  type NavigationPhases,
+} from "./navigationPhases";
+import {
   MAX_BUILDING_SHARD_BYTES,
   MAX_MANIFEST_BYTES,
   MAX_STREET_SHARD_BYTES,
@@ -47,6 +52,11 @@ export interface NavigationRequestOptions {
   /** Test seam: defaults to the global fetch. */
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
+  /**
+   * Per-calculation phase collector (Checkpoint 6). Counts and durations
+   * only — never coordinates. Absent means unmeasured.
+   */
+  report?: NavigationPhases;
 }
 
 export interface NavigationSelectionRequest extends NavigationRequestOptions {
@@ -153,16 +163,23 @@ export async function loadNavigationPointer(
   if (!base) return null;
   const fetchFn = options?.fetchFn ?? globalThis.fetch;
   const url = `${base}/navigation/nyc/current.json`;
+  const report = options?.report;
   const shared = getOrFetch(url, async () => {
-    const response = await fetchFn(url, {
-      headers: { Accept: "application/json" },
-      cache: "default",
-    });
-    if (!response.ok) throw new Error(`NYC navigation pointer request failed (${response.status})`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_POINTER_BYTES)
-      throw new Error("NYC navigation pointer exceeds its budget");
-    return parseNavigationPointer(decodeJson(bytes, "NYC navigation pointer"));
+    const started = globalThis.performance?.now?.() ?? 0;
+    try {
+      const response = await fetchFn(url, {
+        headers: { Accept: "application/json" },
+        cache: "default",
+      });
+      if (!response.ok)
+        throw new Error(`NYC navigation pointer request failed (${response.status})`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_POINTER_BYTES)
+        throw new Error("NYC navigation pointer exceeds its budget");
+      return parseNavigationPointer(decodeJson(bytes, "NYC navigation pointer"));
+    } finally {
+      if (report) report.pointerMs += (globalThis.performance?.now?.() ?? 0) - started;
+    }
   });
   return withCallerSignal(shared, options?.signal);
 }
@@ -180,18 +197,25 @@ export async function loadNavigationManifest(
   if (!base) throw new Error("VITE_NAVIGATION_BASE is not configured");
   const fetchFn = options?.fetchFn ?? globalThis.fetch;
   const url = `${base}/${pointer.manifestPath}`;
+  const report = options?.report;
   const shared = getOrFetch(url, async () => {
-    const response = await fetchFn(url, {
-      headers: { Accept: "application/json" },
-      cache: "force-cache",
-    });
-    if (!response.ok) throw new Error(`NYC navigation manifest request failed (${response.status})`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_MANIFEST_BYTES)
-      throw new Error("NYC navigation manifest exceeds its budget");
-    if ((await sha256Hex(bytes)) !== pointer.manifestSha256)
-      throw new Error("NYC navigation manifest hash mismatch");
-    return parseNavigationManifest(decodeJson(bytes, "NYC navigation manifest"), pointer.generation);
+    const started = globalThis.performance?.now?.() ?? 0;
+    try {
+      const response = await fetchFn(url, {
+        headers: { Accept: "application/json" },
+        cache: "force-cache",
+      });
+      if (!response.ok)
+        throw new Error(`NYC navigation manifest request failed (${response.status})`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_MANIFEST_BYTES)
+        throw new Error("NYC navigation manifest exceeds its budget");
+      if ((await sha256Hex(bytes)) !== pointer.manifestSha256)
+        throw new Error("NYC navigation manifest hash mismatch");
+      return parseNavigationManifest(decodeJson(bytes, "NYC navigation manifest"), pointer.generation);
+    } finally {
+      if (report) report.manifestMs += (globalThis.performance?.now?.() ?? 0) - started;
+    }
   });
   return withCallerSignal(shared, options?.signal);
 }
@@ -224,21 +248,31 @@ export async function loadNavigationStreetShard(
   if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
   const fetchFn = options?.fetchFn ?? globalThis.fetch;
   const url = shardUrl(snapshot.base, snapshot.generation, ref.key);
+  const report = options?.report;
   const shared = getOrFetch(url, async () => {
+    const now = () => globalThis.performance?.now?.() ?? 0;
+    const tTransfer = now();
     const response = await fetchFn(url, {
       headers: { Accept: "application/json" },
       // Shards are served `immutable` under a content-addressed generation.
       cache: "force-cache",
     });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (report) {
+      report.streetTransferMs += now() - tTransfer;
+      report.streetTransferBytes += bytes.byteLength;
+    }
     if (!response.ok)
       throw new Error(`NYC navigation street shard request failed (${ref.key}, ${response.status})`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const tVerify = now();
     if (bytes.byteLength > MAX_STREET_SHARD_BYTES)
       throw new Error(`NYC navigation street shard exceeds its budget (${ref.key})`);
     if (bytes.byteLength !== ref.bytes)
       throw new Error(`NYC navigation street shard byte contract mismatch (${ref.key})`);
     if ((await sha256Hex(bytes)) !== ref.sha256)
       throw new Error(`NYC navigation street shard hash mismatch (${ref.key})`);
+    if (report) report.streetVerifyMs += now() - tVerify;
+    const tDecode = now();
     const shard = parseNavigationStreetShard(
       decodeJson(bytes, `NYC navigation street shard (${ref.key})`),
       ref,
@@ -250,6 +284,13 @@ export async function loadNavigationStreetShard(
       throw new Error(`NYC navigation street shard bounds mismatch (${ref.key})`);
     if (!boundsEqual(shard.supportBounds, ref.supportBounds))
       throw new Error(`NYC navigation street shard support mismatch (${ref.key})`);
+    if (report) {
+      report.streetDecodeMs += now() - tDecode;
+      report.streetShardsFetched += 1;
+      report.streetRefNodes += ref.nodes;
+      report.streetRefEdges += ref.edges;
+      report.streetDecodedBytesEstimate += estimateStreetShardDecodedBytes(shard);
+    }
     return shard;
   });
   return withCallerSignal(shared, options?.signal);
@@ -264,20 +305,30 @@ export async function loadNavigationBuildingShard(
   if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
   const fetchFn = options?.fetchFn ?? globalThis.fetch;
   const url = shardUrl(snapshot.base, snapshot.generation, ref.key);
+  const report = options?.report;
   const shared = getOrFetch(url, async () => {
+    const now = () => globalThis.performance?.now?.() ?? 0;
+    const tTransfer = now();
     const response = await fetchFn(url, {
       headers: { Accept: "application/json" },
       cache: "force-cache",
     });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (report) {
+      report.buildingTransferMs += now() - tTransfer;
+      report.buildingTransferBytes += bytes.byteLength;
+    }
     if (!response.ok)
       throw new Error(`NYC navigation building shard request failed (${ref.key}, ${response.status})`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const tVerify = now();
     if (bytes.byteLength > MAX_BUILDING_SHARD_BYTES)
       throw new Error(`NYC navigation building shard exceeds its budget (${ref.key})`);
     if (bytes.byteLength !== ref.bytes)
       throw new Error(`NYC navigation building shard byte contract mismatch (${ref.key})`);
     if ((await sha256Hex(bytes)) !== ref.sha256)
       throw new Error(`NYC navigation building shard hash mismatch (${ref.key})`);
+    if (report) report.buildingVerifyMs += now() - tVerify;
+    const tDecode = now();
     const shard = parseNavigationBuildingShard(
       decodeJson(bytes, `NYC navigation building shard (${ref.key})`),
       ref,
@@ -287,9 +338,116 @@ export async function loadNavigationBuildingShard(
       throw new Error(`NYC navigation building shard bounds mismatch (${ref.key})`);
     if (!boundsEqual(shard.supportBounds, ref.supportBounds))
       throw new Error(`NYC navigation building shard support mismatch (${ref.key})`);
+    if (report) {
+      report.buildingDecodeMs += now() - tDecode;
+      report.buildingShardsFetched += 1;
+      report.buildingRefCount += ref.buildings;
+      report.buildingDecodedBytesEstimate += estimateBuildingShardDecodedBytes(shard);
+    }
     return shard;
   });
   return withCallerSignal(shared, options?.signal);
+}
+
+/**
+ * Loads an already-selected set of street refs through one pinned snapshot,
+ * reusing the generation decoded cache — the same serve/fetch semantics the
+ * bbox loader applies.
+ *
+ * `fetchBestRoutingGraph` selects refs itself (primary bbox plus bounded
+ * access zones), so it needs the selected-refs twin of `loadNavigationSelection`
+ * rather than the bbox form: cached shards are served from memory, missing
+ * ones fetch and verify, and a failure throws for the whole selection.
+ */
+export async function loadNavigationStreetShards(
+  snapshot: NavigationSnapshot,
+  refs: NavigationStreetShardRef[],
+  options?: NavigationSelectionRequest,
+): Promise<NavigationStreetShard[]> {
+  const useCache = cached && cached.generation === snapshot.generation ? cached : undefined;
+  const missing = refs.filter((ref) => !useCache?.streets.has(ref.key));
+
+  const report = options?.report;
+  if (report) {
+    report.streetShardsServed += refs.length - missing.length;
+    if (useCache) {
+      for (const ref of refs) {
+        const shard = useCache.streets.get(ref.key);
+        if (shard) {
+          report.streetRefNodes += ref.nodes;
+          report.streetRefEdges += ref.edges;
+          report.streetDecodedBytesEstimate += estimateStreetShardDecodedBytes(shard);
+        }
+      }
+    }
+  }
+
+  const loaded = await Promise.all(
+    missing.map(async (ref) => [ref.key, await loadNavigationStreetShard(snapshot, ref, options)] as const),
+  );
+
+  // Cache only into a cache that still belongs to this snapshot's generation.
+  const target = cached && cached.generation === snapshot.generation ? cached : undefined;
+  if (target) {
+    for (const [key, shard] of loaded) target.streets.set(key, shard);
+  }
+
+  return refs.map((ref) => {
+    const shard = target?.streets.get(ref.key);
+    if (!shard)
+      throw new Error(`NYC navigation street shard missing from verified selection (${ref.key})`);
+    return shard;
+  });
+}
+
+/**
+ * Loads an already-selected set of building refs through one pinned snapshot,
+ * reusing the generation decoded cache exactly like the streets path does.
+ *
+ * The static prism provider selects refs by caster reach itself (a padded
+ * query the manifest selection does not describe), so it needs the
+ * selected-refs twin of `loadNavigationSelection` rather than the bbox form:
+ * cached shards are served from memory, missing ones fetch and verify, and
+ * nothing partial publishes when one fails.
+ */
+export async function loadNavigationBuildingShards(
+  snapshot: NavigationSnapshot,
+  refs: NavigationBuildingShardRef[],
+  options?: NavigationSelectionRequest,
+): Promise<NavigationBuildingShard[]> {
+  const useCache = cached && cached.generation === snapshot.generation ? cached : undefined;
+  const missing = refs.filter((ref) => !useCache?.buildings.has(ref.key));
+
+  const report = options?.report;
+  if (report) {
+    report.buildingShardsServed += refs.length - missing.length;
+    if (useCache) {
+      for (const ref of refs) {
+        const shard = useCache.buildings.get(ref.key);
+        if (shard) {
+          report.buildingRefCount += ref.buildings;
+          report.buildingDecodedBytesEstimate += estimateBuildingShardDecodedBytes(shard);
+        }
+      }
+    }
+  }
+
+  const loaded = await Promise.all(
+    missing.map(async (ref) => [ref.key, await loadNavigationBuildingShard(snapshot, ref, options)] as const),
+  );
+
+  // Cache only into a cache that still belongs to this snapshot's generation.
+  const target = cached && cached.generation === snapshot.generation ? cached : undefined;
+  if (target) {
+    for (const [key, shard] of loaded) target.buildings.set(key, shard);
+  }
+
+  return refs.map((ref) => {
+    const shard = target?.buildings.get(ref.key);
+    if (!shard)
+      throw new Error(`NYC navigation building shard missing from verified selection (${ref.key})`);
+    return shard;
+  });
 }
 
 /** Two rectangles overlap, touching edges included. */
@@ -413,7 +571,9 @@ export async function acquireNavigationSnapshot(
   if (options?.signal?.aborted) throw abortReason(options.signal);
   const pointer = await loadNavigationPointer(options);
   if (!pointer) return null;
+  const report = options?.report;
   if (cached && cached.generation === pointer.generation) {
+    if (report) report.snapshotGenerationCacheHit = true;
     return { generation: pointer.generation, manifest: cached.manifest, base };
   }
   const manifest = await loadNavigationManifest(pointer, options);
@@ -446,6 +606,31 @@ export async function loadNavigationSelection(
   const useCache = cached && cached.generation === snapshot.generation ? cached : undefined;
   const missingStreets = refs.streets.filter((ref) => !useCache?.streets.has(ref.key));
   const missingBuildings = refs.buildings.filter((ref) => !useCache?.buildings.has(ref.key));
+
+  // Served-from-cache accounting happens here, where the selection is known;
+  // fetched shards accrue their counts inside the loaders (report-aware).
+  const report = options?.report;
+  if (report) {
+    report.streetShardsServed += refs.streets.length - missingStreets.length;
+    report.buildingShardsServed += refs.buildings.length - missingBuildings.length;
+    if (useCache) {
+      for (const ref of refs.streets) {
+        const shard = useCache.streets.get(ref.key);
+        if (shard) {
+          report.streetRefNodes += ref.nodes;
+          report.streetRefEdges += ref.edges;
+          report.streetDecodedBytesEstimate += estimateStreetShardDecodedBytes(shard);
+        }
+      }
+      for (const ref of refs.buildings) {
+        const shard = useCache.buildings.get(ref.key);
+        if (shard) {
+          report.buildingRefCount += ref.buildings;
+          report.buildingDecodedBytesEstimate += estimateBuildingShardDecodedBytes(shard);
+        }
+      }
+    }
+  }
 
   // One shared fetch per shard: concurrent identical requests coalesce in
   // `getOrFetch`, and each waiter's abort races without touching the others.
