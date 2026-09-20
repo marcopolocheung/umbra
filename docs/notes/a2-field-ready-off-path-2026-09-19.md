@@ -160,3 +160,13 @@ warnings, none added), `npm run typecheck` (only the pre-existing
 vitest + full vitest (only the three pre-existing transit-access failures,
 reproduced on `main`), `npm run build`, `npm run e2e` (5/5, incl. published
 transit), and three `bench:route` passes above.
+
+---
+
+## Port to the `umbra` mirror
+
+This branch reproduces PR 1 on `marcopolocheung/umbra`
+(`feat/a2-field-ready-off-path`). File contents are identical to the canonical
+PR at `f5da0bb`; the canonical measurement hashes remain quoted above, and the
+port's own commits on this mirror are `d6e8b95` and `35e4399`. The A2 PR 2
+port continues from this branch.
