@@ -31,6 +31,7 @@ import {
   TRAIN_SUN_EXPOSURE,
   buildTrainDrawData,
   ENTRANCE_MATCH_MAX_M,
+  MIN_TRANSIT_DISTANCE_M,
 } from "../lib/trainGraph";
 import { fetchBestTrainGraph } from "../lib/transit/trainGraphSource";
 import {
@@ -1090,18 +1091,18 @@ export function useRouting({
           );
 
         // Train transit routing
-        if (straightLineDistM <= 500) {
+        if (straightLineDistM <= MIN_TRANSIT_DISTANCE_M) {
           if (import.meta.env.DEV)
             console.log(
               "[transit] Skipped: straight-line distance",
               straightLineDistM.toFixed(0),
-              "m <= 500 m",
+              `m <= ${MIN_TRANSIT_DISTANCE_M} m`,
             );
         }
         // Set when a transit route was found and then discarded, so the user is
         // told transit was considered rather than silently shown walking only.
         let transitNotice: string | null = null;
-        if (!forcedPartial && straightLineDistM > 500) {
+        if (!forcedPartial && straightLineDistM > MIN_TRANSIT_DISTANCE_M) {
           transitTried = true;
           try {
             updateProgress({ message: "Checking transit option" });
