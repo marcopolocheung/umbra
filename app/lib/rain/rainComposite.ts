@@ -15,7 +15,13 @@ export const RAIN_WET_RGB: [number, number, number] = [
   0x63 / 255,
   0xeb / 255,
 ];
-export const RAIN_WET_ALPHA = 0.5;
+/**
+ * Peak opacity the wet wash attains on a fully exposed (uncovered) spot.
+ * 0.5 read as solid blue in flat screenshots; 0.30 was tried and read too
+ * faint next to shadow-strength tinting. 0.35 keeps the map legible while
+ * the exposed streets stay blue at strength 35%.
+ */
+export const RAIN_WET_ALPHA = 0.35;
 
 /**
  * Premultiplied fragment for the pass-D composite at a coverage reading.

@@ -307,8 +307,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // Rain inversion makes the covered FBO read as *exposed*: the channel the
   // composite inverts carries coverage, and the wet tint is premultiplied by the
   // same constant so the existing ONE / ONE_MINUS_SRC_ALPHA blending stays exact.
-  private static readonly RAIN_WET_RGB: [number, number, number] = [0x25 / 255, 0x63 / 255, 0xeb / 255]; // #2563eb
-  private static readonly RAIN_WET_ALPHA = 0.5;
 
   constructor(opts?: { date?: Date; id?: string }) {
     this.currentDate = opts?.date ?? new Date();
@@ -977,10 +975,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // Rain's Pass A carries *coverage* in the alpha it writes: wet tint premultiplied
     // by RAIN_WET_ALPHA, alpha = RAIN_WET_ALPHA, so the composite can invert it.
     const raw = rain
-      ? [LocalShadowAdapter.RAIN_WET_RGB[0] * LocalShadowAdapter.RAIN_WET_ALPHA,
-         LocalShadowAdapter.RAIN_WET_RGB[1] * LocalShadowAdapter.RAIN_WET_ALPHA,
-         LocalShadowAdapter.RAIN_WET_RGB[2] * LocalShadowAdapter.RAIN_WET_ALPHA,
-         LocalShadowAdapter.RAIN_WET_ALPHA] as [number, number, number, number]
+      ? [RAIN_WET_RGB[0] * RAIN_WET_ALPHA,
+         RAIN_WET_RGB[1] * RAIN_WET_ALPHA,
+         RAIN_WET_RGB[2] * RAIN_WET_ALPHA,
+         RAIN_WET_ALPHA] as [number, number, number, number]
       : this.computeShadowColor(geo.sunBelowHorizon);
     gl2.uniform4f(this.u_color, raw[0], raw[1], raw[2], raw[3]);
 
