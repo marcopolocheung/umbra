@@ -24,10 +24,8 @@ import {
 } from './heightField';
 
 import { directionForWindReport } from '../rain/direction';
-import { rainOpacityForLightOpacity } from '../rain/opacity';
-import { canopyShadowTriangles } from '../rain/canopyCast';
-import { runRoofExclusion } from '../rain/rainPass';
-import { RAIN_WET_ALPHA, RAIN_WET_RGB } from '../rain/rainComposite';
+import { RAIN_WET_RGB } from '../rain/rainComposite';
+import { HAZARD_PROFILES, type HazardDirection, type HazardMode } from './hazard';
 
 // Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
 // SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
@@ -219,24 +217,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private quadBuffer: WebGLBuffer | null = null;
   private quadAttrLoc = -1;
   private quadTexLoc: WebGLUniformLocation | null = null;
-  private quadInvertLoc: WebGLUniformLocation | null = null;
-  private quadAlphaScaleLoc: WebGLUniformLocation | null = null;
-  private quadWetColorLoc: WebGLUniformLocation | null = null;
-
-  // Canopy pass: the painter's only fractional casters (rain mode).
-  private canopyProgram: WebGLProgram | null = null;
-  private canopyAttrPos = -1;
-  private canopyAttrOpacity = -1;
-  private canopyUMatrix: WebGLUniformLocation | null = null;
-  private canopyUColor: WebGLUniformLocation | null = null;
-  private canopyPosBuffer: WebGLBuffer | null = null;
-  private canopyOpacityBuffer: WebGLBuffer | null = null;
-  private canopyPrisms: BuildingPrism[] = [];
-  private canopyGeometry: { verts: Float32Array; opacity: Float32Array } | null = null;
-  private canopyUploadedVersion = -1;
-  private canopyVersion = 0;
-
-  private hazardMode: "sun" | "rain" = "sun";
+  private hazardMode: HazardMode = "sun";
   /** Rain ray direction (radians), fed by `setRainWind`; null = windless vertical. */
   private lastRainAzRad: number | null = null;
   private lastRainAltRad: number | null = null;
@@ -385,14 +366,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.map?.triggerRepaint();
   }
 
-  setCanopyPrisms(prisms: BuildingPrism[]) {
-    this.canopyPrisms = prisms;
-    this.canopyGeometry = null;
-    this.canopyVersion++;
-    this.dirty = true;
-    this.map?.triggerRepaint();
-  }
-
   setRainWind(dirDeg: number | null, windMs: number | null) {
     const direction = directionForWindReport(dirDeg, windMs);
     const azRad = ((direction.fromDeg + 180) % 360) * Math.PI / 180;
@@ -416,7 +389,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
    * rain without a wind report is the vertical windless limit (azimuth rotates
    * by 180°, per the lee/windward convention pinned in the rain tests).
    */
-  private hazardDirection(): { azimuthRad: number; altitudeRad: number; sunBelow: boolean } {
+  private hazardDirection(): HazardDirection {
     if (this.hazardMode === "rain") {
       const altRad = this.lastRainAltRad ?? (89.5 * Math.PI) / 180;
       return { azimuthRad: this.lastRainAzRad ?? Math.PI, altitudeRad: altRad, sunBelow: false };
@@ -779,34 +752,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.bldgHeightBuffer = gl.createBuffer();
     this.bldgNormalBuffer = gl.createBuffer();
 
-    // Compile canopy shader (rain fraction pass): same color seed as Pass A,
-    // per-vertex coverage value written into alpha under MAX blending.
-    const canopyVsSrc = `
-      attribute vec2 a_pos;
-      attribute float a_opacity;
-      uniform mat4 u_matrix;
-      varying float v_opacity;
-      void main() {
-        gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0);
-        v_opacity = a_opacity;
-      }
-    `;
-    const canopyFsSrc = `
-      precision mediump float;
-      uniform vec4 u_color;
-      varying float v_opacity;
-      void main() {
-        gl_FragColor = u_color * v_opacity;
-      }
-    `;
-    this.canopyProgram = createProgram(gl, canopyVsSrc, canopyFsSrc);
-    this.canopyAttrPos = gl.getAttribLocation(this.canopyProgram, 'a_pos');
-    this.canopyAttrOpacity = gl.getAttribLocation(this.canopyProgram, 'a_opacity');
-    this.canopyUMatrix = gl.getUniformLocation(this.canopyProgram, 'u_matrix');
-    this.canopyUColor = gl.getUniformLocation(this.canopyProgram, 'u_color');
-    this.canopyPosBuffer = gl.createBuffer();
-    this.canopyOpacityBuffer = gl.createBuffer();
-
     // Compile quad shader for FBO texture compositing
     const quadVsSrc = `
       attribute vec2 a_pos;
@@ -819,32 +764,14 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const quadFsSrc = `
       precision mediump float;
       uniform sampler2D u_texture;
-      uniform float u_invert;
-      uniform float u_alphaScale;
-      uniform vec3 u_wetColor;
       varying vec2 v_uv;
       void main() {
-        vec4 t = texture2D(u_texture, v_uv);
-        if (u_invert > 0.5) {
-          // Rain alpha = coverage × wetAlpha. The FBO carries no colour where
-          // nothing covers, so the wet tint must come from the uniform — the
-          // previous FBO-RGB version painted transparent there.
-          float exposed = max(0.0, 1.0 - t.a / u_alphaScale);
-          gl_FragColor = vec4(
-            u_wetColor * u_alphaScale * exposed,
-            u_alphaScale * exposed
-          );
-        } else {
-          gl_FragColor = t;
-        }
+        gl_FragColor = texture2D(u_texture, v_uv);
       }
     `;
     this.quadProgram = createProgram(gl, quadVsSrc, quadFsSrc);
     this.quadAttrLoc = gl.getAttribLocation(this.quadProgram, 'a_pos');
     this.quadTexLoc = gl.getUniformLocation(this.quadProgram, 'u_texture');
-    this.quadInvertLoc = gl.getUniformLocation(this.quadProgram, 'u_invert');
-    this.quadAlphaScaleLoc = gl.getUniformLocation(this.quadProgram, 'u_alphaScale');
-    this.quadWetColorLoc = gl.getUniformLocation(this.quadProgram, 'u_wetColor');
     this.quadBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -858,7 +785,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     if (!this.quadProgram || !this.quadBuffer) return;
     if (!this.visuallyEnabled) return;
 
-    const rain = this.hazardMode === "rain";
+    const profile = HAZARD_PROFILES[this.hazardMode];
     const hazardDir = this.hazardDirection();
 
     // The depth ceiling texture and gl.MAX both require WebGL2 (guaranteed by MapLibre).
@@ -870,10 +797,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.buildingCache = this.buildBuildingGeometryCache();
         this.cacheVersion++;
       }
-      this.cachedGeometry = this.extrudeShadows(this.buildingCache, hazardDir, rain);
-      this.canopyGeometry = rain
-        ? this.buildCanopyGeometry(hazardDir.azimuthRad, hazardDir.altitudeRad)
-        : null;
+      this.cachedGeometry = this.extrudeShadows(this.buildingCache, hazardDir);
       this.geomVersion++;
       this.dirty = false;
       this.emit('idle');
@@ -964,7 +888,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.disable(gl.DEPTH_TEST);
     gl2.depthMask(false);
 
-    // ── Pass A: Render shadows into FBO with MAX blending ──
+    // ── Pass A (sun): render coverage into FBO with MAX blending ──
+    // Rain has no canvas ground picture: the style-rendered wash owns it.
+    if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl2.viewport(0, 0, w, h);
     gl2.clearColor(0, 0, 0, 0);
@@ -972,14 +898,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     gl2.useProgram(this.program);
     gl2.uniformMatrix4fv(this.u_matrix, false, matrix);
-    // Rain's Pass A carries *coverage* in the alpha it writes: wet tint premultiplied
-    // by RAIN_WET_ALPHA, alpha = RAIN_WET_ALPHA, so the composite can invert it.
-    const raw = rain
-      ? [RAIN_WET_RGB[0] * RAIN_WET_ALPHA,
-         RAIN_WET_RGB[1] * RAIN_WET_ALPHA,
-         RAIN_WET_RGB[2] * RAIN_WET_ALPHA,
-         RAIN_WET_ALPHA] as [number, number, number, number]
-      : this.computeShadowColor(geo.sunBelowHorizon);
+    const raw = this.computeShadowColor(geo.sunBelowHorizon);
     gl2.uniform4f(this.u_color, raw[0], raw[1], raw[2], raw[3]);
 
     gl2.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -992,39 +911,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.disable(gl.CULL_FACE);
 
     gl2.drawArrays(gl.TRIANGLES, 0, this.vertexCount);
-
-    // ── Canopy fraction: rain only, same MAX blend, alpha carries opacity ──
-    if (rain && this.canopyGeometry && this.canopyProgram &&
-        this.canopyPosBuffer && this.canopyOpacityBuffer &&
-        this.canopyGeometry.verts.length > 0) {
-      if (this.canopyUploadedVersion !== this.canopyVersion) {
-        gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyPosBuffer);
-        gl2.bufferData(gl.ARRAY_BUFFER, this.canopyGeometry.verts, gl.DYNAMIC_DRAW);
-        gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyOpacityBuffer);
-        gl2.bufferData(gl.ARRAY_BUFFER, this.canopyGeometry.opacity, gl.DYNAMIC_DRAW);
-        this.canopyUploadedVersion = this.canopyVersion;
-      }
-      gl2.useProgram(this.canopyProgram);
-      gl2.uniformMatrix4fv(this.canopyUMatrix, false, matrix);
-      gl2.uniform4f(this.canopyUColor, raw[0], raw[1], raw[2], raw[3]);
-      gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyPosBuffer);
-      gl2.enableVertexAttribArray(this.canopyAttrPos);
-      gl2.vertexAttribPointer(this.canopyAttrPos, 2, gl.FLOAT, false, 0, 0);
-      gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyOpacityBuffer);
-      gl2.enableVertexAttribArray(this.canopyAttrOpacity);
-      gl2.vertexAttribPointer(this.canopyAttrOpacity, 1, gl.FLOAT, false, 0, 0);
-      gl2.drawArrays(gl.TRIANGLES, 0, this.canopyGeometry.verts.length / 2);
     }
 
-    // ── Pass B + C: ceiling field build, then (sun only) roof exclusion ──
-    // Rain needs the ceiling field too — it is what shades the extruded
-    // buildings in Pass E — but the roof erase stays off in rain (see
-    // runRoofExclusion): the footprint coverage is the shelter being painted.
+    // ── Pass B + C: ceiling field build, then (profile-gated) roof exclusion ──
+    // Both hazards need the ceiling field — it is what shades the extruded
+    // buildings in Pass E — but rain never erases: its own footprint is the
+    // shelter being painted, the exact inverse of the sun's lit-roof axiom.
     const roofVertexCount = geo.roofVerts.length / 2;
     const buildCeiling = !geo.sunBelowHorizon && roofVertexCount > 0 &&
         this.heightProgram && this.shadowHeightBuffer &&
         this.heightFbo && this.heightFboTexture;
-    const eraseRoof = buildCeiling && runRoofExclusion(rain, geo.sunBelowHorizon, roofVertexCount) &&
+    const eraseRoof = buildCeiling && profile.erasesRoofs && !geo.sunBelowHorizon &&
         this.roofProgram && this.roofPosBuffer && this.roofHeightBuffer;
     if (buildCeiling) {
 
@@ -1102,11 +999,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.depthMask(false);
     gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
 
-    // ── Pass D: Composite FBO texture onto main canvas ──
-    // The sun composite must go through the FBO; the rain *ground* picture is a
-    // basemap fill layer (see rainMapLayer.ts) so the streets never lose the map
-    // beneath them. The custom canvas keeps only the 3D building paint.
-    if (!rain) {
+    // ── Pass D: Composite FBO texture onto main canvas (sun) ──
+    // Rain skips it: its ground picture is the basemap fill layer
+    // (`rainMapLayer.ts`), so the streets never lose the map beneath them.
+    if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
@@ -1114,18 +1010,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.activeTexture(gl.TEXTURE0);
     gl2.bindTexture(gl.TEXTURE_2D, this.fboTexture);
     gl2.uniform1i(this.quadTexLoc, 0);
-    gl2.uniform1f(this.quadInvertLoc, rain ? 1 : 0);
-    gl2.uniform1f(
-      this.quadAlphaScaleLoc,
-      rain ? RAIN_WET_ALPHA : 1,
-    );
-    gl2.uniform3f(
-      this.quadWetColorLoc,
-      RAIN_WET_RGB[0],
-      RAIN_WET_RGB[1],
-      RAIN_WET_RGB[2],
-    );
-
     gl2.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl2.enableVertexAttribArray(this.quadAttrLoc);
     gl2.vertexAttribPointer(this.quadAttrLoc, 2, gl.FLOAT, false, 0, 0);
@@ -1156,10 +1040,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.lastUploadedCacheVersion = this.cacheVersion;
       }
 
-      // Rain aims the wall sample nudges at the reverse-rain ray; the sun path
-      // keeps its exactly-previous values.
-      const az = rain ? (this.lastRainAzRad ?? Math.PI) : (this.lastSunAzRad ?? 0);
-      const alt = rain ? (this.lastRainAltRad ?? (89.5 * Math.PI) / 180) : (this.lastSunAltRad ?? 0);
+      // The nudge direction comes from the hazard's resolved ray: SunCalc for
+      // the sun, the wind-fed reverse-rain ray for rain.
+      const az = hazardDir.azimuthRad;
+      const alt = hazardDir.altitudeRad;
       // SunCalc's azimuth runs south→west; Mercator y runs north→south. Toward the
       // sun is therefore (-sin az, cos az) — the negative of the shadow's direction.
       const sunX = -Math.sin(az);
@@ -1187,15 +1071,15 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.uniform3f(u.u_sunDir, sunX * Math.cos(alt), sunY * Math.cos(alt), Math.sin(alt));
       // The wet tint is the colour exposed surfaces take; the dry wall stays its
       // normal stone. Premultiplied only inside the ground composite.
-      if (rain) {
+      if (profile.surfaceInverts) {
         gl2.uniform3f(u.u_shadowTint, RAIN_WET_RGB[0], RAIN_WET_RGB[1], RAIN_WET_RGB[2]);
       } else {
         gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
       }
       gl2.uniform2f(u.u_sunFlat, sunX, sunY);
       gl2.uniform3f(u.u_wallColor, BUILDING_RGB[0], BUILDING_RGB[1], BUILDING_RGB[2]);
-      gl2.uniform1f(u.u_sunBelow, rain ? 0 : (geo.sunBelowHorizon ? 1 : 0));
-      gl2.uniform1f(u.u_rainFace, rain ? 1 : 0);
+      gl2.uniform1f(u.u_sunBelow, geo.sunBelowHorizon ? 1 : 0);
+      gl2.uniform1f(u.u_rainFace, profile.surfaceInverts ? 1 : 0);
       gl2.uniform1f(u.u_bias, heightBias);
       gl2.uniform1f(u.u_fieldScale, fieldScale);
 
@@ -1502,43 +1386,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
    * Phase 2: Extrude shadows from cached building geometry using current sun position.
    * This is the fast path — no querySourceFeatures, no earcut, just shadow offset math.
    */
-  /**
-   * Canopy cast as ground shadow polygons with per-vertex rain opacity.
-   *
-   * Crowns sit on trunks, so the near ring is displaced by `baseM / tan(alt)`
-   * along the shadow direction before the ground sweep of the remaining height —
-   * the same endpoints the shadow index uses for elevated casters, spelled for
-   * the renderer's flat triangles. Vertical rain lands on the crown's own
-   * footprint, exactly.
-   */
-  private buildCanopyGeometry(
-    azRad: number,
-    altRad: number
-  ): { verts: Float32Array; opacity: Float32Array } | null {
-    if (!this.map || this.canopyPrisms.length === 0) return null;
-    const center = this.map.getCenter();
-    const { mPerLat, mPerLng } = metersPerDegree(center.lat);
-    const [cx, cy] = lngLatToMercator(center.lng, center.lat);
-    const tanAlt = Math.tan(altRad);
-    if (!Number.isFinite(tanAlt) || tanAlt <= 0) return null;
-    const verts: number[] = [];
-    const opacity: number[] = [];
-    for (const prism of this.canopyPrisms) {
-      const sweep = canopyShadowTriangles(prism, azRad, altRad, mPerLat, mPerLng);
-      const rainOpacity = rainOpacityForLightOpacity(prism.opacity);
-      for (let i = 0; i < sweep.length; i++) {
-        const [lng, lat] = lngLatToMercator(sweep[i][0], sweep[i][1]);
-        verts.push(lng - cx, lat - cy);
-        opacity.push(rainOpacity);
-      }
-    }
-    return { verts: new Float32Array(verts), opacity: new Float32Array(opacity) };
-  }
-
   private extrudeShadows(
     cache: CachedBuildingGeometry,
-    hazard: { azimuthRad: number; altitudeRad: number; sunBelow: boolean },
-    rain = false
+    hazard: HazardDirection
   ): ShadowGeometry {
     const empty: ShadowGeometry = {
       shadowVerts: new Float32Array(),
@@ -1553,7 +1403,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // math below is direction-agnostic; only the callers' semantic differs.
     const sunAzimuth = hazard.azimuthRad;
     const sunAltitude = hazard.altitudeRad;
-    if (!rain && this.hazardMode === "sun" && this.lastSunAzRad == null) {
+    if (this.hazardMode === "sun" && this.lastSunAzRad == null) {
       // A sun that was never computed (worker disabled) leaves its trace for the
       // dirty-check the same way the old synchronous path did.
       this.lastSunAzDeg = sunAzimuth * 180 / Math.PI;
@@ -1562,8 +1412,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       this.lastSunAltRad = sunAltitude;
     }
 
-    // Sun below horizon → full dark overlay (world quad). Rain never goes below.
-    if (!rain && sunAltitude <= 0) {
+    // Sun below horizon → full dark overlay (world quad). The rain direction
+    // never reports below, so this branch is sun-only by construction.
+    if (hazard.sunBelow) {
       return {
         shadowVerts: new Float32Array([
           0, 0,  1, 0,  1, 1,
