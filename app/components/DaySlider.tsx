@@ -178,7 +178,7 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
       {/* Fixed red center cursor */}
       <div
         className="absolute inset-y-0 w-px z-10 pointer-events-none"
-        style={{ left: "50%", backgroundColor: "var(--color-danger)" }}
+        style={{ left: "50%", backgroundColor: "var(--color-chrome)" }}
       />
 
       {/* Scrollable content */}
