@@ -31,3 +31,23 @@ export function rainCompositeColor(coverage: number): [number, number, number, n
     RAIN_WET_ALPHA * exposed,
   ];
 }
+
+/**
+ * The wall/roof colour Pass E renders for the rain hazard — the building-side
+ * twin of `rainCompositeColor`, kept here so "exposed = wet, dry = stone" is
+ * testable without a WebGL context.
+ */
+export function rainSurfaceColor(
+  dry: [number, number, number],
+  wet: [number, number, number],
+  exposed: number,
+  facing: number,
+): [number, number, number] {
+  const e = Math.max(0, Math.min(1, exposed));
+  const dryScale = 0.82 + 0.18 * Math.max(-facing, 0);
+  return [
+    dry[0] * dryScale + e * (wet[0] - dry[0] * dryScale),
+    dry[1] * dryScale + e * (wet[1] - dry[1] * dryScale),
+    dry[2] * dryScale + e * (wet[2] - dry[2] * dryScale),
+  ];
+}
