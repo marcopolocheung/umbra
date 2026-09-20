@@ -38,10 +38,10 @@ import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { directionForWindReport, windFromLabel } from "./lib/rain/direction";
 import {
+  clearRainMapData,
   ensureRainMapLayer,
   RAIN_GRID_COLS,
   RAIN_GRID_ROWS,
-  rainGridFeatureCollection,
   setRainMapData,
 } from "./lib/rain/rainMapLayer";
 import type { BBox } from "./lib/shadowField/ShadowField";
@@ -357,14 +357,13 @@ export default function Home() {
     layer.setRainWind?.(heatWeather?.windDirDeg ?? null, heatWeather?.windMs ?? null);
   }, [rainMode, heatWeather]);
 
-  // The rain *ground* picture as a basemap fill: the same shelter grid routing
+  // The rain *ground* picture as a basemap raster: the same shelter grid routing
   // pays for, preloaded the way routing preloads it, composited by the style
   // renderer so the map below is never destroyed by a custom pass.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const clear = () =>
-      setRainMapData(map, { type: "FeatureCollection", features: [] });
+    const clear = () => clearRainMapData(map);
     if (!rainMode) {
       clear();
       return;
@@ -401,7 +400,7 @@ export default function Home() {
         direction,
         date,
       );
-      setRainMapData(map, rainGridFeatureCollection(grid, bbox));
+      setRainMapData(map, grid, bbox);
     };
     repaint();
     const onMoveEnd = () => {
