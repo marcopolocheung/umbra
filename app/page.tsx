@@ -37,6 +37,7 @@ import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { directionForWindReport, windFromLabel } from "./lib/rain/direction";
+import { createOverpassCanopyProvider } from "./lib/shadowField/providers";
 
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
@@ -348,6 +349,51 @@ export default function Home() {
     if (!rainMode || !layer) return;
     layer.setRainWind?.(heatWeather?.windDirDeg ?? null, heatWeather?.windMs ?? null);
   }, [rainMode, heatWeather]);
+
+  // Canopy supply for the rain canvas: the same Overpass crowns routing pays
+  // for, re-opacified inside the painter. Loaded per viewport with the same
+  // debounce cadence as the rest of the map, and cleared when the mode leaves.
+  const rainCanopyProviderRef = useRef<ReturnType<typeof createOverpassCanopyProvider> | null>(null);
+  useEffect(() => {
+    const layer = shadowLayerRef.current;
+    const map = mapRef.current;
+    if (!rainMode || !layer || !map) {
+      layer?.setCanopyPrisms?.([]);
+      return;
+    }
+    if (!rainCanopyProviderRef.current) {
+      rainCanopyProviderRef.current = createOverpassCanopyProvider();
+    }
+    const provider = rainCanopyProviderRef.current;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      const b = map.getBounds();
+      const bbox = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+      const read = () => {
+        if (cancelled) return;
+        layer.setCanopyPrisms?.(provider.prismsFor(bbox, date)?.prisms ?? []);
+      };
+      read();
+      if (!provider.prismsFor(bbox, date)) {
+        provider.load?.(bbox).then(read).catch(() => {
+          // volunteer Overpass may refuse; the canvas states its unknowns
+        });
+      }
+    };
+    const onMoveEnd = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(refresh, 600);
+    };
+    refresh();
+    map.on("moveend", onMoveEnd);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      map.off("moveend", onMoveEnd);
+      layer.setCanopyPrisms?.([]);
+    };
+  }, [rainMode, date, mapRef]);
 
 
   const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
