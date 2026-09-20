@@ -73,22 +73,93 @@ describe("fetchRoutingGraph — XML error detection", () => {
 
 describe("fetchRoutingGraph — transient proxy failures", () => {
   it.each([429, 502, 503, 504])(
-    "shows the actionable busy-service message for HTTP %s",
+    "shows the actionable busy-service message after one retry for HTTP %s",
     async (status) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: false,
-          status,
-          statusText: "upstream detail",
-        })
-      );
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: "upstream detail",
+        headers: { get: () => "0" },
+      });
+      vi.stubGlobal("fetch", fetchMock);
 
       await expect(fetchRoutingGraph(...nextBbox())).rejects.toThrow(
         "The map server is busy — try a smaller area or wait a moment and retry."
       );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     }
   );
+
+  it("accepts the graph when the retry succeeds", async () => {
+    const way = {
+      type: "way",
+      id: 9001,
+      nodes: [1, 2],
+      geometry: [
+        { lat: 40.0, lon: -74.0 },
+        { lat: 40.001, lon: -74.0 },
+      ],
+      tags: { highway: "residential" },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => "0" },
+        clone: () => ({ json: async () => ({ attempts: [] }) }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => JSON.stringify({ elements: [way] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const graph = await fetchRoutingGraph(...nextBbox());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(graph.nodes.size).toBe(2);
+  });
+
+  it("never retries a caller abort while waiting out Retry-After", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { get: () => "60" },
+      clone: () => ({ json: async () => ({ attempts: [] }) }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const controller = new AbortController();
+    const pending = fetchRoutingGraph(...nextBbox(), controller.signal);
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps a long Retry-After at ten seconds", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: { get: () => "3600" },
+      clone: () => ({ json: async () => ({ attempts: [] }) }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+
+    const pending = fetchRoutingGraph(...nextBbox());
+    const failure = expect(pending).rejects.toThrow(/map server is busy/i);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await failure;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
 });
 
 describe("fetchBuildingFootprintsAround", () => {

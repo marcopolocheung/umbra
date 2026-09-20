@@ -132,25 +132,73 @@ out body geom;
   const encodedBody = `data=${encodeURIComponent(query)}`;
 
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const combinedSignal = signal
     ? AbortSignal.any([controller.signal, signal])
     : controller.signal;
 
-  let res: Response;
-  try {
-    // The proxy handles the mirror fallback server-side.
-    res = await postOverpass(encodedBody, combinedSignal);
-  } catch (e) {
+  // One attempt, bounded by the client budget. The proxy's own mirror retries
+  // happen server-side, so the browser asking again is a different question —
+  // whether the volunteer pool recovered — and that is asked at most once.
+  const postOnce = async (): Promise<Response> => {
+    const tid = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await postOverpass(encodedBody, combinedSignal);
+    } finally {
+      clearTimeout(tid);
+    }
+  };
+
+  const failAs = (e: unknown): Error => {
     if (e instanceof DOMException && e.name === "AbortError") {
       if (signal?.aborted) throw e; // caller-initiated abort: rethrow as AbortError
-      throw new Error(
+      return new Error(
         "Route request timed out — try a shorter route or a less busy area."
       );
     }
-    throw e;
-  } finally {
-    clearTimeout(tid);
+    throw e as Error;
+  };
+
+  let res: Response;
+  try {
+    // The proxy handles the mirror fallback server-side.
+    res = await postOnce();
+  } catch (e) {
+    throw failAs(e);
+  }
+
+  if (!res.ok && [429, 502, 503, 504].includes(res.status)) {
+    const retryAfterSec = Number(res.headers?.get("Retry-After"));
+    const delayMs = Math.min(
+      Math.max(
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 1_000,
+        250,
+      ),
+      10_000,
+    );
+    await new Promise<void>((resolve, reject) => {
+      if (combinedSignal.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      const timer = setTimeout(() => {
+        combinedSignal.removeEventListener("abort", onAbort);
+        resolve();
+      }, delayMs);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      combinedSignal.addEventListener("abort", onAbort, { once: true });
+    }).catch((e) => {
+      throw failAs(e);
+    });
+    try {
+      res = await postOnce();
+    } catch (e) {
+      throw failAs(e);
+    }
   }
 
   if (!res.ok) {
