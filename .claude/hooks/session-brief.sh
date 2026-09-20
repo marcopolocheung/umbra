@@ -28,7 +28,7 @@ done
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')
 dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 out+=$'\n'"Branch: $branch · working tree: $dirty changed file(s)."
-out+=$'\n'"Start a track with /track <a-h|p>. One session owns one track; never merge a PR."
+out+=$'\n'"Start a track with /track <a-h|p|u>. One session owns one track; never merge a PR."
 
 jq -n --arg c "$out" '{
   hookSpecificOutput: {

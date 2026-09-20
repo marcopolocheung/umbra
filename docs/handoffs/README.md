@@ -17,6 +17,7 @@ blocks.
 | [`THREAD_AGENT.md`](THREAD_AGENT.md) | building the multimodal agent (Track C) | long; one checkpoint per PR |
 | [`TRANSIT_CLIENT.md`](TRANSIT_CLIENT.md) | **done through S3a** — the record of how the client came to route on the published data | history; read before `TRANSIT_NEXT` |
 | [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: surviving Overpass, pricing the wait, then bus | Phase 1 done; 1.5 is 2 small PRs, then 2 long phases |
+| [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) | starting the UI & Design Language wave (Track U) | strictly sequential; one checkpoint (U0–U6) per PR, visual sign-off on every PR |
 
 **Order.** `WAVE_0` first — it unblocks both threads and its items are hours, not days. Then
 `PUBLICATION`, which is the cheapest signal on the board. `TRANSIT_NEXT`'s Phase 1 is merged and live;

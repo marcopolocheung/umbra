@@ -24,7 +24,9 @@
     "e2e": "playwright test",
     "e2e:shadow-v2-debug": "playwright test --config=playwright.shadow-v2-debug.config.ts",
     "bench:route": "playwright test --config=playwright.bench.config.ts",
-    "bench:canopy": "playwright test --config=playwright.canopy.config.ts"
+    "bench:canopy": "playwright test --config=playwright.canopy.config.ts",
+    "shots": "playwright test --config=playwright.shots.config.ts",
+    "design:check": "node scripts/verify/design-tokens.mjs --all"
   },
   "dependencies": {
     "@photostructure/tz-lookup": "^11.6.1",
