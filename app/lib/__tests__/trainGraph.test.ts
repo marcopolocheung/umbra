@@ -11,6 +11,7 @@ import {
   TRAIN_SPEED_MPS,
   TRANSFER_PENALTY_SEC,
   trainDijkstra,
+  MAX_TRANSIT_BOARDINGS,
   coveredHourKey,
   railExposure,
   RAIL_VEHICLE_EXPOSURE,
@@ -203,6 +204,7 @@ function toyGraph(
     geom?: string;
   }>,
   headways?: TrainHeadways,
+  modes?: Record<string, TrainMode>,
 ): TrainGraph {
   const stationMap = new Map(stations.map((s) => [s.id, s]));
   const adj = new Map<string, TrainGraphEdge[]>(stations.map((s) => [s.id, []]));
@@ -224,7 +226,7 @@ function toyGraph(
     });
     const from = stationMap.get(e.from)!;
     if (!from.lines.includes(e.line)) from.lines.push(e.line);
-    lineModes.set(e.line, "subway");
+    lineModes.set(e.line, modes?.[e.line] ?? "subway");
   }
   return {
     stations: stationMap,
@@ -322,6 +324,64 @@ describe("trainDijkstra: a change made over a transfer edge", () => {
     expect(path.totalSec).toBe(360);
   });
 });
+
+describe("trainDijkstra: the searched mode and the boarding cap", () => {
+  it("refuses a rail edge of another mode when a mode is searched", () => {
+    // BUS reaches the change, SUB leaves it: a bus-only search cannot ride SUB.
+    const graph = toyGraph(
+      [toyStation("A", 40.7), toyStation("M", 40.702), toyStation("B", 40.704)],
+      [
+        { from: "A", to: "M", line: "BUS", sec: 60 },
+        { from: "M", to: "B", line: "SUB", sec: 60 },
+      ],
+      undefined,
+      { BUS: "bus", SUB: "subway" },
+    );
+    expect(trainDijkstra(graph, "A", "B", {}, "bus")).toBeNull();
+    const mixed = trainDijkstra(graph, "A", "B")!;
+    expect(mixed.lines).toEqual(["BUS", "SUB"]);
+  });
+
+  it("still crosses a transfer edge within the searched mode", () => {
+    // The transfer carries no line, so filtering ride edges must not remove it.
+    const graph = toyGraph(
+      [toyStation("A", 40.7), toyStation("C", 40.702), toyStation("D", 40.7021), toyStation("B", 40.704)],
+      [
+        { from: "A", to: "C", line: "BUS", sec: 60 },
+        { from: "C", to: "D", sec: 180 },
+        { from: "D", to: "B", line: "BUS", sec: 60 },
+      ],
+      undefined,
+      { BUS: "bus" },
+    );
+    const path = trainDijkstra(graph, "A", "B", {}, "bus")!;
+    expect(path.stationIds).toEqual(["A", "C", "D", "B"]);
+    expect(path.totalSec).toBe(300);
+  });
+
+  it("prunes a path that needs one more ride than the cap allows", () => {
+    // Riding each line once is one boarding, so `lines` lines need that many.
+    const chain = (lines: number): TrainGraph => {
+      const stations = Array.from({ length: lines + 1 }, (_, i) =>
+        toyStation(`S${i}`, 40.7 + i * 0.001),
+      );
+      const edges = Array.from({ length: lines }, (_, i) => ({
+        from: `S${i}`,
+        to: `S${i + 1}`,
+        line: `L${i}`,
+        sec: 60,
+      }));
+      return toyGraph(stations, edges, undefined, Object.fromEntries(
+        Array.from({ length: lines }, (_, i) => [`L${i}`, "subway" as TrainMode]),
+      ));
+    };
+    const within = trainDijkstra(chain(MAX_TRANSIT_BOARDINGS), "S0", `S${MAX_TRANSIT_BOARDINGS}`);
+    expect(within).not.toBeNull();
+    expect(within!.lines).toHaveLength(MAX_TRANSIT_BOARDINGS);
+    expect(trainDijkstra(chain(MAX_TRANSIT_BOARDINGS + 1), "S0", `S${MAX_TRANSIT_BOARDINGS + 1}`)).toBeNull();
+  });
+});
+
 
 // ─── The wait to board ──────────────────────────────────────────────────────
 
