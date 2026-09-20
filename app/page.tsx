@@ -122,10 +122,10 @@ function TimeInput({
         }}
         className="min-h-11 rounded px-2 py-1 text-xs border focus:outline-none w-24 text-center"
         style={{
-          background: "var(--md-surface-container-low)",
-          color: "var(--md-on-surface)",
-          borderColor: "var(--md-outline-variant)",
-          fontFamily: "var(--md-font)",
+          background: "var(--color-canvas)",
+          color: "var(--color-ink)",
+          borderColor: "var(--color-hairline)",
+          fontFamily: "var(--font-sans)",
         }}
       />
     );
@@ -135,8 +135,8 @@ function TimeInput({
     <button
       type="button"
       onClick={startEdit}
-      className="min-h-11 text-xs tabular-nums w-24 text-center rounded px-2 py-1 hover:bg-slate-100 transition-colors"
-      style={{ color: "var(--md-on-surface-variant)", fontFamily: "var(--md-font)" }}
+      className="min-h-11 text-xs tabular-nums w-24 text-center rounded px-2 py-1 hover:bg-canvas transition-colors"
+      style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-sans)" }}
       title="Click to type a time (e.g. 6:30 AM, 14:30)"
     >
       {formatTime12h(date, utcOffsetMin)}
@@ -157,9 +157,13 @@ function CloudCoverBadge({ pct }: { pct: number }) {
     <div
       className="mx-3 mt-3 rounded-lg border px-3 py-1.5 text-center text-[11px] font-medium"
       style={{
-        background: strongClouds ? "rgba(100,116,139,0.10)" : "rgba(255,171,0,0.10)",
-        borderColor: strongClouds ? "rgba(100,116,139,0.24)" : "rgba(180,83,9,0.18)",
-        color: strongClouds ? "var(--md-on-surface-variant)" : "#92400e",
+        background: strongClouds
+          ? "color-mix(in srgb, var(--color-ink) 10%, transparent)"
+          : "var(--color-sun-soft)",
+        borderColor: strongClouds
+          ? "color-mix(in srgb, var(--color-ink) 24%, transparent)"
+          : "color-mix(in srgb, var(--color-sun) 18%, transparent)",
+        color: strongClouds ? "var(--color-ink-muted)" : "var(--color-sun-strong)",
       }}
     >
       {label}
@@ -170,26 +174,27 @@ function CloudCoverBadge({ pct }: { pct: number }) {
 function ShadowLegend({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div
-      className="flex min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg backdrop-blur-md"
+      className="flex min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg"
       style={{
-        background: "rgba(255,255,255,0.92)",
-        borderColor: "var(--md-outline-variant)",
-        color: "var(--md-on-surface)",
-        fontFamily: "var(--md-font)",
+        background: "var(--color-raised)",
+        borderColor: "var(--color-hairline)",
+        color: "var(--color-ink)",
+        fontFamily: "var(--font-sans)",
       }}
       role="status"
     >
       {/*
-        Swatch mirrors LocalShadowAdapter's midday shadow: NOON_RGB #22467f at
-        SHADOW_ALPHA 0.7. If those change, change this — a legend that shows a
-        colour the map never paints is worse than no legend. See CLAUDE.md
+        Swatch mirrors LocalShadowAdapter's midday shadow: NOON_RGB is declared as
+        --color-shadow-noon in the registry, composited here at the same 72% the adapter
+        uses before calling its 0.7 paint alpha. If those change, change this — a legend
+        that shows a colour the map never paints is worse than no legend. See CLAUDE.md
         invariant #5, which already couples shadow colour to the shadow predicate.
       */}
       <span
         className="h-4 w-4 shrink-0 rounded-sm border"
         style={{
-          background: "rgba(42,70,125,0.72)",
-          borderColor: "rgba(15,23,42,0.28)",
+          background: "color-mix(in srgb, var(--color-shadow-noon) 72%, transparent)",
+          borderColor: "var(--color-hairline-strong)",
         }}
         aria-hidden="true"
       />
@@ -197,7 +202,7 @@ function ShadowLegend({ onDismiss }: { onDismiss: () => void }) {
       <button
         type="button"
         onClick={onDismiss}
-        className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-slate-100"
+        className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-canvas"
         aria-label="Dismiss shadow legend"
         title="Dismiss"
       >
@@ -774,10 +779,8 @@ export default function Home() {
     <div
       className="rounded-t-2xl md:rounded-2xl overflow-hidden"
       style={{
-        background: "rgba(255,255,255,0.85)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        boxShadow: "0 -4px 32px rgba(0,0,0,0.08), 0 8px 32px rgba(100,116,139,0.12)",
+        background: "var(--color-raised)",
+        boxShadow: "var(--shadow-level-2)",
       }}
     >
       {/* Floating tooltip */}
@@ -787,7 +790,7 @@ export default function Home() {
       >
         <div
           className="text-[11px] font-bold px-2.5 py-0.5 rounded-md tabular-nums shadow-md whitespace-nowrap"
-          style={{ background: "var(--md-error)", color: "white", fontFamily: "var(--md-font)" }}
+          style={{ background: "var(--color-danger)", color: "var(--color-on-danger)", fontFamily: "var(--font-sans)" }}
         >
           {sliderMode === "time"
             ? formatTime12h(date, mapUtcOffsetMin)
@@ -803,7 +806,7 @@ export default function Home() {
             height: 0,
             borderLeft: "5px solid transparent",
             borderRight: "5px solid transparent",
-            borderTop: "5px solid var(--md-error)",
+            borderTop: "5px solid var(--color-danger)",
           }}
         />
       </div>
@@ -833,8 +836,8 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setIsPlaying((p) => !p)}
-          className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-slate-100 transition-colors"
-          style={{ color: "var(--md-on-surface-variant)" }}
+          className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-canvas transition-colors"
+          style={{ color: "var(--color-ink-muted)" }}
           title={isPlaying ? "Pause" : "Play"}
         >
           <span
@@ -848,26 +851,26 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setSliderMode((m) => (m === "time" ? "day" : "time"))}
-          className="flex min-h-11 items-center gap-1.5 px-3 rounded-lg hover:bg-slate-100 transition-colors border"
-          style={{ borderColor: "var(--md-outline-variant)" }}
+          className="flex min-h-11 items-center gap-1.5 px-3 rounded-lg hover:bg-canvas transition-colors border"
+          style={{ borderColor: "var(--color-hairline)" }}
           title={sliderMode === "time" ? "Switch to day of year" : "Switch to time of day"}
         >
           <span
             className="material-symbols-outlined text-base"
             style={{
-              color: sliderMode === "time" ? "var(--md-primary)" : "var(--md-on-surface-variant)",
+              color: sliderMode === "time" ? "var(--color-ink)" : "var(--color-ink-muted)",
               fontVariationSettings: "'FILL' 1",
             }}
           >
             schedule
           </span>
-          <span className="text-[9px]" style={{ color: "var(--md-outline-variant)" }}>
+          <span className="text-[9px]" style={{ color: "var(--color-hairline)" }}>
             /
           </span>
           <span
             className="material-symbols-outlined text-base"
             style={{
-              color: sliderMode === "day" ? "var(--md-primary)" : "var(--md-on-surface-variant)",
+              color: sliderMode === "day" ? "var(--color-ink)" : "var(--color-ink-muted)",
               fontVariationSettings: "'FILL' 1",
             }}
           >
@@ -895,23 +898,23 @@ export default function Home() {
             <button
               type="button"
               onClick={() => adjustYear(-1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-              style={{ color: "var(--md-on-surface-variant)" }}
+              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
+              style={{ color: "var(--color-ink-muted)" }}
               aria-label="Previous year"
             >
               <span className="material-symbols-outlined text-base">chevron_left</span>
             </button>
             <span
               className="text-sm tabular-nums w-12 text-center font-medium"
-              style={{ color: "var(--md-on-surface)", fontFamily: "var(--md-font)" }}
+              style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
             >
               {_localYear}
             </span>
             <button
               type="button"
               onClick={() => adjustYear(+1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-              style={{ color: "var(--md-on-surface-variant)" }}
+              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
+              style={{ color: "var(--color-ink-muted)" }}
               aria-label="Next year"
             >
               <span className="material-symbols-outlined text-base">chevron_right</span>
@@ -927,7 +930,7 @@ export default function Home() {
     <div className="flex flex-col gap-2">
       <div
         className="rounded-xl border p-2 flex flex-col gap-2"
-        style={{ background: "white", borderColor: "var(--md-outline-variant)" }}
+        style={{ background: "white", borderColor: "var(--color-hairline)" }}
       >
         <AccumulationPanel
           accumulation={accumulation}
@@ -943,27 +946,27 @@ export default function Home() {
         <a
           href="/about"
           className="text-[11px] hover:underline"
-          style={{ color: "var(--md-on-surface-variant)" }}
+          style={{ color: "var(--color-ink-muted)" }}
         >
           About Umbra
         </a>
-        <div className="h-px" style={{ background: "var(--md-outline-variant)" }} />
+        <div className="h-px" style={{ background: "var(--color-hairline)" }} />
         <div
           className="text-[10px] tabular-nums select-none"
-          style={{ color: "var(--md-on-surface-variant)", opacity: 0.6 }}
+          style={{ color: "var(--color-ink-muted)", opacity: 0.6 }}
         >
           zoom {mapZoom.toFixed(1)}
         </div>
         {remoteShadowCurrent && (
           <div
             className="text-[10px] select-none"
-            style={{ color: "var(--md-on-surface-variant)" }}
+            style={{ color: "var(--color-ink-muted)" }}
           >
             NYC shade data ready ({remoteShadowCurrent.tileCount.toLocaleString()} tiles)
           </div>
         )}
         {remoteShadowError && (
-          <div className="text-[10px]" role="status" style={{ color: "#b91c1c" }}>
+          <div className="text-[10px]" role="status" style={{ color: "var(--color-danger)" }}>
             NYC shade data unavailable: {remoteShadowError}
           </div>
         )}
@@ -1083,7 +1086,7 @@ export default function Home() {
     <SideNav activeTab={activeTab} onTabChange={handleTabChange}>
       <div className="flex flex-col min-h-full">
         <div className="flex-1">{sidebarContent}</div>
-        <div className="mt-auto pt-3 border-t" style={{ borderColor: "var(--md-outline-variant)" }}>
+        <div className="mt-auto pt-3 border-t" style={{ borderColor: "var(--color-hairline)" }}>
           {bottomPanelControls}
         </div>
       </div>
@@ -1104,19 +1107,19 @@ export default function Home() {
       {/* Pending waypoint banner */}
       {pendingSlot && (
         <div
-          className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-2 backdrop-blur-md rounded-full px-4 py-1.5 text-sm select-none border"
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-2 rounded-full px-4 py-1.5 text-sm select-none border"
           style={{
-            background: "rgba(255,255,255,0.9)",
-            borderColor: "var(--md-primary-container)",
-            color: "var(--md-on-surface)",
+            background: "var(--color-raised)",
+            borderColor: "var(--color-hairline-strong)",
+            color: "var(--color-ink)",
           }}
         >
           <span
             className="w-2 h-2 rounded-full animate-pulse shrink-0"
-            style={{ background: "var(--md-primary-container)" }}
+            style={{ background: "var(--color-route-soft)" }}
           />
           Click map to place waypoint {pendingSlot}
-          <span className="text-xs ml-1" style={{ color: "var(--md-on-surface-variant)" }}>
+          <span className="text-xs ml-1" style={{ color: "var(--color-ink-muted)" }}>
             — Esc to cancel
           </span>
         </div>
@@ -1165,18 +1168,18 @@ export default function Home() {
       {/* Rain map legend — only while the rain objective owns the map */}
       {rainMode && !accumulation.enabled && (
         <div
-          className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 rounded-lg px-3 py-2 shadow-lg backdrop-blur-xl"
-          style={{ background: "rgba(255,255,255,0.86)", borderColor: "var(--md-outline-variant)", border: "1px solid var(--md-outline-variant)" }}
+          className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 rounded-lg px-3 py-2 shadow-lg"
+          style={{ background: "var(--color-raised)", borderColor: "var(--color-hairline)", border: "1px solid var(--color-hairline)" }}
         >
-          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--color-ink-muted)" }}>
             Rain shelter
           </div>
-          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--md-on-surface-variant)" }}>
-            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(37,99,235,0.5)" }} />
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-ink-muted)" }}>
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "var(--color-route-mid)" }} />
             Direct rain reaches here
           </div>
-          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--md-on-surface-variant)" }}>
-            <span className="inline-block w-3 h-3 rounded-sm bg-transparent" style={{ border: "1px dashed var(--md-outline)" }} />
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-ink-muted)" }}>
+            <span className="inline-block w-3 h-3 rounded-sm bg-transparent" style={{ border: "1px dashed var(--color-hairline-strong)" }} />
             Sheltered (overhang or canopy)
           </div>
         </div>
@@ -1185,15 +1188,15 @@ export default function Home() {
       {/* Rain wind pill — the wind the canvas is aimed at, hour by hour */}
       {rainMode && heatWeather?.windDirDeg != null && heatWeather.windMs != null && (
         <div
-          className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg backdrop-blur-xl"
-          style={{ background: "rgba(255,255,255,0.86)", border: "1px solid var(--md-outline-variant)" }}
+          className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg"
+          style={{ background: "var(--color-raised)", border: "1px solid var(--color-hairline)" }}
         >
-          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--color-ink-muted)" }}>
             Wind this hour
           </div>
-          <div className="text-xs" style={{ color: "var(--md-on-surface)" }}>
+          <div className="text-xs" style={{ color: "var(--color-ink)" }}>
             {windFromLabel(heatWeather.windDirDeg)} {Math.round(heatWeather.windMs * 3.6)} km/h
-            <span style={{ color: "var(--md-on-surface-variant)" }}>
+            <span style={{ color: "var(--color-ink-muted)" }}>
               {" "}· shelter tilted {Math.round(directionForWindReport(heatWeather.windDirDeg, heatWeather.windMs).altitudeDeg)}°
             </span>
           </div>
@@ -1305,7 +1308,7 @@ export default function Home() {
               />
               <div
                 className="mt-2 rounded-xl border p-1.5 flex flex-col gap-1"
-                style={{ background: "white", borderColor: "var(--md-outline-variant)" }}
+                style={{ background: "white", borderColor: "var(--color-hairline)" }}
               >
                 <AccumulationPanel
                   accumulation={accumulation}
@@ -1326,7 +1329,7 @@ export default function Home() {
                 <a
                   href="/about"
                   className="text-[10px] px-1.5 pt-0.5 pb-0.5 transition-colors hover:underline"
-                  style={{ color: "var(--md-on-surface-variant)" }}
+                  style={{ color: "var(--color-ink-muted)" }}
                 >
                   About Umbra
                 </a>
@@ -1408,8 +1411,8 @@ export default function Home() {
             right: "1rem",
             width: 52,
             height: 52,
-            background: "var(--md-primary, #b45309)",
-            color: "white",
+            background: "var(--color-ink)",
+            color: "var(--color-on-ink)",
           }}
           title="Ask the Umbra Assistant"
           aria-label="Open Umbra Assistant"

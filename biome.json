@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
   "files": {
     "includes": [
       "app/**",
@@ -14,23 +14,19 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
-
+      "preset": "recommended",
       "style": {
         "noNonNullAssertion": "off"
       },
-
       "suspicious": {
         "noExplicitAny": "off",
         "noApproximativeNumericConstant": "off",
         "noArrayIndexKey": "warn",
         "useIterableCallbackReturn": "warn"
       },
-
       "complexity": {
         "useOptionalChain": "warn"
       },
-
       "correctness": {
         "useExhaustiveDependencies": "warn",
         "useHookAtTopLevel": "warn",
@@ -38,7 +34,6 @@
         "noUnusedFunctionParameters": "warn",
         "noUnusedPrivateClassMembers": "warn"
       },
-
       "a11y": {
         "useButtonType": "error",
         "noSvgWithoutTitle": "error",
@@ -60,5 +55,10 @@
   },
   "assist": {
     "enabled": false
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }

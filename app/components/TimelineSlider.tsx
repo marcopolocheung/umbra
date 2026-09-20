@@ -22,7 +22,7 @@ interface Props {
  * The solar model is `app/lib/sunTimes.ts` — the same one the shadow layer uses.
  * This used to be a private copy of that orbital math carrying a flat `+ 12`
  * minute constant, which put the New York solstice marker at 5:40 AM against a
- * real 5:26 (#225).
+ * real 5:26 (issue 225).
  */
 function sunriseSunsetMinutes(
   date: Date,
@@ -257,7 +257,7 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
               left: 0,
               width: sunriseMin! * PX_PER_MIN,
               top: 0, bottom: 0,
-              backgroundColor: "rgba(25,28,29,0.08)",
+              backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
             }}
           />
         )}
@@ -270,7 +270,7 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
               left: sunriseMin! * PX_PER_MIN,
               width: (sunsetMin! - sunriseMin!) * PX_PER_MIN,
               top: 0, bottom: 0,
-              background: "linear-gradient(to right, rgba(255,171,0,0.12), rgba(255,171,0,0.06) 50%, rgba(0,91,192,0.12))",
+              background: "linear-gradient(to right, var(--color-sun-soft), color-mix(in srgb, var(--color-sun) 6%, transparent) 50%, var(--color-route-soft))",
             }}
           />
         )}
@@ -283,7 +283,7 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
               left: sunsetMin! * PX_PER_MIN,
               width: TOTAL_PX - sunsetMin! * PX_PER_MIN,
               top: 0, bottom: 0,
-              backgroundColor: "rgba(25,28,29,0.08)",
+              backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
             }}
           />
         )}
@@ -303,8 +303,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 0, bottom: 0,
                 left: 0, width: 2,
-                backgroundColor: "#c2410c",
-                boxShadow: "0 0 6px 2px rgba(194,65,12,0.55)",
+                backgroundColor: "var(--color-sun)",
+                boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-sun) 55%, transparent)",
               }}
             />
             <span
@@ -314,12 +314,12 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 left: 5,
                 fontSize: 10,
                 lineHeight: 1.2,
-                color: "#c2410c",
+                color: "var(--color-sun)",
                 whiteSpace: "nowrap",
                 userSelect: "none",
                 pointerEvents: "none",
-                backgroundColor: "rgba(255,255,255,0.9)",
-                borderRadius: 3,
+                backgroundColor: "var(--color-raised)",
+                borderRadius: 8,
                 padding: "1px 4px",
               }}
             >
@@ -343,8 +343,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 0, bottom: 0,
                 left: 0, width: 2,
-                backgroundColor: "#1e40af",
-                boxShadow: "0 0 6px 2px rgba(30,64,175,0.55)",
+                backgroundColor: "var(--color-route)",
+                boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-route) 55%, transparent)",
               }}
             />
             <span
@@ -354,12 +354,12 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 left: 5,
                 fontSize: 10,
                 lineHeight: 1.2,
-                color: "#1e40af",
+                color: "var(--color-route)",
                 whiteSpace: "nowrap",
                 userSelect: "none",
                 pointerEvents: "none",
-                backgroundColor: "rgba(255,255,255,0.9)",
-                borderRadius: 3,
+                backgroundColor: "var(--color-raised)",
+                borderRadius: 8,
                 padding: "1px 4px",
               }}
             >
@@ -382,10 +382,10 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 width: 1,
                 height: h,
                 backgroundColor: label
-                  ? "rgba(25,28,29,0.35)"
+                  ? "color-mix(in srgb, var(--color-ink) 35%, transparent)"
                   : h === 12
-                  ? "rgba(25,28,29,0.18)"
-                  : "rgba(25,28,29,0.08)",
+                  ? "color-mix(in srgb, var(--color-ink) 18%, transparent)"
+                  : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
               }}
             />
             {label && (
@@ -398,8 +398,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                   whiteSpace: "nowrap",
                   fontSize: 9,
                   lineHeight: 1,
-                  color: "var(--md-on-surface-variant)",
-                  fontFamily: "var(--md-font)",
+                  color: "var(--color-ink-muted)",
+                  fontFamily: "var(--font-sans)",
                   fontVariantNumeric: "tabular-nums",
                   userSelect: "none",
                   pointerEvents: "none",
@@ -421,9 +421,9 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           transform: "translateX(-4px)",
           width: 8,
           height: 8,
-          backgroundColor: "var(--md-error)",
+          backgroundColor: "var(--color-sun)",
           rotate: "45deg",
-          boxShadow: "0 0 6px 2px rgba(186,26,26,0.5)",
+          boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-sun) 50%, transparent)",
         }}
       />
       <div
@@ -434,8 +434,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           bottom: 0,
           width: 2,
           transform: "translateX(-1px)",
-          background: "linear-gradient(to bottom, var(--md-error), rgba(186,26,26,0.3))",
-          boxShadow: "0 0 4px 1px rgba(186,26,26,0.35)",
+          background: "linear-gradient(to bottom, var(--color-sun), color-mix(in srgb, var(--color-sun) 30%, transparent))",
+          boxShadow: "0 0 4px 1px color-mix(in srgb, var(--color-sun) 35%, transparent)",
         }}
       />
     </div>

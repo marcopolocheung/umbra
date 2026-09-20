@@ -13,12 +13,12 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
   const photos: string[] = place.photo ? [place.photo] : [];
 
   return (
-    <div className="flex flex-col gap-4 p-4 md-surface">
+    <div className="flex flex-col gap-4 p-4">
       {/* Back */}
       <button type="button"
         onClick={onBack}
         className="flex items-center gap-2 text-[13px] hover:underline self-start"
-        style={{ color: "rgba(32,33,36,0.75)" }}
+        style={{ color: "var(--color-ink-muted)" }}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="15 18 9 12 15 6" />
@@ -28,22 +28,22 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
       {/* Hero */}
       <div>
-        <div className="text-[22px] font-semibold leading-tight" style={{ color: "var(--md-on-surface)" }}>
+        <div className="font-display text-verdict font-semibold leading-tight tracking-[-0.02em]" style={{ color: "var(--color-ink)" }}>
           {place.name}
         </div>
-        <div className="text-[13px] mt-1" style={{ color: "rgba(32,33,36,0.62)" }}>
+        <div className="text-[13px] mt-1" style={{ color: "var(--color-ink-muted)" }}>
           {place.category ?? "Place"}
         </div>
 
-        <div className="flex items-center gap-2 mt-2 text-[13px]" style={{ color: "rgba(32,33,36,0.82)" }}>
+        <div className="flex items-center gap-2 mt-2 text-[13px]" style={{ color: "var(--color-ink)" }}>
           <div className="flex items-center gap-1">
             <span className="font-semibold">{place.rating != null ? place.rating.toFixed(1) : "4.4"}</span>
-            <span style={{ color: "#fbbc04" }}>★</span>
+            <span style={{ color: "var(--color-sun)" }}>★</span>
           </div>
-          <span style={{ color: "rgba(32,33,36,0.35)" }}>·</span>
-          <span style={{ color: "rgba(32,33,36,0.62)" }}>{reviewCount > 0 ? `${reviewCount} reviews` : "(reviews unavailable)"}</span>
-          <span style={{ color: "rgba(32,33,36,0.35)" }}>·</span>
-          <span style={{ color: "rgba(32,33,36,0.62)" }}>{price}</span>
+          <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+          <span style={{ color: "var(--color-ink-muted)" }}>{reviewCount > 0 ? `${reviewCount} reviews` : "(reviews unavailable)"}</span>
+          <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+          <span style={{ color: "var(--color-ink-muted)" }}>{price}</span>
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
               src={src}
               alt={place.name}
               className="h-20 w-28 object-cover rounded-xl border"
-              style={{ borderColor: "var(--md-outline-variant)" }}
+              style={{ borderColor: "var(--color-hairline)" }}
             />
           ))
         ) : (
@@ -73,7 +73,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
             <div
               key={i}
               className="h-20 w-28 rounded-xl border flex items-center justify-center text-[11px]"
-              style={{ borderColor: "var(--md-outline-variant)", color: "rgba(32,33,36,0.45)", background: "var(--md-surface-container)" }}
+              style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink-faint)", background: "var(--color-canvas)" }}
             >
               Photo
             </div>
@@ -82,7 +82,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
       </div>
 
       {/* Info rows */}
-      <div className="flex flex-col border rounded-2xl overflow-hidden" style={{ borderColor: "var(--md-outline-variant)" }}>
+      <div className="flex flex-col border rounded-2xl overflow-hidden" style={{ borderColor: "var(--color-hairline)" }}>
         <InfoRow
           icon="pin"
           label={place.address ?? "Address unavailable"}
@@ -92,7 +92,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
                 try { await navigator.clipboard.writeText(place.address ?? ""); } catch { /* ignore */ }
               }}
               className="text-[12px] px-2 py-1 rounded-lg"
-              style={{ background: "var(--md-surface-container)", color: "rgba(32,33,36,0.8)" }}
+              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
             >
               Copy
             </button>
@@ -110,17 +110,17 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
       {/* Reviews section (placeholder) */}
       <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--md-on-surface)" }}>Reviews</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--md-outline-variant)", background: "#fff" }}>
-          <div className="text-[12px]" style={{ color: "rgba(32,33,36,0.62)" }}>
+        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>Reviews</h3>
+        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)", background: "var(--color-raised)" }}>
+          <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>
             Reviews are not available from the current data source. Showing placeholders.
           </div>
           <div className="mt-3 grid grid-cols-5 gap-1">
             {[5,4,3,2,1].map((s, idx) => (
               <div key={s} className="flex flex-col items-start gap-1">
-                <div className="text-[10px]" style={{ color: "rgba(32,33,36,0.55)" }}>{s}★</div>
-                <div className="w-full h-1.5 rounded-full" style={{ background: "#e8eaed" }}>
-                  <div className="h-1.5 rounded-full" style={{ width: `${[65,18,10,5,2][idx]}%`, background: "#fbbc04" }} />
+                <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{s}★</div>
+                <div className="w-full h-1.5 rounded-full" style={{ background: "var(--color-hairline)" }}>
+                  <div className="h-1.5 rounded-full" style={{ width: `${[65,18,10,5,2][idx]}%`, background: "var(--color-sun)" }} />
                 </div>
               </div>
             ))}
@@ -128,16 +128,16 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
           <div className="mt-3 flex flex-col gap-2">
             {[0, 1].map((i) => (
-              <div key={i} className="border rounded-2xl p-3" style={{ borderColor: "var(--md-outline-variant)", background: "#fff" }}>
+              <div key={i} className="border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)", background: "var(--color-raised)" }}>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full" style={{ background: "#e8eaed" }} />
+                  <div className="w-8 h-8 rounded-full" style={{ background: "var(--color-hairline)" }} />
                   <div className="flex-1">
-                    <div className="text-[13px] font-semibold" style={{ color: "rgba(32,33,36,0.82)" }}>User</div>
-                    <div className="text-[11px]" style={{ color: "rgba(32,33,36,0.55)" }}>2 weeks ago</div>
+                    <div className="text-[13px] font-semibold" style={{ color: "var(--color-ink)" }}>User</div>
+                    <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>2 weeks ago</div>
                   </div>
-                  <div className="text-[12px]" style={{ color: "rgba(32,33,36,0.75)" }}>★★★★★</div>
+                  <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>★★★★★</div>
                 </div>
-                <div className="mt-2 text-[12px] leading-relaxed" style={{ color: "rgba(32,33,36,0.72)" }}>
+                <div className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
                   Great place. Placeholder review text.
                 </div>
               </div>
@@ -148,9 +148,9 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
       {/* About / From the owner */}
       <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--md-on-surface)" }}>About</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--md-outline-variant)" }}>
-          <div className="text-[12px] leading-relaxed" style={{ color: "rgba(32,33,36,0.72)" }}>
+        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>About</h3>
+        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)" }}>
+          <div className="text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
             {place.description ?? "No description available. (Placeholder)"}
           </div>
         </div>
@@ -158,13 +158,13 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
       {/* People also search for */}
       <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--md-on-surface)" }}>People also search for</h3>
+        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>People also search for</h3>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
           {["Coffee", "Lunch", "Bars", "Parks", "Museums"].map((t) => (
             <button type="button"
               key={t}
               className="px-3 py-2 rounded-full text-[12px] whitespace-nowrap"
-              style={{ background: "var(--md-surface-container)", color: "rgba(32,33,36,0.8)" }}
+              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
             >
               {t}
             </button>
@@ -176,7 +176,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 }
 
 function Divider() {
-  return <div className="h-px" style={{ background: "var(--md-outline-variant)" }} />;
+  return <div className="h-px" style={{ background: "var(--color-hairline)" }} />;
 }
 
 function ActionPill({
@@ -236,7 +236,7 @@ function ActionPill({
     <button type="button"
       onClick={onClick}
       className="flex flex-col items-center justify-center shrink-0 px-3 py-2 rounded-2xl"
-      style={{ background: "var(--md-surface-container)", color: "rgba(32,33,36,0.82)", minWidth: 74 }}
+      style={{ background: "var(--color-canvas)", color: "var(--color-ink)", minWidth: 74 }}
     >
       <Icon />
       <div className="mt-1 text-[11px]">{label}</div>
@@ -299,18 +299,18 @@ function InfoRow({
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <div className="shrink-0" style={{ color: "rgba(32,33,36,0.62)" }}>
+      <div className="shrink-0" style={{ color: "var(--color-ink-muted)" }}>
         <Icon />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] truncate" style={{ color: "rgba(32,33,36,0.82)" }}>{label}</div>
+        <div className="text-[13px] truncate" style={{ color: "var(--color-ink)" }}>{label}</div>
       </div>
       {rightAction ? (
         <div className="shrink-0">{rightAction}</div>
       ) : rightText ? (
-        <div className="shrink-0 text-[12px]" style={{ color: "rgba(26,115,232,0.95)" }}>{rightText}</div>
+        <div className="shrink-0 text-[12px]" style={{ color: "var(--color-route)" }}>{rightText}</div>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(32,33,36,0.38)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       )}

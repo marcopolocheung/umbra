@@ -106,15 +106,15 @@ const WaypointInput = memo(function WaypointInput({
     <div className="relative flex flex-col gap-0.5">
       <div className="flex items-center gap-3 relative z-10">
         {dotColor === "green" ? (
-          <span className="material-symbols-outlined text-green-600 bg-green-50 rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink bg-canvas rounded-full p-0.5 text-sm shrink-0">
             radio_button_checked
           </span>
         ) : dotColor === "red" ? (
-          <span className="material-symbols-outlined text-red-600 bg-red-50 rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-route bg-canvas rounded-full p-0.5 text-sm shrink-0">
             location_on
           </span>
         ) : (
-          <span className="material-symbols-outlined text-amber-700 bg-amber-50 rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink-muted bg-canvas rounded-full p-0.5 text-sm shrink-0">
             add_location
           </span>
         )}
@@ -133,14 +133,14 @@ const WaypointInput = memo(function WaypointInput({
             setQuery(labelRef.current ?? "");
             closeDropdown();
           }}
-          className="flex-1 min-w-0 rounded px-2 py-1 text-xs placeholder-slate-400 border-none focus:outline-none transition-colors bg-transparent"
-          style={{ color: "var(--md-on-surface)", fontFamily: "var(--md-font)" }}
+          className="flex-1 min-w-0 rounded px-2 py-1 text-xs placeholder-ink-faint border-none focus:outline-none transition-colors bg-transparent"
+          style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
         {label && (
           <button type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => { onClear(); setQuery(""); closeDropdown(); }}
-            className="shrink-0 text-slate-400 hover:text-slate-700 transition-colors leading-none px-0.5"
+            className="shrink-0 text-ink-faint hover:text-ink transition-colors leading-none px-0.5"
             title="Clear waypoint"
           >
             <span className="material-symbols-outlined text-sm">close</span>
@@ -148,16 +148,16 @@ const WaypointInput = memo(function WaypointInput({
         )}
       </div>
       {inlineError ? (
-        <p className="text-[10px] text-red-600 pl-8">{inlineError}</p>
+        <p className="text-[10px] text-danger pl-8">{inlineError}</p>
       ) : searching ? (
-        <p className="text-[10px] pl-8" style={{ color: "var(--md-on-surface-variant)" }}>Searching…</p>
+        <p className="text-[10px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Searching…</p>
       ) : results.length === 0 && query.trim().length >= 2 && label === null ? (
-        <p className="text-[10px] pl-8" style={{ color: "var(--md-on-surface-variant)" }}>Press Enter to search</p>
+        <p className="text-[10px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Press Enter to search</p>
       ) : null}
       {results.length > 0 && (
         <div
-          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-white border rounded-xl overflow-hidden"
-          style={{ borderColor: "rgba(215,195,172,0.2)", boxShadow: "var(--md-shadow-lg)" }}
+          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-raised border rounded-xl overflow-hidden"
+          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
         >
           {results.map((r, i) => {
             const comma = r.display_name.indexOf(",");
@@ -170,14 +170,14 @@ const WaypointInput = memo(function WaypointInput({
                 onClick={() => handleSelect(r)}
                 onMouseEnter={() => setHighlight(i)}
                 className={`w-full text-left px-3 py-2 transition-colors ${
-                  i === highlight ? "bg-amber-50" : "hover:bg-amber-50/50"
+                  i === highlight ? "bg-canvas" : "hover:bg-canvas"
                 }`}
               >
-                <div className="text-xs truncate" style={{ color: i === highlight ? "var(--md-primary)" : "var(--md-on-surface)" }}>
+                <div className="text-xs truncate" style={{ color: i === highlight ? "var(--color-route)" : "var(--color-ink)" }}>
                   {primary}
                 </div>
                 {secondary && (
-                  <div className="text-[10px] truncate" style={{ color: "var(--md-on-surface-variant)" }}>{secondary}</div>
+                  <div className="text-[10px] truncate" style={{ color: "var(--color-ink-muted)" }}>{secondary}</div>
                 )}
               </button>
             );

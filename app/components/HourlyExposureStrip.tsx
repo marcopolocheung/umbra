@@ -25,17 +25,17 @@ export default function HourlyExposureStrip({
 
   return (
     <div
-      className="rounded-lg border px-3 py-2 shadow-lg backdrop-blur-xl"
-      style={{ background: "rgba(255,255,255,0.86)", borderColor: "var(--md-outline-variant)" }}
+      className="rounded-lg border px-3 py-2 shadow-level-2"
+      style={{ background: "var(--color-raised)", borderColor: "var(--color-hairline)" }}
     >
       <div className="flex items-baseline justify-between gap-2">
         <div
           className="text-[10px] uppercase tracking-widest font-bold"
-          style={{ color: "var(--md-on-surface-variant)" }}
+          style={{ color: "var(--color-ink-muted)" }}
         >
           Sun by hour
         </div>
-        <div className="text-[10px]" aria-live="polite" style={{ color: "var(--md-on-surface-variant)" }}>
+        <div className="text-[10px]" aria-live="polite" style={{ color: "var(--color-ink-muted)" }}>
           {readyCount < samples.length
             ? "checking…"
             : best
@@ -44,7 +44,7 @@ export default function HourlyExposureStrip({
         </div>
       </div>
 
-      <fieldset className="mt-1.5 flex items-end gap-[3px] border-0 p-0 m-0">
+      <fieldset className="mt-1.5 flex items-end gap-1 border-0 p-0 m-0">
         <legend className="sr-only">Sun exposure by hour</legend>
         {samples.map((sample, i) => {
           const ready = i < readyCount;
@@ -75,9 +75,9 @@ export default function HourlyExposureStrip({
                   height: ready ? `${Math.max(6, sample.sunExposure * 100)}%` : "6%",
                   background: ready
                     ? isNow
-                      ? "var(--md-primary)"
-                      : "rgba(217,119,6,0.55)"
-                    : "rgba(100,116,139,0.18)",
+                      ? "var(--color-sun)"
+                      : "var(--color-sun-mid)"
+                    : "color-mix(in srgb, var(--color-ink) 18%, transparent)",
                 }}
               />
             </button>
@@ -85,7 +85,7 @@ export default function HourlyExposureStrip({
         })}
       </fieldset>
 
-      <div className="mt-1 flex justify-between text-[9px]" style={{ color: "var(--md-on-surface-variant)" }}>
+      <div className="mt-1 flex justify-between text-[9px]" style={{ color: "var(--color-ink-muted)" }}>
         <span>{samples[0].label}</span>
         <span>{samples[samples.length - 1].label}</span>
       </div>

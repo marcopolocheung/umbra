@@ -25,12 +25,12 @@ export default function ArrivalPanel({
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between">
         <div className="w-7" />
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--md-on-surface)" }}>Arrived</h2>
+        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Arrived</h2>
         <button
           type="button"
           onClick={onDone}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
-          style={{ background: "var(--md-surface-container-low)", color: "var(--md-on-surface-variant)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
+          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="Close"
           aria-label="Close"
         >
@@ -41,20 +41,20 @@ export default function ArrivalPanel({
       <div
         className="rounded-xl border p-4 text-center"
         style={{
-          background: "rgba(34,197,94,0.08)",
-          borderColor: "rgba(34,197,94,0.22)",
-          color: "var(--md-on-surface)",
+          background: "var(--color-shade-soft)",
+          borderColor: "var(--color-shade-mid)",
+          color: "var(--color-ink)",
         }}
       >
         <span
           className="material-symbols-outlined rounded-full p-3 text-[28px]"
-          style={{ background: "#22c55e", color: "white" }}
+          style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
         >
           flag
         </span>
         <div className="mt-3 text-sm font-semibold">Arrived at {destination}</div>
         {route && (
-          <div className="mt-1 text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="mt-1 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
             {formatDistance(route.distanceM)} route with {Math.round(route.shadowCoverage * 100)}% shadow
           </div>
         )}
@@ -65,7 +65,7 @@ export default function ArrivalPanel({
           type="button"
           onClick={onPlanAnother}
           className="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--md-primary)", color: "var(--md-on-primary)" }}
+          style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
         >
           Plan another
         </button>
@@ -73,7 +73,7 @@ export default function ArrivalPanel({
           type="button"
           onClick={onDone}
           className="rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--md-surface-container-low)", color: "var(--md-on-surface-variant)" }}
+          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
         >
           Done
         </button>

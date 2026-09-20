@@ -20,6 +20,10 @@
   different colourway is a one-line change at merge.
 - **2026-09-20, resolved:** owner settled the choice — **Strata, Carmine colourway**.
   Merging this PR records the sign-off; no merge comment is needed.
+- **2026-09-20, U2 review (supersedes the above):** the owner flipped to **Canopy** (§4 —
+  the original recommendation). U2's code, canonical spec and PRs were reworked from
+  Strata/Carmine to Canopy before review closed; the first sentence of
+  `docs/design/language.md` now records Canopy.
 
 ## 1. The axis this decision is about
 
@@ -174,6 +178,11 @@ exposure metrics — the variables Umbra sells — and never for chrome decorati
 | Differentiation | None | The most (brand-first) | Measured — sells Umbra's metric, not its deco |
 
 ## 6. Recommendation
+
+> **SUPERSEDED AT THE U2 REVIEW (2026-09-20):** the owner went with **Canopy (§4)** — the
+> original recommendation below was written when Strata/Carmine held the owner's vote; U2's
+> implementation was reworked to Canopy and `docs/design/language.md` records the new choice.
+> The §0 review thread carries the dated trail.
 
 > **RECOMMENDATION: adopt Strata — the visual system the owner already likes — in the Carmine
 > colourway by default** (cream canvas, carmine chrome, blue route, warm sun: §2b-i).

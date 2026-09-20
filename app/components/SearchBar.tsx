@@ -267,20 +267,16 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
   return (
     <div ref={containerRef} className="relative">
-      {/* MD3 floating pill */}
+      {/* Canopy search — the one 999 pill, >=70% white, the only blurred surface */}
       <div
-        className="w-full flex items-center rounded-full bg-white/80 backdrop-blur-md h-14 px-4 gap-3"
-        style={{
-          boxShadow: isActive
-            ? "0 8px 32px rgba(100,116,139,0.16)"
-            : "0 4px 16px rgba(100,116,139,0.10)",
-        }}
+        className="w-full flex items-center rounded-full bg-raised/90 backdrop-blur-md h-14 px-4 gap-3 border border-hairline"
+        style={isActive ? { boxShadow: "var(--shadow-level-2)" } : undefined}
       >
         {/* Hamburger — toggles desktop sidebar */}
         {onMenuToggle && (
           <button type="button"
             onClick={onMenuToggle}
-            className="shrink-0 text-amber-700 hover:opacity-80 transition-opacity"
+            className="shrink-0 text-ink hover:opacity-80 transition-opacity"
             aria-label="Toggle menu"
           >
             <span className="material-symbols-outlined">menu</span>
@@ -301,15 +297,15 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           aria-controls={isOpen ? listId : undefined}
           aria-activedescendant={highlightIndex >= 0 ? `${listId}-opt-${highlightIndex}` : undefined}
           aria-autocomplete="list"
-          className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-slate-400"
-          style={{ color: "var(--md-on-surface)", fontFamily: "var(--md-font)" }}
+          className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-ink-faint"
+          style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
 
         {/* Clear button */}
         {query.length > 0 && (
           <button type="button"
             onClick={handleClear}
-            className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
+            className="shrink-0 text-ink-faint hover:text-ink-muted transition-colors"
             aria-label="Clear search"
           >
             <svg width="16" height="16" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -323,7 +319,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <button type="button"
           onClick={handleMagnifierClick}
           onMouseDown={(e) => e.preventDefault()}
-          className="shrink-0 text-amber-700 hover:opacity-80 transition-opacity"
+          className="shrink-0 text-ink hover:opacity-80 transition-opacity"
           aria-label={isSearching ? "Searching" : "Search"}
           aria-busy={isSearching}
         >
@@ -336,7 +332,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         {onDirections && (
           <button type="button"
             onClick={onDirections}
-            className="shrink-0 text-slate-400 hover:opacity-80 transition-opacity"
+            className="shrink-0 text-ink-faint hover:opacity-80 transition-opacity"
             aria-label="Directions"
           >
             <span className="material-symbols-outlined">directions</span>
@@ -347,12 +343,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       {/* Recent/Saved sections */}
       {showSections && (
         <div
-          className="absolute top-full mt-2 w-full bg-white rounded-2xl overflow-hidden border z-20"
-          style={{ borderColor: "rgba(215,195,172,0.2)", boxShadow: "var(--md-shadow-lg)" }}
+          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20"
+          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
         >
           {recent.length > 0 && (
             <div className="py-1">
-              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--md-on-surface-variant)" }}>
+              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-ink-muted)" }}>
                 RECENT
               </div>
               {recent.map((it, i) => {
@@ -361,14 +357,14 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-amber-50/50"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--md-surface-container)", color: "var(--md-on-surface-variant)" }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">location_on</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--md-on-surface)" }}>{it.label}</div>
-                      {dist && <div className="text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>{dist}</div>}
+                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>{it.label}</div>
+                      {dist && <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{dist}</div>}
                     </div>
                   </button>
                 );
@@ -377,8 +373,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           )}
 
           {saved.length > 0 && (
-            <div className="border-t py-1" style={{ borderColor: "rgba(215,195,172,0.15)" }}>
-              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--md-on-surface-variant)" }}>
+            <div className="border-t py-1" style={{ borderColor: "var(--color-hairline)" }}>
+              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-ink-muted)" }}>
                 SAVED
               </div>
               {saved.map((it, i) => {
@@ -387,14 +383,14 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-amber-50/50"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--md-surface-container)", color: "var(--md-on-surface-variant)" }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">bookmark</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--md-on-surface)" }}>{it.label}</div>
-                      {dist && <div className="text-[11px]" style={{ color: "var(--md-on-surface-variant)" }}>{dist}</div>}
+                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>{it.label}</div>
+                      {dist && <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{dist}</div>}
                     </div>
                   </button>
                 );
@@ -409,8 +405,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <div
           id={listId}
           role="listbox"
-          className="absolute top-full mt-2 w-full bg-white rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto md-scrollbar"
-          style={{ borderColor: "rgba(215,195,172,0.2)", boxShadow: "var(--md-shadow-lg)" }}
+          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
+          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
         >
           {results.map((r, i) => (
             <button
@@ -421,24 +417,24 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
               aria-selected={i === highlightIndex}
               onClick={() => handleSelect(r)}
               className={`w-full text-left px-4 py-2 transition-colors flex items-center gap-3 ${
-                i === highlightIndex ? "bg-amber-50" : "hover:bg-amber-50/50"
+                i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
               }`}
             >
-              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--md-surface-container)", color: "var(--md-on-surface-variant)" }}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
                 <span className="material-symbols-outlined text-base">location_on</span>
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate" style={{ color: "var(--md-on-surface)" }}>
+                <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
                   {primaryName(r.display_name)}
                 </div>
-                <div className="text-[11px] truncate" style={{ color: "var(--md-on-surface-variant)" }}>
+                <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
                   {guessCategory(r.display_name)}
                 </div>
               </div>
 
               {mapCenter && (
-                <div className="text-[11px] tabular-nums" style={{ color: "var(--md-on-surface-variant)" }}>
+                <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
                   {formatDistance(haversineM(mapCenter, [Number(r.lon), Number(r.lat)]))}
                 </div>
               )}

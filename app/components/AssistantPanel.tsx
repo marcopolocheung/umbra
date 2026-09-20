@@ -52,47 +52,45 @@ export default function AssistantPanel({
         right: "1rem",
         width: "min(380px, calc(100vw - 2rem))",
         height: "min(560px, calc(100vh - 2rem))",
-        background: "rgba(255,255,255,0.97)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderColor: "var(--md-outline-variant)",
-        fontFamily: "var(--md-font)",
+        background: "var(--color-raised)",
+        borderColor: "var(--color-hairline)",
+        fontFamily: "var(--font-sans)",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-3 border-b"
-        style={{ borderColor: "var(--md-outline-variant)" }}
+        style={{ borderColor: "var(--color-hairline)" }}
       >
         <span
-          className="material-symbols-outlined text-amber-700"
+          className="material-symbols-outlined text-ink"
           style={{ fontVariationSettings: "'FILL' 1" }}
         >
           wb_sunny
         </span>
         <div className="flex-1">
-          <div className="text-sm font-bold" style={{ color: "var(--md-on-surface)" }}>
+          <div className="text-sm font-bold" style={{ color: "var(--color-ink)" }}>
             Umbra Assistant
           </div>
-          <div className="text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
             Plans shadow-aware outings
           </div>
         </div>
         <button
           type="button"
           onClick={onReset}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
           title="New conversation"
-          style={{ color: "var(--md-on-surface-variant)" }}
+          style={{ color: "var(--color-ink-muted)" }}
         >
           <span className="material-symbols-outlined text-lg">refresh</span>
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
           title="Close"
-          style={{ color: "var(--md-on-surface-variant)" }}
+          style={{ color: "var(--color-ink-muted)" }}
         >
           <span className="material-symbols-outlined text-lg">close</span>
         </button>
@@ -102,7 +100,7 @@ export default function AssistantPanel({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 mt-2">
-            <p className="text-xs px-1" style={{ color: "var(--md-on-surface-variant)" }}>
+            <p className="text-xs px-1" style={{ color: "var(--color-ink-muted)" }}>
               Ask me to plan around the sun. I can read the live shadows, check whether a spot is
               shadowed at a given hour, and draw shadow-aware routes.
             </p>
@@ -111,8 +109,8 @@ export default function AssistantPanel({
                 type="button"
                 key={s}
                 onClick={() => onSend(s)}
-                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-amber-50 transition-colors"
-                style={{ borderColor: "var(--md-outline-variant)", color: "var(--md-on-surface)" }}
+                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-canvas transition-colors"
+                style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
               >
                 {s}
               </button>
@@ -126,13 +124,13 @@ export default function AssistantPanel({
               <div key={m.id} className="flex items-center gap-2 px-2 py-1 self-start">
                 <span
                   className="material-symbols-outlined text-sm animate-pulse"
-                  style={{ color: "var(--md-primary)" }}
+                  style={{ color: "var(--color-ink-muted)" }}
                 >
                   bolt
                 </span>
                 <span
                   className="text-[11px] italic"
-                  style={{ color: "var(--md-on-surface-variant)" }}
+                  style={{ color: "var(--color-ink-muted)" }}
                 >
                   {m.text}
                 </span>
@@ -147,9 +145,9 @@ export default function AssistantPanel({
               style={{
                 alignSelf: isUser ? "flex-end" : "flex-start",
                 background: isUser
-                  ? "var(--md-primary, #b45309)"
-                  : "var(--md-surface-container-low, #f5efe6)",
-                color: isUser ? "white" : "var(--md-on-surface)",
+                  ? "var(--color-ink)"
+                  : "var(--color-canvas)",
+                color: isUser ? "var(--color-on-ink)" : "var(--color-ink)",
                 borderBottomRightRadius: isUser ? 4 : undefined,
                 borderBottomLeftRadius: isUser ? undefined : 4,
               }}
@@ -174,7 +172,7 @@ export default function AssistantPanel({
                       <div
                         key={receipt.claimId}
                         className="rounded-lg border px-2 py-1.5"
-                        style={{ borderColor: "var(--md-outline-variant)" }}
+                        style={{ borderColor: "var(--color-hairline)" }}
                       >
                         <button
                           type="button"
@@ -190,7 +188,7 @@ export default function AssistantPanel({
                         </button>
                         <p
                           className="mt-0.5 text-[10px]"
-                          style={{ color: "var(--md-on-surface-variant)" }}
+                          style={{ color: "var(--color-ink-muted)" }}
                         >
                           {receiptDetail(receipt)}
                         </p>
@@ -208,15 +206,15 @@ export default function AssistantPanel({
         {isThinking && (
           <div className="flex items-center gap-1.5 px-3 py-2 self-start">
             <span
-              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "0ms" }}
             />
             <span
-              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "120ms" }}
             />
             <span
-              className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "240ms" }}
             />
           </div>
@@ -224,7 +222,7 @@ export default function AssistantPanel({
       </div>
 
       {/* Input */}
-      <div className="p-2 border-t" style={{ borderColor: "var(--md-outline-variant)" }}>
+      <div className="p-2 border-t" style={{ borderColor: "var(--color-hairline)" }}>
         <div className="flex items-end gap-2">
           <textarea
             value={input}
@@ -239,8 +237,8 @@ export default function AssistantPanel({
             placeholder="Ask about shadow, routes, or a day trip…"
             className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm focus:outline-none"
             style={{
-              borderColor: "var(--md-outline-variant)",
-              color: "var(--md-on-surface)",
+              borderColor: "var(--color-hairline)",
+              color: "var(--color-ink)",
               maxHeight: 96,
             }}
           />
@@ -249,7 +247,7 @@ export default function AssistantPanel({
             onClick={submit}
             disabled={isThinking || !input.trim()}
             className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors disabled:opacity-40"
-            style={{ background: "var(--md-primary, #b45309)", color: "white" }}
+            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
             title="Send"
           >
             <span className="material-symbols-outlined text-lg">send</span>

@@ -1,4 +1,5 @@
 /* @vitest-environment jsdom */
+import { token } from "../../lib/css-tokens";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouteOption } from "../../lib/routing";
@@ -615,7 +616,7 @@ function threeNodeGraph() {
   };
 }
 
-describe("flat shadow readback (#154)", () => {
+describe("flat shadow readback (issue 154)", () => {
   let restoreCanvas: () => void;
 
   beforeEach(() => {
@@ -929,13 +930,13 @@ function corridorTrainGraph() {
       ["subway:2", [rail("subway:1"), rail("subway:3")]],
       ["subway:3", [rail("subway:2")]],
     ]),
-    lineColors: new Map([["T", "#D82233"]]),
+    lineColors: new Map([["T", token("color-route")]]),
     lineNames: new Map([["T", "Test Line"]]),
     lineModes: new Map([["T", "subway" as const]]),
   };
 }
 
-describe("a route index from the panel resolves against the list the panel shows (#395)", () => {
+describe("a route index from the panel resolves against the list the panel shows (issue 395)", () => {
   beforeEach(() => {
     resetShadowStub();
     vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
@@ -1081,7 +1082,7 @@ describe("transit is withheld under MIN_TRANSIT_DISTANCE_M and considered over i
   });
 });
 
-describe("entrances are fetched for the chosen stations, not the whole route (#401)", () => {
+describe("entrances are fetched for the chosen stations, not the whole route (issue 401)", () => {
   beforeEach(() => {
     resetShadowStub();
     vi.mocked(fetchRoutingGraph).mockResolvedValue(transitCorridorGraph() as never);
@@ -1192,7 +1193,7 @@ describe("the boarding door is one a rider can enter by", () => {
   });
 });
 
-describe("a station's published doors replace the fetched ones (#430)", () => {
+describe("a station's published doors replace the fetched ones (issue 430)", () => {
   // Alpha (103.803) is the entry station on this corridor and Gamma (103.807)
   // the exit; the route runs 103.8 → 103.81.
   function trainGraphWithDoors(doors: Record<string, { lat: number; lon: number }[]>) {
@@ -1318,7 +1319,7 @@ function corridorGraphWithStationIsland() {
   };
 }
 
-describe("a transit option is not lost to an unreachable snap (#400)", () => {
+describe("a transit option is not lost to an unreachable snap (issue 400)", () => {
   beforeEach(() => {
     resetShadowStub();
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(corridorTrainGraph() as never);
@@ -1633,7 +1634,7 @@ function offCorridorTrainGraph() {
       ["subway:M", [rail("subway:E"), rail("subway:X")]],
       ["subway:X", [rail("subway:M")]],
     ]),
-    lineColors: new Map([["T", "#D82233"]]),
+    lineColors: new Map([["T", token("color-route")]]),
     lineNames: new Map([["T", "Test Line"]]),
     lineModes: new Map([["T", "subway" as const]]),
   };
@@ -1677,7 +1678,7 @@ function fareastTrainGraph() {
       ["subway:M", [rail("subway:E"), rail("subway:F")]],
       ["subway:F", [rail("subway:M")]],
     ]),
-    lineColors: new Map([["T", "#D82233"]]),
+    lineColors: new Map([["T", token("color-route")]]),
     lineNames: new Map([["T", "Test Line"]]),
     lineModes: new Map([["T", "subway" as const]]),
   };
@@ -1704,7 +1705,7 @@ function legacyEntrancesTrainGraph() {
       ["subway:M", [rail("subway:E"), rail("subway:X")]],
       ["subway:X", [rail("subway:M")]],
     ]),
-    lineColors: new Map([["T", "#D82233"]]),
+    lineColors: new Map([["T", token("color-route")]]),
     lineNames: new Map([["T", "Test Line"]]),
     lineModes: new Map([["T", "subway" as const]]),
   };

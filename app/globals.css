@@ -1,105 +1,123 @@
 @import "tailwindcss";
 
-:root {
-  /* Material Design 3 palette */
-  --md-primary: #825500;
-  --md-on-primary: #ffffff;
-  --md-primary-container: #ffab00;
-  --md-on-primary-container: #694400;
-  --md-primary-fixed: #ffddb3;
-  --md-primary-fixed-dim: #ffb950;
-  --md-tertiary: #005bc0;
-  --md-on-tertiary: #ffffff;
-  --md-tertiary-container: #9cbcff;
-  --md-tertiary-fixed-dim: #adc7ff;
-  --md-secondary: #705d00;
-  --md-secondary-container: #fdd400;
-  --md-secondary-fixed: #ffe170;
-  --md-error: #ba1a1a;
-  --md-on-error: #ffffff;
-  --md-surface: #f8f9fa;
-  --md-on-surface: #191c1d;
-  --md-on-surface-variant: #524433;
-  --md-surface-container: #edeeef;
-  --md-surface-container-low: #f3f4f5;
-  --md-surface-container-lowest: #ffffff;
-  --md-surface-container-high: #e7e8e9;
-  --md-surface-dim: #d9dadb;
-  --md-outline: #857460;
-  --md-outline-variant: #d7c3ac;
-  --md-inverse-surface: #2e3132;
-  --md-inverse-on-surface: #f0f1f2;
+/*
+ * Umbra — Canopy design language (owner's pick, changed from Strata/Carmine at the
+ * U2 review, 2026-09-20 — see docs/design/decision.md §0 and §4).
+ *
+ * This file is the token registry. The canonical spec is `docs/design/language.md`;
+ * every colour, radius, shadow, spacing and type token used anywhere under app/
+ * is declared here, and `npm run design:check` enforces that no new literal is
+ * introduced outside it (see `.claude/rules/design-language.md` for the enforcement
+ * path).
+ *
+ * Binding rules (mirrored in the doc — do not change one without the other):
+ *
+ *   1. There is no decorative accent. The one warm colour is sun data:
+ *      `--color-sun` #A15C00 appears only where the sentence is about
+ *      sun/exposure/heat (the now-marker, solar loads, UV columns) — never as
+ *      chrome decoration.
+ *   2. Data states keep their fixed colours: route `--color-route` #1D6EE0,
+ *      shade `--color-shade` #2A6A4E, danger `--color-danger` #B3261E; chrome
+ *      (eyebrows, rank chips, selection, pins, primary actions) stays in
+ *      ink/route/shade — blue-green-ink, never warm.
+ *   3. Surfaces are paper `--color-canvas` #F7F8F4 under raised white; backdrop
+ *      blur is allowed on exactly one element — the over-map search pill, ≥70 %
+ *      white — everything else is solid. Radius steps are 12/16/20 plus the
+ *      999-radius pill (search + small status chips).
+ *
+ * Map-renderer constants (the shadow layer's blue, canopyPaint's sea-green) are
+ * data-plane colours pinned by canvas tests under CLAUDE.md invariant #5 — they
+ * belong to the renderers in app/lib, are out of the chrome palette, and are not
+ * re-tinted here.
+ */
 
-  /* Layout tokens */
-  --md-font: 'Inter', system-ui, -apple-system, sans-serif;
-  --md-radius: 1rem;
-  --md-radius-lg: 2rem;
-  --md-radius-xl: 3rem;
-  --md-shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
-  --md-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  --md-shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
-  --md-glass-bg: rgba(248,249,250,0.7);
-  --md-glass-blur: 20px;
-  --md-glass-border: rgba(215,195,172,0.15);
+@theme {
+  /* ── Surfaces & ink ────────────────────────────────────────────── */
+  --color-canvas: #f7f8f4; /* paper canvas */
+  --color-raised: #ffffff;
+  --color-on-ink: #f7f8f4; /* light text on ink fills */
+  --color-ink: #1c2321;
+  --color-ink-muted: #525e58;
+  --color-ink-faint: #6c756d;
+  --color-hairline: #e2e7df;
+  --color-hairline-strong: #bfc8bc;
+
+  /* ── Data semantics (no decorative accents) ────────────────────── */
+  --color-route: #1d6ee0;
+  --color-route-strong: #1758b2;
+  --color-route-soft: rgba(29, 110, 224, 0.10);
+  --color-route-mid: rgba(29, 110, 224, 0.55);
+  --color-sun: #a15c00; /* sun/exposure/heat ONLY — the one warm allowance */
+  --color-sun-strong: #7a4600;
+  --color-sun-soft: rgba(161, 92, 0, 0.10);
+  --color-sun-mid: rgba(161, 92, 0, 0.55);
+  --color-shade: #2a6a4e;
+  --color-shade-strong: #20523c;
+  --color-shade-soft: rgba(42, 106, 78, 0.10);
+  --color-shade-mid: rgba(42, 106, 78, 0.55);
+  --color-danger: #b3261e;
+  --color-danger-soft: rgba(179, 38, 30, 0.10);
+  --color-on-route: #ffffff;
+  --color-on-sun: #ffffff;
+  --color-on-shade: #ffffff;
+  --color-on-danger: #ffffff;
+
+  /* ── Map-facing legend mirrors (pinned by canvas tests) ───────── */
+  --color-basemap-street: #f1f3f1; /* outdoor-v2 street zoom background */
+  --color-canopy-map: #2e8b57; /* canopyPaint fill, invariant #5 warmth budget */
+  --color-shadow-noon: #22467f; /* LocalShadowAdapter NOON_RGB — legend swatch mirror */
+
+  /* ── Elevation: two levels, hairlines preferred ────────────────── */
+  --shadow-level-1: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-level-2: 0 12px 28px rgba(28, 35, 33, 0.16);
+  /* Legacy utility names all resolve onto the same two levels. */
+  --shadow-sm: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-md: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-lg: 0 12px 28px rgba(28, 35, 33, 0.16);
+  --shadow-xl: 0 12px 28px rgba(28, 35, 33, 0.16);
+  --shadow-2xl: 0 12px 28px rgba(28, 35, 33, 0.16);
+
+  /* ── Radius: 12 (controls/cards) / 16 / 20 (sheet) + 999 pill ──── */
+  /* Overriding the default names pins the existing rounded-* utilities onto
+     the scale, so a component cannot invent its own radius. The search pill
+     and small status chips use rounded-full. */
+  --radius: 12px;
+  --radius-sm: 12px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 20px;
+
+  /* ── Type ──────────────────────────────────────────────────────── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter Tight', 'Inter', system-ui, sans-serif; /* verdict voice */
+  --text-eyebrow: 11px; /* 600, uppercase, tracked — section labels */
+  --text-verdict: 22px; /* Inter Tight, 700, -2% — the one display voice */
+  --text-body: 15px; /* body text, line-height 22 */
+  --text-small: 13px; /* dense reading inside cards */
+  --text-caption: 10px; /* map-adjacent metadata only */
+
+  /* ── Spacing: 4px grid, plus the named layout widths ───────────── */
+  --spacing-sidebar: 408px; /* desktop shell — AppShell/canopy offsets */
+  --spacing-legend: 15rem; /* canopy legend max width */
+  --spacing-panel-min: 15rem; /* popover minimums */
 }
 
-.glass-panel {
-  background: var(--md-glass-bg);
-  backdrop-filter: blur(var(--md-glass-blur));
-  -webkit-backdrop-filter: blur(var(--md-glass-blur));
-  border-color: var(--md-glass-border);
+/* ---------------------------------------------------------------------
+   Surfaces
+   --------------------------------------------------------------------- */
+
+.umbra-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--color-ink) 18%, transparent) transparent;
 }
 
-.panel-heading {
-  font-family: var(--md-font);
-  color: var(--md-on-surface);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* -----------------------------------------------------------------------
-   MD3 surface helpers
-   ----------------------------------------------------------------------- */
-
-.md-surface {
-  background: var(--md-surface);
-  color: var(--md-on-surface);
-}
-
-.md-shadow {
-  box-shadow: var(--md-shadow);
-}
-
-.md-shadow-lg {
-  box-shadow: var(--md-shadow-lg);
-}
-
-.md-divider {
-  border-color: var(--md-outline-variant);
-  opacity: 0.3;
-}
-
-.md-text-subtle {
-  color: var(--md-on-surface-variant);
-}
-
-.md-glass {
-  background: rgba(255,255,255,0.8);
-  backdrop-filter: blur(var(--md-glass-blur));
-  -webkit-backdrop-filter: blur(var(--md-glass-blur));
-}
-
-.md-scrollbar {
-  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
-}
-
-.md-scrollbar::-webkit-scrollbar {
+.umbra-scrollbar::-webkit-scrollbar {
   width: 10px;
 }
 
-.md-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+.umbra-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-ink) 15%, transparent);
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;
@@ -118,19 +136,23 @@ body {
   padding: 0;
 }
 
-/* MapLibre Popup styling for draw-mode address hover */
+/* ---------------------------------------------------------------------
+   MapLibre popups — Canopy solid surfaces (no blur), ink on raised
+   --------------------------------------------------------------------- */
+
+/* Draw-mode address hover */
 .maplibregl-popup.sketch-point-popup .maplibregl-popup-content {
-  background: rgba(0, 0, 0, 0.72);
-  color: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(250, 204, 21, 0.35);
-  border-radius: 10px;
+  background: var(--color-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius);
   padding: 6px 8px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-level-2);
 }
 
 .maplibregl-popup.sketch-point-popup .maplibregl-popup-tip {
-  border-top-color: rgba(0, 0, 0, 0.72);
-  border-bottom-color: rgba(0, 0, 0, 0.72);
+  border-top-color: var(--color-raised);
+  border-bottom-color: var(--color-raised);
 }
 
 /*
@@ -149,20 +171,20 @@ body {
   pointer-events: auto;
 }
 
-/* MapLibre Popup styling for navigation waypoint place info (Foursquare) */
+/* Navigation waypoint place info (Foursquare) */
 .maplibregl-popup.nav-place-popup .maplibregl-popup-content {
-  background: rgba(0, 0, 0, 0.78);
-  color: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(245, 158, 11, 0.35); /* amber */
-  border-radius: 12px;
+  background: var(--color-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius);
   padding: 8px 10px;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-level-2);
   max-width: 260px;
 }
 
 .maplibregl-popup.nav-place-popup .maplibregl-popup-tip {
-  border-top-color: rgba(0, 0, 0, 0.78);
-  border-bottom-color: rgba(0, 0, 0, 0.78);
+  border-top-color: var(--color-raised);
+  border-bottom-color: var(--color-raised);
 }
 
 .maplibregl-popup.nav-place-popup--pinned {
@@ -177,24 +199,24 @@ body {
 
 .nav-place-popup__meta {
   margin-top: 2px;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--color-ink-muted);
   font-size: 11px;
 }
 
 .nav-place-popup__addr {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.80);
+  color: var(--color-ink-muted);
   font-size: 11px;
 }
 
 .nav-place-popup__row {
   margin-top: 6px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--color-ink);
 }
 
 .nav-place-popup__label {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--color-ink-faint);
   margin-right: 6px;
 }
 
@@ -202,13 +224,14 @@ body {
   margin-top: 6px;
   font-size: 11px;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.80);
+  color: var(--color-ink-muted);
 }
 
 .nav-place-popup__link {
-  color: rgba(245, 158, 11, 0.95);
+  color: var(--color-route);
   text-decoration: none;
 }
+
 .nav-place-popup__link:hover {
   text-decoration: underline;
 }
@@ -217,6 +240,6 @@ body {
   margin-top: 8px;
   width: 100%;
   height: auto;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-hairline);
 }

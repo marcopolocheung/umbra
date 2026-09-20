@@ -105,24 +105,24 @@ export default function RouteConditionsLine({
       <div className="flex flex-wrap items-center gap-x-1.5">
         <span
           className="text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: "rgba(100,116,139,0.14)", color: "var(--md-on-surface-variant)" }}
+          style={{ background: "color-mix(in srgb, var(--color-ink) 14%, transparent)", color: "var(--color-ink-muted)" }}
         >
           Experimental
         </span>
         {selected && weather?.uvIndex != null && (
           <span
             className="text-[10px] uppercase tracking-widest font-bold"
-            style={{ color: "var(--md-on-surface-variant)" }}
+            style={{ color: "var(--color-ink-muted)" }}
           >
             UV {weather.uvIndex.toFixed(1)}
           </span>
         )}
-        <span className="text-xs font-semibold" style={{ color: "var(--md-on-surface)" }}>
+        <span className="text-xs font-semibold" style={{ color: "var(--color-ink)" }}>
           {headline}
         </span>
       </div>
 
-      <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+      <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
         {secondary}
         {/* Sighted readers get the antecedent from the "Shortest baseline" line two
             rows up; a screen reader hears two bare numbers with no direction. */}
@@ -136,7 +136,7 @@ export default function RouteConditionsLine({
       </div>
 
       {uv && (
-        <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+        <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
           About{" "}
           {formatMinuteRange(uv.fullSunEquivalentMinutes.low, uv.fullSunEquivalentMinutes.high)} of
           full sun ({uv.sed.low.toFixed(1)}–{uv.sed.high.toFixed(1)} SED) · shadow counts toward
@@ -145,7 +145,7 @@ export default function RouteConditionsLine({
       )}
 
       {selected && scope && (
-        <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+        <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
           Sun figures: {scope}.
         </div>
       )}
@@ -156,7 +156,7 @@ export default function RouteConditionsLine({
         rel="noreferrer"
         aria-label="How these estimates are calculated (opens in a new tab)"
         className="inline-flex min-h-11 items-center self-start text-xs underline underline-offset-2"
-        style={{ color: "var(--md-on-surface-variant)" }}
+        style={{ color: "var(--color-ink-muted)" }}
       >
         How these are estimated
       </a>

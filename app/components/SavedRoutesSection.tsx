@@ -57,32 +57,32 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             onBlur={() => commitRename(r.id)}
             className="flex-1 border rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
             style={{
-              background: "var(--md-surface-container-low)",
-              color: "var(--md-on-surface)",
-              borderColor: "var(--md-primary-container)",
+              background: "var(--color-canvas)",
+              color: "var(--color-ink)",
+              borderColor: "var(--color-route-soft)",
             }}
           />
         ) : (
           <button type="button"
             onClick={() => onLoad(r)}
-            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-amber-50 transition-colors min-w-0"
+            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-canvas transition-colors min-w-0"
           >
-            <div className="text-[11px] truncate" style={{ color: "var(--md-on-surface)" }}>{r.name}</div>
-            <div className="text-[10px]" style={{ color: "var(--md-on-surface-variant)" }}>{distKm} · {shadowPct}% shadow</div>
+            <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
+            <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {shadowPct}% shadow</div>
           </button>
         )}
         <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
           <button type="button"
             onClick={() => { setRenamingId(r.id); setRenameValue(r.name); }}
             title="Rename"
-            className="p-0.5 text-slate-300 hover:text-slate-600 transition-colors"
+            className="p-0.5 text-ink-faint hover:text-ink-muted transition-colors"
           >
             <span className="material-symbols-outlined text-sm">edit</span>
           </button>
           <button type="button"
             onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
             title="Delete"
-            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+            className="p-0.5 text-ink-faint hover:text-danger transition-colors"
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
@@ -92,11 +92,11 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   }
 
   return (
-    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--md-outline-variant)" }}>
+    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-hairline)" }}>
       <button type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full text-left text-[11px] hover:text-slate-700 transition-colors py-0.5"
-        style={{ color: "var(--md-on-surface-variant)" }}
+        className="flex items-center gap-1.5 w-full text-left text-[11px] hover:text-ink transition-colors py-0.5"
+        style={{ color: "var(--color-ink-muted)" }}
       >
         <span
           className={`material-symbols-outlined text-xs transition-transform ${open ? 'rotate-90' : ''}`}
@@ -105,7 +105,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
           chevron_right
         </span>
         Saved Routes
-        <span className="ml-auto" style={{ color: "var(--md-on-surface-variant)", opacity: 0.5 }}>{routes.length}</span>
+        <span className="ml-auto" style={{ color: "var(--color-ink-muted)", opacity: 0.5 }}>{routes.length}</span>
       </button>
 
       {open && (
@@ -115,7 +115,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             <div key={folder.id}>
               <div
                 className="text-[10px] px-1.5 pt-1.5 pb-0.5 uppercase tracking-wide"
-                style={{ color: "var(--md-on-surface-variant)", opacity: 0.6 }}
+                style={{ color: "var(--color-ink-muted)", opacity: 0.6 }}
               >
                 {folder.name}
               </div>

@@ -31,35 +31,35 @@ export default function RouteTradeoffSummary({
   return (
     <div
       aria-live="polite"
-      className="rounded-lg border border-l-2 px-3 py-2 shadow-lg backdrop-blur-xl"
+      className="rounded-lg border border-l-2 px-3 py-2 shadow-level-2"
       style={{
-        background: "rgba(255,255,255,0.86)",
-        borderColor: "var(--md-outline-variant)",
-        borderLeftColor: "var(--md-primary)",
+        background: "var(--color-raised)",
+        borderColor: "var(--color-hairline)",
+        borderLeftColor: "var(--color-route)",
       }}
     >
       <div
         className="text-[10px] uppercase tracking-widest font-bold"
-        style={{ color: "var(--md-on-surface-variant)" }}
+        style={{ color: "var(--color-ink-muted)" }}
       >
         Selected route
       </div>
       {rainMode && route.dryCoverage !== undefined && baselineRoute.dryCoverage !== undefined ? (
         <>
-          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--md-primary)" }}>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-route)" }}>
             {rainTradeoffLine(route, baselineRoute)}
           </div>
-          <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
             {rainExposureLine(route, rainIntensity)}
           </div>
           <RainRouteSummary route={route} rainIntensity={rainIntensity} wind={rainWind} />
         </>
       ) : (
         <>
-          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--md-primary)" }}>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-route)" }}>
             {routeTradeoffLine(route, baselineRoute)}
           </div>
-          <div className="text-xs leading-snug" style={{ color: "var(--md-on-surface-variant)" }}>
+          <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
             {routeExposureLine(route)}
           </div>
           <RouteConditionsLine route={route} baselineRoute={baselineRoute} weather={weather} />

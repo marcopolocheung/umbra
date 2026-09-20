@@ -5,10 +5,12 @@ says *what*, and this file says *"here are the decisions, the references and the
 state — start here."* It is a snapshot and decays: re-check claims when you start a session.
 If this file disagrees with the code, **the code wins** — fix it in the same PR.
 
-- **Verified:** 2026-09-19 at `0a28a09`: `git diff --stat` check — token layer in
-  `app/globals.css` (`--md-*`, 33 colour + 8 layout tokens), `SearchBar.tsx` touches 16 tokens
-  vs `RouteCard.tsx` 35, hardcoded literals still live in `NavigationPanel.tsx:233,799`,
-  `DirectionsPanel.tsx:21,31,504,558`, `app/about/page.tsx:5`.
+- **Verified:** 2026-09-20 on `design/u2-strata-carmine` (U2, open for owner review):
+  `npm run design:check` exits 0 — the `--md-*` layer (33 colour + 8 layout tokens) is
+  deleted, **Canopy** is the registry in `app/globals.css` (the owner re-picked it during
+  U2 review after a first pass in Strata/Carmine), every literal from the U0 inventory
+  migrated, the deprecated `NavigationPanel.tsx` deleted, before/after phone shots in
+  `docs/design/shots/u2/`. Merged design work supersedes older line refs here.
 - **Track brief:** `docs/tracks/TRACK_U.md` (checkpoints + acceptance criteria). This handoff
   carries *why and where*; the brief carries *build that, like this*.
 
@@ -60,8 +62,9 @@ sessions are quiet around those files.
   bright-sun, one-handed, walking; 44px touch targets (`docs/notes/touch-target-audit.md`).
   Palette work inherits the shadow-color coupling (CLAUDE.md invariant #5), a real constraint
   on map-side colour design.
-- **The current "design language" is a half-adopted Material 3 layer** in `app/globals.css`
-  (`--md-*` tokens + `.glass-panel`, `.md-*` helpers) and a pile of literals outside it:
+- **The current design language is Canopy, canonical in `docs/design/language.md`**
+  with the token registry in `app/globals.css`; the pre-U2 state it replaced was a
+  half-adopted Material 3 layer (`--md-*` tokens + `.glass-panel`, helpers) and literals outside it:
   hardcoded hexes and `rgba()` inline styles in DirectionsPanel, NavigationPanel, SearchBar;
   two hand-rolled MapLibre popup styles pasted at the bottom of `globals.css`; radii from bare
   `rounded` to `rounded-2xl` mixed freely; `style={{...}}` token consumers sitting next to

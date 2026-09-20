@@ -52,16 +52,16 @@ export default function FloatingRouteCards({
   return (
     <div className="hidden md:flex absolute right-6 top-20 bottom-24 w-80 z-30 pointer-events-none">
       <div
-        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-xl backdrop-blur-md"
+        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-level-2"
         style={{
-          background: "rgba(255,255,255,0.92)",
-          borderColor: "var(--md-outline-variant)",
+          background: "var(--color-raised)",
+          borderColor: "var(--color-hairline)",
         }}
       >
         {/* Recommended badge */}
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-[10px] uppercase tracking-widest font-bold text-green-700">
+          <span className="w-2 h-2 rounded-full bg-shade animate-pulse" />
+          <span className="text-[10px] uppercase tracking-widest font-bold text-ink-muted">
             Recommended Option
           </span>
         </div>
@@ -71,8 +71,8 @@ export default function FloatingRouteCards({
           <div
             className="text-xs px-3 py-1.5 rounded-full self-start"
             style={{
-              background: solarIntensity > 0.6 ? "var(--md-primary-container)" : "rgba(255,171,0,0.12)",
-              color: solarIntensity > 0.6 ? "var(--md-on-primary-container)" : "#92400e",
+              background: solarIntensity > 0.6 ? "var(--color-sun)" : "var(--color-sun-soft)",
+              color: solarIntensity > 0.6 ? "var(--color-on-sun)" : "var(--color-sun)",
             }}
           >
             {solarIntensity > 0.6 ? "High solar load — shadow matters" : "Moderate solar load"}
@@ -90,7 +90,7 @@ export default function FloatingRouteCards({
         {exposureSlot}
 
         {/* Route cards */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md-scrollbar">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto umbra-scrollbar">
           {routes.map((r, i) => (
             <RouteCard
               key={routeKey(r)}
@@ -112,7 +112,7 @@ export default function FloatingRouteCards({
             type="button"
             onClick={onStartNavigation}
             className="w-full px-4 py-3 rounded-lg text-sm font-bold transition-colors"
-            style={{ background: "#22c55e", color: "white" }}
+            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
           >
             START NAVIGATING
           </button>
