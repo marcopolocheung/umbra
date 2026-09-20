@@ -24,8 +24,9 @@ export interface RoutingPhaseMs {
    * span — so old readers keep working. The three sub-phases account for that
    * span: `navSnapshot` (pointer + manifest + digest verify), then
    * `staticStreets` (street shard bytes + adapter build, Overpass fallback
-   * included), while `fieldReady` is the awaited `broadPreload` /
-   * `field.readyEdges` tail and therefore *overlaps* `staticStreets`. The
+   * included), while `fieldReady` awaits readiness for the actual edge cells
+   * first and the broad `shadowBbox` only when a subset of cells cannot
+   * speak (A2 PR 2). The
    * invariant a reader can assert is:
    *   navSnapshot + staticStreets + fieldReady <= graphFetch.
    */

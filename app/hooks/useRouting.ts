@@ -548,7 +548,6 @@ export function useRouting({
           deadlineAt: Date.now() + ROUTE_READINESS_BUDGET_MS,
         };
 
-        const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
         let graph: RoutingGraph;
         const tStaticStreets = performance.now();
         try {
@@ -569,10 +568,17 @@ export function useRouting({
         const edgeDistances = edgeBatch.distances;
         const directedEdgeCount = edgeBatch.directedCount;
         const tFieldReady = performance.now();
-        await Promise.all([
-          broadPreload,
-          field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
-        ]);
+        // Readiness for the exact cells the graph actually holds, not the big
+        // enclosing rectangle (A2 PR 2). The broad `shadowBbox` load below is a
+        // fallback that only runs when a subset of those cells cannot speak —
+        // same deadline object, same budget, same abort wiring as before.
+        await field.readyEdges?.(edgeRefs, readyOptions).catch(() => {});
+        const coverage =
+          field.coverageEdges?.(edgeRefs, dateRef.current) ??
+          field.coverage(shadowBbox, dateRef.current);
+        if (coverage.confidence < LOW_CONFIDENCE) {
+          await field.ready(shadowBbox, readyOptions).catch(() => {});
+        }
         fieldReadyMs = performance.now() - tFieldReady;
         graphFetchMs = performance.now() - tFetch;
         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
@@ -581,9 +587,6 @@ export function useRouting({
         // whole point of A4b: when geometry can answer, the mid-calculation `fitBounds`
         // jump and the full-canvas readback are both pure cost. The camera work stays
         // exactly as PR #160 left it on the path that still needs pixels.
-        const coverage =
-          field.coverageEdges?.(edgeRefs, dateRef.current) ??
-          field.coverage(shadowBbox, dateRef.current);
         // Rain never falls back to the renderer: the canvas paints *shadow*, and
         // reading it as shelter would invent dryness. A rain edge the field cannot
         // answer keeps its real (low) confidence and reads exposed, honestly.

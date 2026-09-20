@@ -412,12 +412,14 @@ test.afterAll(() => {
     console.log(`  static streets:  ${r.samples.map((s) => ms(s.staticStreets ?? 0)).join(", ")}`);
     console.log(`  field ready:     ${r.samples.map((s) => ms(s.fieldReady ?? 0)).join(", ")}`);
     // The sum invariant: the three sub-phases attribute the graph-fetch span,
-    // and never exceed it (fieldReady overlaps staticStreets by construction).
+    // The three sub-phases attribute the graph-fetch span and never exceed it.
+    // Post-A2-PR2 the field-ready tail no longer overlaps the street fetch:
+    // exact edge cells are readied first, the broad fallback only when needed.
     const g = stats(r.samples.map((s) => s.graphFetch));
     const subSum = stats(r.samples.map(fetchSum));
     console.log(
       `  fetch sub-sum:   median ${ms(subSum.p50)} (< graphFetch median ${ms(g.p50)}; ` +
-        `field ready overlaps the street fetch)`,
+        `field ready: edge cells first, broad bbox fallback)`,
     );
     console.log(`  canvas read:     ${r.samples.map((s) => ms(s.canvasRead)).join(", ")}`);
     console.log(`  dijkstra:        ${r.samples.map((s) => ms(s.dijkstra)).join(", ")}`);

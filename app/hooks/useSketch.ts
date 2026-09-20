@@ -315,7 +315,6 @@ export function useSketch({
         deadlineAt: Date.now() + ROUTE_READINESS_BUDGET_MS,
       };
 
-      const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
       let graph: RoutingGraph;
       try {
         graph = await fetchBestRoutingGraph(bbox.south, bbox.west, bbox.north, bbox.east, calcSignal, {
@@ -350,15 +349,16 @@ export function useSketch({
           sketchRefs.push({ from: [loNode.lon, loNode.lat], to: [hiNode.lon, hiNode.lat] });
         }
       }
-      await Promise.all([
-        broadPreload,
-        field.readyEdges?.(sketchRefs, readyOptions).catch(() => {}),
-      ]);
-      if (calcGenRef.current !== myGen || calcSignal.aborted) return;
-
+      // Same A2 PR 2 order as the normal pipeline: the exact sketch-edge cells
+      // first, the broad `shadowBbox` only when a subset cannot speak.
+      await field.readyEdges?.(sketchRefs, readyOptions).catch(() => {});
       const coverage =
         field.coverageEdges?.(sketchRefs, dateRef.current) ??
         field.coverage(shadowBbox, dateRef.current);
+      if (coverage.confidence < LOW_CONFIDENCE) {
+        await field.ready(shadowBbox, readyOptions).catch(() => {});
+      }
+      if (calcGenRef.current !== myGen || calcSignal.aborted) return;
       const needsCanvas = coverage.confidence < LOW_CONFIDENCE;
 
       if (needsCanvas) {
