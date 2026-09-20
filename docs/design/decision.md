@@ -18,6 +18,8 @@
   added in §2b (Carmine / Signal / Nocturne, rendered to PNG) with devotion.club's palette
   isolated and credited. Recommendation in §6 now defaults to **Strata + Carmine**; picking a
   different colourway is a one-line change at merge.
+- **2026-09-20, resolved:** owner settled the choice — **Strata, Carmine colourway**.
+  Merging this PR records the sign-off; no merge comment is needed.
 
 ## 1. The axis this decision is about
 
@@ -66,7 +68,7 @@ emphasis style.*
 > saturated accent on cream, with near-black undertone panels**. Nothing below changes shape,
 > type, radii or elevation — tokens only. All assets: `candidates/strata/palettes/<name>/`.
 
-**2b-i — Carmine (default).** Cream canvas `#F6F2E9`, aubergine-tinged ink `#211629`,
+**2b-i — Carmine (default · **chosen**, 2026-09-20).** Cream canvas `#F6F2E9`, aubergine-tinged ink `#211629`,
 hairline `#E8DFD0`, brand/chrome carmine `#A40000` (eyebrows, rank chip, selection, origin/dest
 pins), route blue deepened to `#155FD6`, sun `#B34A00`, shade `#187C46`. Contrast vs raised —
 ink 17.0, ink2 7.2, brand 8.0, route 5.7, sun 5.3, shade 5.2, danger 8.0 — every body pair AA.
