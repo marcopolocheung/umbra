@@ -15,11 +15,13 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U2 — implement the chosen language. Open for owner review:
-  PR [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) (umbrapriv) · port PR
-  [#60](https://github.com/marcopolocheung/umbra/pull/60) (public mirror). **The owner
-  re-picked Canopy during U2 review (was Strata/Carmine) and the open PRs were reworked to
-  Canopy — merge is the visual sign-off (D2); never self-merged.**
+- **Active checkpoint:** U2 — implement the chosen language. Open for owner review on the
+  public-mirror port branch `port/design-u2-strata-carmine`: PR
+  [#60](https://github.com/marcopolocheung/umbra/pull/60) — private PR
+  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) carries the same change; this
+  mirror deliberately omits the U0 screenshot harness and the developer hooks around it.
+  **The owner re-picked Canopy during U2 review (was Strata/Carmine) and both open PRs were
+  reworked to Canopy. Merge = visual sign-off (D2); never self-merged.**
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
   port #51). U2's code: **Canopy** token registry in `app/globals.css` (amber reserved for
   sun data, zero decorative accents, route/sun/shade data colours, two elevation levels,
