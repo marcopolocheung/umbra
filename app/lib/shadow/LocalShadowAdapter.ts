@@ -23,6 +23,8 @@ import {
   normalizedShadowHeightBias,
 } from './heightField';
 
+import { directionForWindReport } from '../rain/direction';
+
 // Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
 // SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
 // composite quad (Pass D). 2 = 4 samples/pixel. Cost is ~4× shadow fragment work
@@ -213,6 +215,14 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private quadBuffer: WebGLBuffer | null = null;
   private quadAttrLoc = -1;
   private quadTexLoc: WebGLUniformLocation | null = null;
+  private quadInvertLoc: WebGLUniformLocation | null = null;
+  private quadAlphaScaleLoc: WebGLUniformLocation | null = null;
+
+  /** Which exposure picture this canvas currently draws. */
+  private hazardMode: "sun" | "rain" = "sun";
+  /** Rain ray direction (radians), fed by `setRainWind`; null = windless vertical. */
+  private lastRainAzRad: number | null = null;
+  private lastRainAltRad: number | null = null;
 
   /**
    * Discard the building cache only if the camera has actually invalidated it.
@@ -276,6 +286,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // visibility, not gray. (CLAUDE.md invariant #5: change one → change both.)
   private static readonly BASE_RGB: [number, number, number] = [1 / 255, 17 / 255, 47 / 255]; // #01112f
   private static readonly NOON_RGB: [number, number, number] = [0x22 / 255, 0x46 / 255, 0x7f / 255]; // #22467f (lighter blue)
+
+  // Rain inversion makes the covered FBO read as *exposed*: the channel the
+  // composite inverts carries coverage, and the wet tint is premultiplied by the
+  // same constant so the existing ONE / ONE_MINUS_SRC_ALPHA blending stays exact.
+  private static readonly RAIN_WET_RGB: [number, number, number] = [0x25 / 255, 0x63 / 255, 0xeb / 255]; // #2563eb
+  private static readonly RAIN_WET_ALPHA = 0.5;
 
   constructor(opts?: { date?: Date; id?: string }) {
     this.currentDate = opts?.date ?? new Date();
@@ -341,6 +357,52 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // FBO will be resized lazily in ensureFBO() on next render.
     this.dirty = true;
     this.map?.triggerRepaint();
+  }
+
+  setHazard(hazard: "sun" | "rain") {
+    if (hazard === this.hazardMode) return;
+    this.hazardMode = hazard;
+    this.dirty = true;
+    this.map?.triggerRepaint();
+  }
+
+  setRainWind(dirDeg: number | null, windMs: number | null) {
+    const direction = directionForWindReport(dirDeg, windMs);
+    const azRad = ((direction.fromDeg + 180) % 360) * Math.PI / 180;
+    const altRad = direction.altitudeDeg * Math.PI / 180;
+    if (
+      this.lastRainAzRad != null && this.lastRainAltRad != null &&
+      Math.abs(azRad - this.lastRainAzRad) < 0.004 &&
+      Math.abs(altRad - this.lastRainAltRad) < 0.004
+    ) {
+      return; // the wind did not meaningfully move
+    }
+    this.lastRainAzRad = azRad;
+    this.lastRainAltRad = altRad;
+    this.dirty = true;
+    this.map?.triggerRepaint();
+  }
+
+  /**
+   * The direction the canvas extrudes toward: SunCalc for the sun, the wind-fed
+   * reverse-rain ray otherwise. Sun values fall back to a synchronous compute;
+   * rain without a wind report is the vertical windless limit (azimuth rotates
+   * by 180°, per the lee/windward convention pinned in the rain tests).
+   */
+  private hazardDirection(): { azimuthRad: number; altitudeRad: number; sunBelow: boolean } {
+    if (this.hazardMode === "rain") {
+      const altRad = this.lastRainAltRad ?? (89.5 * Math.PI) / 180;
+      return { azimuthRad: this.lastRainAzRad ?? Math.PI, altitudeRad: altRad, sunBelow: false };
+    }
+    let azRad = this.lastSunAzRad;
+    let altRad = this.lastSunAltRad;
+    if (azRad == null || altRad == null) {
+      const center = this.map?.getCenter() ?? { lat: 0, lng: 0 };
+      const sun = SunCalc.getPosition(this.currentDate, center.lat, center.lng);
+      azRad = sun.azimuth;
+      altRad = sun.altitude;
+    }
+    return { azimuthRad: azRad, altitudeRad: altRad, sunBelow: altRad <= 0 };
   }
 
   remove() {
@@ -693,14 +755,25 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const quadFsSrc = `
       precision mediump float;
       uniform sampler2D u_texture;
+      uniform float u_invert;
+      uniform float u_alphaScale;
       varying vec2 v_uv;
       void main() {
-        gl_FragColor = texture2D(u_texture, v_uv);
+        vec4 t = texture2D(u_texture, v_uv);
+        if (u_invert > 0.5) {
+          // Rain: alpha carried coverage (see Pass A), so exposed = 1 - coverage.
+          float exposed = max(0.0, 1.0 - t.a / u_alphaScale);
+          gl_FragColor = vec4(t.rgb * exposed, t.a * exposed);
+        } else {
+          gl_FragColor = t;
+        }
       }
     `;
     this.quadProgram = createProgram(gl, quadVsSrc, quadFsSrc);
     this.quadAttrLoc = gl.getAttribLocation(this.quadProgram, 'a_pos');
     this.quadTexLoc = gl.getUniformLocation(this.quadProgram, 'u_texture');
+    this.quadInvertLoc = gl.getUniformLocation(this.quadProgram, 'u_invert');
+    this.quadAlphaScaleLoc = gl.getUniformLocation(this.quadProgram, 'u_alphaScale');
     this.quadBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -712,10 +785,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   render(gl: WebGL2RenderingContext | WebGLRenderingContext, options: maplibregl.CustomRenderMethodInput) {
     if (!this.map || !this.program || !this.positionBuffer || !this.u_matrix || !this.u_color) return;
     if (!this.quadProgram || !this.quadBuffer) return;
-
-    // Rain mode owns the map's exposure picture; this frame paints nothing and
-    // touches no GL state, so toggling back is a pure repaint.
     if (!this.visuallyEnabled) return;
+
+    const rain = this.hazardMode === "rain";
+    const hazardDir = this.hazardDirection();
 
     // The depth ceiling texture and gl.MAX both require WebGL2 (guaranteed by MapLibre).
     const gl2 = gl as WebGL2RenderingContext;
@@ -726,7 +799,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.buildingCache = this.buildBuildingGeometryCache();
         this.cacheVersion++;
       }
-      this.cachedGeometry = this.extrudeShadows(this.buildingCache);
+      this.cachedGeometry = this.extrudeShadows(this.buildingCache, hazardDir, rain);
       this.geomVersion++;
       this.dirty = false;
       this.emit('idle');
@@ -825,8 +898,15 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     gl2.useProgram(this.program);
     gl2.uniformMatrix4fv(this.u_matrix, false, matrix);
-    const [r, g, b, a] = this.computeShadowColor(geo.sunBelowHorizon);
-    gl2.uniform4f(this.u_color, r, g, b, a);
+    // Rain's Pass A carries *coverage* in the alpha it writes: wet tint premultiplied
+    // by RAIN_WET_ALPHA, alpha = RAIN_WET_ALPHA, so the composite can invert it.
+    const raw = rain
+      ? [LocalShadowAdapter.RAIN_WET_RGB[0] * LocalShadowAdapter.RAIN_WET_ALPHA,
+         LocalShadowAdapter.RAIN_WET_RGB[1] * LocalShadowAdapter.RAIN_WET_ALPHA,
+         LocalShadowAdapter.RAIN_WET_RGB[2] * LocalShadowAdapter.RAIN_WET_ALPHA,
+         LocalShadowAdapter.RAIN_WET_ALPHA] as [number, number, number, number]
+      : this.computeShadowColor(geo.sunBelowHorizon);
+    gl2.uniform4f(this.u_color, raw[0], raw[1], raw[2], raw[3]);
 
     gl2.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl2.enableVertexAttribArray(this.a_pos);
@@ -921,6 +1001,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.activeTexture(gl.TEXTURE0);
     gl2.bindTexture(gl.TEXTURE_2D, this.fboTexture);
     gl2.uniform1i(this.quadTexLoc, 0);
+    gl2.uniform1f(this.quadInvertLoc, rain ? 1 : 0);
+    gl2.uniform1f(
+      this.quadAlphaScaleLoc,
+      rain ? LocalShadowAdapter.RAIN_WET_ALPHA : 1,
+    );
 
     gl2.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl2.enableVertexAttribArray(this.quadAttrLoc);
@@ -937,7 +1022,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // That also keeps the canvas the shadow sampler reads (invariant #5, always at
     // pitch 0) exactly as it was.
     const cache = this.buildingCache;
-    if (cache && cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
+    if (!rain &&
+        cache && cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
         this.bldgProgram && this.bldgPosBuffer && this.bldgHeightBuffer &&
         this.bldgNormalBuffer && this.heightFboTexture) {
       if (this.cacheVersion !== this.lastUploadedCacheVersion) {
@@ -1289,7 +1375,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
    * Phase 2: Extrude shadows from cached building geometry using current sun position.
    * This is the fast path — no querySourceFeatures, no earcut, just shadow offset math.
    */
-  private extrudeShadows(cache: CachedBuildingGeometry): ShadowGeometry {
+  private extrudeShadows(
+    cache: CachedBuildingGeometry,
+    hazard: { azimuthRad: number; altitudeRad: number; sunBelow: boolean },
+    rain = false
+  ): ShadowGeometry {
     const empty: ShadowGeometry = {
       shadowVerts: new Float32Array(),
       shadowHeights: new Float32Array(),
@@ -1299,26 +1389,21 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     };
     if (!this.map) return empty;
 
-    // Phase 4: Use worker-provided sun position if available, else compute synchronously
-    let sunAzimuth: number;
-    let sunAltitude: number;
-    if (this.lastSunAzRad != null && this.lastSunAltRad != null) {
-      sunAzimuth = this.lastSunAzRad;
-      sunAltitude = this.lastSunAltRad;
-    } else {
-      const center = this.map.getCenter();
-      const sun = SunCalc.getPosition(this.currentDate, center.lat, center.lng);
-      sunAzimuth = sun.azimuth;
-      sunAltitude = sun.altitude;
-      // Store for dirty-check
+    // Phase 4: The worker's sun position, or the wind-fed rain ray — the extrude
+    // math below is direction-agnostic; only the callers' semantic differs.
+    const sunAzimuth = hazard.azimuthRad;
+    const sunAltitude = hazard.altitudeRad;
+    if (!rain && this.hazardMode === "sun" && this.lastSunAzRad == null) {
+      // A sun that was never computed (worker disabled) leaves its trace for the
+      // dirty-check the same way the old synchronous path did.
       this.lastSunAzDeg = sunAzimuth * 180 / Math.PI;
       this.lastSunAltDeg = sunAltitude * 180 / Math.PI;
       this.lastSunAzRad = sunAzimuth;
       this.lastSunAltRad = sunAltitude;
     }
 
-    // Sun below horizon → full dark overlay (world quad)
-    if (sunAltitude <= 0) {
+    // Sun below horizon → full dark overlay (world quad). Rain never goes below.
+    if (!rain && sunAltitude <= 0) {
       return {
         shadowVerts: new Float32Array([
           0, 0,  1, 0,  1, 1,
