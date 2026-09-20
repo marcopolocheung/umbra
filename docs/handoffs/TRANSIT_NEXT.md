@@ -768,8 +768,13 @@ Two separate questions, and they want answering in this order:
   `railExposure`'s coverage counts bus minutes as unknown rail. Decide whether those are
   acceptable before publishing, or fix them first.
 
-Until one of these lands, a dominated bus option is visible to users. Suppressing an option on a
-time ratio is a product judgement; it was deliberately **not** taken in #420.
+Until one of these lands, a dominated bus option is visible to users. That changed in the
+follow-up that fixed it: each per-mode search is now constrained to its own mode's lines and to
+at most five boardings (`app/lib/trainGraph.ts`), and an offer whose time beats both twice the
+quickest walk and the quickest walk plus fifteen minutes is suppressed with a notice instead of a
+card (`app/lib/transit/transitGate.ts`). Bus-to-bus transfers (B1) and the mixed-mode card (E6)
+remain open; publishing a walked-transfer generation before E6 no longer places subway track
+inside a "Via Bus" card, because the bus search refuses rail edges of any other mode.
 
 ### C. A transit card's "% shadow" describes the walk, and nothing else *(decided — `docs/notes/transit-headline-exposure.md`; PR open)*
 
