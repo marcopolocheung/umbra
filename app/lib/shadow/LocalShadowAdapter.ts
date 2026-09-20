@@ -716,6 +716,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       uniform vec3 u_wallColor;
       uniform vec3 u_shadowTint;
       uniform float u_sunBelow;
+      uniform float u_rainFace;
       uniform float u_bias;
       uniform vec2 u_sunFlat;
       varying float v_hNorm;
@@ -748,12 +749,20 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         float shadowed = max(step(v_facing, 0.0),
                            step(v_hNorm + v_ceilLift + u_bias, ceilN));
         shadowed = max(shadowed, u_sunBelow);
-        float sky = SKY_BASE
-                  + SKY_UP * v_normal.z
-                  + SKY_SUNWARD * max(dot(v_normal.xy, u_sunFlat), 0.0);
-        vec3 lit = u_wallColor * (AMBIENT + (1.0 - AMBIENT) * max(v_facing, 0.0));
-        vec3 dark = mix(u_wallColor * sky, u_shadowTint, SHADOW_TINT);
-        gl_FragColor = vec4(mix(lit, dark, shadowed), 1.0);
+        if (u_rainFace > 0.5) {
+          // Rain on a surface is the inverse of shade: the ceiling field the
+          // vertex samples names what blocks the ray, so exposed := 1 - shadowed.
+          float exposed = 1.0 - shadowed;
+          vec3 dry = u_wallColor * (0.82 + 0.18 * max(-v_facing, 0.0));
+          gl_FragColor = vec4(mix(dry, u_shadowTint, exposed), 1.0);
+        } else {
+          float sky = SKY_BASE
+                    + SKY_UP * v_normal.z
+                    + SKY_SUNWARD * max(dot(v_normal.xy, u_sunFlat), 0.0);
+          vec3 lit = u_wallColor * (AMBIENT + (1.0 - AMBIENT) * max(v_facing, 0.0));
+          vec3 dark = mix(u_wallColor * sky, u_shadowTint, SHADOW_TINT);
+          gl_FragColor = vec4(mix(lit, dark, shadowed), 1.0);
+        }
       }
     `;
     this.bldgProgram = createProgram(gl, bldgVsSrc, bldgFsSrc);
@@ -764,7 +773,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       'u_matrix', 'u_mercZPerMeter', 'u_maxH', 'u_sunOffset', 'u_normalOffset',
       'u_sunDir',
       'u_heightTex', 'u_wallColor', 'u_shadowTint', 'u_sunFlat',
-      'u_sunBelow', 'u_bias', 'u_ceilLift', 'u_fieldScale',
+      'u_sunBelow', 'u_bias', 'u_ceilLift', 'u_fieldScale', 'u_rainFace',
     ]) {
       this.bldgUniforms[name] = gl.getUniformLocation(this.bldgProgram, name);
     }
@@ -1009,12 +1018,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.drawArrays(gl.TRIANGLES, 0, this.canopyGeometry.verts.length / 2);
     }
 
-    // ── Pass B + C: Height-aware roof exclusion ──
+    // ── Pass B + C: ceiling field build, then (sun only) roof exclusion ──
+    // Rain needs the ceiling field too — it is what shades the extruded
+    // buildings in Pass E — but the roof erase stays off in rain (see
+    // runRoofExclusion): the footprint coverage is the shelter being painted.
     const roofVertexCount = geo.roofVerts.length / 2;
-    if (runRoofExclusion(rain, geo.sunBelowHorizon, roofVertexCount) &&
+    const buildCeiling = !geo.sunBelowHorizon && roofVertexCount > 0 &&
         this.heightProgram && this.shadowHeightBuffer &&
-        this.heightFbo && this.heightFboTexture &&
-        this.roofProgram && this.roofPosBuffer && this.roofHeightBuffer) {
+        this.heightFbo && this.heightFboTexture;
+    const eraseRoof = buildCeiling && runRoofExclusion(rain, geo.sunBelowHorizon, roofVertexCount) &&
+        this.roofProgram && this.roofPosBuffer && this.roofHeightBuffer;
+    if (buildCeiling) {
 
       // ── Pass B: Render shadow geometry into a depth-only ceiling FBO ──
       // GREATER retains the tallest normalized shadow ceiling at every pixel.
@@ -1043,7 +1057,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.vertexAttribPointer(this.heightAttrH, 1, gl.FLOAT, false, 0, 0);
 
       gl2.drawArrays(gl.TRIANGLES, 0, this.vertexCount);
+    }
 
+    if (eraseRoof) {
       // ── Pass C: Render roof footprints into shadow FBO with destination-out ──
       // Erases shadow where maxIncomingHeight <= buildingHeight (self-shadow).
       gl2.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -1083,6 +1099,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.drawArrays(gl.TRIANGLES, 0, roofVertexCount);
     }
 
+    // Whatever ran above re-opened depth; the composite is a flat quad again.
+    gl2.disable(gl.DEPTH_TEST);
+    gl2.depthMask(false);
+    gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
+
     // ── Pass D: Composite FBO texture onto main canvas ──
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
@@ -1118,8 +1139,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // That also keeps the canvas the shadow sampler reads (invariant #5, always at
     // pitch 0) exactly as it was.
     const cache = this.buildingCache;
-    if (!rain &&
-        cache && cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
+    if (cache && cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
         this.bldgProgram && this.bldgPosBuffer && this.bldgHeightBuffer &&
         this.bldgNormalBuffer && this.heightFboTexture) {
       if (this.cacheVersion !== this.lastUploadedCacheVersion) {
@@ -1132,8 +1152,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.lastUploadedCacheVersion = this.cacheVersion;
       }
 
-      const az = this.lastSunAzRad ?? 0;
-      const alt = this.lastSunAltRad ?? 0;
+      // Rain aims the wall sample nudges at the reverse-rain ray; the sun path
+      // keeps its exactly-previous values.
+      const az = rain ? (this.lastRainAzRad ?? Math.PI) : (this.lastSunAzRad ?? 0);
+      const alt = rain ? (this.lastRainAltRad ?? (89.5 * Math.PI) / 180) : (this.lastSunAltRad ?? 0);
       // SunCalc's azimuth runs south→west; Mercator y runs north→south. Toward the
       // sun is therefore (-sin az, cos az) — the negative of the shadow's direction.
       const sunX = -Math.sin(az);
@@ -1159,12 +1181,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         normalizedCeilingLift(WALL_SHADOW_NORMAL_OFFSET_M, alt, cache.maxH),
       );
       gl2.uniform3f(u.u_sunDir, sunX * Math.cos(alt), sunY * Math.cos(alt), Math.sin(alt));
-      // computeShadowColor premultiplies for the ground composite; the buildings mix
-      // in straight colour, so divide the constant alpha back out.
-      gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
+      // The wet tint is the colour exposed surfaces take; the dry wall stays its
+      // normal stone. Premultiplied only inside the ground composite.
+      if (rain) {
+        gl2.uniform3f(u.u_shadowTint, RAIN_WET_RGB[0], RAIN_WET_RGB[1], RAIN_WET_RGB[2]);
+      } else {
+        gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
+      }
       gl2.uniform2f(u.u_sunFlat, sunX, sunY);
       gl2.uniform3f(u.u_wallColor, BUILDING_RGB[0], BUILDING_RGB[1], BUILDING_RGB[2]);
-      gl2.uniform1f(u.u_sunBelow, geo.sunBelowHorizon ? 1 : 0);
+      gl2.uniform1f(u.u_sunBelow, rain ? 0 : (geo.sunBelowHorizon ? 1 : 0));
+      gl2.uniform1f(u.u_rainFace, rain ? 1 : 0);
       gl2.uniform1f(u.u_bias, heightBias);
       gl2.uniform1f(u.u_fieldScale, fieldScale);
 
