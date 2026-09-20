@@ -75,6 +75,9 @@ interface PhaseSample {
   entrances?: number;
   walkLegs?: number;
   busWait?: number;
+  /** Phase-0 static-build audit — the evidence the nav-static scenarios actually served. */
+  nycStaticShare?: number;
+  staticGeneration?: string | null;
   total: number;
   shadowFallbackShare: number;
 }
@@ -107,6 +110,8 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
           history: {
             phases: Record<string, number>;
             shadowFallbackShare: number;
+            buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static", number>>;
+            staticBuildingGeneration?: string | null;
           }[];
         };
       }
@@ -129,6 +134,8 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
       entrances: h.phases.entrances ?? 0,
       walkLegs: h.phases.walkLegs ?? 0,
       busWait: h.phases.busWait ?? 0,
+      nycStaticShare: h.buildingProviderShares?.["nyc-static"] ?? 0,
+      staticGeneration: h.staticBuildingGeneration ?? null,
       total: h.phases.total,
       shadowFallbackShare: h.shadowFallbackShare,
     }));
@@ -336,6 +343,36 @@ test("transit 2-point, cache-warm", async ({ page }) => {
   });
 });
 
+// Nav-static scenarios (latency session A4): the same shapes as their keyless
+// counterparts, with the published NYC navigation dataset configured and a
+// seeded pointer → manifest → street/building shard fixture served behind it.
+// Each row sits beside its committed keyless twin, so the difference between
+// the two rows is the static path alone: `navSnapshot` (pointer + manifest +
+// digest) and `staticStreets` (street shard bytes + verified adapter build,
+// no Overpass fallback), with `fieldReady` carrying the static building
+// prism load. The existing scenario set is deliberately untouched above.
+test("nav-static 2-point, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static 2-pt cold", TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static 2-point, cache-warm", async ({ page }) => {
+  await benchWarm(page, "nav-static 2-pt warm", TWO_POINT_URL, WARM_REPEATS, {
+    basemap: "fixture",
+    navigation: "scale",
+  });
+});
+
+test("nav-static NYC-scale, cache-cold", async ({ page }) => {
+  await benchCold(page, "nav-static NYC-scale", TRANSIT_TWO_POINT_URL, COLD_REPEATS, {
+    basemap: "fixture",
+    transit: "scale",
+    navigation: "scale",
+  });
+});
+
 test.afterAll(() => {
   if (results.length === 0) return;
 
@@ -434,6 +471,15 @@ test.afterAll(() => {
     // being non-zero. Whatever is asserted from this has to be readable here.
     console.log(
       `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`,
+    );
+    // Whether the static dataset answered: A4's whole question is the real
+    // shard path, so a zero share on a nav-static scenario is a broken stub
+    // (or a silent fallback), and that has to be visible, not guessed.
+    console.log(
+      `  nyc-static share: ${r.samples.map((s) => pct((s.nycStaticShare ?? 0) * 100)).join("%, ")}%`,
+    );
+    console.log(
+      `  static generation: ${r.samples.map((s) => s.staticGeneration ?? "…").join(", ")}`,
     );
   }
 
