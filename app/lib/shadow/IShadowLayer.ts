@@ -1,3 +1,5 @@
+import type { BuildingPrism } from "../shadowField/geometry";
+
 export interface ShadowPointQueryResult {
   shadowFraction: number;
   source: "geometry-cache";
@@ -38,5 +40,10 @@ export interface IShadowLayer {
   setHazard?(hazard: "sun" | "rain"): void;
   /** Wind the rain rendering aims its ray at (from-bearing, m/s). */
   setRainWind?(dirDeg: number | null, windMs: number | null): void;
+  /**
+   * Canopy casters for the rain rendering, with the same light-opacity crowns
+   * the routing's provider pipeline holds (re-opacified for rain internally).
+   */
+  setCanopyPrisms?(prisms: BuildingPrism[]): void;
 
 }
