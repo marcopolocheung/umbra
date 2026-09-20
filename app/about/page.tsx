@@ -17,7 +17,7 @@ export default function About() {
         </p>
 
         <section className="mb-10">
-          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-chrome">
+          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-ink">
             What It Does
           </h2>
           <ul className="space-y-2 text-sm text-ink-muted">
@@ -30,7 +30,7 @@ export default function About() {
         </section>
 
         <section className="mb-10">
-          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-chrome">
+          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-ink">
             Built With
           </h2>
           <div className="space-y-3">
@@ -58,7 +58,7 @@ export default function About() {
         </section>
 
         <section>
-          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-chrome">
+          <h2 className="text-eyebrow font-semibold uppercase tracking-wider mb-4 text-ink">
             Project Scope
           </h2>
           <p className="text-sm text-ink-muted">

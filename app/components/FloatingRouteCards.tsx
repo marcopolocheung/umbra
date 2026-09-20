@@ -60,8 +60,8 @@ export default function FloatingRouteCards({
       >
         {/* Recommended badge */}
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-chrome animate-pulse" />
-          <span className="text-[10px] uppercase tracking-widest font-bold text-chrome">
+          <span className="w-2 h-2 rounded-full bg-shade animate-pulse" />
+          <span className="text-[10px] uppercase tracking-widest font-bold text-ink-muted">
             Recommended Option
           </span>
         </div>
@@ -90,7 +90,7 @@ export default function FloatingRouteCards({
         {exposureSlot}
 
         {/* Route cards */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto strata-scrollbar">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto umbra-scrollbar">
           {routes.map((r, i) => (
             <RouteCard
               key={routeKey(r)}
@@ -112,7 +112,7 @@ export default function FloatingRouteCards({
             type="button"
             onClick={onStartNavigation}
             className="w-full px-4 py-3 rounded-lg text-sm font-bold transition-colors"
-            style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
           >
             START NAVIGATING
           </button>

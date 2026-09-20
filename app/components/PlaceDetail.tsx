@@ -28,7 +28,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 
       {/* Hero */}
       <div>
-        <div className="text-verdict font-semibold leading-tight" style={{ color: "var(--color-ink)" }}>
+        <div className="font-display text-verdict font-semibold leading-tight tracking-[-0.02em]" style={{ color: "var(--color-ink)" }}>
           {place.name}
         </div>
         <div className="text-[13px] mt-1" style={{ color: "var(--color-ink-muted)" }}>

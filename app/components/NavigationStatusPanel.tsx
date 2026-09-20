@@ -48,7 +48,7 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-chrome-soft"
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
           style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="Back to route options"
           aria-label="Back to route options"
@@ -128,7 +128,7 @@ export default function NavigationStatusPanel({
 
       <div className="rounded-xl p-3" style={{ background: "var(--color-canvas)" }}>
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-chrome)" }}>trip_origin</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }}>trip_origin</span>
           <div className="min-w-0 flex-1">
             <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>

@@ -109,7 +109,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             <button type="button"
               onClick={handleAddFolder}
               className="text-xs px-2 py-1 rounded font-medium transition-colors"
-              style={{ background: "var(--color-chrome-soft)", color: "var(--color-ink)" }}
+              style={{ background: "var(--color-route-soft)", color: "var(--color-ink)" }}
             >
               Add
             </button>
@@ -120,8 +120,8 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
         ) : (
           <button type="button"
             onClick={() => setShowNewFolder(true)}
-            className="text-[11px] hover:text-chrome self-start transition-colors"
-            style={{ color: "var(--color-chrome)" }}
+            className="text-[11px] hover:text-route self-start transition-colors"
+            style={{ color: "var(--color-route)" }}
           >
             + New folder
           </button>
@@ -133,7 +133,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             onClick={() => onSave(name.trim() || defaultName, folderId)}
             disabled={!name.trim()}
             className="flex-1 py-1.5 rounded text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
           >
             Save
           </button>

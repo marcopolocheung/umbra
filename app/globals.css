@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 /*
- * Umbra — Strata design language, Carmine colourway.
+ * Umbra — Canopy design language (owner's pick, changed from Strata/Carmine at the
+ * U2 review, 2026-09-20 — see docs/design/decision.md §0 and §4).
  *
  * This file is the token registry. The canonical spec is `docs/design/language.md`;
  * every colour, radius, shadow, spacing and type token used anywhere under app/
@@ -11,15 +12,18 @@
  *
  * Binding rules (mirrored in the doc — do not change one without the other):
  *
- *   1. Carmine `--color-chrome` #A40000 is CHROME-ONLY: eyebrows, the rank chip,
- *      selection states, and origin/destination pins. It never encodes a data
- *      state — route, sun, shade and danger keep their own colours.
- *   2. Data states stay: route `--color-route` #155FD6, sun `--color-sun` #B34A00,
- *      shade `--color-shade` #187C46 (+ danger `--color-danger` for errors), on
- *      cream canvas `--color-canvas` #F6F2E9 with ink `--color-ink` #211629.
- *   3. Surfaces are solid — Strata has no backdrop blur; elevation is L1/L2 and
- *      hairlines are preferred over shadows; radius steps are 8/12/14 (search is a
- *      plain 12-radius rectangle, not a pill).
+ *   1. There is no decorative accent. The one warm colour is sun data:
+ *      `--color-sun` #A15C00 appears only where the sentence is about
+ *      sun/exposure/heat (the now-marker, solar loads, UV columns) — never as
+ *      chrome decoration.
+ *   2. Data states keep their fixed colours: route `--color-route` #1D6EE0,
+ *      shade `--color-shade` #2A6A4E, danger `--color-danger` #B3261E; chrome
+ *      (eyebrows, rank chips, selection, pins, primary actions) stays in
+ *      ink/route/shade — blue-green-ink, never warm.
+ *   3. Surfaces are paper `--color-canvas` #F7F8F4 under raised white; backdrop
+ *      blur is allowed on exactly one element — the over-map search pill, ≥70 %
+ *      white — everything else is solid. Radius steps are 12/16/20 plus the
+ *      999-radius pill (search + small status chips).
  *
  * Map-renderer constants (the shadow layer's blue, canopyPaint's sea-green) are
  * data-plane colours pinned by canvas tests under CLAUDE.md invariant #5 — they
@@ -29,36 +33,30 @@
 
 @theme {
   /* ── Surfaces & ink ────────────────────────────────────────────── */
-  --color-canvas: #f6f2e9; /* cream canvas */
+  --color-canvas: #f7f8f4; /* paper canvas */
   --color-raised: #ffffff;
-  --color-raised-warm: #fffdf7; /* subtle second-level card on canvas */
-  --color-ink: #211629;
-  --color-ink-muted: #5b526a;
-  --color-ink-faint: #6e6280;
-  --color-hairline: #e8dfd0;
-  --color-hairline-strong: #cbc3b6;
+  --color-on-ink: #f7f8f4; /* light text on ink fills */
+  --color-ink: #1c2321;
+  --color-ink-muted: #525e58;
+  --color-ink-faint: #6c756d;
+  --color-hairline: #e2e7df;
+  --color-hairline-strong: #bfc8bc;
 
-  /* ── Chrome (carmine) — never a data state ─────────────────────── */
-  --color-chrome: #a40000;
-  --color-on-chrome: #ffffff;
-  --color-chrome-soft: rgba(164, 0, 0, 0.08); /* eyebrow/selection fill */
-  --color-chrome-mid: rgba(164, 0, 0, 0.16); /* pressed / stronger fill */
-
-  /* ── Data semantics ────────────────────────────────────────────── */
-  --color-route: #155fd6;
-  --color-route-strong: #1253bc;
-  --color-route-soft: rgba(21, 95, 214, 0.10);
-  --color-route-mid: rgba(21, 95, 214, 0.55);
-  --color-sun: #b34a00;
-  --color-sun-strong: #9d4100;
-  --color-sun-soft: rgba(179, 74, 0, 0.10);
-  --color-sun-mid: rgba(179, 74, 0, 0.55);
-  --color-shade: #187c46;
-  --color-shade-strong: #156c3d;
-  --color-shade-soft: rgba(24, 124, 70, 0.10);
-  --color-shade-mid: rgba(24, 124, 70, 0.55);
-  --color-danger: #a11111;
-  --color-danger-soft: rgba(161, 17, 17, 0.10);
+  /* ── Data semantics (no decorative accents) ────────────────────── */
+  --color-route: #1d6ee0;
+  --color-route-strong: #1758b2;
+  --color-route-soft: rgba(29, 110, 224, 0.10);
+  --color-route-mid: rgba(29, 110, 224, 0.55);
+  --color-sun: #a15c00; /* sun/exposure/heat ONLY — the one warm allowance */
+  --color-sun-strong: #7a4600;
+  --color-sun-soft: rgba(161, 92, 0, 0.10);
+  --color-sun-mid: rgba(161, 92, 0, 0.55);
+  --color-shade: #2a6a4e;
+  --color-shade-strong: #20523c;
+  --color-shade-soft: rgba(42, 106, 78, 0.10);
+  --color-shade-mid: rgba(42, 106, 78, 0.55);
+  --color-danger: #b3261e;
+  --color-danger-soft: rgba(179, 38, 30, 0.10);
   --color-on-route: #ffffff;
   --color-on-sun: #ffffff;
   --color-on-shade: #ffffff;
@@ -70,35 +68,37 @@
   --color-shadow-noon: #22467f; /* LocalShadowAdapter NOON_RGB — legend swatch mirror */
 
   /* ── Elevation: two levels, hairlines preferred ────────────────── */
-  --shadow-level-1: 0 1px 2px rgba(16, 32, 64, 0.10);
-  --shadow-level-2: 0 6px 18px rgba(16, 32, 64, 0.14);
+  --shadow-level-1: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-level-2: 0 12px 28px rgba(28, 35, 33, 0.16);
   /* Legacy utility names all resolve onto the same two levels. */
-  --shadow-sm: 0 1px 2px rgba(16, 32, 64, 0.10);
-  --shadow-md: 0 1px 2px rgba(16, 32, 64, 0.10);
-  --shadow-lg: 0 6px 18px rgba(16, 32, 64, 0.14);
-  --shadow-xl: 0 6px 18px rgba(16, 32, 64, 0.14);
-  --shadow-2xl: 0 6px 18px rgba(16, 32, 64, 0.14);
+  --shadow-sm: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-md: 0 1px 2px rgba(28, 35, 33, 0.10);
+  --shadow-lg: 0 12px 28px rgba(28, 35, 33, 0.16);
+  --shadow-xl: 0 12px 28px rgba(28, 35, 33, 0.16);
+  --shadow-2xl: 0 12px 28px rgba(28, 35, 33, 0.16);
 
-  /* ── Radius: 8 (controls) / 12 (cards) / 14 (sheet) ────────────── */
-  /* Overriding the default names pins every existing rounded-* utility
-     onto the scale, so no component invents its own radius. */
-  --radius: 8px;
-  --radius-sm: 8px;
-  --radius-md: 8px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-2xl: 14px;
-  --radius-3xl: 14px;
+  /* ── Radius: 12 (controls/cards) / 16 / 20 (sheet) + 999 pill ──── */
+  /* Overriding the default names pins the existing rounded-* utilities onto
+     the scale, so a component cannot invent its own radius. The search pill
+     and small status chips use rounded-full. */
+  --radius: 12px;
+  --radius-sm: 12px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 20px;
 
-  /* ── Type (Inter only — index.html loads it) ───────────────────── */
+  /* ── Type ──────────────────────────────────────────────────────── */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter Tight', 'Inter', system-ui, sans-serif; /* verdict voice */
   --text-eyebrow: 11px; /* 600, uppercase, tracked — section labels */
-  --text-verdict: 22px; /* 700, -2% tracking — the one display voice */
+  --text-verdict: 22px; /* Inter Tight, 700, -2% — the one display voice */
   --text-body: 15px; /* body text, line-height 22 */
   --text-small: 13px; /* dense reading inside cards */
   --text-caption: 10px; /* map-adjacent metadata only */
 
-  /* ── Spacing: 4px grid, plus the two named layout widths ───────── */
+  /* ── Spacing: 4px grid, plus the named layout widths ───────────── */
   --spacing-sidebar: 408px; /* desktop shell — AppShell/canopy offsets */
   --spacing-legend: 15rem; /* canopy legend max width */
   --spacing-panel-min: 15rem; /* popover minimums */
@@ -108,15 +108,15 @@
    Surfaces
    --------------------------------------------------------------------- */
 
-.strata-scrollbar {
+.umbra-scrollbar {
   scrollbar-color: color-mix(in srgb, var(--color-ink) 18%, transparent) transparent;
 }
 
-.strata-scrollbar::-webkit-scrollbar {
+.umbra-scrollbar::-webkit-scrollbar {
   width: 10px;
 }
 
-.strata-scrollbar::-webkit-scrollbar-thumb {
+.umbra-scrollbar::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--color-ink) 15%, transparent);
   border-radius: 999px;
   border: 3px solid transparent;
@@ -137,7 +137,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------
-   MapLibre popups — Strata solid surfaces (no blur), ink on raised
+   MapLibre popups — Canopy solid surfaces (no blur), ink on raised
    --------------------------------------------------------------------- */
 
 /* Draw-mode address hover */

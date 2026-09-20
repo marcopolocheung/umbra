@@ -161,8 +161,8 @@ export default function AccumulationPanel({
         onClick={toggle}
         className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
           accumulation.enabled
-            ? "bg-chrome text-on-chrome font-medium"
-             : "bg-raised border border-hairline hover:bg-chrome-soft"
+            ? "bg-ink text-on-ink font-medium"
+             : "bg-raised border border-hairline hover:bg-canvas"
         }`}
         style={!accumulation.enabled ? { color: "var(--color-ink)" } : undefined}
       >
@@ -208,7 +208,7 @@ export default function AccumulationPanel({
               onChange={(e) =>
                 onChange({ ...accumulation, iterations: Number(e.target.value) })
               }
-              className="flex-1 accent-chrome"
+              className="flex-1 accent-ink"
             />
             <span className="w-20 text-right leading-tight">
               <span style={{ color: "var(--color-ink)" }}>
@@ -251,7 +251,7 @@ export default function AccumulationPanel({
           <button type="button"
             onClick={exportGeoTIFF}
             className="mt-1 transition-colors rounded px-3 py-1.5 text-center font-medium"
-            style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
           >
             Export GeoTIFF
           </button>

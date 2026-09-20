@@ -35,7 +35,7 @@ export default function RouteTradeoffSummary({
       style={{
         background: "var(--color-raised)",
         borderColor: "var(--color-hairline)",
-        borderLeftColor: "var(--color-chrome)",
+        borderLeftColor: "var(--color-route)",
       }}
     >
       <div
@@ -46,7 +46,7 @@ export default function RouteTradeoffSummary({
       </div>
       {rainMode && route.dryCoverage !== undefined && baselineRoute.dryCoverage !== undefined ? (
         <>
-          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-chrome)" }}>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-route)" }}>
             {rainTradeoffLine(route, baselineRoute)}
           </div>
           <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
@@ -56,7 +56,7 @@ export default function RouteTradeoffSummary({
         </>
       ) : (
         <>
-          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-chrome)" }}>
+          <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-route)" }}>
             {routeTradeoffLine(route, baselineRoute)}
           </div>
           <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>

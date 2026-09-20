@@ -949,7 +949,7 @@ export default function MapView({
       if (markerARef.current) {
         markerARef.current.setLngLat(navWaypoints.a);
       } else {
-        const mA = new maplibregl.Marker({ color: token("color-chrome"), draggable: true })
+        const mA = new maplibregl.Marker({ color: token("color-ink"), draggable: true })
           .setLngLat(navWaypoints.a)
           .addTo(map);
         mA.on('dragend', () => {
@@ -967,7 +967,7 @@ export default function MapView({
       if (markerBRef.current) {
         markerBRef.current.setLngLat(navWaypoints.b);
       } else {
-        const mB = new maplibregl.Marker({ color: token("color-chrome"), draggable: true })
+        const mB = new maplibregl.Marker({ color: token("color-route"), draggable: true })
           .setLngLat(navWaypoints.b)
           .addTo(map);
         mB.on('dragend', () => {
@@ -993,9 +993,9 @@ export default function MapView({
       const el = document.createElement("div");
       el.style.cssText = `
         width:22px;height:22px;border-radius:50%;
-        background:var(--color-raised);border:2px solid var(--color-chrome);
+        background:var(--color-raised);border:2px solid var(--color-ink);
         display:flex;align-items:center;justify-content:center;
-        font-size:10px;font-weight:700;color:var(--color-chrome);cursor:pointer;
+        font-size:10px;font-weight:700;color:var(--color-ink);cursor:pointer;
       `;
       el.textContent = String(i + 1);
       const marker = new maplibregl.Marker({ element: el })
@@ -1017,12 +1017,12 @@ export default function MapView({
       el.style.cssText = `
         width:26px;height:26px;border-radius:50% 50% 50% 0;
         transform:rotate(-45deg);
-        background:var(--color-chrome);border:2px solid var(--color-raised);
+        background:var(--color-ink);border:2px solid var(--color-raised);
         box-shadow:0 2px 6px color-mix(in srgb, var(--color-ink) 40%, transparent);
         display:flex;align-items:center;justify-content:center;cursor:pointer;
       `;
       const inner = document.createElement("span");
-      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-chrome);`;
+      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-ink);`;
       inner.textContent = String(i + 1);
       el.appendChild(inner);
 
@@ -1175,7 +1175,7 @@ export default function MapView({
 
     // Create new markers only for newly added points
     for (let i = existing.length; i < newCount; i++) {
-      const marker = new maplibregl.Marker({ color: token("color-chrome") })
+      const marker = new maplibregl.Marker({ color: token("color-ink") })
         .setLngLat(sketchPoints[i].coord)
         .addTo(map);
 
@@ -1249,7 +1249,7 @@ export default function MapView({
 
     for (const wp of simplifiedWaypoints) {
       const addr = getSketchAddressForCoord(wp);
-      const marker = new maplibregl.Marker({ color: token("color-chrome") })
+      const marker = new maplibregl.Marker({ color: token("color-ink") })
         .setLngLat(wp)
         .addTo(map);
 

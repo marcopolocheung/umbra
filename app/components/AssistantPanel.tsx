@@ -63,7 +63,7 @@ export default function AssistantPanel({
         style={{ borderColor: "var(--color-hairline)" }}
       >
         <span
-          className="material-symbols-outlined text-chrome"
+          className="material-symbols-outlined text-ink"
           style={{ fontVariationSettings: "'FILL' 1" }}
         >
           wb_sunny
@@ -109,7 +109,7 @@ export default function AssistantPanel({
                 type="button"
                 key={s}
                 onClick={() => onSend(s)}
-                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-chrome-soft transition-colors"
+                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-canvas transition-colors"
                 style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
               >
                 {s}
@@ -124,7 +124,7 @@ export default function AssistantPanel({
               <div key={m.id} className="flex items-center gap-2 px-2 py-1 self-start">
                 <span
                   className="material-symbols-outlined text-sm animate-pulse"
-                  style={{ color: "var(--color-chrome)" }}
+                  style={{ color: "var(--color-ink-muted)" }}
                 >
                   bolt
                 </span>
@@ -145,9 +145,9 @@ export default function AssistantPanel({
               style={{
                 alignSelf: isUser ? "flex-end" : "flex-start",
                 background: isUser
-                  ? "var(--color-chrome)"
+                  ? "var(--color-ink)"
                   : "var(--color-canvas)",
-                color: isUser ? "var(--color-on-chrome)" : "var(--color-ink)",
+                color: isUser ? "var(--color-on-ink)" : "var(--color-ink)",
                 borderBottomRightRadius: isUser ? 4 : undefined,
                 borderBottomLeftRadius: isUser ? undefined : 4,
               }}
@@ -206,15 +206,15 @@ export default function AssistantPanel({
         {isThinking && (
           <div className="flex items-center gap-1.5 px-3 py-2 self-start">
             <span
-              className="w-1.5 h-1.5 rounded-full bg-chrome animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "0ms" }}
             />
             <span
-              className="w-1.5 h-1.5 rounded-full bg-chrome animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "120ms" }}
             />
             <span
-              className="w-1.5 h-1.5 rounded-full bg-chrome animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
               style={{ animationDelay: "240ms" }}
             />
           </div>
@@ -247,7 +247,7 @@ export default function AssistantPanel({
             onClick={submit}
             disabled={isThinking || !input.trim()}
             className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors disabled:opacity-40"
-            style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
             title="Send"
           >
             <span className="material-symbols-outlined text-lg">send</span>

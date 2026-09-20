@@ -65,7 +65,7 @@ export default function ArrivalPanel({
           type="button"
           onClick={onPlanAnother}
           className="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+          style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
         >
           Plan another
         </button>

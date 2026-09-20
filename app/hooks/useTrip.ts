@@ -540,8 +540,9 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
       dragActiveRef.current = false;
       dragStartPos.current = null;
 
-      // Strata: origin and destination pins are carmine chrome, never data greens/reds.
-      const color = token("color-chrome");
+      // Canopy: the origin pin is ink and the destination pin is route blue —
+      // wayfinding chrome stays in the blue-green-ink family.
+      const color = token(slot === "A" ? "color-ink" : "color-route");
 
       function onMove(e: PointerEvent) {
         const { clientX: x, clientY: y } = e;

@@ -45,7 +45,7 @@ export default function SettingsPanel({
               type="checkbox"
               checked={showSunLines}
               onChange={(e) => onShowSunLinesChange(e.target.checked)}
-              className="accent-chrome w-4 h-4"
+              className="accent-ink w-4 h-4"
             />
           </label>
 

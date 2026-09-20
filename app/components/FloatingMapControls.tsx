@@ -39,7 +39,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomIn()}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-chrome transition-colors"
+        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom in"
         title="Zoom in"
       >
@@ -50,7 +50,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomOut()}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-chrome transition-colors"
+        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom out"
         title="Zoom out"
       >
@@ -71,7 +71,7 @@ export default function FloatingMapControls({
               aria-pressed={!rainMode}
               title="Route by sun exposure"
               className={`w-14 h-10 flex items-center justify-center transition-colors ${
-                !rainMode ? "bg-chrome text-on-chrome" : "bg-raised text-ink-muted hover:text-chrome"
+                !rainMode ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">light_mode</span>
@@ -110,7 +110,7 @@ export default function FloatingMapControls({
         <button
           type="button"
           onClick={onShare}
-          className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-chrome transition-colors"
+          className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
           aria-label={shareStatus === "copied" ? "Share link copied" : "Copy share link"}
           title={shareStatus === "copied" ? "Copied" : shareStatus === "error" ? "Copy failed" : "Copy share link"}
         >
@@ -127,13 +127,13 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={onLocateMe}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-chrome transition-colors"
+        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="My location"
         title="My location"
         disabled={isLocating}
       >
         {isLocating ? (
-          <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" className="animate-spin text-chrome">
+          <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" className="animate-spin text-ink">
             <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
           </svg>
         ) : (
@@ -158,7 +158,7 @@ export default function FloatingMapControls({
           else map.easeTo({ ...camera, duration: 400 });
         }}
         className={`w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center transition-colors ${
-          is3D ? "bg-chrome text-on-chrome" : "bg-raised text-ink-muted hover:text-chrome"
+          is3D ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
         }`}
         aria-pressed={is3D}
         aria-label={is3D ? "Return to 2D map" : "Tilt to 3D map"}

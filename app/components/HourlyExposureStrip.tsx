@@ -75,7 +75,7 @@ export default function HourlyExposureStrip({
                   height: ready ? `${Math.max(6, sample.sunExposure * 100)}%` : "6%",
                   background: ready
                     ? isNow
-                      ? "var(--color-chrome)"
+                      ? "var(--color-sun)"
                       : "var(--color-sun-mid)"
                     : "color-mix(in srgb, var(--color-ink) 18%, transparent)",
                 }}

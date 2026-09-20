@@ -20,6 +20,10 @@
   different colourway is a one-line change at merge.
 - **2026-09-20, resolved:** owner settled the choice — **Strata, Carmine colourway**.
   Merging this PR records the sign-off; no merge comment is needed.
+- **2026-09-20, U2 review (supersedes the above):** the owner flipped to **Canopy** (§4 —
+  the original recommendation). U2's code, canonical spec and PRs were reworked from
+  Strata/Carmine to Canopy before review closed; the first sentence of
+  `docs/design/language.md` now records Canopy.
 
 ## 1. The axis this decision is about
 

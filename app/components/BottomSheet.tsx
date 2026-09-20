@@ -153,7 +153,7 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         willChange: "height",
         background: "var(--color-raised)",
         borderTop: "1px solid var(--color-hairline)",
-        borderRadius: "14px 14px 0 0",
+        borderRadius: "20px 20px 0 0",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -165,7 +165,7 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 strata-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 umbra-scrollbar">
         {children}
       </div>
     </div>

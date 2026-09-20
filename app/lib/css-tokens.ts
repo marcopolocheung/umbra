@@ -1,5 +1,5 @@
 /**
- * Strata token values for JavaScript-side consumers (MapLibre paint properties,
+ * Canopy token values for JavaScript-side consumers (MapLibre paint properties,
  * markers, canvas/SVG elements and tests) that cannot reference `var(--…)`.
  *
  * The registry is `app/globals.css` and nothing here re-declares a value: this

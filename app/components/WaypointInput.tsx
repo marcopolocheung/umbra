@@ -106,15 +106,15 @@ const WaypointInput = memo(function WaypointInput({
     <div className="relative flex flex-col gap-0.5">
       <div className="flex items-center gap-3 relative z-10">
         {dotColor === "green" ? (
-          <span className="material-symbols-outlined text-chrome bg-chrome-soft rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink bg-canvas rounded-full p-0.5 text-sm shrink-0">
             radio_button_checked
           </span>
         ) : dotColor === "red" ? (
-          <span className="material-symbols-outlined text-chrome bg-chrome-soft rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-route bg-canvas rounded-full p-0.5 text-sm shrink-0">
             location_on
           </span>
         ) : (
-          <span className="material-symbols-outlined text-chrome bg-chrome-soft rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink-muted bg-canvas rounded-full p-0.5 text-sm shrink-0">
             add_location
           </span>
         )}
@@ -170,10 +170,10 @@ const WaypointInput = memo(function WaypointInput({
                 onClick={() => handleSelect(r)}
                 onMouseEnter={() => setHighlight(i)}
                 className={`w-full text-left px-3 py-2 transition-colors ${
-                  i === highlight ? "bg-chrome-soft" : "hover:bg-chrome-soft"
+                  i === highlight ? "bg-canvas" : "hover:bg-canvas"
                 }`}
               >
-                <div className="text-xs truncate" style={{ color: i === highlight ? "var(--color-chrome)" : "var(--color-ink)" }}>
+                <div className="text-xs truncate" style={{ color: i === highlight ? "var(--color-route)" : "var(--color-ink)" }}>
                   {primary}
                 </div>
                 {secondary && (

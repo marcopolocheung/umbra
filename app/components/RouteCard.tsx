@@ -79,9 +79,9 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
       className={`flex gap-1.5 items-start rounded-lg text-xs transition-all ${
         selected
           ? 'bg-raised p-4 shadow-level-2 border-l-4'
-          : 'bg-raised p-3 border-l-4 border-hairline hover:bg-raised-warm'
+          : 'bg-raised p-3 border-l-4 border-hairline hover:bg-canvas'
       }`}
-      style={selected ? { borderColor: "var(--color-chrome)" } : undefined}
+      style={selected ? { borderColor: "var(--color-route)" } : undefined}
     >
       <button
         type="button"
@@ -101,7 +101,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             {recommended && (
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
-                style={{ background: "var(--color-chrome-soft)", color: "var(--color-chrome)" }}
+                style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}
               >
                 Recommended
               </span>
@@ -122,7 +122,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             style={
               shadowKnown
                 ? {
-                    background: selected ? "var(--color-chrome-soft)" : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+                    background: selected ? "var(--color-route-soft)" : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
                     color: selected ? "var(--color-ink)" : "var(--color-ink-muted)",
                   }
                 : { borderColor: "var(--color-ink-muted)", color: "var(--color-ink-muted)" }
@@ -216,7 +216,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
                 const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
                 return (
                   <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
-                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-chrome-soft)", color: "var(--color-chrome)" }}>
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}>
                       {index + 1}
                     </span>
                     <span className="min-w-0">
@@ -303,7 +303,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           type="button"
           onClick={onSave}
           title="Save this route"
-          className="shrink-0 mt-0.5 p-1.5 rounded-lg text-ink-faint hover:text-chrome hover:bg-chrome-soft transition-all"
+          className="shrink-0 mt-0.5 p-1.5 rounded-lg text-ink-faint hover:text-route hover:bg-route-soft transition-all"
         >
           <span className="material-symbols-outlined text-base">bookmark</span>
         </button>
@@ -318,8 +318,8 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             className="hidden group-hover/export:flex absolute right-0 top-full mt-1 flex-col rounded-lg shadow-xl z-30 min-w-max border"
             style={{ background: "white", borderColor: "var(--color-hairline)" }}
           >
-            <button type="button" onClick={() => onExport("gpx")} className="px-3 py-1.5 text-[11px] hover:bg-chrome-soft text-left transition-colors" style={{ color: "var(--color-ink)" }}>GPX</button>
-            <button type="button" onClick={() => onExport("geojson")} className="px-3 py-1.5 text-[11px] hover:bg-chrome-soft text-left transition-colors" style={{ color: "var(--color-ink)" }}>GeoJSON</button>
+            <button type="button" onClick={() => onExport("gpx")} className="px-3 py-1.5 text-[11px] hover:bg-canvas text-left transition-colors" style={{ color: "var(--color-ink)" }}>GPX</button>
+            <button type="button" onClick={() => onExport("geojson")} className="px-3 py-1.5 text-[11px] hover:bg-canvas text-left transition-colors" style={{ color: "var(--color-ink)" }}>GeoJSON</button>
           </div>
         </div>
       )}

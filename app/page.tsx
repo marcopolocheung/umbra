@@ -858,7 +858,7 @@ export default function Home() {
           <span
             className="material-symbols-outlined text-base"
             style={{
-              color: sliderMode === "time" ? "var(--color-chrome)" : "var(--color-ink-muted)",
+              color: sliderMode === "time" ? "var(--color-ink)" : "var(--color-ink-muted)",
               fontVariationSettings: "'FILL' 1",
             }}
           >
@@ -870,7 +870,7 @@ export default function Home() {
           <span
             className="material-symbols-outlined text-base"
             style={{
-              color: sliderMode === "day" ? "var(--color-chrome)" : "var(--color-ink-muted)",
+              color: sliderMode === "day" ? "var(--color-ink)" : "var(--color-ink-muted)",
               fontVariationSettings: "'FILL' 1",
             }}
           >
@@ -1110,13 +1110,13 @@ export default function Home() {
           className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-2 rounded-full px-4 py-1.5 text-sm select-none border"
           style={{
             background: "var(--color-raised)",
-            borderColor: "var(--color-chrome-mid)",
+            borderColor: "var(--color-hairline-strong)",
             color: "var(--color-ink)",
           }}
         >
           <span
             className="w-2 h-2 rounded-full animate-pulse shrink-0"
-            style={{ background: "var(--color-chrome-soft)" }}
+            style={{ background: "var(--color-route-soft)" }}
           />
           Click map to place waypoint {pendingSlot}
           <span className="text-xs ml-1" style={{ color: "var(--color-ink-muted)" }}>
@@ -1411,8 +1411,8 @@ export default function Home() {
             right: "1rem",
             width: 52,
             height: 52,
-            background: "var(--color-chrome)",
-            color: "var(--color-on-chrome)",
+            background: "var(--color-ink)",
+            color: "var(--color-on-ink)",
           }}
           title="Ask the Umbra Assistant"
           aria-label="Open Umbra Assistant"

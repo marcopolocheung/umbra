@@ -1,83 +1,85 @@
 # Umbra Design Language — canonical spec (Track U)
 
-**Chosen: Strata — Carmine colourway** (owner's settled choice, review comments 2026-09-20;
-see `docs/design/decision.md` §0, §2b and §6). The owner's merge of that decision PR is the
-sign-off and this sentence records it. This file is now the single source of truth for Umbra's
-UI, and `app/globals.css` is its token registry — the two carry the same binding rules; change
-them only together, in the same PR.
+**Chosen: Canopy** (owner's decision during the U2 review, 2026-09-20 — the sign-off recorded
+for Strata/Carmine is superseded by this sentence; see `docs/design/decision.md` §0 and §4).
+This file is the single source of truth for Umbra's UI, and `app/globals.css` is its token
+registry — the two carry the same binding rules; change them only together, in the same PR.
+
+Canopy is the restrained-structure / warm-truth synthesis: an evidence-first blue-green
+foundation for the data, one warm allowance spent exactly where the product's metric is —
+sun exposure — and zero decorative accents anywhere else.
 
 ## Binding rules (make these explicit, then follow them)
 
-1. **Carmine `--color-chrome` `#A40000` is chrome-only.** It marks *interface furniture* —
-   eyebrows, the rank chip ("Recommended"), selection states, origin/destination (and
-   waypoint) pins, primary actions. It **never encodes a data state**: no metric, route,
-   sun/shade tier, warning or error is ever painted carmine.
-2. **Data states have fixed colours.** Route `--color-route` `#155FD6`, sun `--color-sun`
-   `#B34A00`, shade `--color-shade` `#187C46`, danger `--color-danger` `#A11111`, on cream
-   canvas `--color-canvas` `#F6F2E9` with ink `--color-ink` `#211629`. A UI element that
-   reports a number of sun, shade, rain or transit borrows the role colour, never a new one.
-3. **Surfaces are solid.** Strata has no backdrop blur (`decision.md` §2, research note (c)):
-   panels and popups are opaque `--color-raised`/`--color-canvas`, so glare cannot eat text.
-   The two renderer colours the canvas tests pin — the shadow layer's blue and canopyPaint's
-   sea-green `#2E8B57` — are data-plane constants, out of the chrome palette, and are not
-   re-tinted (`app/lib/shadow/LocalShadowAdapter.ts`, `app/lib/canopyRaster/canopyPaint.ts`).
-   The `--color-canopy-map` token exists only so the legend mirrors what the map paints.
+1. **The one warm colour is sun data.** `--color-sun` `#A15C00` appears only where the
+   sentence is about sun/exposure/heat: the now-marker, solar-load pills, UV columns and
+   sun figures. It is never chrome decoration — no amber eyebrows, tabs, badges or CTAs.
+2. **Data states have fixed colours.** Route `--color-route` `#1D6EE0`, sun
+   `--color-sun` `#A15C00`, shade `--color-shade` `#2A6A4E`, danger `--color-danger`
+   `#B3261E`; chrome (eyebrows, rank chips, selection, pins, primary actions) stays in
+   ink/route/shade — blue-green-ink, never warm, no red.
+3. **Surfaces are paper + raised white.** Canvas `--color-canvas` `#F7F8F4`, cards and
+   popups `--color-raised` `#FFFFFF`, ink `--color-ink` `#1C2321`. Backdrop blur is allowed
+   on exactly one element — the over-map search pill at ≥70 % white — everything else is
+   solid (research note (c): glare eats translucent text).
+4. **Radius is 12 / 16 / 20, plus one 999 pill.** Controls/cards 12, larger cards 16, the
+   sheet 20; the search pill (and small status chips) may be `rounded-full` and nothing
+   else may. The registry pins the `rounded-*` utilities onto this scale.
+5. **The renderer constants stay put.** The shadow layer's blue and canopyPaint's
+   sea-green `#2E8B57` are data-plane colours pinned by canvas tests under CLAUDE.md
+   invariant #5; `--color-canopy-map` exists only so the legend mirrors what the map paints.
 
 ## Colour roles (registry: `app/globals.css` `@theme`)
 
 | Token | Value | Role |
 |---|---|---|
-| `--color-canvas` | `#F6F2E9` | App background, chip fills on raised cards |
+| `--color-canvas` | `#F7F8F4` | Paper app background, chip fills on raised cards |
 | `--color-raised` | `#FFFFFF` | Cards, sheets, popups |
-| `--color-raised-warm` | `#FFFDF7` | Second-level card / hover on canvas |
-| `--color-ink` | `#211629` | Primary text (17.3:1 on raised) |
-| `--color-ink-muted` | `#5B526A` | Secondary text (7.3:1) |
-| `--color-ink-faint` | `#6E6280` | Placeholders, disabled glyphs (5.6:1) |
-| `--color-hairline` | `#E8DFD0` | Borders; preferred over shadows |
-| `--color-hairline-strong` | `#CBC3B6` | Focusable-outline borders, stronger dividers |
-| `--color-chrome` | `#A40000` | **Chrome only** — rule 1 (8.1:1) |
-| `--color-on-chrome` | `#FFFFFF` | Text on chrome |
-| `--color-chrome-soft` / `-mid` | carmine 8% / 16% | Selection/eyebrow fills |
-| `--color-route` | `#155FD6` | Route data: lines, transit fallback, links (5.8:1) |
-| `--color-sun` | `#B34A00` | Sun/exposure data (5.4:1) |
-| `--color-shade` | `#187C46` | Shade/tree/arrival data (5.2:1) |
-| `--color-danger` | `#A11111` | Errors — a *state*, never confused with chrome red |
+| `--color-ink` | `#1C2321` | Primary text (16.0:1 on raised) |
+| `--color-ink-muted` | `#525E58` | Secondary text (6.8:1) |
+| `--color-ink-faint` | `#6C756D` | Placeholders, disabled glyphs (4.8:1) |
+| `--color-hairline` | `#E2E7DF` | Borders; preferred over shadows |
+| `--color-hairline-strong` | `#BFC8BC` | Focused/stronger dividers |
+| `--color-route` | `#1D6EE0` | Route data, selection of route cards, links (4.8:1) |
+| `--color-sun` | `#A15C00` | **Sun/exposure/heat only** (5.2:1) |
+| `--color-shade` | `#2A6A4E` | Shade/tree/arrival data, the "go" CTA (6.4:1) |
+| `--color-danger` | `#B3261E` | Errors — a state, not chrome |
 | `--color-route/sun/shade-strong, -soft, -mid` | — | Hover, soft-fill and over-map variants of the three data hues |
-| `--color-on-route/sun/shade/danger` | `#FFFFFF` | Text on solid data fills |
+| `--color-on-ink/route/sun/shade/danger` | light | Text on solid fills |
 
-`?soft` fills and any alpha wash are expressed as `color-mix(in srgb, var(--color-X) N%, transparent)`
-or as `--color-X-soft` tokens — never as new literal `rgba()` values in components.
+Soft fills and alpha washes are `color-mix(in srgb, var(--color-X) N%, transparent)` or the
+`--color-X-soft` tokens — never new literal `rgba()` values in components.
 
-## Type scale (Inter only; `--font-sans`)
+## Type scale
 
 | Step | Token | Sizing | Use |
 |---|---|---|---|
-| Verdict | `--text-verdict` | 22 / 700, `-2%` tracking | The one display voice: the headline number |
-| Body | `--text-body` | 15 / 22 | Paragraph text |
-| Small | `--text-small` | 13 / 18 | Dense card reading |
-| Eyebrow | `--text-eyebrow` | 11 / 600, uppercase, tracked | Section labels ("NAVIGATION ACTIVE") |
-| Caption | `--text-caption` | 10, tabular | Map-adjacent metadata |
+| Verdict | `--text-verdict` | 22 / 700, Inter Tight, `-2%` tracking | The one display voice: the headline number |
+| Body | `--text-body` | 15 / 22, Inter | Paragraph text |
+| Small | `--text-small` | 13 / 18, Inter | Dense card reading |
+| Eyebrow | `--text-eyebrow` | 11 / 600, Inter, uppercase, tracked | Section labels |
+| Caption | `--text-caption` | 10, Inter, tabular | Map-adjacent metadata |
 
-Numbers use `tabular-nums`. One family, one display step — no second typeface.
+Numbers use `tabular-nums`. One display cut (Inter Tight) and one body font (Inter) —
+see `index.html` fonts.
 
 ## Radius steps, spacing, elevation
 
-- **Radius** is exactly **8 (controls) / 12 (cards) / 14 (sheet)**; search is a plain
-  12-radius *rectangle*, never a pill. The registry pins every `rounded-*` utility onto the
-  scale via `@theme` overrides, so components cannot invent their own radius.
-- **Spacing** is a 4 px grid. `--spacing-sidebar: 408px` (and the `--spacing-legend` /
-  `--spacing-panel-min` popover minimums) are the documented layout exceptions.
-- **Elevation** is two levels only, with hairlines preferred over shadows:
-  `--shadow-level-1: 0 1px 2px rgba(16,32,64,.10)` (inset/attached),
-  `--shadow-level-2: 0 6px 18px rgba(16,32,64,.14)` (floating). The legacy
-  `shadow-sm…2xl` names all resolve onto those same two levels.
+- **Radius:** 12 (controls/cards) / 16 (large cards) / 20 (sheet); `rounded-full` exists for
+  the search pill and small status chips only (rule 4).
+- **Spacing:** 4 px grid; `--spacing-sidebar: 408px`, `--spacing-legend` and
+  `--spacing-panel-min` are the documented layout exceptions.
+- **Elevation:** two levels, hairlines preferred over shadows —
+  `--shadow-level-1: 0 1px 2px rgba(28,35,33,.10)` (attached),
+  `--shadow-level-2: 0 12px 28px rgba(28,35,33,.16)` (floating). The legacy
+  `shadow-sm…2xl` names all resolve onto those two levels.
 
 ## Icons
 
 Material Symbols Outlined only (`index.html`), `FILL 0 / wght 400 / opsz 24` default, `FILL 1`
-for the active/selected glyph, 16–24 px with a ≥44 px touch target around every glyph that is
-pressable. Icon colour follows its element's role: ink at rest, carmine when the control is
-chrome/active, the data hue when the glyph reads a metric.
+for the active/selected glyph, 16–24 px with a ≥44 px touch target around every pressable
+glyph. Icon colour follows its element's role: ink at rest, route blue where the control
+selects route data, sun only when the glyph reads a sun metric.
 
 ## Copy voice (D6 is non-negotiable)
 
@@ -87,17 +89,17 @@ no lie-flat adjectives. U5 fills out this section per surface; the guardrail bin
 
 ## Component recipes
 
-- **Route card:** rank chip (carmine when recommended) → label + one trade-off line →
-  verdict numbers → fixed metric strip (DIST · SHADE · UV) → provenance footnote. Selected
-  card: carmine `border-left`, L2-level shadow; the shadow-coverage bar fills in shade green,
-  never carmine.
-- **Timeline:** one time readout; the now-marker is a carmine-diamond (selection, chrome);
+- **Route card:** rank chip (route-blue soft fill when recommended) → label + one
+  trade-off line → verdict numbers → fixed metric strip (DIST · SHADE · UV) → provenance
+  footnote. Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar
+  fills in shade green; the card never uses warm colours for ranking.
+- **Timeline:** one time readout; the now-marker is the **only** amber element (sun data);
   sunrise/sunset ticks are sun/route coloured data marks; day ticks are ink washes.
-- **Search:** quiet raised rectangle, 12-radius, icon + input + actions; result rows on
-  raised with hairline separators and carmine soft highlight.
-- **Pins & popups:** origin/destination/waypoint pins are carmine chrome; user-location
-  dot is route blue; popups are raised surfaces with a hairline border and L2 shadow,
-  ink text (popup CSS lives in `globals.css` under MapLibre selectors).
+- **Search:** the one 999-radius pill, ≥70 % white with its allowed blur, route-blue
+  highlight on the active row; result rows on raised with hairline separators.
+- **Pins & popups:** origin pin ink, destination pin route blue, user-location dot route
+  blue; popups are raised surfaces with a hairline border and L2 shadow, ink text
+  (popup CSS lives in `globals.css` under MapLibre selectors).
 
 ## Enforcement path
 
@@ -105,15 +107,16 @@ no lie-flat adjectives. U5 fills out this section per surface; the guardrail bin
   hex/`rgba()` and no numeric arbitrary values outside the registry, across `app/**`.
   Comments are stripped before scanning so issue references don't read as colours.
 - `.claude/rules/design-language.md` applies per file; the `lint-changed` PostToolUse hook
-  (where installed) reports offending changed lines immediately but never blocks.
-- Phone before/after shots ship with the design PR under `docs/design/shots/u<n>/` — in this
-  public mirror the U0 screenshot harness is deliberately not carried over, so the shot
-  runner lives only in the private repo.
+  reports offending changed lines immediately but never blocks.
+- `interface-reviewer` checks diffs against this doc plus the outdoor standard;
+  `/gates` before any PR. Phone before/after shots ship with the design PR under
+  `docs/design/shots/u<n>/` — in this public mirror the U0 screenshot harness is
+  deliberately not carried over, so the shot runner lives only in the private repo.
 
 ## Migration status
 
-U2 replaced the Material 3 layer (`--md-*` tokens, glass helpers) with this registry, deleted
-the superseded `NavigationPanel.tsx`, migrated every inventoried literal and made
-`design:check` green. Component-level adoption of the type steps and of the wire-level
-component recipes continues through U3–U6; until then this doc is the standard the
-`interface-reviewer` compares diffs against.
+U2 first landed Strata/Carmine and was reworked to Canopy at the owner's review (the
+`--md-*` layer and glass helpers are deleted, `NavigationPanel.tsx` removed, every
+inventoried literal migrated, `design:check` exits 0). Component-level adoption of the type
+steps and of the wire-level component recipes continues through U3–U6; until then this doc
+is the standard the `interface-reviewer` compares diffs against.

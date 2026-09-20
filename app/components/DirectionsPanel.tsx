@@ -157,7 +157,7 @@ export default function DirectionsPanel({
       <div className="flex items-center justify-between">
         <button type="button"
           onClick={onBack}
-          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-chrome-soft"
+          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-canvas"
           style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
           title="Back"
         >
@@ -176,7 +176,7 @@ export default function DirectionsPanel({
               disabled={mode === 'transit' && !canTransit}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 routeMode === mode
-                  ? 'text-chrome bg-chrome-soft'
+                  ? 'text-ink bg-canvas'
                   : 'hover:bg-canvas'
               } disabled:opacity-40 disabled:cursor-not-allowed`}
               style={routeMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
@@ -242,7 +242,7 @@ export default function DirectionsPanel({
               aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
               className={`px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
-                  ? 'text-chrome bg-chrome-soft'
+                  ? 'text-ink bg-canvas'
                   : 'hover:bg-canvas'
               }`}
               style={travelMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
@@ -286,8 +286,8 @@ export default function DirectionsPanel({
             aria-pressed={pendingSlot === 'A'}
             onPointerDown={() => onPinDragStart?.('A')}
             onClick={() => activateWaypointSlot('A')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-chrome-soft"
-            style={{ color: pendingSlot === 'A' ? "var(--color-chrome)" : "var(--color-ink-muted)" }}
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-canvas"
+            style={{ color: pendingSlot === 'A' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place start waypoint on map"
           >
             <span className="material-symbols-outlined text-base">add_location</span>
@@ -298,7 +298,7 @@ export default function DirectionsPanel({
         <div className="flex justify-center">
           <button type="button"
             onClick={onSwapWaypoints}
-            className="text-ink-faint hover:text-chrome transition-colors p-1 hover:bg-chrome-soft rounded-lg"
+            className="text-ink-faint hover:text-ink transition-colors p-1 hover:bg-canvas rounded-lg"
             title="Swap waypoints"
           >
             <span className="material-symbols-outlined text-lg">swap_vert</span>
@@ -325,8 +325,8 @@ export default function DirectionsPanel({
             disabled={drawMode}
             onPointerDown={() => !drawMode && onPinDragStart?.('B')}
             onClick={() => activateWaypointSlot('B')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-chrome-soft disabled:cursor-not-allowed"
-            style={{ color: pendingSlot === 'B' ? "var(--color-chrome)" : "var(--color-ink-muted)" }}
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-canvas disabled:cursor-not-allowed"
+            style={{ color: pendingSlot === 'B' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place destination waypoint on map"
           >
             <span className="material-symbols-outlined text-base">add_location</span>
@@ -342,8 +342,8 @@ export default function DirectionsPanel({
             {!addingStop && onAddAdditionalWaypoint && (
               <button type="button"
                 onClick={() => setAddingStop(true)}
-                className="text-[10px] font-medium hover:text-chrome transition-colors"
-                style={{ color: "var(--color-chrome)" }}
+                className="text-[10px] font-medium hover:text-ink transition-colors"
+                style={{ color: "var(--color-ink-muted)" }}
               >
                 Add stop
               </button>
@@ -351,7 +351,7 @@ export default function DirectionsPanel({
           </div>
           {(additionalWaypoints ?? []).map((wp, i) => (
             <div key={i} className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded-full text-on-chrome text-[9px] flex items-center justify-center shrink-0" style={{ background: "var(--color-chrome)" }}>{i + 1}</span>
+              <span className="w-4 h-4 rounded-full text-on-ink text-[9px] flex items-center justify-center shrink-0" style={{ background: "var(--color-ink)" }}>{i + 1}</span>
               <span className="flex-1 tabular-nums truncate" style={{ color: "var(--color-ink)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
               <button type="button"
                 onClick={() => onRemoveAdditionalWaypoint?.(i)}
@@ -379,8 +379,8 @@ export default function DirectionsPanel({
       ) : onAddAdditionalWaypoint ? (
         <button type="button"
           onClick={() => setAddingStop(true)}
-          className="ml-4 self-start flex items-center gap-1 text-[11px] font-medium hover:text-chrome transition-colors"
-          style={{ color: "var(--color-chrome)" }}
+          className="ml-4 self-start flex items-center gap-1 text-[11px] font-medium hover:text-ink transition-colors"
+          style={{ color: "var(--color-ink-muted)" }}
         >
           <span className="material-symbols-outlined text-sm">add_location</span>
           Add stop
@@ -398,7 +398,7 @@ export default function DirectionsPanel({
             <button type="button"
               onClick={() => drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                !drawMode ? 'text-chrome bg-chrome-soft' : 'hover:bg-canvas'
+                !drawMode ? 'text-ink bg-canvas' : 'hover:bg-canvas'
               }`}
               style={drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
@@ -407,7 +407,7 @@ export default function DirectionsPanel({
             <button type="button"
               onClick={() => !drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                drawMode ? 'text-chrome bg-chrome-soft' : 'hover:bg-canvas'
+                drawMode ? 'text-ink bg-canvas' : 'hover:bg-canvas'
               }`}
               style={!drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
@@ -419,7 +419,7 @@ export default function DirectionsPanel({
           <div className="mt-2 flex items-center justify-between">
             <p className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
               {sketchPointCount > 0 ? (
-                <span className="tabular-nums" style={{ color: "var(--color-chrome)" }}>
+                <span className="tabular-nums" style={{ color: "var(--color-route)" }}>
                   {sketchPointCount} point{sketchPointCount !== 1 ? "s" : ""} drawn
                 </span>
               ) : (
@@ -429,7 +429,7 @@ export default function DirectionsPanel({
             {sketchPointCount > 0 && onClearSketch && (
               <button type="button"
                 onClick={onClearSketch}
-                className="text-[11px] transition-colors hover:text-chrome"
+                className="text-[11px] transition-colors hover:text-ink"
                 style={{ color: "var(--color-ink-muted)" }}
               >
                 Clear sketch
@@ -452,7 +452,7 @@ export default function DirectionsPanel({
           step="0.01"
           value={shadowPreference}
           onChange={(e) => onShadowPreferenceChange?.(parseFloat(e.target.value))}
-          className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-chrome"
+          className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-ink"
           style={{ background: "var(--color-canvas)" }}
         />
         <div className="flex justify-between mt-1">
@@ -467,7 +467,7 @@ export default function DirectionsPanel({
           onClick={onCalculate}
           disabled={drawMode ? sketchPointCount < 2 || isCalculating : !waypointA || !waypointB || isCalculating}
           className="flex-1 px-2 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
-          style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+          style={{ background: "var(--color-route)", color: "var(--color-on-route)" }}
         >
           {isCalculating && (
             <svg aria-hidden="true" focusable="false" className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -505,7 +505,7 @@ export default function DirectionsPanel({
             >
               <div
                 className="h-full rounded-full transition-[width]"
-                style={{ width: `${progressPercent}%`, background: "var(--color-chrome)" }}
+                style={{ width: `${progressPercent}%`, background: "var(--color-route)" }}
               />
             </div>
           )}
@@ -545,7 +545,7 @@ export default function DirectionsPanel({
             <button type="button"
               onClick={onStartNavigation}
               className="mt-2 w-full px-3 py-2.5 rounded-lg text-sm font-bold transition-colors"
-              style={{ background: "var(--color-chrome)", color: "var(--color-on-chrome)" }}
+              style={{ background: "var(--color-route)", color: "var(--color-on-route)" }}
             >
               START NAVIGATING
             </button>

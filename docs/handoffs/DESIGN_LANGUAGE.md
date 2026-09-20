@@ -7,9 +7,10 @@ If this file disagrees with the code, **the code wins** — fix it in the same P
 
 - **Verified:** 2026-09-20 on `design/u2-strata-carmine` (U2, open for owner review):
   `npm run design:check` exits 0 — the `--md-*` layer (33 colour + 8 layout tokens) is
-  deleted, Strata/Carmine is the registry in `app/globals.css`, every literal from the U0
-  inventory migrated, the deprecated `NavigationPanel.tsx` deleted, before/after phone shots
-  in `docs/design/shots/u2/`. Merged design work supersedes older line refs here.
+  deleted, **Canopy** is the registry in `app/globals.css` (the owner re-picked it during
+  U2 review after a first pass in Strata/Carmine), every literal from the U0 inventory
+  migrated, the deprecated `NavigationPanel.tsx` deleted, before/after phone shots in
+  `docs/design/shots/u2/`. Merged design work supersedes older line refs here.
 - **Track brief:** `docs/tracks/TRACK_U.md` (checkpoints + acceptance criteria). This handoff
   carries *why and where*; the brief carries *build that, like this*.
 
@@ -61,7 +62,7 @@ sessions are quiet around those files.
   bright-sun, one-handed, walking; 44px touch targets (`docs/notes/touch-target-audit.md`).
   Palette work inherits the shadow-color coupling (CLAUDE.md invariant #5), a real constraint
   on map-side colour design.
-- **The current design language is Strata (Carmine), canonical in `docs/design/language.md`**
+- **The current design language is Canopy, canonical in `docs/design/language.md`**
   with the token registry in `app/globals.css`; the pre-U2 state it replaced was a
   half-adopted Material 3 layer (`--md-*` tokens + `.glass-panel`, helpers) and literals outside it:
   hardcoded hexes and `rgba()` inline styles in DirectionsPanel, NavigationPanel, SearchBar;

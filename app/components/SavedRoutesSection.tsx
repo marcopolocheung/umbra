@@ -59,13 +59,13 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             style={{
               background: "var(--color-canvas)",
               color: "var(--color-ink)",
-              borderColor: "var(--color-chrome-soft)",
+              borderColor: "var(--color-route-soft)",
             }}
           />
         ) : (
           <button type="button"
             onClick={() => onLoad(r)}
-            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-chrome-soft transition-colors min-w-0"
+            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-canvas transition-colors min-w-0"
           >
             <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
             <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {shadowPct}% shadow</div>

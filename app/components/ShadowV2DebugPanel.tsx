@@ -8,6 +8,6 @@ export function ShadowV2DebugPanel({ generation, accounting, cacheSource }: { ge
     <div>incomplete {accounting.incomplete} · errors {accounting.error} · evicted {accounting.evicted}</div>
     <div>cache {cacheSource ?? "—"} · storage {mib(accounting.cacheBytes)} · active compressed {mib(accounting.compressedBytes)}</div>
     <div>worker {mib(accounting.workerBytes)} · staging {mib(accounting.stagingBytes)} · GPU {mib(accounting.gpuBytes)}</div>
-    <div className="text-chrome">building</div><div className="text-shade">canopy</div><div className="text-sun">unknown / incomplete</div><div className="text-route">tile edge</div>
+    <div className="text-ink">building</div><div className="text-shade">canopy</div><div className="text-sun">unknown / incomplete</div><div className="text-route">tile edge</div>
   </aside>;
 }

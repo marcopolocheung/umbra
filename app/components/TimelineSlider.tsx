@@ -421,9 +421,9 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           transform: "translateX(-4px)",
           width: 8,
           height: 8,
-          backgroundColor: "var(--color-chrome)",
+          backgroundColor: "var(--color-sun)",
           rotate: "45deg",
-          boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-chrome) 50%, transparent)",
+          boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-sun) 50%, transparent)",
         }}
       />
       <div
@@ -434,8 +434,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           bottom: 0,
           width: 2,
           transform: "translateX(-1px)",
-          background: "linear-gradient(to bottom, var(--color-chrome), color-mix(in srgb, var(--color-chrome) 30%, transparent))",
-          boxShadow: "0 0 4px 1px color-mix(in srgb, var(--color-chrome) 35%, transparent)",
+          background: "linear-gradient(to bottom, var(--color-sun), color-mix(in srgb, var(--color-sun) 30%, transparent))",
+          boxShadow: "0 0 4px 1px color-mix(in srgb, var(--color-sun) 35%, transparent)",
         }}
       />
     </div>

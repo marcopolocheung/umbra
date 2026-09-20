@@ -267,16 +267,16 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Strata search — a quiet raised rectangle, 12-radius, never a pill */}
+      {/* Canopy search — the one 999 pill, >=70% white, the only blurred surface */}
       <div
-        className="w-full flex items-center rounded-xl bg-raised h-14 px-4 gap-3 border border-hairline"
+        className="w-full flex items-center rounded-full bg-raised/90 backdrop-blur-md h-14 px-4 gap-3 border border-hairline"
         style={isActive ? { boxShadow: "var(--shadow-level-2)" } : undefined}
       >
         {/* Hamburger — toggles desktop sidebar */}
         {onMenuToggle && (
           <button type="button"
             onClick={onMenuToggle}
-            className="shrink-0 text-chrome hover:opacity-80 transition-opacity"
+            className="shrink-0 text-ink hover:opacity-80 transition-opacity"
             aria-label="Toggle menu"
           >
             <span className="material-symbols-outlined">menu</span>
@@ -319,7 +319,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <button type="button"
           onClick={handleMagnifierClick}
           onMouseDown={(e) => e.preventDefault()}
-          className="shrink-0 text-chrome hover:opacity-80 transition-opacity"
+          className="shrink-0 text-ink hover:opacity-80 transition-opacity"
           aria-label={isSearching ? "Searching" : "Search"}
           aria-busy={isSearching}
         >
@@ -357,7 +357,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-chrome-soft"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
                   >
                     <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">location_on</span>
@@ -383,7 +383,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-chrome-soft"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
                   >
                     <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">bookmark</span>
@@ -405,7 +405,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <div
           id={listId}
           role="listbox"
-          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto strata-scrollbar"
+          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
           style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
         >
           {results.map((r, i) => (
@@ -417,7 +417,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
               aria-selected={i === highlightIndex}
               onClick={() => handleSelect(r)}
               className={`w-full text-left px-4 py-2 transition-colors flex items-center gap-3 ${
-                i === highlightIndex ? "bg-chrome-soft" : "hover:bg-chrome-soft"
+                i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
               }`}
             >
               <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>

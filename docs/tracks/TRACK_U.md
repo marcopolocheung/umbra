@@ -15,14 +15,16 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U2 — implement Strata (Carmine). Open for owner review on the
+- **Active checkpoint:** U2 — implement the chosen language. Open for owner review on the
   public-mirror port branch `port/design-u2-strata-carmine`: PR
   [#60](https://github.com/marcopolocheung/umbra/pull/60) — private PR
-  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) must merge first; this mirror
-  deliberately omits the U0 screenshot harness and the developer hooks around it. **Owner's merge = visual sign-off (D2); never self-merged.**
+  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) carries the same change; this
+  mirror deliberately omits the U0 screenshot harness and the developer hooks around it.
+  **The owner re-picked Canopy during U2 review (was Strata/Carmine) and both open PRs were
+  reworked to Canopy. Merge = visual sign-off (D2); never self-merged.**
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
-  port #51). U2's code: Strata/Carmine token registry in `app/globals.css` (chrome-only
-  carmine lattice, route/sun/shade data colours, two elevation levels, radius overrides),
+  port #51). U2's code: **Canopy** token registry in `app/globals.css` (amber reserved for sun
+  data, route/sun/shade data colours, two elevation levels, radius overrides),
   `docs/design/language.md` as canonical spec, `--md-*` tokens/helpers deleted,
   `NavigationPanel.tsx` (deprecated) deleted, every inventoried literal migrated so
   `npm run design:check` exits 0, `.claude/rules/design-language.md` now states the
