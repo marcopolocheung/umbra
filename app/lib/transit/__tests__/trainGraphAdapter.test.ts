@@ -463,6 +463,98 @@ describe("spatial transfer stubs", () => {
   });
 });
 
+// ─── Walked subway↔bus changes ──────────────────────────────────────────────
+
+describe("walked transfers", () => {
+  /**
+   * The toy line, plus a bus route whose two stops each sit by a subway station:
+   *
+   *   bus:900 ─(walked)─ A ── B ── C          (route "1")
+   *                                          bus:900 ── bus:901   (route "B1")
+   *   bus:901 ─(walked)─ C ─(gtfs)─ D ─(walked)─ bus:902 ── bus:903   (route "B2")
+   *
+   * Every stop pair that is joined is joined by a walk the producer routed;
+   * none is spatial. C and D are one complex joined by the agency's transfer.
+   */
+  function withWalks(): TransitShard {
+    const base = shard();
+    const walk = (station: string, stop: string, minSec: number) => [
+      { from: station, to: stop, minSec, kind: "walked" as const },
+      { from: stop, to: station, minSec, kind: "walked" as const },
+    ];
+    const bus = (from: string, to: string, route: string) => [
+      { from, to, route, direction: 0, medianSec: 600, trips: 50, distM: 1000 },
+      { from: to, to: from, route, direction: 1, medianSec: 600, trips: 50, distM: 1000 },
+    ];
+    return {
+      ...base,
+      stops: [
+        ...base.stops,
+        { id: "bus:901", name: "Stop by Charlie", lat: 40.7092, lon: -74.0005, feeds: ["bus-m"] },
+        { id: "bus:902", name: "Stop by Charlie 2", lat: 40.7088, lon: -74.0005, feeds: ["bus-m"] },
+        { id: "bus:903", name: "Far stop", lat: 40.72, lon: -74.01, feeds: ["bus-m"] },
+      ],
+      edges: [...base.edges, ...bus("bus:900", "bus:901", "B1"), ...bus("bus:902", "bus:903", "B2")],
+      routes: [
+        ...base.routes,
+        { id: "B1", shortName: "B1", longName: "Bus One", type: 3, color: "00AEEF", textColor: "FFFFFF" },
+        { id: "B2", shortName: "B2", longName: "Bus Two", type: 3, color: "00AEEF", textColor: "FFFFFF" },
+      ],
+      transfers: [
+        ...base.transfers.filter((t) => t.kind !== "spatial"),
+        ...walk("subway:A", "bus:900", 60),
+        ...walk("subway:C", "bus:901", 45),
+        ...walk("subway:D", "bus:902", 50),
+      ],
+    };
+  }
+
+  it("routes on a walked change and says where it came from", () => {
+    const graph = buildTrainGraphFromShards([withWalks()])!;
+    const walk = graph.adj.get("subway:A")!.find((e) => e.to === "bus:900");
+    expect(walk).toMatchObject({ type: "transfer", weightSec: 60, transferKind: "walked" });
+  });
+
+  it("changes from the subway onto a bus, paying the walk and the bus's wait", () => {
+    const graph = buildTrainGraphFromShards([withWalks()])!;
+    // Alpha to the far stop: ride the 1 to Charlie, change to D, walk to
+    // bus:902, ride B2.
+    const path = trainDijkstra(graph, "subway:A", "bus:903")!;
+    expect(path.stationIds).toEqual([
+      "subway:A", "subway:B", "subway:C", "subway:D", "bus:902", "bus:903",
+    ]);
+    expect(path.lines).toEqual(["1", "B2"]);
+    expect(path.totalSec).toBe(2 * 90 + 180 + 50 + 600);
+  });
+
+  it("never starts or ends a journey on a walked change", () => {
+    const graph = buildTrainGraphFromShards([withWalks()])!;
+    // bus:900 → A is a walk, then the 1: the walk in belongs on the street.
+    const fromStop = trainDijkstra(graph, "bus:900", "subway:C");
+    expect(fromStop).not.toBeNull();
+    expect(fromStop!.stationIds[1]).not.toBe("subway:A");
+    // Ending C → bus:901 on foot would hand the last walk to the bus stop.
+    const toStop = trainDijkstra(graph, "subway:A", "bus:901");
+    expect(toStop).not.toBeNull();
+    expect(toStop!.stationIds.at(-2)).not.toBe("subway:C");
+    // Nor may the agency's C → D transfer launder a walk into the first move:
+    // from C, the only way onto B2 without riding is C → D → walk.
+    const viaComplex = trainDijkstra(graph, "subway:C", "bus:903");
+    expect(viaComplex?.stationIds.slice(0, 3)).not.toEqual(["subway:C", "subway:D", "bus:902"]);
+  });
+
+  it("does not change bus to bus through a station's doors", () => {
+    const graph = buildTrainGraphFromShards([withWalks()])!;
+    // B1 to Charlie's stop, then walk bus:901 → C, take the agency's C → D
+    // transfer and walk D → bus:902 onto B2: two walked changes with no ride
+    // between them, which is a synthesised bus-to-bus transfer.
+    const path = trainDijkstra(graph, "bus:900", "bus:903");
+    expect(path).not.toBeNull();
+    // Whatever it costs instead, it never walks C → D → out again unridden.
+    expect(path!.stationIds.join(" ")).not.toContain("bus:901 subway:C subway:D bus:902");
+  });
+});
+
 // ─── Bus beside subway ──────────────────────────────────────────────────────
 
 describe("bus and subway in one graph", () => {

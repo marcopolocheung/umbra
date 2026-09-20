@@ -60,11 +60,13 @@ export async function fetchBestTrainGraph(
   try {
     const dataset = await loadTransitDataset(
       // Bus shards ship **no transfers at all** (measured: 0 across all six),
-      // and the spatial subway-bus stubs are refused, so every bus route is its
-      // own isolated corridor: a bus answer exists only where one route runs
-      // from near the origin to near the destination without changing. That is
-      // why a bus option can come back much slower than the subway one rather
-      // than simply absent — see the note on `TRANSIT_MODES` in `useRouting`.
+      // and the spatial subway-bus stubs are refused, so a bus route connects
+      // to nothing but the subway, and only through a `walked` change where the
+      // generation publishes one. Without one, every bus route is its own
+      // isolated corridor: a bus answer exists only where one route runs from
+      // near the origin to near the destination without changing. That is why
+      // a bus option can come back much slower than the subway one rather than
+      // simply absent — see the note on `TRANSIT_MODES` in `useRouting`.
       { subway: true, bus: true },
       { south, west, north, east },
       signal,

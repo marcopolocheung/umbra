@@ -703,7 +703,7 @@ Surface it beside `waitSec`, and put the assumption in the `transitSunCaveat` fa
 folding it into a percentage — `riderFacingNotes` already passes the manifest's own
 unsheltered-stop note through to the card.
 
-### B. Bus cannot change buses, so its answers are thin and sometimes absurd
+### B. Bus cannot change buses, so its answers are thin and sometimes absurd *(part 2 built — #439, not yet published)*
 
 Zero transfers published across all six bus shards, and the subway↔bus stubs are refused, so the
 bus network is a set of isolated single-route corridors. That is what produced a 75-minute Staten
@@ -711,13 +711,62 @@ Island express for a 1.9 km midtown trip.
 
 Two separate questions, and they want answering in this order:
 
-1. **Bus-to-bus.** GTFS publishes none, so any would have to be synthesised — the same
-   unvalidated-straight-line problem as the subway↔bus stubs, at far greater volume. Do not
-   synthesise before deciding how to validate.
-2. **Subway↔bus**, which is the 5,172 stubs #419 refused. `server/transit-prep` now downloads OSM
-   for the structure join (#411), so a build-time walkability check has a natural home. Note
-   **271 of 454 stations (60%) sit at the cap of 10**, so *which* stops connect stays arbitrary
-   even after validation — fix the cap or accept it explicitly.
+1. **Bus-to-bus — still open.** GTFS publishes none, so any would have to be synthesised — the
+   same unvalidated-straight-line problem as the subway↔bus stubs, at far greater volume. The
+   validation below is the thing that was missing; it is not yet applied to bus pairs. The router
+   now refuses two walked changes with no ride between them — an agency transfer between two
+   station nodes does not count as one, since 136 of the 150 published join stations a bus stop
+   can walk into and out of — so a bus→station→bus hop through a station's doors cannot sneak in
+   as an unvalidated bus-to-bus transfer in the meantime.
+2. **Subway↔bus — built in #439.** `server/transit-prep/src/walkability.ts` promotes a
+   spatial stub to a third transfer kind, `walked`, when OSM's pedestrian ways connect one of the
+   station's own doors (#430; exit-only doors only when leaving) to the bus stop by a routed path
+   ≤ **1.5 × the door-to-stop straight line + 50 m**. 1.5 clears a grid's worst honest detour (√2);
+   the 50 m is walking to the crosswalk and back. A station with no door walks nothing. `walkM`
+   (station point → door straight, then the routed street) ships on each walked transfer and
+   `minSec` is that walk at 1.4 m/s; the parameters and the footway cache's SHA-256 are in the
+   manifest, and `verify` re-routes every stub on those bytes and fails on any difference. The
+   footways come from the same `npm run osm` step and cache as the structure and door joins (the
+   existing download had no pedestrian ways): 123,380 ways within 350 m of the 496 stations,
+   fetched as 10 batches, because the whole union in one query is ~60 MB and the public Overpass
+   instances refuse it.
+
+   **The cap.** The figure that used to be quoted here, *271 of 454 stations at the cap of 10*, was
+   wrong: 271 is the stations with **≥5** stubs. 67 stations had exactly 10 and **53 were
+   actually truncated**, losing 446 stubs. The cap is removed; the 200 m radius bounds the volume
+   and validation gates the quality.
+
+   **Measured** against live `nyc-2026-09-18-cced8384c90f` (whose bytes `main` reproduces
+   exactly):
+
+   | | |
+   |---|---|
+   | directional stubs | 5,172 → 5,618 (uncapped) |
+   | walked | **5,443 (96.9%)**; 5,025 of the old 5,172 (97.2%) |
+   | refused | 155 no door (146 at the 20 door-less stations, 18 of them SIR; 9 into a station whose only doors are exit-only), 10 stop off the footway network (Jamaica Center bus bays, Gun Hill Rd, a Midtown Tunnel express stop), 10 detour (six at 155 St: 930–1,039 m of walking for 138–195 m straight, down Coogan's Bluff) |
+   | stations with a walked change | **437 of 454** out onto a bus, 436 in — from 0 usable today |
+   | time vs the straight-line stub | median +18 s, p90 +73 s, max +275 s |
+   | `subway.json` | 1,373,513 → 1,480,412 B (**+106,899**, +7.8%; gzip +12.8 KB), 64 KB of it `walkM` |
+   | bus shards | unchanged |
+   | Manhattan first load (item D) | 11,064,308 → 11,171,207 B, **+0.97%** |
+
+   The straight lines were mostly right about *whether* a stop can be reached; what they got wrong
+   was *how long* it takes, and the handful of real barriers.
+
+**Before publishing a generation built by this code**, in this order:
+
+- **The client must be deployed first.** A client from before #439 throws on an unknown
+  transfer kind, which fails the whole subway shard and silently drops every user back to
+  Overpass. That is why this PR published no generation.
+- **Publishing is what turns mixed journeys on**, and the card was built for one mode. What a
+  walked change unlocks is a ride of the searched mode at both ends with the other mode in the
+  middle (the router will not start or end a journey on a walked change, even via an agency
+  transfer, so subway→bus endings
+  still need a mixed-mode search — E6). On such a card the walked change's time is in the total,
+  but its distance and shade are not in the walk figures; `lineMode` is the *first* line's, so a
+  bus-first card samples the street above a subway boarding for wait exposure; and
+  `railExposure`'s coverage counts bus minutes as unknown rail. Decide whether those are
+  acceptable before publishing, or fix them first.
 
 Until one of these lands, a dominated bus option is visible to users. Suppressing an option on a
 time ratio is a product judgement; it was deliberately **not** taken in #420.

@@ -440,6 +440,22 @@ describe("transit shard", () => {
     expect(parsed.transfers).toEqual([]);
   });
 
+  it("reads a walked transfer beside the kinds that predate it, and nothing else", () => {
+    const shard = subwayShard();
+    shard.transfers.push(
+      { from: "subway:127", to: "bus:400001", minSec: 105, kind: "walked", walkM: 147 } as never,
+      { from: "subway:127", to: "bus:400002", minSec: 57, kind: "spatial" },
+    );
+    const parsed = parseTransitShard(shard, refFor(shard));
+    expect(parsed.transfers.map((t) => t.kind)).toEqual(["gtfs", "walked", "spatial"]);
+    // The walk's evidence is the producer's to verify; the client routes on minSec.
+    expect(parsed.transfers[1]).toEqual({ from: "subway:127", to: "bus:400001", minSec: 105, kind: "walked" });
+
+    const unknown = subwayShard();
+    (unknown.transfers[0] as { kind: string }).kind = "teleport";
+    expect(() => parseTransitShard(unknown, refFor(unknown))).toThrow(/transfer/);
+  });
+
   it("rejects a shard whose record counts contradict the manifest", () => {
     const shard = subwayShard();
     const ref = refFor(shard);
