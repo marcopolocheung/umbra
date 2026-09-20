@@ -16,7 +16,7 @@ accordingly. Subagents stay read-only here, per the repo rule.
 ## Current state
 
 - **Active checkpoint:** U1 — research + design-language candidates. Open for owner review:
-  primary PR #470 (umbrapriv) and this port PR (umbra mirror). **Owner's merge = sign-off
+  primary PR [#470](https://github.com/marcopolocheung/umbrapriv/pull/470) · this port PR [#51](https://github.com/marcopolocheung/umbra/pull/51). **Owner's merge = sign-off
   on the recommended candidate (Canopy), per D2.**
 - **Implemented:** U0 (harness, PR #465). U1 deliverables in this PR: sourced research notes
   (a)–(e) in `docs/notes/design-research-*.md`; `docs/design/decision.md` with three
