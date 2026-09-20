@@ -36,7 +36,8 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
-import { directionForWindReport } from "./lib/rain/direction";
+import { directionForWindReport, windFromLabel } from "./lib/rain/direction";
+
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import type { MapObject } from "./lib/agent/receipts";
@@ -1111,6 +1112,24 @@ export default function Home() {
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--md-on-surface-variant)" }}>
             <span className="inline-block w-3 h-3 rounded-sm bg-transparent" style={{ border: "1px dashed var(--md-outline)" }} />
             Sheltered (overhang or canopy)
+          </div>
+        </div>
+      )}
+
+      {/* Rain wind pill — the wind the canvas is aimed at, hour by hour */}
+      {rainMode && heatWeather?.windDirDeg != null && heatWeather.windMs != null && (
+        <div
+          className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg backdrop-blur-xl"
+          style={{ background: "rgba(255,255,255,0.86)", border: "1px solid var(--md-outline-variant)" }}
+        >
+          <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--md-on-surface-variant)" }}>
+            Wind this hour
+          </div>
+          <div className="text-xs" style={{ color: "var(--md-on-surface)" }}>
+            {windFromLabel(heatWeather.windDirDeg)} {Math.round(heatWeather.windMs * 3.6)} km/h
+            <span style={{ color: "var(--md-on-surface-variant)" }}>
+              {" "}· shelter tilted {Math.round(directionForWindReport(heatWeather.windDirDeg, heatWeather.windMs).altitudeDeg)}°
+            </span>
           </div>
         </div>
       )}
