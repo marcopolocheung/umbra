@@ -16,9 +16,10 @@ accordingly. Subagents stay read-only here, per the repo rule.
 ## Current state
 
 - **Active checkpoint:** U2 — implement Strata (Carmine). Open for owner review on the
-  public-mirror port branch `port/design-u2-strata-carmine` (PR #PORTNUM); the private
-  umbrapriv PR carries the same change plus the U0 screenshot harness, which this mirror
-  deliberately omits. **Never merged without the owner's visual sign-off (D2).**
+  public-mirror port branch `port/design-u2-strata-carmine`: PR
+  [#60](https://github.com/marcopolocheung/umbra/pull/60) — private PR
+  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) must merge first; this mirror
+  deliberately omits the U0 screenshot harness and the developer hooks around it. **Owner's merge = visual sign-off (D2); never self-merged.**
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
   port #51). U2's code: Strata/Carmine token registry in `app/globals.css` (chrome-only
   carmine lattice, route/sun/shade data colours, two elevation levels, radius overrides),
