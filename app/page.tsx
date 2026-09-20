@@ -31,6 +31,7 @@ import {
 import { ensureZoneLookup, zoneAt } from "./lib/tzLookup";
 import { parseShareState, shareUrlFromState } from "./lib/shareState";
 import { useShadowTime, formatTime12h, parseTime, dateToDayOfYear } from "./hooks/useShadowTime";
+import { useShadowFieldPrewarm } from "./hooks/useShadowFieldPrewarm";
 import { useNavigation } from "./hooks/useNavigation";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
@@ -308,6 +309,7 @@ export default function Home() {
     cancelRoutePlan,
     getCurrentPlanRevision,
     getRouteReceiptMapObjects,
+    bindStaticSnapshot,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,
@@ -419,6 +421,18 @@ export default function Home() {
       });
     return () => controller.abort();
   }, []);
+
+  // Page-load field prewarm (latency session A2): move the shadow field's
+  // materialization off the route path. Once the map and shadow layer settle,
+  // the camera's bbox is made ready under the current NYC generation, so the
+  // first route calculation's `field.ready` / `field.readyEdges` find it cached.
+  useShadowFieldPrewarm({
+    mapRef,
+    generation: remoteShadowCurrent?.generation,
+    shadowLayerReady,
+    shadowField,
+    bindStaticSnapshot,
+  });
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);

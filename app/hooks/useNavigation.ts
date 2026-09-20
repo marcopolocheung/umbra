@@ -497,6 +497,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     cancelRoutePlan,
     getCurrentPlanRevision,
     getRouteReceiptMapObjects,
+    bindStaticSnapshot,
 
     // Derived
     selectedNavRoute,
