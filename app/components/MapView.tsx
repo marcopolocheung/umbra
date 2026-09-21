@@ -10,6 +10,7 @@ import { escapeHtml, renderPlaceInfoHtml } from "./placePopup";
 import { createShadowLayer } from "../lib/shadow/createShadowLayer";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle, type CanopyLegendState } from "../lib/canopyRaster/canopyLayer";
+import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { token } from "../lib/css-tokens";
 import CanopyLegend from "./CanopyLegend";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
@@ -453,6 +454,8 @@ export default function MapView({
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
+  /** Unwires the canopy atlas reader's map listeners on unmount. */
+  const canopyAtlasCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
   useEffect(() => { onSketchPointClickRef.current = onSketchPointClick; }, [onSketchPointClick]);
@@ -830,6 +833,29 @@ export default function MapView({
           enabled: !accumulationOnRef.current,
           onChange: setCanopyLegend,
         });
+
+        // The canopy ground-protection pass: the same shared store the fill reads
+        // through, but as one prepared atlas the renderer can march. Excluded in
+        // accumulation/export mode like the fill, and its viewport reads are
+        // aborted independently of the route corridor's.
+        const reader = createCanopyViewportReader({
+          onAtlas: (snapshot) => {
+            shadowRef.current?.setCanopySnapshot?.(snapshot?.atlas ?? null);
+          },
+        });
+        const refreshCanopyAtlas = () => { void reader(map); };
+        const noteCanopyInteraction = () => {
+          shadowRef.current?.noteCanopyInteraction?.();
+        };
+        map.on("moveend", refreshCanopyAtlas);
+        map.on("move", noteCanopyInteraction);
+        map.on("rotate", noteCanopyInteraction);
+        canopyAtlasCleanupRef.current = () => {
+          map.off("moveend", refreshCanopyAtlas);
+          map.off("move", noteCanopyInteraction);
+          map.off("rotate", noteCanopyInteraction);
+        };
+        void reader(map);
       }
 
       shadowLayer.on('idle', () => bringNavOverlaysToFront(map));
@@ -856,6 +882,8 @@ export default function MapView({
       placePopupRef.current = null;
       canopyRef.current?.remove();
       canopyRef.current = null;
+      canopyAtlasCleanupRef.current?.();
+      canopyAtlasCleanupRef.current = null;
       shadowRef.current?.remove();
       shadowRef.current = null;
       onShadowLayerReady?.(null);

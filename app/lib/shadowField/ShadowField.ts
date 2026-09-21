@@ -21,7 +21,8 @@ import {
   type PrismSet,
   metersPerDegree,
 } from "./geometry";
-import type { CanopyHeightField, CanopyShade } from "./canopyRasterField";
+import type { CanopyHeightField, CanopyRaySampler, CanopyShade } from "./canopyRasterField";
+import { rainRay } from "./canopyRasterField";
 import {
   type IndexRegion,
   type ShadowCasters,
@@ -32,6 +33,7 @@ import {
 
 import { rainOpacityForLightOpacity, RAIN_TILT_DOCK_ALTITUDE_DEG, RAIN_TILT_WALL_DOCK } from "../rain/opacity";
 import type { RainDirection } from "../rain/direction";
+import { crownOpacity } from "./canopy";
 
 // ─── The published contract ───────────────────────────────────────────────────
 
@@ -445,6 +447,17 @@ const NO_GEOMETRY_FACTOR = 0.4;
  */
 const CANOPY_MIX_FACTOR = 0.9;
 
+/**
+ * What a rain answer is worth when the raster march did not complete — it left the
+ * patch, hit nodata, or reached the 400 m cap before the ray climbed clear. The
+ * march already answers the under-reporting way (unobstructed); this dock says the
+ * answer is also *incomplete evidence* rather than a clean negative, and it is
+ * applied per edge so an edge whose every sample completed keeps its full score.
+ * A prior, like `DECIMATED_COMPLETENCE` — the same 0.5 "consult another source"
+ * figure, reused rather than re-picked.
+ */
+const RASTER_INCOMPLETE_DOCK = 0.5;
+
 // ─── Confidence ───────────────────────────────────────────────────────────────
 
 /**
@@ -807,6 +820,31 @@ function preparedRainCastersFor(prisms: BuildingPrism[]): ShadowCasters {
 }
 
 /**
+ * Raster canopy, marched for rain (v2 of the rain field).
+ *
+ * The raster march used to be excluded from rain — its opacity was a light figure,
+ * and folding it in would have claimed a dryness the model had not established. The
+ * hazard-independent `sampleFor` removed that reason: the march answers geometry,
+ * the strength comes from the rain priors via `rainOpacityForLightOpacity` applied
+ * to `crownOpacity`'s seasonal light figure — the same conversion the OSM crown
+ * prisms pay in `rainCanopyCastersFor`, so the two canopy sources agree on what one
+ * crown stops in every season. `fieldFor`'s patch is not seasonal, so the strength
+ * is computed once per (field, month), the same memoisation `crownOpacity`'s callers
+ * rely on — implemented as one sampler per direction, cached on the field by the
+ * direction's angles.
+ */
+function rainRasterSampler(
+  field: CanopyHeightField,
+  direction: RainDirection,
+  lat: number,
+  when: Date,
+): CanopyRaySampler {
+  const light = crownOpacity({}, when, lat);
+  const strength = rainOpacityForLightOpacity(light);
+  return field.sampleFor(rainRay(direction, strength));
+}
+
+/**
  * A `ShadowField` over building prisms.
  *
  * Providers are consulted in order and the first one that can speak for the area
@@ -979,6 +1017,31 @@ export function createGeometryShadowField(
       if (fromRaster > opacity) opacity = fromRaster;
     }
     return opacity;
+  }
+
+  /**
+   * The rain twin of `pointShadow`: buildings win opaque, the two canopy sources
+   * combine by **maximum** (never compounded — the raster pixel and the OSM crown
+   * are usually the same tree), and the march's completeness travels with the number
+   * so a caller can dock what a truncated march's answer is worth.
+   */
+  function pointShelter(
+    index: ShadowIndex | null,
+    canopyIndex: ShadowIndex | null,
+    rasterSampler: CanopyRaySampler | null,
+    lng: number,
+    lat: number
+  ): { shelter: number; complete: boolean } {
+    if (index?.isShadowed(lng, lat)) return { shelter: 1, complete: true };
+
+    let shelter = canopyIndex ? canopyIndex.opacityAt(lng, lat) : 0;
+    let complete = true;
+    if (rasterSampler) {
+      const fromRaster = rasterSampler.sample(lng, lat);
+      if (fromRaster.protection > shelter) shelter = fromRaster.protection;
+      complete = fromRaster.complete;
+    }
+    return { shelter, complete };
   }
 
   /**
@@ -1195,9 +1258,11 @@ export function createGeometryShadowField(
    * the pixel sampler's ±4 m sidewalk offsets, mean over the edge's steps.
    * Deliberate differences, each pinned by a test:
    * - No night: rain falls at any hour, so every cell resolves.
-   * - The canopy raster is excluded — its march opacity is a light figure, and
-   *   folding it in would claim a dryness this model has not established.
-   * - Canopy prisms are re-opacified for rain (see `rainCanopyCastersFor`).
+   * - The canopy raster marches the same ray as the indexes, its strength the rain
+   *   prior rather than the light opacity (see `rainRasterSampler`); an incomplete
+   *   march docks the edge's confidence rather than claiming dry ground.
+   * - Canopy prisms are re-opacified for rain (see `rainCanopyCastersFor`); the two
+   *   canopy sources combine by maximum, never compounded.
    * - Building-backed answers below `RAIN_TILT_DOCK_ALTITUDE_DEG` pay
    *   `RAIN_TILT_WALL_DOCK`: a wall only shelters at low rays, and low rays are
    *   exactly where the reported wind has stopped describing canyon-level wind.
@@ -1216,7 +1281,13 @@ export function createGeometryShadowField(
       const bbox = queryBboxForCell(cell);
       const resolved = resolve(bbox);
       const canopy = resolveCanopy(bbox, when);
-      const score = scoreFor(resolved, canopy, null, altitudeRad);
+      const raster = maskedRaster(resolveRaster(bbox), resolved);
+      const rasterSampler =
+        raster && raster.maxHeightM > 0
+          ? rainRasterSampler(raster, direction, cell.lat, when)
+          : null;
+      const rasterIncomplete = raster !== null && rasterSampler === null;
+      const score = scoreFor(resolved, canopy, raster, altitudeRad);
 
       // The index speaks in **radians** (SunCalc's convention for the sun path),
       // and its azimuth points the direction shadows FALL. A rain ray arrives FROM
@@ -1257,17 +1328,20 @@ export function createGeometryShadowField(
         const leftOffset = plan.left[i];
         const rightOffset = plan.right[i];
         const steps = plan.steps[i];
+        let incomplete = rasterIncomplete;
         const walk = (offset: [number, number]) => {
           let sum = 0;
           for (let s = 0; s <= steps; s++) {
             const t = s / steps;
-            sum += pointShadow(
+            const sample = pointShelter(
               buildingIndex,
               canopyIndex,
-              null,
+              rasterSampler,
               edge.from[0] + t * (edge.to[0] - edge.from[0]) + offset[0],
               edge.from[1] + t * (edge.to[1] - edge.from[1]) + offset[1]
             );
+            if (!sample.complete) incomplete = true;
+            sum += sample.shelter;
           }
           return sum / (steps + 1);
         };
@@ -1275,11 +1349,11 @@ export function createGeometryShadowField(
           left: walk(leftOffset),
           right: walk(rightOffset),
           source: score.source,
-          confidence,
+          confidence: incomplete ? confidence * RASTER_INCOMPLETE_DOCK : confidence,
           buildingSource: resolved?.source ?? null,
           canopySources: {
             osm: (canopy?.prisms.length ?? 0) > 0,
-            raster: false,
+            raster: (raster?.maxHeightM ?? 0) > 0,
           },
         };
       }
@@ -1302,9 +1376,10 @@ export function createGeometryShadowField(
     const bbox = bboxAroundPoint(lng, lat, QUERY_PAD_M);
     const resolved = resolve(bbox);
     const canopy = resolveCanopy(bbox, when);
+    const raster = maskedRaster(resolveRaster(bbox), resolved);
     const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
-    const score = scoreFor(resolved, canopy, null, altitudeRad);
-    if (!resolved && !canopy) {
+    const score = scoreFor(resolved, canopy, raster, altitudeRad);
+    if (!resolved && !canopy && !raster) {
       return {
         shelter: 0,
         left: 0,
@@ -1340,18 +1415,20 @@ export function createGeometryShadowField(
         )
       : null;
     const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
+    const rasterSampler =
+      raster && raster.maxHeightM > 0 ? rainRasterSampler(raster, direction, lat, when) : null;
     const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
-    const shelter = pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+    const sampled = pointShelter(buildingIndex, canopyIndex, rasterSampler, lng, lat);
     return {
-      shelter,
-      left: shelter,
-      right: shelter,
+      shelter: sampled.shelter,
+      left: sampled.shelter,
+      right: sampled.shelter,
       source: score.source,
-      confidence,
+      confidence: sampled.complete ? confidence : confidence * RASTER_INCOMPLETE_DOCK,
       buildingSource: resolved?.source ?? null,
       canopySources: {
         osm: (canopy?.prisms.length ?? 0) > 0,
-        raster: false,
+        raster: (raster?.maxHeightM ?? 0) > 0,
       },
     };
   }
@@ -1394,8 +1471,9 @@ export function createGeometryShadowField(
     };
     const resolved = resolve(padded);
     const canopy = resolveCanopy(padded, when);
+    const raster = maskedRaster(resolveRaster(padded), resolved);
     const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
-    const score = scoreFor(resolved, canopy, null, altitudeRad);
+    const score = scoreFor(resolved, canopy, raster, altitudeRad);
     const rayAzimuth = ((direction.fromDeg + 180) * Math.PI) / 180;
 
     const region: IndexRegion = { ...padded };
@@ -1421,6 +1499,10 @@ export function createGeometryShadowField(
       : null;
 
     const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
+    const rasterSampler =
+      raster && raster.maxHeightM > 0
+        ? rainRasterSampler(raster, direction, midLat, when)
+        : null;
     const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
 
     const latStep = (bounds.north - bounds.south) / rows;
@@ -1445,8 +1527,9 @@ export function createGeometryShadowField(
           const lat = latTop - (sr + 0.5) * subLatStep;
           for (let sc = 0; sc < SUB_SAMPLES; sc++) {
             const lng = lngLeft + (sc + 0.5) * subLngStep;
-            // A building pass wins opaque (1); canopy adds its rain-opacity fraction.
-            sum += pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+            // A building pass wins opaque (1); canopy adds its rain-prior fraction,
+            // raster and OSM combined by maximum — the same rule as every other query.
+            sum += pointShelter(buildingIndex, canopyIndex, rasterSampler, lng, lat).shelter;
           }
         }
         values[k++] = sum / (SUB_SAMPLES * SUB_SAMPLES);

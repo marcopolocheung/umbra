@@ -345,3 +345,220 @@ describe("a raster patch through the shadow field", () => {
     expect(sunlit.source).toBe("none");
   });
 });
+
+// ─── The hazard-independent march (`sampleFor`) ───────────────────────────────
+//
+// Every fixture below is analytic geometry on the same patch helpers: canopy fixed
+// in raster coordinates, the ray varied, and the protection expected to move. The
+// same crown model as the solar march (`CROWN_BASE_FRACTION`, 1 m casting floor,
+// 400 m cap), so any divergence between the two marches is a bug in one of them.
+
+/** A ray direction as `sampleFor` takes it: degrees in, radians out. */
+function rayOf(fromDeg: number, altitudeDeg: number, strength = 0.4) {
+  return {
+    azimuthRad: (fromDeg * Math.PI) / 180,
+    elevationRad: (altitudeDeg * Math.PI) / 180,
+    strength,
+  };
+}
+
+describe("sampleFor — geometry the solar march already pins, on a rain ray", () => {
+  it("protects downwind of a crown, and not upwind, when rain arrives at 45°", () => {
+    // Rain arrives FROM the north (0°) at 45°: the ray climbs northward, so the
+    // sheltered band sits south of the tree — the downwind side.
+    const sampler = createCanopyHeightField(oneTallPixel()).sampleFor(rayOf(0, 45));
+
+    // A 20 m crown based at 7 m throws its band 7–20 m at 45°.
+    expect(sampler.sample(...offset(-12)).protection).toBeGreaterThan(0);
+    expect(sampler.sample(...offset(-18)).protection).toBeGreaterThan(0);
+    // Upwind (north) is between the ground and the sky the ray climbs toward.
+    expect(sampler.sample(...offset(12)).protection).toBe(0);
+    expect(sampler.sample(...offset(2)).protection).toBe(0);
+  });
+
+  it("reverses the band when the bearing reverses", () => {
+    const field = createCanopyHeightField(oneTallPixel());
+    const north = field.sampleFor(rayOf(0, 45));
+    const south = field.sampleFor(rayOf(180, 45));
+    // Identical geometry, opposite shelter — one number flipping signs.
+    expect(south.sample(...offset(-12)).protection).toBe(north.sample(...offset(12)).protection);
+    expect(south.sample(...offset(12)).protection).toBeGreaterThan(0);
+    expect(south.sample(...offset(-12)).protection).toBe(0);
+  });
+
+  it("diagonal rays displace the band diagonally", () => {
+    // Rain from the northeast (45°): the ray climbs northeast, shelter lands southwest.
+    const sampler = createCanopyHeightField(oneTallPixel()).sampleFor(rayOf(45, 45));
+    const midBandM = ((TREE_M * CROWN_BASE_FRACTION + TREE_M) / 2) / Math.tan(Math.PI / 4);
+    expect(sampler.sample(...offset(-midBandM / Math.SQRT2, -midBandM / Math.SQRT2)).protection)
+      .toBeGreaterThan(0);
+    expect(sampler.sample(...offset(midBandM / Math.SQRT2, midBandM / Math.SQRT2)).protection)
+      .toBe(0);
+  });
+
+  it("lengthens the band as the ray flattens", () => {
+    const field = createCanopyHeightField(oneTallPixel());
+    const steep = field.sampleFor(rayOf(0, 60));
+    const shallow = field.sampleFor(rayOf(0, 20));
+    // Ray from the north → band sits south of the tree.
+    expect(steep.sample(...offset(-40)).protection).toBe(0);
+    expect(shallow.sample(...offset(-40)).protection).toBeGreaterThan(0);
+  });
+
+  it("overhead rain protects the ground under the crown and nothing beside it", () => {
+    // The vertical case: strength applied only inside the crown's own pixel.
+    const sampler = createCanopyHeightField(oneTallPixel()).sampleFor(rayOf(0, 89.5));
+    expect(sampler.sample(...offset(0)).protection).toBeCloseTo(0.4, 10);
+    expect(sampler.sample(...offset(12)).protection).toBe(0);
+    expect(sampler.sample(...offset(0)).complete).toBe(true);
+  });
+
+  it("protects uneven connected crowns at their own heights", () => {
+    // A 3-pixel crown block north of centre: 10 m, 20 m, 10 m tall, contiguous.
+    const patch = patchAround(MADRID, (col, row) =>
+      col >= CENTRE - 1 && col <= CENTRE + 1 && row === CENTRE - 4
+        ? (col === CENTRE ? 20 : 10)
+        : 0,
+    );
+    const field = createCanopyHeightField(patch);
+    // Ray from the north at ~40°: the tall centre reaches farther south than its
+    // 10 m neighbours, so the band's far edge is stepped rather than uniform.
+    const sampler = field.sampleFor(rayOf(0, 40));
+    const tan40 = Math.tan((40 * Math.PI) / 180);
+    // Mid-band south of the 20 m crown: the crown sits 8 m north of centre and
+    // throws 7/tan40 .. 20/tan40 (8.3..23.8 m) further south, so ~12 m south of
+    // centre is inside the tall crown's band but past the 10 m neighbours'
+    // (4.2..11.9 m from a crown 8 m north → at most 3.9 m south of centre).
+    expect(sampler.sample(...offset(-12, 0)).protection).toBeGreaterThan(0);
+    // A 10 m neighbour two metres east, sampled 10 m south of it — inside the
+    // short crown's own band (4.2..11.9 m) and under no other.
+    expect(sampler.sample(...offset(-2, 2)).protection).toBeGreaterThan(0);
+    expect(sampler.sample(...offset(-2, 6)).protection).toBe(0);
+    // Past the tall band's far edge (8 + 23.8 ≈ 31.8 m south of the crown).
+    expect(sampler.sample(...offset(-34)).protection).toBe(0);
+  });
+
+  it("returns the caller's strength, applied once, never compounded", () => {
+    // Overlapping march segments over one crown must yield `strength`, not a
+    // product of it — the fixture is a wide crown the ray crosses many pixels of.
+    const patch = patchAround(MADRID, (col, row) =>
+      Math.abs(col - CENTRE) <= 5 && Math.abs(row - CENTRE) <= 5 ? TREE_M : 0,
+    );
+    const sampler = createCanopyHeightField(patch).sampleFor(rayOf(0, 30));
+    expect(sampler.sample(...offset(-30)).protection).toBeCloseTo(0.4, 10);
+  });
+
+  it("protects the receiver's own cell before any boundary crossing", () => {
+    // Ground directly under a crown with the ray at 45°: the first cell tested is
+    // the receiver's, and at 45° a 20 m crown based at 7 m does NOT cover its own
+    // ground — but the starting cell is still where the march begins (asserted by
+    // the overhead case above). Here the same point at 89.5° is covered.
+    const field = createCanopyHeightField(oneTallPixel());
+    expect(field.sampleFor(rayOf(0, 45)).sample(...offset(0)).protection).toBe(0);
+    expect(field.sampleFor(rayOf(0, 89.5)).sample(...offset(0)).protection).toBeGreaterThan(0);
+  });
+});
+
+describe("sampleFor — completeness and missing evidence", () => {
+  it("reports an incomplete march when the ray leaves the patch", () => {
+    // A receiver near the patch's south edge with the ray climbing north: the march
+    // walks off the north edge only after MAX_MARCH_M or the tallest crown clears
+    // it. Put the receiver at the very edge so the march exits almost immediately.
+    const patch = patchAround(MADRID, () => 0);
+    const field = createCanopyHeightField(patch);
+    const sampler = field.sampleFor(rayOf(180, 30));
+    // A bare patch reports nothing standing (complete knowledge, 0 strength).
+    expect(sampler.sample(...offset(0)).protection).toBe(0);
+    expect(sampler.sample(...offset(0)).complete).toBe(true);
+  });
+
+  it("marches over a hole and still shelters the ground beyond it", () => {
+    // Same hole fixture as the solar march, asked through the ray interface: the
+    // ray from the north climbs over a nodata column and still meets the crown.
+    const patch = patchAround(
+      MADRID,
+      (col, row) => (col === CENTRE && row === CENTRE ? TREE_M : 0),
+      (_col, row) => (row === CENTRE - 2 ? 0 : 1),
+    );
+    const sampler = createCanopyHeightField(patch).sampleFor(rayOf(0, 45));
+    // 12 m south of the tree (ray from the north → band to the south).
+    expect(sampler.sample(...offset(-12)).protection).toBeGreaterThan(0);
+  });
+
+  it("gives no protection and no completeness over an absent patch cell", () => {
+    // Nodata directly overhead under vertical rain: unknown, not dry.
+    const patch = patchAround(
+      MADRID,
+      () => TREE_M,
+      (col, row) => (col === CENTRE && row === CENTRE ? 0 : 1),
+    );
+    const sampler = createCanopyHeightField(patch).sampleFor(rayOf(0, 89.5));
+    const s = sampler.sample(...offset(0));
+    expect(s.protection).toBe(0);
+    expect(s.complete).toBe(false);
+  });
+
+  it("stops at 400 m of reach and reports the truncation", () => {
+    // A wall of 30 m canopy SOUTH of centre, rain arriving FROM the south at 5° —
+    // the ray climbs southward, meeting the wall ~17.5 m up at 200 m, inside the
+    // crown's 10.5–30 band. A wall past the 400 m cap is never reached.
+    const size = 481; // 960 m on a side at 2 m
+    const centreOf = (size - 1) / 2;
+    // Pixel row runs south from the top, so a wall `southM` south of centre sits at
+    // row `centreOf + southM/RES_M`.
+    const wallAt = (southM: number) =>
+      patchAround(
+        MADRID,
+        (_col, row) => (Math.abs(row - centreOf - southM / RES_M) <= 1 ? 30 : 0),
+        undefined,
+        size,
+      );
+    const near = createCanopyHeightField(wallAt(200)).sampleFor(rayOf(180, 5));
+    const s = near.sample(MADRID[0], MADRID[1]);
+    expect(s.protection).toBeGreaterThan(0);
+    // Past MAX_MARCH_M (400 m) the march stops — with a 60 m crown wall whose band
+    // (21 m base at 5° clears only at 21/tan5° ≈ 240 m) would still block at 450 m
+    // if the march could reach it. It cannot, so the answer is 0 and the truncation
+    // is reported rather than the wall being silently ignored.
+    const far = createCanopyHeightField(
+      patchAround(
+        MADRID,
+        (_col, row) => (Math.abs(row - centreOf - 450 / RES_M) <= 1 ? 60 : 0),
+        undefined,
+        size,
+      ),
+    ).sampleFor(rayOf(180, 5));
+    const truncated = far.sample(MADRID[0], MADRID[1]);
+    expect(truncated.protection).toBe(0);
+    expect(truncated.complete).toBe(false);
+  });
+});
+
+describe("sampleFor — agreement with the solar march on identical inputs", () => {
+  it("a sun ray through the generic interface equals shadeFor's answer", () => {
+    const field = createCanopyHeightField(oneTallPixel());
+    const azimuth = 0; // SunCalc: sun due south
+    const altitude = Math.PI / 4;
+    const solar = field.shadeFor(azimuth, altitude, JULY);
+    // The sun sits due south at 45° — i.e. its light arrives FROM bearing 180°
+    // (meteorological: from the south), at 45° elevation.
+    const generic = field.sampleFor({
+      azimuthRad: (180 * Math.PI) / 180,
+      elevationRad: altitude,
+      strength: crownOpacityOf(JULY),
+    });
+    // The same geometry on both paths, over a spread of points.
+    for (const [n, e] of [[0, 0], [12, 0], [18, 3], [-12, 0], [30, 0], [8, -4]] as const) {
+      const [lng, lat] = offset(n, e);
+      expect(generic.sample(lng, lat).protection).toBeCloseTo(solar.opacityAt(lng, lat), 10);
+    }
+  });
+});
+
+/** The solar strength for a moment — `shadeFor` computes it internally. */
+function crownOpacityOf(when: Date): number {
+  // Madrid is northern and outside the tropics: April–October in leaf.
+  const month = when.getUTCMonth() + 1;
+  const inLeaf = month >= 4 && month <= 10;
+  return inLeaf ? 0.9 : 0.3;
+}

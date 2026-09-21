@@ -45,4 +45,12 @@ export interface IShadowLayer {
   setExposureContext?(context: import("../exposure").ResolvedExposureContext): void;
   /** Tag currently rendered coverage so readback consumers can reject stale data. */
   getExposureContextTag?(): { objective: "sun" | "rain"; revision: string } | null;
+  /**
+   * A prepared canopy height atlas for the ground-protection pass, from the
+   * viewport reader the map component owns. `null` clears it (zoom floor, failed
+   * read). Heights only — never a weather or public HTTP payload.
+   */
+  setCanopySnapshot?(atlas: import("../canopyRaster/viewportCanopy").CanopyAtlas | null): void;
+  /** Marks the camera as interacting, keeping the canopy pass at preview resolution. */
+  noteCanopyInteraction?(): void;
 }
