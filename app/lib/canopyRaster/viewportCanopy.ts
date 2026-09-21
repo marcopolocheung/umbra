@@ -47,6 +47,8 @@ export interface CanopyAtlas {
   height: number;
   bbox: LonLatBbox;
   metresPerPixel: number;
+  /** Tallest canopy in the atlas, metres — the march's early-exit bound. */
+  maxHeightM: number;
   /** Monotonic per controller; a snapshot is superseded when a larger one exists. */
   generation: number;
 }
@@ -99,6 +101,7 @@ export function toAtlas(patch: CanopyPatch, generation: number): CanopyAtlas {
       height: patch.height,
       bbox: [...patch.bbox] as LonLatBbox,
       metresPerPixel: patch.metresPerPixel,
+      maxHeightM: maxHeightOf(patch.heights),
       generation,
     };
   }
@@ -122,8 +125,16 @@ export function toAtlas(patch: CanopyPatch, generation: number): CanopyAtlas {
     height,
     bbox: [...patch.bbox] as LonLatBbox,
     metresPerPixel: patch.metresPerPixel * step,
+    maxHeightM: maxHeightOf(heights),
     generation,
   };
+}
+
+/** Tallest canopy in a height array — one scan, taken at copy time. */
+function maxHeightOf(heights: Uint8Array): number {
+  let max = 0;
+  for (let i = 0; i < heights.length; i++) if (heights[i] > max) max = heights[i];
+  return max;
 }
 
 /** What the controller needs of the map — the slice tests can fake. */
