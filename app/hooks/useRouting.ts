@@ -13,6 +13,8 @@ import {
   parallelSidewalkEdges,
   reachableFrom,
   snapToReachable,
+  walkSecondsFrom,
+  walkSecondsTo,
 } from "../lib/routing";
 import type {
   GraphEdge,
@@ -31,8 +33,10 @@ import {
 import { snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
-  findBestTrainRoute,
+  findBestTransitRoute,
   matchEntranceToTrainStation,
+  type TrainMode,
+  type TransitSearchOutcome,
   TRAIN_SUN_EXPOSURE,
   buildTrainDrawData,
   ENTRANCE_MATCH_MAX_M,
@@ -81,9 +85,12 @@ import { MAX_STOP_PRELOADS, shelterWaitExposureFrom, waitExposureFrom } from "..
 import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
-import { travelTimeSeconds } from "../lib/travelMode";
+import { travelTimeSeconds, getTravelModePolicy } from "../lib/travelMode";
 import { transitOutdoorExposure, transitRainMetrics } from "../lib/routeTradeoff";
-import { transitOptionDominated } from "../lib/transit/transitGate";
+import {
+  transitDominanceBound,
+  transitOptionDominated,
+} from "../lib/transit/transitGate";
 import type { TravelModeId } from "../lib/travelMode";
 import type { StopEntry } from "../lib/trip/types";
 import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
@@ -480,6 +487,11 @@ export function useRouting({
       let entranceCount = 0;
       let boardingStopCount = 0;
       let busPreloadCount = 0;
+      // Per-mode search outcomes (Stage H): what each mode's search actually
+      // concluded, so an empty mode can explain itself instead of silently
+      // showing nothing. Outcome names come from `findBestTransitRoute`.
+      const transitOutcomes: Partial<Record<TrainMode, TransitSearchOutcome>> = {};
+      const transitCandidateCount: Partial<Record<TrainMode, number>> = {};
       // Phase-0 graph-fetch attribution split: the three pieces of the
       // `tFetch` span that gate different fix decisions. `fieldReady`
       // overlaps `staticStreets` by construction (the broad preload starts
@@ -1295,13 +1307,104 @@ export function useRouting({
                     option.totalTimeSec ?? travelTimeSeconds(option.distanceM, "walk"),
                 ),
               );
+              // The dominance threshold is the search's upper bound too: a
+              // journey strictly slower than it is never worth finding, and
+              // `findBestTransitRoute` prunes at the same number so the
+              // final assembled check below can only confirm, never surprise.
+              const dominanceBoundSec = transitDominanceBound(quickestWalkSec);
+
+              // One forward and one reverse walk search, shared by every
+              // candidate of both modes: the seconds to walk from the origin
+              // to each reachable node, and from each reachable node to the
+              // destination. A candidate stop's access/egress seconds are
+              // read off these maps at its snapped node — plus the straight
+              // connector from the door to that node, priced at walk speed,
+              // because the map answers for the *node*, not the door. Without
+              // the connector a door standing on the origin's own snap node
+              // would be priced at 0 s and win dishonestly.
+              // Walk prohibits no edge, so the maps cover exactly what the
+              // per-winner `dijkstra` calls below can traverse.
+              const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
+              const walkSpeedMps = getTravelModePolicy("walk").speedMps;
+              const accessSecByNode = walkSecondsFrom(routingGraph, effectiveStartId, walkSpeedMps);
+              const egressSecByNode = walkSecondsTo(routingGraph, effectiveEndId, walkSpeedMps);
+              /** Snap a door/stop point to a node the shared searches speak for. -1 = unreachable. */
+              const snapSecured = (coord: [number, number]): number =>
+                snapToReachable(coord, routingGraph, walkableFromStart, spatialGrid);
+              /**
+               * Routed seconds for one coordinate against one map: the map's
+               * answer at the snapped node plus the door-to-node connector at
+               * walk speed. Infinity when the snap is unreachable.
+               */
+              const secondsAtWithConnector =
+                (map: Map<number, number>) =>
+                (coord: [number, number]): number => {
+                  const nodeId = snapSecured(coord);
+                  if (nodeId === -1) return Infinity;
+                  const node = routingGraph.nodes.get(nodeId);
+                  if (!node) return Infinity;
+                  const routed = map.get(nodeId);
+                  if (routed === undefined) return Infinity;
+                  return routed + haversineMeters(coord, [node.lon, node.lat]) / walkSpeedMps;
+                };
+              const accessSecondsAt = secondsAtWithConnector(accessSecByNode);
+              const egressSecondsAt = secondsAtWithConnector(egressSecByNode);
+              /**
+               * Per-station access/egress seconds, memoised: the station's
+               * nearest door to the endpoint when it publishes doors,
+               * otherwise the stop itself. Bus stops publish none and the
+               * stop *is* the boarding point, which is the same answer.
+               */
+              const stationSeconds =
+                (secondsAt: (coord: [number, number]) => number, from: [number, number]) =>
+                (station: { id: string; lon: number; lat: number; entrances?: { lon: number; lat: number }[] }): number => {
+                  const cache = stationSecondsCache.get(station.id);
+                  if (cache !== undefined) return cache;
+                  let coord: [number, number] = [station.lon, station.lat];
+                  const doors = station.entrances;
+                  if (doors !== undefined && doors.length > 0) {
+                    let best = Infinity;
+                    for (const door of doors) {
+                      const d = haversineMeters(from, [door.lon, door.lat]);
+                      if (d < best) {
+                        best = d;
+                        coord = [door.lon, door.lat];
+                      }
+                    }
+                  }
+                  const seconds = secondsAt(coord);
+                  stationSecondsCache.set(station.id, seconds);
+                  return seconds;
+                };
+              // One memo per endpoint: both modes ask every station the same
+              // access/egress question, and door snapping is stable per run.
+              const stationSecondsCache = new Map<string, number>();
+              const accessSecFor = stationSeconds(accessSecondsAt, a);
+              const egressSecFor = stationSeconds(egressSecondsAt, b);
+
               for (const transitMode of TRANSIT_MODES) {
                 const tModeSearch = performance.now();
-                const bestTrain = findBestTrainRoute(a, b, trainGraph, 1500, 5, departure, transitMode);
+                const transitSearch = findBestTransitRoute(
+                  a,
+                  b,
+                  trainGraph,
+                  1500,
+                  {
+                    accessSecFor: (station) => accessSecFor(station),
+                    egressSecFor: (station) => egressSecFor(station),
+                  },
+                  departure,
+                  transitMode,
+                  dominanceBoundSec,
+                );
                 const dtModeSearch = performance.now() - tModeSearch;
                 trainSearchMs += dtModeSearch;
                 if (transitMode === "subway") trainSearchSubwayMs += dtModeSearch;
                 else trainSearchBusMs += dtModeSearch;
+                transitOutcomes[transitMode] = transitSearch.outcome;
+                if (transitSearch.candidateCount > 0)
+                  transitCandidateCount[transitMode] = transitSearch.candidateCount;
+                const bestTrain = transitSearch.route;
                 if (import.meta.env.DEV)
                   console.log(
                     `[transit] bestTrain (${transitMode}):`,
@@ -1416,13 +1519,10 @@ export function useRouting({
                   // snapping lands there, the walk leg fails, and the whole transit
                   // option is dropped for a reason nobody can see.
                   //
-                  // The walking route from A to B already succeeded, so both ends
-                  // share one component; computing it from the start covers the
-                  // alight snap too. `walkOpts` pins travel mode to walk, and walk
-                  // prohibits no edge, so this set is exactly what dijkstra can
-                  // traverse.
+                  // `walkableFromStart` and the shared walk-second maps were
+                  // computed once above the mode loop; the winner's own walks
+                  // are reconstructed here over the same component.
                   const tWalkLegs = performance.now();
-                  const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
                   const boardNodeId = snapToReachable(
                     [boardEntrance.lon, boardEntrance.lat],
                     routingGraph,
@@ -1656,7 +1756,16 @@ export function useRouting({
                     ];
 
                     const totalWalkDistM = walkA.distanceM + walkB.distanceM;
-                    const totalTimeSec = travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
+                    // The routed seconds the candidate search itself ranked
+                    // on — access and egress off the shared maps at the
+                    // winner's snapped nodes — not a distance÷speed
+                    // re-derivation that ignores the snap connectors.
+                    const routedAccessSec = accessSecByNode.get(boardNodeId) ?? Infinity;
+                    const routedEgressSec = egressSecByNode.get(alightNodeId) ?? Infinity;
+                    const totalTimeSec =
+                      Number.isFinite(routedAccessSec) && Number.isFinite(routedEgressSec)
+                        ? routedAccessSec + transitTimeSec + routedEgressSec
+                        : travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
                     if (transitOptionDominated(totalTimeSec, quickestWalkSec)) {
                       transitNotice =
                         transitMode === "bus"
@@ -1790,6 +1899,8 @@ export function useRouting({
           entranceCount,
           boardingStopCount,
           busPreloadCount,
+          transitOutcomes,
+          transitCandidateCount,
           graphNodeCount: graph.nodes.size,
           graphDirectedEdges: directedEdgeCount,
           shadowFallbackShare: edgeRefs.length > 0 ? canvasFallbackEdges / edgeRefs.length : 0,

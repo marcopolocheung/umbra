@@ -215,6 +215,15 @@ export interface RoutingRunMetrics {
   transitTried?: boolean; // transit branch entered (straight-line > 500 m, no partial)
   transitStationCount?: number | null; // trainGraph.stations.size
   transitLineCount?: number | null; // trainGraph.lineColors.size
+  /**
+   * What each mode's candidate search concluded (Stage H). Outcome names are
+   * `findBestTransitRoute`'s: "offered", "no-candidates" (no reachable
+   * eligible stop on an end), "no-connected-journey" (candidates existed, no
+   * journey within the dominance bound). Absent = that mode never ran.
+   */
+  transitOutcomes?: Partial<Record<"subway" | "bus", string>>;
+  /** Eligible stops each mode considered, before the winner was chosen. */
+  transitCandidateCount?: Partial<Record<"subway" | "bus", number>>;
   entranceBoxCount?: number; // station boxes fetched (subway only)
   entranceCount?: number; // doors returned (cache + network)
   boardingStopCount?: number; // bus boardings sampled

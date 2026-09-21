@@ -1794,9 +1794,10 @@ describe("transit access walks use the static street graph when configured", () 
   it("alights over the destination access zone when the exit station stands outside the route bbox", async () => {
     // The exit station is east of the far seam (103.806), past the padded
     // route bbox. Only `zoneAround(B, 2000)` intersects its cell, so walkB
-    // proves the B-side zone. A stands further west than the other tests so
-    // the direct walk (~1.5 km) is slow enough that the transit offer is not
-    // suppressed by the walking-dominance gate — the offer itself is what
+    // proves the B-side zone. A stands further west and B further east than
+    // the other tests so the far-east station is the honest best exit (Mid
+    // would cost a 1.1 km egress walk) and the ~2.9 km direct walk keeps the
+    // offer clear of the walking-dominance gate — the offer itself is what
     // carries walkB's assertions here.
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(fareastTrainGraph() as never);
     vi.mocked(fetchRoutingGraph).mockClear();
@@ -1820,7 +1821,7 @@ describe("transit access walks use the static street graph when configured", () 
       }),
     );
     act(() => result.current.handleSetWaypointA([103.7815, 1.3], "Start"));
-    act(() => result.current.handleSetWaypointB([103.795, 1.3], "End"));
+    act(() => result.current.handleSetWaypointB([103.809, 1.3], "End"));
     act(() => result.current.handleRouteModeChange("transit"));
     await act(async () => {
       result.current.handleCalculateRoute();

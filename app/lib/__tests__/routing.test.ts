@@ -1865,7 +1865,11 @@ describe("walkSecondsFrom / walkSecondsTo", () => {
    */
   function diamond(): RoutingGraph {
     const node = (id: number, lat: number, lon: number) => [id, { id, lat, lon }] as const;
-    const edge = (toId: number, distanceM: number): GraphEdge => ({ toId, distanceM });
+    const edge = (toId: number, distanceM: number): GraphEdge => ({
+      toId,
+      distanceM,
+      shadowFactor: 0,
+    });
     return {
       nodes: new Map([
         node(1, 1.3, 103.8),
