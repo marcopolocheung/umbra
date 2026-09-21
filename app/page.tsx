@@ -1289,7 +1289,31 @@ export default function Home() {
         </button>
       )}
       {menuOpen && (
-        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap}>
+        <BottomSheet
+          snap={bottomSheetSnap}
+          onSnapChange={setBottomSheetSnap}
+          cornerSlot={!assistantOpen ? (
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="umbra-pop-in relative flex h-11 w-11 items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105"
+              style={{
+                background: "var(--color-ink)",
+                color: "var(--color-on-ink)",
+                border: "2px solid var(--color-raised)",
+              }}
+              title="Ask the Umbra Assistant"
+              aria-label="Open Umbra Assistant"
+            >
+              {agent.isThinking && (
+                <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
+              )}
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+                assistant
+              </span>
+            </button>
+          ) : undefined}
+        >
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
               place={selectedPlace}
@@ -1474,12 +1498,15 @@ export default function Home() {
         />
       </div>
 
-      {/* AI assistant: launcher FAB + chat panel */}
+      {/* AI assistant: launcher blob + chat panel. On mobile the blob docks to
+          the bottom sheet's top-right corner — one surface, not a second floating
+          thing — and falls back above the timeline while the sheet is hidden.
+          A ping rings the blob while the agent is thinking. */}
       {!assistantOpen && (
         <button
           type="button"
           onClick={() => setAssistantOpen(true)}
-          className="fixed z-40 flex items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105"
+          className="umbra-pop-in fixed z-40 hidden items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105 md:flex"
           style={{
             bottom: "6rem",
             right: "1rem",
@@ -1491,6 +1518,34 @@ export default function Home() {
           title="Ask the Umbra Assistant"
           aria-label="Open Umbra Assistant"
         >
+          {agent.isThinking && (
+            <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
+          )}
+          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+            assistant
+          </span>
+        </button>
+      )}
+      {!assistantOpen && (!menuOpen || bottomSheetSnap === "hidden") && (
+        <button
+          type="button"
+          onClick={() => setAssistantOpen(true)}
+          className="umbra-pop-in fixed z-40 flex items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105 md:hidden"
+          style={{
+            bottom: "9.5rem",
+            right: "1rem",
+            width: 44,
+            height: 44,
+            background: "var(--color-ink)",
+            color: "var(--color-on-ink)",
+            border: "2px solid var(--color-raised)",
+          }}
+          title="Ask the Umbra Assistant"
+          aria-label="Open Umbra Assistant"
+        >
+          {agent.isThinking && (
+            <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
+          )}
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
             assistant
           </span>

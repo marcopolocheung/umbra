@@ -123,6 +123,24 @@
   background-clip: content-box;
 }
 
+/* Entrance for the assistant blob and the panel it opens. The blob pops from
+   the corner it is docked in; the panel rises from the same corner, so the
+   two read as one surface splitting open. Motion honoured via the media
+   query rather than a variant, so it applies wherever the class lands. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes umbra-pop-in {
+    from { transform: scale(0.4); opacity: 0; }
+    60% { transform: scale(1.08); }
+    to { transform: scale(1); opacity: 1; }
+  }
+  @keyframes umbra-rise-in {
+    from { transform: translateY(12px) scale(0.97); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .umbra-pop-in { animation: umbra-pop-in 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+  .umbra-rise-in { animation: umbra-rise-in 220ms ease-out both; transform-origin: bottom right; }
+}
+
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
