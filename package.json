@@ -41,10 +41,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.9",
+    "@biomejs/biome": "^2.5.14",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/react": "^16.3.3",
     "@types/earcut": "3.0.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19",
@@ -52,7 +52,7 @@
     "@types/suncalc": "1.9.2",
     "@vitejs/plugin-react": "^5.1.4",
     "@vitest/coverage-v8": "^4.1.11",
-    "jsdom": "^30.0.1",
+    "jsdom": "^30.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^6.4.3",
