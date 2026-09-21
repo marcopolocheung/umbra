@@ -15,7 +15,36 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U5 — copy & information architecture. Open for owner review as PR
+- **Active checkpoint:** U6 — search: manual and assistant. Open for owner review as PR
+  #68 on `design/u6-search` (branched from `design/u5-copy-ia`, PR #67, because U6 touches
+  the search surface U4/U5 styled; rebase onto main at U5's merge). Manual search gained
+  Foursquare-backed typeahead — the one autocomplete path in the app, Foursquare-only per
+  the OSMF policy (`providerPolicy` green; Nominatim still submit-only): debounced 300 ms,
+  abortable, cached 5 min per query+anchor, anchored to the map center, ranked
+  distance-first. Suggestion rows are rich: photo (or canvas disc), name, `category ·
+  hours` caption, star rating on a stated /10 scale, distance from the viewport center.
+  An explicit submit now **races both providers** and merges one distance-ranked list
+  (dedup by name + proximity, Nominatim row wins for the bounding box; a provider
+  failing silently costs its half, never the list) — the owner's "address search often
+  never routes" report, fixed in a follow-up commit on the same PR.
+  `suggestPlaces` added to `app/services/foursquare.ts`; `api/fsq.js` allowlist gained
+  `fields`/`radius` on `/places/search` (proxy tests cover both the pass and the reject).
+  Review findings fixed in the same PR: a map-pan no longer re-fires the typeahead (the
+  anchor rides a ref, read at fire time — a pan also never drops a surprise dropdown over
+  the map), an outside tap closes the suggestions like every other dropdown, and the
+  grounding audit caught a **swapped [lat,lng]/[lng,lat] anchor** that would have silently
+  emptied the typeahead in production (fixed at one `toLngLat` swap point, test encodes the
+  convention; the pre-existing recent/saved/Nominatim distance rows had the same latent
+  swap — fixed with it). Receipt captions state source + evidence age, never a wall-clock
+  time (observedAt is simulated map time in UTC — the audit caught that rendering too).
+  Assistant side: `search_places` tool description rewritten (anchor always, distance-first
+  results, one bounded retry), agent itinerary pins recolored ink→route blue per Canopy
+  rule 2 (itinerary is data) with the language doc's pin recipe updated; agent suites and
+  the C1 scenario harness unchanged and green. Typeahead shot in
+  `docs/design/shots/u6/`. Pre-existing for the scribe: the 28px pin tap target, the
+  rating scale / straight-line distance conventions, and fully silent typeahead
+  degradation (empty vs. failed) are filed as polish.
+- **U5 (open, PR #67):** copy & information architecture. Open for owner review as PR
   [#67](https://github.com/marcopolocheung/umbra/pull/67) on `design/u5-copy-ia` (branched
   from `design/u4-timeline-sheet`, PR #66, because U5 rewrites the surfaces U4 styled;
   rebase onto main at U4's merge). Rewritten verdict-first: the transit trade-off line
@@ -78,17 +107,19 @@ accordingly. Subagents stay read-only here, per the repo rule.
   fixed in the same PR: controls/timeline overlap, stale-scroll band, drag-gate overlap.
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
   port #51), U2 (Canopy language, port PR #60 / private #479 — merge = visual sign-off),
-  U3 (PR #63, open), U4 (PR #66, open).
+  U3 (PR #63, open), U4 (PR #66, open), U5 (PR #67, open), U6 (PR #68, open).
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
-- **Blocked on:** owner review of U3, U4 and U5; the wave is sequential from U6 on.
-- **Next action:** owner review; then U6 (search: manual and assistant).
-- **Last verified:** 2026-09-20 (U5 session) — lint clean (52 warnings, the known backlog;
-  no errors), typecheck clean on app scope (`server/` errors pre-date the branch and exist
-  on main), `npm run design:check` exit 0, build green. Tests: 1531/1534 pass; the 3
-  `useNavigation` static-graph failures and the `navigationShardFixture` failures under
-  full-suite concurrency reproduce identically on the U4 base commit (e3dc46b) —
-  pre-existing, not this diff; the shard fixture passes in isolation. New unit tests for
-  the named trade-off condition green. Drag latency unchanged (median ~179–191 ms, n=30).
+- **Blocked on:** owner review of U3–U6; the wave is sequential from U7 on.
+- **Next action:** owner review; U6 was the last numbered checkpoint.
+- **Last verified:** 2026-09-20 (U6 session) — lint clean (57 warnings, the known backlog;
+  0 errors, checked untruncated at max-diagnostics=500), typecheck clean on app scope
+  (`server/` errors pre-date the branch and exist on main), `npm run design:check` exit 0,
+  build green. Tests: 1554/1557 pass; the 3 `useNavigation` static-graph failures are the
+  same ones the U5 entry records, reproduced on this base. New tests: suggestPlaces
+  (distance-first, cache, auth failure), fsqProxy typeahead allowlist (pass + reject),
+  SearchBar typeahead (debounce, anchor swap, rich row, Nominatim submit fallback).
+  Browser check done: `npm run shots` green at 390×844; the U6 typeahead shot renders
+  rich rows (rating /10, distance, category · hours); drag latency median 189 ms (n=30).
 
 ---
 

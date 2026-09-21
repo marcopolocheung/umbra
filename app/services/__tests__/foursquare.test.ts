@@ -166,6 +166,59 @@ describe("foursquare service", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("suggestPlaces ranks distance-first and caches per query+anchor", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        results: [
+          {
+            fsq_id: "far",
+            name: "Far Cafe",
+            latitude: 40.01,
+            longitude: -74.0,
+            categories: [{ name: "Coffee Shop" }],
+          },
+          {
+            fsq_id: "near",
+            name: "Near Cafe",
+            latitude: 40.0005,
+            longitude: -74.0005,
+            categories: [{ name: "Bakery" }],
+            rating: 8.9,
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../foursquare");
+
+    const res = await mod.suggestPlaces("cafe", [-74.0005, 40.0005], { apiKey: "test_key_123" });
+    expect(res.map((s) => s.name)).toEqual(["Near Cafe", "Far Cafe"]);
+    expect(res[0].distanceM).toBe(0);
+    expect(res[0].rating).toBe(8.9);
+
+    // Same query + anchor → cache hit, no second fetch.
+    await mod.suggestPlaces("cafe", [-74.0005, 40.0005], { apiKey: "test_key_123" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Different anchor → refetch.
+    await mod.suggestPlaces("cafe", [-74.0, 40.0], { apiKey: "test_key_123" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("suggestPlaces returns [] on auth failure without throwing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../foursquare");
+
+    const res = await mod.suggestPlaces("cafe", [-74.0, 40.0], { apiKey: "test_key_123" });
+    expect(res).toEqual([]);
+  });
+
   it("returns null on 410 and caches the null result", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: false,

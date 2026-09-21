@@ -474,6 +474,122 @@ export async function getPlaceDetails(
   return promise;
 }
 
+export interface FoursquareSuggestion extends FoursquarePlaceInfo {
+  lat: number;
+  lng: number;
+  /** Metres from the anchor the suggestion was searched around. */
+  distanceM?: number;
+}
+
+// Typeahead cache, keyed by query + rounded anchor, with a short TTL — the same
+// keystroke sequence re-fires as the dropdown reopens, and the polite-request
+// rule says the second keystroke sequence should not re-spend the quota.
+const SUGGEST_TTL_MS = 5 * 60 * 1000;
+const suggestCache = new Map<string, { data: FoursquareSuggestion[]; timestamp: number }>();
+
+/**
+ * Foursquare-backed typeahead for the manual search bar.
+ *
+ * This is the ONLY autocomplete path in the app, and it exists because the OSMF
+ * policy forbids autocomplete against Nominatim — so every keystroke-driven
+ * request must go here, never to `geocodeForward`. Anchored on the map center
+ * (`ll` is required) and ranked distance-first client-side, so the dropdown
+ * answers "near where I'm looking". Returns [] on any failure — suggestions
+ * degrade silently; the explicit Nominatim submit is the fallback.
+ */
+export async function suggestPlaces(
+  query: string,
+  ll: [number, number],
+  opts?: { signal?: AbortSignal; apiKey?: string; limit?: number; radiusM?: number }
+): Promise<FoursquareSuggestion[]> {
+  const q = query.trim();
+  if (!q) return [];
+  if (isRateLimited()) return [];
+  if (isAuthBlocked()) return [];
+
+  const limit = opts?.limit ?? 6;
+  const radiusM = opts?.radiusM ?? 3000;
+  const cacheKey = `${q.toLowerCase()}|${ll[0].toFixed(3)},${ll[1].toFixed(3)}|${radiusM}`;
+  const cached = suggestCache.get(cacheKey);
+  if (cached) {
+    if (Date.now() - cached.timestamp < SUGGEST_TTL_MS) return cached.data;
+    suggestCache.delete(cacheKey);
+  }
+
+  // Search fields stay minimal — the row shows name/category/hours/rating/photo;
+  // anything richer belongs to Place Details.
+  const searchFields = ["name", "location", "categories", "hours", "rating", "photos"].join(",");
+  const url =
+    `${FSQ_BASE_URL}/places/search?query=${encodeURIComponent(q)}` +
+    `&ll=${ll[1]},${ll[0]}&radius=${radiusM}&limit=${limit}` +
+    `&fields=${encodeURIComponent(searchFields)}`;
+
+  try {
+    const response = await fetchWithRetry(url, {
+      headers: {
+        Accept: "application/json",
+        ...authHeader(normalizeApiKey(opts?.apiKey) ?? DEFAULT_SEARCH_API_KEY),
+        "X-Places-Api-Version": "2025-06-17",
+      },
+      signal: opts?.signal,
+    });
+
+    if (response.status === 429) {
+      apiStatus = "error";
+      setRateLimitedFromResponse(response);
+      return [];
+    }
+    if (response.status === 401) {
+      apiStatus = "unauthorized";
+      setAuthBlocked();
+      return [];
+    }
+    if (response.status === 403) {
+      apiStatus = "forbidden";
+      setAuthBlocked();
+      return [];
+    }
+    if (!response.ok) {
+      apiStatus = "error";
+      return [];
+    }
+    apiStatus = "ok";
+
+    const data = (await response.json()) as { results?: unknown[] };
+    const suggestions: FoursquareSuggestion[] = (data.results ?? [])
+      .map((raw) => {
+        const place = (raw ?? {}) as Record<string, unknown>;
+        const lat =
+          typeof place.latitude === "number" ? place.latitude : (place.location as any)?.lat;
+        const lng =
+          typeof place.longitude === "number" ? place.longitude : (place.location as any)?.lng;
+        if (typeof lat !== "number" || typeof lng !== "number") return null;
+        const info = mapToFoursquarePlaceInfo(place, place.fsq_id as string | undefined);
+        return { ...info, lat, lng } as FoursquareSuggestion;
+      })
+      .filter((s): s is FoursquareSuggestion => s !== null)
+      .sort((a, b) => haversine(ll, [a.lng, a.lat]) - haversine(ll, [b.lng, b.lat]))
+      .map((s) => ({ ...s, distanceM: Math.round(haversine(ll, [s.lng, s.lat])) }));
+
+    suggestCache.set(cacheKey, { data: suggestions, timestamp: Date.now() });
+    return suggestions;
+  } catch {
+    // Aborted requests (the user kept typing) and network failures both land
+    // here; an empty suggestion list is the honest degradation.
+    return [];
+  }
+}
+
+function haversine(a: [number, number], b: [number, number]): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b[1] - a[1]);
+  const dLng = toRad(b[0] - a[0]);
+  const s =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
 /**
  * Fetch rich place info from Foursquare with a two-step lookup:
  *

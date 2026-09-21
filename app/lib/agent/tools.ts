@@ -157,14 +157,21 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
   {
     name: "search_places",
     description:
-      "Find stops (e.g. 'parks', 'cafes') near an explicitly user-requested area, or else uses the user's location.",
+      "Find stops (e.g. 'parks', 'cafes') around one anchor. ALWAYS anchor the search: " +
+      "pass lat/lng from an earlier result or the user's location when you have one, else " +
+      "'near' with the user's own area name. Results are ranked by distance from the anchor, " +
+      "closest first, at most 4. If nothing comes back, retry once with a broader kind of " +
+      "stop or a different anchor — never repeat the identical call.",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "What to look for." },
-        near: { type: "string", description: "Area to search in." },
-        lat: { type: "number" },
-        lng: { type: "number" },
+        query: { type: "string", description: "What to look for — a kind of place, not a full address." },
+        near: {
+          type: "string",
+          description: "Area to search in, in the user's own words (a neighbourhood, park or city).",
+        },
+        lat: { type: "number", description: "Anchor latitude — preferred over `near` when known." },
+        lng: { type: "number", description: "Anchor longitude — preferred over `near` when known." },
         nearCandidateId: {
           type: "string",
           description: "Application-owned identity for an exact lat/lng anchor.",

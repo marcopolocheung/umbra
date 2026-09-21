@@ -122,10 +122,22 @@ The guardrail binds all waves.
   time, absent at night) — sun position, so it takes the sun hue; it is data, not chrome,
   and the only ornament-looking element the language allows (U4).
 - **Search:** the one 999-radius pill, ≥70 % white with its allowed blur, route-blue
-  highlight on the active row; result rows on raised with hairline separators.
-- **Pins & popups:** origin pin ink, destination pin route blue, user-location dot route
-  blue; popups are raised surfaces with a hairline border and L2 shadow, ink text
-  (popup CSS lives in `globals.css` under MapLibre selectors).
+  highlight on the active row; result rows on raised with hairline separators. While
+  typing, the dropdown shows **Foursquare typeahead only** (the one autocomplete path —
+  OSMF policy bars Nominatim autocomplete): each row is photo (or a canvas disc with the
+  location glyph) → name over one `category · hours` caption line, with the rating
+  (star + tabular figure on a stated /10 scale) and the distance stacked on the right.
+  An explicit submit **races both providers** and merges into one distance-ranked
+  list — Nominatim for addresses and streets, Foursquare for POIs — deduplicated by
+  name + proximity (the Nominatim row wins, it carries the bounding box); a provider
+  failing silently costs its half, never the list. Enter on the typeahead takes the
+  highlighted suggestion; the magnifier always submits the merged search.
+- **Pins & popups:** origin pin ink, destination pin route blue, assistant itinerary
+  pins route blue (numbered teardrops, 28 px, on-ink numerals, L1 shadow), user-location
+  dot route blue; popups are raised surfaces with a hairline border and L2 shadow, ink
+  text (popup CSS lives in `globals.css` under MapLibre selectors). Receipt captions
+  state the source and the evidence age — the observed-at instant is simulated map
+  time in UTC, so it is never rendered as a wall-clock time.
 
 ## Enforcement path
 
