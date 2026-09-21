@@ -9,13 +9,9 @@
  * this table, so a pass runs or skips by policy instead of by a hazard
  * ternary sprinkled through `render()`:
  *
- * - `drawsGround`: Pass A coverage fill + Pass D canvas composite. Sun only —
- *   rain's ground picture is the style-rendered wash (`rainMapLayer.ts`).
- * - `erasesRoofs`: Pass C, which erases a caster's own footprint on the
- *   axiom a roof is lit even inside a neighbour's shadow. Inverted for rain:
- *   the footprint is exactly the sheltered ground, so rain never erases.
- * - `surfaceInverts`: Pass E reads the ceiling field as shadow for sun and
- *   as exposure (wet = 1 − shadowed) for rain.
+ * Both objectives use the same coverage polarity: blue means the receiver is
+ * protected. Rain changes only the incident ray. Ground coverage and the roof
+ * exclusion pass therefore stay physically identical for both objectives.
  */
 
 export type HazardMode = "sun" | "rain";
@@ -33,8 +29,6 @@ export interface HazardProfile {
   readonly drawsGround: boolean;
   /** Run Pass C roof self-shadow erasure after Pass B. */
   readonly erasesRoofs: boolean;
-  /** Pass E paints exposure (wet) instead of shadow (shaded). */
-  readonly surfaceInverts: boolean;
 }
 
 export const HAZARD_PROFILES: Record<HazardMode, HazardProfile> = {
@@ -42,12 +36,10 @@ export const HAZARD_PROFILES: Record<HazardMode, HazardProfile> = {
     mode: "sun",
     drawsGround: true,
     erasesRoofs: true,
-    surfaceInverts: false,
   },
   rain: {
     mode: "rain",
-    drawsGround: false,
-    erasesRoofs: false,
-    surfaceInverts: true,
+    drawsGround: true,
+    erasesRoofs: true,
   },
 };

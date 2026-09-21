@@ -12,6 +12,9 @@ import {
   type ShadowField,
 } from "../lib/shadowField/ShadowField";
 import { toMapLocal } from "../lib/timezone";
+import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
+import { resolveExposureContext } from "../lib/exposure";
+import { fetchWeatherForecast, nearestForecastWind } from "../services/weather";
 
 export interface HourlyExposure {
   /** The whole day's schedule. Entries past `readyCount` are not sampled yet. */
@@ -56,6 +59,9 @@ export function useHourlyExposure(
   field: ShadowField | null,
   date: Date,
   utcOffsetMin: number,
+  objective: "sun" | "rain" = "sun",
+  exposureSettings?: ExposureSettings,
+  anchorContext?: ResolvedExposureContext | null,
 ): HourlyExposure {
   const edges = useMemo(() => edgesFromRoute(route), [route]);
 
@@ -70,6 +76,11 @@ export function useHourlyExposure(
   );
 
   const [state, setState] = useState<HourlyExposure>(EMPTY);
+  const resolvedSettings = useMemo<ExposureSettings>(() => exposureSettings ?? {
+    objective: objective === "rain" ? "rain" : "sun",
+    windSource: "manual",
+    manualWind: { directionDeg: 0, speedMps: 0 },
+  }, [exposureSettings, objective]);
 
   useEffect(() => {
     if (edges.length === 0 || !field) {
@@ -84,11 +95,13 @@ export function useHourlyExposure(
     // and the timezone arithmetic. Run it once against a zero sampler to learn
     // the dates, then fill those same dates in one at a time.
     const schedule = buildHourlyExposureSeries(dayAnchor, utcOffsetMin, () => 0);
-    const coverage = new Map<number, number>();
+    const coverage = new Map<number, number | null>();
+    const available = new Map<number, boolean>();
+    const unavailable = new Set<number>();
 
     const totalM = edges.reduce((sum, e) => sum + haversineMeters(e.from, e.to), 0);
 
-    const sampleHour = (when: Date): number => {
+    const sampleSunHour = (when: Date): number => {
       if (totalM <= 0) return 0;
       const shadows = field.sweep(edges, [when])[0];
       let shadowedM = 0;
@@ -104,40 +117,119 @@ export function useHourlyExposure(
       return shadowedM / totalM;
     };
 
+    const sampleRainHour = (when: Date, context: ResolvedExposureContext): number | null => {
+      if (totalM <= 0 || !field.sampleRainEdges) return null;
+      const shelter = field.sampleRainEdges(edges, context.direction, when);
+      let measured = 0;
+      let protectedM = 0;
+      for (let i = 0; i < edges.length; i++) {
+        if (shelter[i].confidence < 0.5) continue;
+        const side = route?.sides?.[i];
+        const value = side === "left"
+          ? shelter[i].left
+          : side === "right"
+            ? shelter[i].right
+            : (shelter[i].left + shelter[i].right) / 2;
+        const distance = haversineMeters(edges[i].from, edges[i].to);
+        measured += distance;
+        protectedM += distance * value;
+      }
+      return measured > 0 ? protectedM / measured : null;
+    };
+
     const publish = (readyCount: number) => {
       const samples = buildHourlyExposureSeries(
         dayAnchor,
         utcOffsetMin,
         (when) => coverage.get(when.getTime()) ?? 0,
       );
+      for (const sample of samples) {
+        if (objective === "rain") {
+          sample.objective = "rain";
+          sample.available = available.get(sample.date.getTime()) ?? false;
+        }
+      }
       setState({
         samples,
         readyCount,
-        best: bestExposureSample(samples.slice(0, readyCount)),
+        best: bestExposureSample(samples.slice(0, readyCount), objective),
       });
     };
 
-    const step = (index: number) => {
+    const step = (index: number, contextByHour?: Map<number, ResolvedExposureContext>) => {
       if (cancelled || index >= schedule.length) return;
-      coverage.set(schedule[index].date.getTime(), sampleHour(schedule[index].date));
+      const when = schedule[index].date;
+      const value = objective === "rain"
+        ? unavailable.has(when.getTime())
+          ? null
+          : contextByHour?.get(when.getTime())
+          ? sampleRainHour(when, contextByHour.get(when.getTime())!)
+          : null
+        : sampleSunHour(when);
+      coverage.set(when.getTime(), value);
+      available.set(when.getTime(), value != null);
       publish(index + 1);
-      frame = requestAnimationFrame(() => step(index + 1));
+      frame = requestAnimationFrame(() => step(index + 1, contextByHour));
     };
 
     const bbox = bboxAroundEdges(edges, QUERY_PAD_M);
-    const start = () => {
-      if (!cancelled) frame = requestAnimationFrame(() => step(0));
+    const start = async () => {
+      if (cancelled) return;
+      const contexts = new Map<number, ResolvedExposureContext>();
+      if (objective === "rain") {
+        const settings = resolvedSettings;
+        let forecast = null;
+        if (settings.windSource === "forecast") {
+          const anchor = anchorContext?.referenceLocation;
+          if (anchor) {
+            try {
+              forecast = await fetchWeatherForecast(anchor.lat, anchor.lng);
+            } catch {
+              forecast = null;
+            }
+          }
+        }
+        for (const item of schedule) {
+          const context = resolveExposureContext(settings, {
+            time: item.date,
+            mapCenter: anchorContext
+              ? [anchorContext.referenceLocation.lng, anchorContext.referenceLocation.lat]
+              : [edges[0].from[0], edges[0].from[1]],
+            forecast,
+            revision: `hour:${item.date.getTime()}`,
+          });
+          // A forecast row without a usable wind remains unavailable; the context
+          // itself records the vertical fallback for the current renderer.
+          if (settings.windSource === "forecast" && !nearestForecastWind(forecast ?? [], item.date)) {
+            contexts.set(item.date.getTime(), context);
+            available.set(item.date.getTime(), false);
+            unavailable.add(item.date.getTime());
+          } else {
+            contexts.set(item.date.getTime(), context);
+          }
+        }
+      }
+      if (!cancelled) frame = requestAnimationFrame(() => step(0, contexts));
     };
     // Geometry may still need fetching; a failed preload is not fatal, the field
     // reports its own low confidence when it cannot answer.
     if (bbox) field.ready(bbox).then(start, start);
-    else start();
+    else void start();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
     };
-  }, [edges, field, dayAnchor, utcOffsetMin, route?.sides]);
+  }, [
+    edges,
+    field,
+    dayAnchor,
+    utcOffsetMin,
+    route?.sides,
+    objective,
+    resolvedSettings,
+    anchorContext,
+  ]);
 
   return state;
 }

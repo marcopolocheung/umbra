@@ -8,7 +8,7 @@ import {
   transitSunCaveat,
   transitSunTone,
 } from "../lib/routeLegSummary";
-import { rainDryPct, rainExposureLine } from "../lib/routeRain";
+import { rainExposureLine } from "../lib/routeRain";
 import {
   isTimetableExpired,
   riderFacingNotes,
@@ -30,12 +30,12 @@ interface RouteCardProps {
   recommended?: boolean;
   /** Rain objective: show shelter figures; absent dryCoverage keeps the sun card. */
   rainMode?: boolean;
-  /** 0–10 intensity setting that scales the wet-minute figure only. */
+  /** Deprecated compatibility prop; rain exposure is never intensity-scaled. */
   rainIntensity?: number;
 }
 
-export default function RouteCard({ route: r, selected, onSelect, onSave, onExport, recommended, rainMode = false, rainIntensity = 5 }: RouteCardProps) {
-  const rainCard = rainMode && r.dryCoverage !== undefined;
+export default function RouteCard({ route: r, selected, onSelect, onSave, onExport, recommended, rainMode = false, rainIntensity: _rainIntensity = 5 }: RouteCardProps) {
+  const rainCard = rainMode && (r.objective === "rain" || r.dryCoverage !== undefined);
   const streak =
     rainCard
       ? (r.longestContinuousWetM ?? 0) >= 10
@@ -52,11 +52,18 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
       ? "continuous"
       : `${r.shadowTransitions} break${r.shadowTransitions === 1 ? "" : "s"}`;
   const detour = r.detourRatio > 1.05 ? `${r.detourRatio.toFixed(1)}×` : null;
-  const shadowPct = rainCard ? rainDryPct(r) : Math.round(r.shadowCoverage * 100);
+  const shelterPct = r.exposure?.shelteredDistancePct ?? (r.dryCoverage ?? null);
+  const shadowPct = rainCard ? (shelterPct == null ? null : Math.round(shelterPct * 100)) : Math.round(r.shadowCoverage * 100);
+  const exposureUnknown = rainCard
+    ? (r.exposure?.unknownDistanceM ?? 0) > 0 || (r.exposure?.unknownDurationSec ?? 0) > 0
+    : false;
+  const exposureUpdating = rainCard && r.exposureUpdating;
   // Null when too little of a transit trip's time outdoors is measured; the
   // bar is then not drawn, since an empty one reads as full sun (#393).
   // A rain card has no transit wait, so its figure is always known.
-  const shadowKnown = rainCard || routeExposureMinutes(r) !== null;
+  const shadowKnown = rainCard
+    ? !exposureUpdating && shadowPct != null && !exposureUnknown
+    : routeExposureMinutes(r) !== null;
   // What a transit card's sun figures leave out; null on every other route.
   const exposureScope = rainCard ? null : routeExposureScope(r);
   // Absent on sketch and transit routes, whose shadow was not sampled per sidewalk.
@@ -98,7 +105,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             >
               {r.label}
             </span>
-            {recommended && (
+            {recommended && !exposureUpdating && (
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
                 style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}
@@ -128,7 +135,11 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
                 : { borderColor: "var(--color-ink-muted)", color: "var(--color-ink-muted)" }
             }
           >
-            {rainCard ? `${shadowPct}% dry` : routeShadowLabel(r)}
+            {rainCard
+              ? exposureUpdating
+                ? "updating shelter…"
+                : (shadowPct == null || exposureUnknown ? "shelter unknown" : `${shadowPct}% sheltered`)
+              : routeShadowLabel(r)}
           </span>
         </div>
 
@@ -145,7 +156,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
-                  width: `${shadowPct}%`,
+                  width: `${shadowPct ?? 0}%`,
                   background: rainCard ? "var(--color-route-mid)" : "var(--color-shade)",
                 }}
               />
@@ -162,7 +173,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         </div>
 
         <div className="mt-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
-          {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
+          {rainCard ? (exposureUpdating ? "route choices from earlier conditions · updating shelter…" : rainExposureLine(r)) : routeExposureLine(r)}
           {!rainCard && exposureScope && ` · ${exposureScope}`}
         </div>
 
@@ -188,7 +199,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             {streak && (
               <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
                 <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
-                  {rainCard ? "Continuous Wet" : "Continuous Shadow"}
+                  {rainCard ? "Continuous shelter" : "Continuous Shadow"}
                 </div>
                 <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{streak}</div>
               </div>
@@ -201,7 +212,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             )}
             <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
               <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
-                {rainCard ? "Wet Breaks" : "Shadow Breaks"}
+                  {rainCard ? "Shelter breaks" : "Shadow Breaks"}
               </div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{transitions}</div>
             </div>
@@ -247,6 +258,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
           const stopCount = (tLeg.stops?.length ?? 2) - 1;
           const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
+          const rainTransit = rainCard && r.objective === "rain";
           const sunExposure = tLeg.sunExposure ?? 0;
           const sunCoverage = tLeg.sunExposureCoverage;
           const aboveGround = tLeg.aboveGroundShare;
@@ -260,6 +272,9 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             sunny: token("color-sun"),
             unknown: "var(--color-ink-muted)",
           }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
+          const rainLabel = tLeg.waitExposure?.shelter == null
+            ? "outdoor wait shelter unknown"
+            : `${Math.round(tLeg.waitExposure.shelter * 100)}% sheltered at stops`;
           return (
             <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
               <div className="flex items-center gap-1">
@@ -271,7 +286,13 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               <div className="flex gap-x-2 flex-wrap">
                 <span>{totalMin} min total</span>
                 <span style={{ opacity: 0.4 }}>·</span>
-                <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
+                {rainTransit ? (
+                  <span style={{ color: "var(--color-route)" }}>
+                    {rainLabel} · {tLeg.vehicleSheltered ? "ride sheltered by enclosed-vehicle assumption" : "ride shelter unknown"}
+                  </span>
+                ) : (
+                  <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
+                )}
               </div>
               {scheduleLine && (
                 // The producer publishes these statements so a client states

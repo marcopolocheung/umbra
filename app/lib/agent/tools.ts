@@ -238,7 +238,7 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
   {
     name: "plan_shadowed_route",
     description:
-      "Draw a shadow-aware walking route through an ordered set of stops (shortest/balanced/most-shadowed for the current time).",
+      "Draw an exposure-aware walking route through an ordered set of stops (shortest/balanced and the most protected option for the active sun or rain objective).",
     parameters: {
       type: "object",
       properties: {

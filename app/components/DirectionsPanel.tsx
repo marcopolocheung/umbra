@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
 import type { TravelModeId } from "../lib/travelMode";
+import type { ManualWind, WindSource } from "../lib/exposure";
 import { TRAVEL_MODE_POLICIES } from "../lib/travelMode";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { routeProgressCount, routeProgressPercent } from "../lib/routeProgress";
@@ -99,11 +100,15 @@ export interface DirectionsPanelProps {
   /** Rain objective: cards present shelter figures; sun-derived lines hide. */
   rainMode?: boolean;
   onRainModeChange?: (mode: boolean) => void;
-  /** 0–10 intensity setting that scales wet-minute figures only. */
+  /** Deprecated compatibility props; rain exposure is unscaled. */
   rainIntensity?: number;
   onRainIntensityChange?: (v: number) => void;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  windSource?: WindSource;
+  manualWind?: ManualWind;
+  onWindSourceChange?: (source: WindSource) => void;
+  onManualWindChange?: (wind: Partial<ManualWind>) => void;
 }
 
 export default function DirectionsPanel({
@@ -111,7 +116,7 @@ export default function DirectionsPanel({
   waypointALabel, waypointBLabel,
   onSetWaypointA, onSetWaypointB,
   onSwapWaypoints, onClearWaypointA, onClearWaypointB,
-  onClear, onCalculate, isCalculating,
+  onClear: _onClear, onCalculate, isCalculating,
   routeProgress,
   routes, selectedRouteIndex, onSelectRoute,
   error, solarIntensity,
@@ -135,10 +140,18 @@ export default function DirectionsPanel({
   shadowPreference = 0.5, onShadowPreferenceChange,
   weather = null,
   rainMode = false, onRainModeChange,
-  rainIntensity = 5, onRainIntensityChange,
+  rainIntensity: _rainIntensity = 5, onRainIntensityChange: _onRainIntensityChange,
   rainWind = null,
+  windSource = "forecast",
+  manualWind = { directionDeg: 0, speedMps: 0 },
+  onWindSourceChange,
+  onManualWindChange,
 }: DirectionsPanelProps) {
-  const shadowLabel = shadowPreference < 0.33 ? "Fastest" : shadowPreference > 0.66 ? "Most shadowed" : "Balanced";
+  const preferenceLabel = shadowPreference < 0.33
+    ? "Fastest"
+    : shadowPreference > 0.66
+      ? (rainMode ? "Most sheltered" : "Most shadowed")
+      : "Balanced";
   const baselineRoute = shortestRoute(routes);
   const completeBaselineRoute = shortestRoute(routes.filter((route) => !route.partial)) ?? baselineRoute;
   const selectedRoute = routes[selectedRouteIndex];
@@ -204,27 +217,64 @@ export default function DirectionsPanel({
                 rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-canvas'
               }`}
               style={rainMode !== rain ? { color: "var(--color-ink-muted)" } : undefined}
-              title={rain ? 'Route away from rain (experimental)' : 'Route by sun exposure'}
+              title={rain ? 'Route using rain shelter' : 'Route by sun exposure'}
             >
               {rain ? 'Rain' : 'Sun'}
             </button>
           ))}
         </div>
       )}
-      {rainMode && onRainIntensityChange && (
-        <label className="flex items-center gap-2 self-start text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
-          <input
-            type="range"
-            min={0}
-            max={10}
-            step={1}
-            value={rainIntensity}
-            onChange={(e) => onRainIntensityChange(Number(e.target.value))}
-            aria-label="Rain intensity 0 to 10"
-            className="w-32"
-          />
-          <span>Rain {rainIntensity}/10</span>
-        </label>
+
+      {rainMode && onWindSourceChange && (
+        <div className="flex flex-col gap-2 self-start rounded-lg border p-2 text-[11px]" style={{ borderColor: "var(--color-hairline)" }}>
+          <div className="font-semibold" style={{ color: "var(--color-ink)" }}>Rain conditions</div>
+          <div className="flex gap-1">
+            {(["forecast", "manual"] as const).map((source) => (
+              <button
+                type="button"
+                key={source}
+                onClick={() => onWindSourceChange(source)}
+                aria-pressed={windSource === source}
+                className="rounded px-2 py-1"
+                style={{
+                  color: windSource === source ? "var(--color-route)" : "var(--color-ink-muted)",
+                  background: windSource === source ? "var(--color-route-soft)" : "transparent",
+                }}
+              >
+                {source === "forecast" ? "Forecast wind" : "Manual wind"}
+              </button>
+            ))}
+          </div>
+          {windSource === "manual" && onManualWindChange && (
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1">
+                From °
+                <input
+                  type="number"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={manualWind.directionDeg}
+                  onChange={(event) => onManualWindChange({ directionDeg: Number(event.target.value) })}
+                  className="w-16 rounded border px-1 py-1"
+                  aria-label="Wind from bearing in degrees"
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                m/s
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={manualWind.speedMps}
+                  onChange={(event) => onManualWindChange({ speedMps: Number(event.target.value) })}
+                  className="w-16 rounded border px-1 py-1"
+                  aria-label="Wind speed in metres per second"
+                />
+              </label>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Active-travel selector (E1/E4) — only for walk routing; transit legs stay pedestrian */}
@@ -439,11 +489,11 @@ export default function DirectionsPanel({
         )}
       </div>
 
-      {/* Shadow preference slider */}
+      {/* Objective preference slider */}
       <div className="border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Shadow preference</span>
-          <span className="text-[11px] font-medium" style={{ color: "var(--color-ink)" }}>{shadowLabel}</span>
+          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter preference" : "Shadow preference"}</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--color-ink)" }}>{preferenceLabel}</span>
         </div>
         <input
           type="range"
@@ -457,7 +507,7 @@ export default function DirectionsPanel({
         />
         <div className="flex justify-between mt-1">
           <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
-          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>Most shadowed</span>
+          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Most sheltered" : "Most shadowed"}</span>
         </div>
       </div>
 
@@ -475,7 +525,7 @@ export default function DirectionsPanel({
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
           )}
-          {isCalculating ? 'Calculating...' : 'Find Shadowed Route'}
+          {isCalculating ? 'Calculating...' : rainMode ? 'Find Sheltered Route' : 'Find Shadowed Route'}
         </button>
       </div>
       {isCalculating && routeProgress && (
@@ -521,7 +571,7 @@ export default function DirectionsPanel({
             baselineRoute={completeBaselineRoute ?? undefined}
             weather={weather}
             rainMode={rainMode}
-            rainIntensity={rainIntensity}
+            rainIntensity={_rainIntensity}
             rainWind={rainWind}
           />
           {exposureSlot}
@@ -536,7 +586,7 @@ export default function DirectionsPanel({
                 onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
                 recommended={r.label === "Balanced"}
                 rainMode={rainMode}
-                rainIntensity={rainIntensity}
+                rainIntensity={_rainIntensity}
               />
             ))}
           </div>

@@ -4,6 +4,7 @@ import {
   fetchCloudCoverForecast,
   fetchWeatherForecast,
   nearestCloudCover,
+  nearestForecastWind,
   nearestWeatherHour,
   parseWeatherHours,
 } from "../weather";
@@ -119,6 +120,26 @@ describe("nearestWeatherHour", () => {
 
   it("returns null past the 90-minute match window", () => {
     expect(nearestWeatherHour(hours, new Date("2026-08-08T20:00:00.000Z"))).toBeNull();
+  });
+});
+
+describe("nearestForecastWind", () => {
+  it("keeps a valid calm row and falls back when the nearest row has no usable wind", () => {
+    const hours = parseWeatherHours({
+      hourly: {
+        time: ["2026-08-08T15:00", "2026-08-08T16:00"],
+        wind_speed_10m: [0, 4],
+        wind_direction_10m: [0, 180],
+      },
+    });
+    expect(nearestForecastWind(hours, new Date("2026-08-08T15:05:00.000Z"))).toMatchObject({
+      directionDeg: 0,
+      speedMps: 0,
+    });
+
+    const missing = [...hours];
+    missing[0] = { ...missing[0], windDirDeg: null };
+    expect(nearestForecastWind(missing, new Date("2026-08-08T15:05:00.000Z"))).toBeNull();
   });
 });
 

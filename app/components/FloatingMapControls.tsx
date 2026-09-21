@@ -14,7 +14,7 @@ interface FloatingMapControlsProps {
   /** Rain objective toggle — absent keeps the control out of the column. */
   rainMode?: boolean;
   onRainModeChange?: (mode: boolean) => void;
-  /** 0–10 intensity slider, shown while rain mode is on. */
+  /** Deprecated compatibility props; rain has no intensity slider. */
   rainIntensity?: number;
   onRainIntensityChange?: (v: number) => void;
 }
@@ -28,8 +28,8 @@ export default function FloatingMapControls({
   shareStatus = "idle",
   rainMode = false,
   onRainModeChange,
-  rainIntensity = 5,
-  onRainIntensityChange,
+  rainIntensity: _rainIntensity = 5,
+  onRainIntensityChange: _onRainIntensityChange,
 }: FloatingMapControlsProps) {
   const is3D = pitch > 0;
 
@@ -60,7 +60,6 @@ export default function FloatingMapControls({
       <div className="h-px w-8 bg-hairline-strong self-center my-1" />
 
       {onRainModeChange && (
-        <>
           <fieldset
             className="flex rounded-2xl overflow-hidden shadow-xl self-center border-0 p-0 m-0"
             aria-label="Route objective"
@@ -88,22 +87,6 @@ export default function FloatingMapControls({
               <span className="material-symbols-outlined text-[20px]">rainy</span>
             </button>
           </fieldset>
-          {rainMode && onRainIntensityChange && (
-            <div className="w-12 flex flex-col items-center gap-1 rounded-2xl bg-raised/95 shadow-level-2 px-1 py-2">
-              <input
-                type="range"
-                min={0}
-                max={10}
-                step={1}
-                value={rainIntensity}
-                onChange={(e) => onRainIntensityChange(Number(e.target.value))}
-                aria-label="Rain intensity 0 to 10"
-                className="h-24 w-2 accent-route"
-                style={{ writingMode: "vertical-lr", direction: "rtl" }}
-              />
-            </div>
-          )}
-        </>
       )}
 
       {onShare && (

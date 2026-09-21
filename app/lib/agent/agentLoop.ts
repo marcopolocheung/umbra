@@ -42,7 +42,7 @@ import {
   type FieldSourceCategory,
 } from "./authority";
 
-const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around shadow and sun comfort: shadowed walks, where to sit or eat out of the sun at a given hour, and shadow-aware routes. If asked anything else, reply in one sentence that you only help plan around shadow, and stop. Do not answer off-topic questions.
+const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. You ONLY plan a day or outing around sun comfort and rain shelter: shadowed or sheltered walks, where to sit or eat out of the sun or rain at a given hour, and exposure-aware routes. If asked anything else, reply in one sentence that you only help plan around sun and rain exposure, and stop. Do not answer off-topic questions.
 
 The current map context (center, local time, whether the user's location is known) is given to you below — use it directly; do NOT ask for it.
 
@@ -86,7 +86,7 @@ const MAX_PINS = 8;
 // a reasoning model handed those instructions with no tools available narrates
 // the calls it can't make (raw `{"name":...}` JSON) into the answer. This prompt
 // keeps the topic guardrail but tells it to synthesize only, never tool-call.
-const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. For time include value {localTime}. For a route include value {status}, requestId, actionId, planRevision and mapObjectId. Accessibility has no verification tool: say unknown. Do not call or mention tools.`;
+const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. For time include value {localTime}. For a route include value {status, objective}, requestId, actionId, planRevision and mapObjectId; use the objective from the route evidence (sun or rain). Accessibility has no verification tool: say unknown. Do not call or mention tools.`;
 
 export interface ToolEvent {
   name: string;
@@ -236,7 +236,8 @@ function routeTerminalText(result: RoutePlanTerminalResult): string {
       const legs = result.unroutableLegs
         .map((leg) => `leg ${leg.failedLeg} of ${leg.totalLegs}`)
         .join(", ");
-      return `I could only make a partial route: ${legs} could not be routed. The completed legs remain visible on the map.`;
+      const objective = result.objective === "rain" ? " sheltered route" : " route";
+      return `I could only make a partial${objective}: ${legs} could not be routed. The completed legs remain visible on the map.`;
     }
     case "no_plan_found":
       return `I couldn't find a walkable route for those stops. ${result.message}`;
@@ -373,7 +374,7 @@ function evidenceProposal(
         push({
           kind: "route",
           subject: "route",
-          value: { status: terminal.status },
+          value: { status: terminal.status, ...(terminal.objective ? { objective: terminal.objective } : {}) },
           supportingResultIds: [envelope.resultId],
           requestId: terminal.requestId,
           actionId: terminal.actionId,
@@ -1049,7 +1050,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // which is the list the write prompt tells it to stay inside.
   const pinnedLine = mapPins.length
     ? `\n\nMap state guarantee: these pins are on the map, and they are the only places you may name: ${plottedPointSummary(mapPins)}.${
-        routedThisTurn ? " A shadow-aware walking route through them completed on the map." : ""
+        routedThisTurn ? " An exposure-aware walking route through them completed on the map." : ""
       }`
     : "\n\nNothing is pinned on the map, so name no specific place.";
 

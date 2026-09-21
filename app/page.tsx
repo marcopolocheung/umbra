@@ -1,5 +1,5 @@
 import "./lib/storageMigration";
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import TimelineSlider from "./components/TimelineSlider";
 import AccumulationPanel from "./components/AccumulationPanel";
 import SaveRouteModal from "./components/SaveRouteModal";
@@ -36,15 +36,7 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
-import { directionForWindReport, windFromLabel } from "./lib/rain/direction";
-import {
-  clearRainMapData,
-  ensureRainMapLayer,
-  RAIN_GRID_COLS,
-  RAIN_GRID_ROWS,
-  setRainMapData,
-} from "./lib/rain/rainMapLayer";
-import type { BBox } from "./lib/shadowField/ShadowField";
+import { contextConditionsLabel, resolveExposureContext } from "./lib/exposure";
 
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
@@ -246,7 +238,7 @@ export default function Home() {
   } = shadow;
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
-  const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate });
+  const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date });
   const {
     navMode,
     waypointA,
@@ -258,6 +250,10 @@ export default function Home() {
     navError,
     routeSolarIntensity,
     routeWind,
+    routeExposureContext,
+    exposureSettings,
+    windSource,
+    manualWind,
     waypointALabel,
     waypointBLabel,
     pendingSlot,
@@ -298,6 +294,8 @@ export default function Home() {
     handleTravelModeChange,
     handleShadowPreferenceChange,
     handleRainModeChange,
+    handleWindSourceChange,
+    handleManualWindChange,
     handleRainIntensityChange,
     handleSketchPointClick,
     handleSketchPointDrag,
@@ -331,6 +329,9 @@ export default function Home() {
     shadowField,
     date,
     mapUtcOffsetMin,
+    exposureSettings.objective,
+    exposureSettings,
+    routeExposureContext,
   );
   const exposureSlot = (
     <HourlyExposureStrip
@@ -345,85 +346,62 @@ export default function Home() {
   // Weather for the heat score, from D2's cache — the same response the cloud badge
   // already fetched for this location, matched to the hour the timeline is showing.
   const heatWeather = useWeatherHour(mapCenter, date);
+  // Rain planning is anchored to the trip endpoints, so a map pan cannot silently
+  // change the wind used by the renderer before Find Route runs. This reads the
+  // same weather cache as the heat badge; once a route exists its immutable
+  // routeExposureContext remains the authoritative context.
+  const rainWeatherCenter = useMemo<[number, number] | null>(() => {
+    if (rainMode && waypointA && waypointB) {
+      return [
+        (waypointA[1] + waypointB[1]) / 2,
+        (waypointA[0] + waypointB[0]) / 2,
+      ];
+    }
+    return mapCenter;
+  }, [rainMode, waypointA, waypointB, mapCenter]);
+  const rainWeather = useWeatherHour(rainWeatherCenter, date);
+  const [shadowLayerReady, setShadowLayerReady] = useState(false);
 
-  // The Sun/Rain toggle now also switches the canvas: rain aims the painter's ray
-  // at the forecast wind (vertical when unknown) instead of the sun, and paints
-  // wet-blue where that ray reaches. setEnabled keeps the same layer alive, so the
-  // switch is a repaint, not a rebuild.
+  // The Sun/Rain toggle changes only the incident ray. Both objectives are
+  // rendered by LocalShadowAdapter's shared blue protection pipeline.
   useEffect(() => {
     const layer = shadowLayerRef.current;
     if (!layer) return;
     layer.setEnabled?.(true);
+    const selectedContext = rainMode && routeExposureContext?.objective === "rain"
+      ? routeExposureContext
+      : resolveExposureContext(
+          exposureSettings,
+          {
+            time: date,
+            mapCenter: mapCenter ? [mapCenter[1], mapCenter[0]] : null,
+            tripStops: waypointA && waypointB ? [waypointA, waypointB] : undefined,
+            forecast: rainWeather ? [rainWeather] : [],
+          },
+        );
+    layer.setExposureContext?.(selectedContext);
     layer.setHazard?.(rainMode ? "rain" : "sun");
-  }, [rainMode]);
-  useEffect(() => {
-    const layer = shadowLayerRef.current;
-    if (!rainMode || !layer) return;
-    layer.setRainWind?.(heatWeather?.windDirDeg ?? null, heatWeather?.windMs ?? null);
-  }, [rainMode, heatWeather]);
-
-  // The rain *ground* picture as a basemap raster: the same shelter grid routing
-  // pays for, preloaded the way routing preloads it, composited by the style
-  // renderer so the map below is never destroyed by a custom pass.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const clear = () => clearRainMapData(map);
-    if (!rainMode) {
-      clear();
-      return;
+    if (rainMode && !layer.setExposureContext) {
+      layer.setRainWind?.(selectedContext.windDirectionDeg, selectedContext.windSpeedMps);
     }
-    try {
-      ensureRainMapLayer(map);
-    } catch {
-      // Style not settled yet; the next moveend pass reconciles.
-    }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const repaint = async () => {
-      const bounds = map.getBounds();
-      const bbox: BBox = {
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-      };
-      try {
-        await shadowField?.ready(bbox, { deadlineAt: Date.now() + 2500 });
-      } catch {
-        // Providers may refuse; the grid then honestly reports what it has.
-      }
-      if (cancelled || !shadowField) return;
-      const direction = directionForWindReport(
-        heatWeather?.windDirDeg ?? null,
-        heatWeather?.windMs ?? null,
-      );
-      const grid = shadowField.sampleRainGrid(
-        bbox,
-        RAIN_GRID_COLS,
-        RAIN_GRID_ROWS,
-        direction,
-        date,
-      );
-      setRainMapData(map, grid, bbox);
-    };
-    repaint();
-    const onMoveEnd = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(repaint, 250);
-    };
-    map.on("moveend", onMoveEnd);
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      map.off("moveend", onMoveEnd);
-    };
-  }, [rainMode, heatWeather, shadowField, date, mapRef]);
+  }, [
+    rainMode,
+    routeExposureContext,
+    exposureSettings.objective,
+    exposureSettings.windSource,
+    exposureSettings.manualWind.directionDeg,
+    exposureSettings.manualWind.speedMps,
+    date,
+    mapCenter,
+    waypointA,
+    waypointB,
+    rainWeather,
+    shadowLayerReady,
+  ]);
 
   const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const [cloudCoverPct, setCloudCoverPct] = useState<number | null>(null);
-  const [shadowLayerReady, setShadowLayerReady] = useState(false);
   const [shadowLegendDismissed, setShadowLegendDismissed] = useState(readShadowLegendDismissed);
   const [remoteShadowCurrent, setRemoteShadowCurrent] = useState<ShadowCurrent | undefined>();
   const [remoteShadowError, setRemoteShadowError] = useState<string | null>(null);
@@ -662,6 +640,13 @@ export default function Home() {
         );
       }
       if (shared.travelMode !== "walk") handleTravelModeChange(shared.travelMode);
+      if (shared.objective === "rain") {
+        handleRainModeChange(true);
+        // Restore the selected source even when it is forecast. A user can open
+        // a forecast link after previously using a manual override in this tab.
+        handleWindSourceChange(shared.windSource);
+        if (shared.windSource === "manual") handleManualWindChange(shared.manualWind);
+      }
       if (shared.center || shared.zoom != null) {
         const center = shared.center ?? ([mapCenter[1], mapCenter[0]] as [number, number]);
         mapRef.current.jumpTo({ center, zoom: shared.zoom ?? mapRef.current.getZoom() });
@@ -678,6 +663,9 @@ export default function Home() {
     handleSetWaypointA,
     handleSetWaypointB,
     handleTravelModeChange,
+    handleRainModeChange,
+    handleWindSourceChange,
+    handleManualWindChange,
     mapCenter,
     mapRef,
     mapUtcOffsetMin,
@@ -696,9 +684,26 @@ export default function Home() {
       additionalWaypoints,
       dwellMinutes,
       travelMode,
+      objective: exposureSettings.objective,
+      windSource: exposureSettings.windSource,
+      manualWind: exposureSettings.manualWind,
     });
     window.history.replaceState(null, "", url);
-  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [
+    additionalWaypoints,
+    date,
+    dwellMinutes,
+    exposureSettings.objective,
+    exposureSettings.windSource,
+    exposureSettings.manualWind.directionDeg,
+    exposureSettings.manualWind.speedMps,
+    mapCenter,
+    mapUtcOffsetMin,
+    mapZoom,
+    travelMode,
+    waypointA,
+    waypointB,
+  ]);
 
   const handleShareLink = useCallback(async () => {
     const url = shareUrlFromState({
@@ -711,6 +716,9 @@ export default function Home() {
       additionalWaypoints,
       dwellMinutes,
       travelMode,
+      objective: exposureSettings.objective,
+      windSource: exposureSettings.windSource,
+      manualWind: exposureSettings.manualWind,
     });
     try {
       await navigator.clipboard.writeText(url);
@@ -719,7 +727,21 @@ export default function Home() {
       setShareStatus("error");
     }
     window.setTimeout(() => setShareStatus("idle"), 1800);
-  }, [additionalWaypoints, date, dwellMinutes, mapCenter, mapUtcOffsetMin, mapZoom, travelMode, waypointA, waypointB]);
+  }, [
+    additionalWaypoints,
+    date,
+    dwellMinutes,
+    exposureSettings.objective,
+    exposureSettings.windSource,
+    exposureSettings.manualWind.directionDeg,
+    exposureSettings.manualWind.speedMps,
+    mapCenter,
+    mapUtcOffsetMin,
+    mapZoom,
+    travelMode,
+    waypointA,
+    waypointB,
+  ]);
 
   const handleDismissShadowLegend = useCallback(() => {
     setShadowLegendDismissed(true);
@@ -1041,6 +1063,12 @@ export default function Home() {
             onTravelModeChange={handleTravelModeChange}
             shadowPreference={shadowPreference}
             onShadowPreferenceChange={handleShadowPreferenceChange}
+            rainMode={rainMode}
+            onRainModeChange={handleRainModeChange}
+            windSource={windSource}
+            manualWind={manualWind}
+            onWindSourceChange={handleWindSourceChange}
+            onManualWindChange={handleManualWindChange}
           />
         );
 
@@ -1055,6 +1083,7 @@ export default function Home() {
             onBack={() => dispatch({ type: "BACK" })}
             onArrive={() => dispatch({ type: "ARRIVE" })}
             onExit={() => dispatch({ type: "DISMISS" })}
+            rainMode={rainMode}
           />
         );
 
@@ -1066,6 +1095,7 @@ export default function Home() {
             waypointBLabel={waypointBLabel}
             onPlanAnother={() => dispatch({ type: "START_DIRECTIONS" })}
             onDone={() => dispatch({ type: "DISMISS" })}
+            rainMode={rainMode}
           />
         );
 
@@ -1153,8 +1183,6 @@ export default function Home() {
           shareStatus={shareStatus}
           rainMode={rainMode}
           onRainModeChange={handleRainModeChange}
-          rainIntensity={rainIntensity}
-          onRainIntensityChange={handleRainIntensityChange}
         />
       </div>
 
@@ -1175,29 +1203,26 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-ink-muted)" }}>
             <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "var(--color-route-mid)" }} />
-            Direct rain reaches here
+            Protected at the selected conditions
           </div>
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-ink-muted)" }}>
             <span className="inline-block w-3 h-3 rounded-sm bg-transparent" style={{ border: "1px dashed var(--color-hairline-strong)" }} />
-            Sheltered (overhang or canopy)
+            Blue means protected from the assumed rain
           </div>
         </div>
       )}
 
-      {/* Rain wind pill — the wind the canvas is aimed at, hour by hour */}
-      {rainMode && heatWeather?.windDirDeg != null && heatWeather.windMs != null && (
+      {/* Rain wind pill — the conditions used by the shared renderer */}
+      {rainMode && routeExposureContext?.objective === "rain" && (
         <div
           className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg"
           style={{ background: "var(--color-raised)", border: "1px solid var(--color-hairline)" }}
         >
           <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--color-ink-muted)" }}>
-            Wind this hour
+            Rain conditions
           </div>
           <div className="text-xs" style={{ color: "var(--color-ink)" }}>
-            {windFromLabel(heatWeather.windDirDeg)} {Math.round(heatWeather.windMs * 3.6)} km/h
-            <span style={{ color: "var(--color-ink-muted)" }}>
-              {" "}· shelter tilted {Math.round(directionForWindReport(heatWeather.windDirDeg, heatWeather.windMs).altitudeDeg)}°
-            </span>
+            {contextConditionsLabel(routeExposureContext)}
           </div>
         </div>
       )}
@@ -1276,8 +1301,10 @@ export default function Home() {
               onShadowPreferenceChange={handleShadowPreferenceChange}
               rainMode={rainMode}
               onRainModeChange={handleRainModeChange}
-              rainIntensity={rainIntensity}
-              onRainIntensityChange={handleRainIntensityChange}
+              windSource={windSource}
+              manualWind={manualWind}
+              onWindSourceChange={handleWindSourceChange}
+              onManualWindChange={handleManualWindChange}
             />
           ) : phase === "NAVIGATING" ? (
             <NavigationStatusPanel
@@ -1289,6 +1316,7 @@ export default function Home() {
               onBack={() => dispatch({ type: "BACK" })}
               onArrive={() => dispatch({ type: "ARRIVE" })}
               onExit={() => dispatch({ type: "DISMISS" })}
+              rainMode={rainMode}
             />
           ) : phase === "ARRIVAL" ? (
             <ArrivalPanel

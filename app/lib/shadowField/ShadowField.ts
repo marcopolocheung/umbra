@@ -123,6 +123,15 @@ export interface EdgeShelter {
   canopySources?: { osm: boolean; raster: boolean };
 }
 
+/** A point answer for the selected exposure objective. */
+export interface RainSample extends EdgeShelter {
+  /** Point shelter fraction: 0 exposed, 1 protected. */
+  shelter: number;
+}
+
+/** Shared edge output. Sun keeps its historical `shadow` polarity; rain uses `shelter`. */
+export type ExposureEdgeSample = EdgeShadow | EdgeShelter;
+
 export interface BBox {
   west: number;
   south: number;
@@ -167,6 +176,10 @@ export interface ShadowIndexPhases {
 
 export interface ShadowField {
   shadowAt(lng: number, lat: number, when: Date): ShadowSample;
+  /** Point shelter at an actual stop location for rain waiting-time estimates. */
+  rainAt(lng: number, lat: number, direction: RainDirection, when?: Date): RainSample;
+  /** Descriptive alias for callers that use the objective sampler naming. */
+  sampleRainAt(lng: number, lat: number, direction: RainDirection, when?: Date): RainSample;
   sampleEdges(edges: EdgeRef[], when: Date, phases?: ShadowIndexPhases): EdgeShadow[];
   /**
    * Rain shelter for each edge's two sidewalks, from the same providers.
@@ -175,6 +188,14 @@ export interface ShadowField {
    * the canopy's leaf state exactly as `sampleEdges` does; omit it for now.
    */
   sampleRainEdges(edges: EdgeRef[], direction: RainDirection, when?: Date): EdgeShelter[];
+  /** Objective-aware edge seam. The legacy methods remain compatibility wrappers. */
+  sampleExposureEdges(
+    edges: EdgeRef[],
+    objective: "sun" | "rain",
+    when: Date,
+    direction?: RainDirection,
+    phases?: ShadowIndexPhases,
+  ): ExposureEdgeSample[];
   /**
    * Rain shelter rasterized over a rectangle for map painting.
    *
@@ -1266,6 +1287,87 @@ export function createGeometryShadowField(
     return results;
   }
 
+  /**
+   * Rain at a stationary coordinate. Unlike an edge sample this deliberately
+   * does not apply the sidewalk offset or average neighbouring points: transit
+   * waits are evaluated at the stop the timetable names. Missing geometry keeps
+   * its zero-confidence answer so callers can report the wait as unknown.
+   */
+  function rainAt(
+    lng: number,
+    lat: number,
+    direction: RainDirection,
+    when: Date = new Date(),
+  ): RainSample {
+    const bbox = bboxAroundPoint(lng, lat, QUERY_PAD_M);
+    const resolved = resolve(bbox);
+    const canopy = resolveCanopy(bbox, when);
+    const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
+    const score = scoreFor(resolved, canopy, null, altitudeRad);
+    if (!resolved && !canopy) {
+      return {
+        shelter: 0,
+        left: 0,
+        right: 0,
+        source: "none",
+        confidence: 0,
+        buildingSource: null,
+        canopySources: { osm: false, raster: false },
+      };
+    }
+
+    const { mPerLat, mPerLng } = metersPerDegree(lat);
+    const rayAzimuth = ((direction.fromDeg + 180) * Math.PI) / 180;
+    const region: IndexRegion = { ...bbox };
+    const buildingIndex = resolved
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(resolved.set.prisms),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region,
+        )
+      : null;
+    const canopyIndex = canopy
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(rainCanopyCastersFor(canopy.prisms)),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region,
+        )
+      : null;
+    const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
+    const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
+    const shelter = pointShadow(buildingIndex, canopyIndex, null, lng, lat);
+    return {
+      shelter,
+      left: shelter,
+      right: shelter,
+      source: score.source,
+      confidence,
+      buildingSource: resolved?.source ?? null,
+      canopySources: {
+        osm: (canopy?.prisms.length ?? 0) > 0,
+        raster: false,
+      },
+    };
+  }
+
+  function sampleExposureEdges(
+    edges: EdgeRef[],
+    objective: "sun" | "rain",
+    when: Date,
+    direction?: RainDirection,
+    phases?: ShadowIndexPhases,
+  ): ExposureEdgeSample[] {
+    return objective === "rain"
+      ? sampleRainEdges(edges, direction ?? ({ fromDeg: 0, altitudeDeg: 89.5, windMs: 0 }), when)
+      : sampleEdges(edges, when, phases);
+  }
+
   function sampleRainGrid(
     bounds: BBox,
     cols: number,
@@ -1442,8 +1544,11 @@ export function createGeometryShadowField(
 
   return {
     shadowAt,
+    rainAt,
+    sampleRainAt: rainAt,
     sampleEdges,
     sampleRainEdges,
+    sampleExposureEdges,
     sampleRainGrid,
     readyEdges,
     coverageEdges,

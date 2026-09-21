@@ -46,7 +46,7 @@ const TOOL_LABELS: Record<string, string> = {
   check_shadow: "Probing real shadow on the map",
   set_time: "Setting the time of day",
   plot_points: "Plotting points on the map",
-  plan_shadowed_route: "Computing a shadow-aware route",
+  plan_shadowed_route: "Computing an exposure-aware route",
 };
 
 let idCounter = 0;

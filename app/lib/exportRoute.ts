@@ -3,7 +3,25 @@ import type { RouteOption } from "./routing";
 import type { Trip } from "./trip/types";
 
 export function routeToGeoJSON(route: RouteOption, trip?: Trip): string {
-  const features: GeoJSON.Feature[] = [route.geojson];
+  const context = route.evaluatedContext;
+  const routeFeature: GeoJSON.Feature = {
+    ...route.geojson,
+    properties: {
+      ...(route.geojson.properties ?? {}),
+      objective: route.objective ?? context?.objective ?? "sun",
+      ...(context
+        ? {
+            evaluatedAt: context.time.toISOString(),
+            referenceLocation: context.referenceLocation,
+            windProvenance: context.windProvenance,
+            windDirectionDeg: context.windDirectionDeg,
+            windSpeedMps: context.windSpeedMps,
+            contextRevision: context.revision,
+          }
+        : {}),
+    },
+  };
+  const features: GeoJSON.Feature[] = [routeFeature];
   if (trip) {
     for (const [i, stop] of trip.stops.entries()) {
       features.push({
@@ -38,6 +56,7 @@ export function routeToGPX(route: RouteOption, name: string, trip?: Trip): strin
   // the other way round.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Umbra" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><desc>${escapeXml(gpxConditions(route))}</desc></metadata>
 ${waypoints ? `${waypoints}\n` : ""}  <trk>
     <name>${escapeXml(name)}</name>
     <trkseg>
@@ -45,6 +64,15 @@ ${trkpts}
     </trkseg>
   </trk>
 </gpx>`;
+}
+
+function gpxConditions(route: RouteOption): string {
+  const context = route.evaluatedContext;
+  if (!context) return `Umbra ${route.objective ?? "sun"} route`;
+  const wind = context.objective === "rain"
+    ? `; ${context.windProvenance} wind ${context.windDirectionDeg ?? "unknown"}° at ${context.windSpeedMps ?? "unknown"} m/s`
+    : "";
+  return `Umbra ${context.objective} route evaluated ${context.time.toISOString()}${wind}`;
 }
 
 function escapeXml(s: string): string {

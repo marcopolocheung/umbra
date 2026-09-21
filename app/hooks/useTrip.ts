@@ -313,6 +313,33 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
         dateIso,
         version: 2,
         trip: journey,
+        ...(route.objective
+          ? {
+              exposureSettings: {
+                objective: route.objective,
+                windSource: route.evaluatedContext?.windProvenance === "manual" ? "manual" as const : "forecast" as const,
+                manualWind: {
+                  directionDeg: route.evaluatedContext?.windDirectionDeg ?? 0,
+                  speedMps: route.evaluatedContext?.windSpeedMps ?? 0,
+                },
+              },
+              evaluatedConditions: route.evaluatedContext
+                ? {
+                    objective: route.evaluatedContext.objective,
+                    windSource: route.evaluatedContext.windProvenance === "manual" ? "manual" as const : "forecast" as const,
+                    manualWind: {
+                      directionDeg: route.evaluatedContext.windDirectionDeg ?? 0,
+                      speedMps: route.evaluatedContext.windSpeedMps ?? 0,
+                    },
+                    evaluatedContext: {
+                      ...route.evaluatedContext,
+                      time: route.evaluatedContext.time.toISOString(),
+                      forecastHour: route.evaluatedContext.forecastHour?.toISOString() ?? null,
+                    },
+                  }
+                : undefined,
+            }
+          : {}),
       });
       setSavedRoutes(getRoutes());
       setSavedFolders(getFolders());

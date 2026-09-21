@@ -11,6 +11,9 @@ export interface BuildingShadowMask {
   /** FBO pixels per CSS pixel on each axis (the FBO dimension can be capped). */
   pixelRatioX: number;
   pixelRatioY: number;
+  /** Objective/context that produced the readback. */
+  objective?: "sun" | "rain";
+  contextRevision?: string;
 }
 
 export interface IShadowLayer {
@@ -38,4 +41,8 @@ export interface IShadowLayer {
   setHazard?(hazard: "sun" | "rain"): void;
   /** Wind the rain rendering aims its ray at (from-bearing, m/s). */
   setRainWind?(dirDeg: number | null, windMs: number | null): void;
+  /** Apply all exposure inputs atomically when a layer is ready/recreated. */
+  setExposureContext?(context: import("../exposure").ResolvedExposureContext): void;
+  /** Tag currently rendered coverage so readback consumers can reject stale data. */
+  getExposureContextTag?(): { objective: "sun" | "rain"; revision: string } | null;
 }

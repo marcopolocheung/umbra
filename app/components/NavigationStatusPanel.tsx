@@ -26,6 +26,7 @@ interface NavigationStatusPanelProps {
   onBack: () => void;
   onArrive: () => void;
   onExit: () => void;
+  rainMode?: boolean;
 }
 
 export default function NavigationStatusPanel({
@@ -37,8 +38,18 @@ export default function NavigationStatusPanel({
   onBack,
   onArrive,
   onExit,
+  rainMode = false,
 }: NavigationStatusPanelProps) {
-  const shadowPct = route ? Math.round(route.shadowCoverage * 100) : null;
+  const protectedPct = route?.exposure?.shelteredDistancePct ?? route?.dryCoverage ?? null;
+  const exposureUnknown = !!route && rainMode && (
+    (route.exposure?.unknownDistanceM ?? 0) > 0 ||
+    (route.exposure?.unknownDurationSec ?? 0) > 0
+  );
+  const shadowPct = route
+    ? (rainMode
+      ? (protectedPct == null || exposureUnknown ? null : Math.round(protectedPct * 100))
+      : Math.round(route.shadowCoverage * 100))
+    : null;
   const duration = route?.totalTimeSec ? formatDuration(route.totalTimeSec) : null;
   const destination = waypointBLabel ?? coordLabel(waypointB);
 
@@ -104,8 +115,8 @@ export default function NavigationStatusPanel({
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Shadow</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct}%</div>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter" : "Shadow"}</div>
+            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct == null ? "Unknown" : `${shadowPct}%`}</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
             <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>

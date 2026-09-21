@@ -10,6 +10,7 @@ interface ArrivalPanelProps {
   waypointB: [number, number] | null;
   onPlanAnother: () => void;
   onDone: () => void;
+  rainMode?: boolean;
 }
 
 export default function ArrivalPanel({
@@ -18,6 +19,7 @@ export default function ArrivalPanel({
   waypointB,
   onPlanAnother,
   onDone,
+  rainMode = false,
 }: ArrivalPanelProps) {
   const destination = waypointBLabel ?? (waypointB ? `${waypointB[1].toFixed(5)}, ${waypointB[0].toFixed(5)}` : "Destination");
 
@@ -55,7 +57,13 @@ export default function ArrivalPanel({
         <div className="mt-3 text-sm font-semibold">Arrived at {destination}</div>
         {route && (
           <div className="mt-1 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-            {formatDistance(route.distanceM)} route with {Math.round(route.shadowCoverage * 100)}% shadow
+            {formatDistance(route.distanceM)} route with {rainMode
+              ? route.exposure?.unknownDistanceM || route.exposure?.unknownDurationSec
+                ? "shelter partly unknown"
+                : route.exposure?.shelteredDistancePct == null && route.dryCoverage == null
+                  ? "shelter unknown"
+                  : `${Math.round((route.exposure?.shelteredDistancePct ?? route.dryCoverage ?? 0) * 100)}% sheltered`
+              : `${Math.round(route.shadowCoverage * 100)}% shadow`}
           </div>
         )}
       </div>
