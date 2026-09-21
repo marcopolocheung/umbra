@@ -16,8 +16,9 @@ accordingly. Subagents stay read-only here, per the repo rule.
 ## Current state
 
 - **Active checkpoint:** U4 — timeline controls + sliding-panel interplay. Open for owner
-  review on `design/u4-timeline-sheet` (branched from `design/u3-route-glance`, PR #63,
-  because U4 edits the same surfaces U3 holds open; rebase onto main at U3's merge).
+  review as PR [#66](https://github.com/marcopolocheung/umbra/pull/66) on
+  `design/u4-timeline-sheet` (branched from `design/u3-route-glance`, PR #63, because U4
+  edits the same surfaces U3 holds open; rebase onto main at U3's merge).
 - **U3 (open, PR #63):** the route card reads as a ranking — recommended-only eyebrow,
   duration verdict, one trade-off line against the shortest complete route, provenance
   caption, detail collapsed into the selected card; planning form collapses to a trip bar.
