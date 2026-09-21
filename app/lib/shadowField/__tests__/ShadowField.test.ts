@@ -1095,6 +1095,14 @@ describe("raster canopy", () => {
             ? opacity * (0.5 + 0.5 * Math.abs(Math.sin(azimuth + altitude + when.getTime() / 1e9)))
             : 0,
       }),
+      // The rain path samples by ray; this fake answers with the same shape so the
+      // solar stub's story (shades where `shades` says) carries over unchanged.
+      sampleFor: (ray) => ({
+        sample: (lng, lat) => ({
+          protection: shades(lng, lat) ? ray.strength : 0,
+          complete: true,
+        }),
+      }),
     };
     return self;
   }
