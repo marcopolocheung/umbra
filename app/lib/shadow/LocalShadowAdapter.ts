@@ -250,10 +250,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // And its composite program: samples the protection texture, tints it with the
   // shadow palette, and hands Pass D the premultiplied output.
   private canopyCompositeProgram: WebGLProgram | null = null;
+  private canopyCompositeMatrixLoc: WebGLUniformLocation | null = null;
   private canopyCompositeTexLoc: WebGLUniformLocation | null = null;
   private canopyCompositeTintLoc: WebGLUniformLocation | null = null;
   private canopyCompositeAlphaLoc: WebGLUniformLocation | null = null;
   private canopyCompositeAttrLoc = -1;
+  private canopyCompositeQuadBuffer: WebGLBuffer | null = null;
   private canopyFbo: WebGLFramebuffer | null = null;
   private canopyFboTexture: WebGLTexture | null = null;
   private canopyFboWidth = 0;
@@ -941,9 +943,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       precision highp sampler2D;
       in vec2 v_uv;
       out vec4 outColor;
-      uniform sampler2D u_heights;
-      uniform vec4 u_outBounds;   // (west, south, east, north) mercator of the output pixel grid
-      uniform vec4 u_atlasBounds; // (minX, minY, maxX, maxY) mercator of the atlas
+      uniform sampler2D u_heights;  // R: whole metres, G: 1 where the raster populated
+      uniform vec4 u_atlasBounds;   // (minX, minY, maxX, maxY) mercator of the atlas
       uniform vec2 u_atlasSize;   // (widthPx, heightPx)
       uniform float u_resM;       // ground metres per atlas pixel
       uniform vec2 u_dir;         // unit march direction, mercator (x east, y north)
@@ -958,8 +959,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       void main() {
         // Receiver mercator from the output UV.
         vec2 m = vec2(
-          mix(u_outBounds.x, u_outBounds.z, v_uv.x),
-          mix(u_outBounds.w, u_outBounds.y, v_uv.y)
+          mix(u_atlasBounds.x, u_atlasBounds.z, v_uv.x),
+          mix(u_atlasBounds.w, u_atlasBounds.y, v_uv.y)
         );
         // Atlas pixel coordinates; row 0 is the north edge.
         vec2 px = vec2(
@@ -1028,7 +1029,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       this.canopyCanopyTexLoc = gl.getUniformLocation(this.canopyProgram, 'u_heights');
       this.canopyValidTexLoc = gl.getUniformLocation(this.canopyProgram, 'u_valid');
       this.canopyAttrPos = gl.getAttribLocation(this.canopyProgram, 'a_pos');
-      this.canopyUOutBounds = gl.getUniformLocation(this.canopyProgram, 'u_outBounds');
       this.canopyUAtlasBounds = gl.getUniformLocation(this.canopyProgram, 'u_atlasBounds');
       this.canopyUAtlasSize = gl.getUniformLocation(this.canopyProgram, 'u_atlasSize');
       this.canopyUResM = gl.getUniformLocation(this.canopyProgram, 'u_resM');
@@ -1046,9 +1046,19 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         ]), gl.STATIC_DRAW);
       }
 
-      // The composite program: one quad, the protection texture tinted with the
-      // shadow palette, alpha scaled to `SHADOW_ALPHA` — premultiplied the way
-      // the building quad is, so the two composite consistently.
+      // The composite program: the atlas quad projected through the camera
+      // matrix, the protection texture tinted with the shadow palette, alpha
+      // scaled to `SHADOW_ALPHA` — premultiplied the way the building quad is,
+      // so the two composite consistently.
+      const compositeVsSrc = `#version 300 es
+        in vec4 a_posUv;  // xy = mercator offset from centerMerc, zw = uv
+        uniform mat4 u_matrix;
+        out vec2 v_uv;
+        void main() {
+          v_uv = a_posUv.zw;
+          gl_Position = u_matrix * vec4(a_posUv.xy, 0.0, 1.0);
+        }
+      `;
       const compositeFsSrc = `#version 300 es
         precision mediump float;
         precision mediump sampler2D;
@@ -1063,12 +1073,19 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
           outColor = vec4(u_tint * a, a);
         }
       `;
-      this.canopyCompositeProgram = createProgram(gl, vsSrc, compositeFsSrc);
+      this.canopyCompositeProgram = createProgram(gl, compositeVsSrc, compositeFsSrc);
+      this.canopyCompositeMatrixLoc = gl.getUniformLocation(this.canopyCompositeProgram, 'u_matrix');
       this.canopyCompositeTexLoc = gl.getUniformLocation(this.canopyCompositeProgram, 'u_tex');
       this.canopyCompositeTintLoc = gl.getUniformLocation(this.canopyCompositeProgram, 'u_tint');
       this.canopyCompositeAlphaLoc = gl.getUniformLocation(this.canopyCompositeProgram, 'u_alpha');
-      this.canopyCompositeAttrLoc = gl.getAttribLocation(this.canopyCompositeProgram, 'a_pos');
-    } catch {
+      this.canopyCompositeAttrLoc = gl.getAttribLocation(this.canopyCompositeProgram, 'a_posUv');
+      if (!this.canopyCompositeQuadBuffer) {
+        this.canopyCompositeQuadBuffer = gl.createBuffer();
+      }
+    } catch (error) {
+      // Failed shader init retains the footprint and building renderer; CPU canopy
+      // routing is untouched. Said loudly rather than diagnosed from a picture.
+      console.warn('[shadow] canopy ground-protection pass unavailable:', error);
       this.canopyProgram = null;
       this.canopyCompositeProgram = null;
     }
@@ -1310,24 +1327,37 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.renderedContextObjective = this.contextObjective;
     this.renderedContextRevision = this.contextRevision;
 
-    // Canopy first, buildings over it. The canopy's protection texture is
-    // reprojected here — same geographic texture, sampled by the current camera —
-    // so a pan inside the covered area recomposites without re-marching. The
-    // alpha channel takes MAX, so wherever a building already covers the ground
-    // its full protection wins and the crown underneath cannot darken it further:
-    // the "darker protection value" rule, done per pixel at composite time.
+    // Canopy first, buildings over it. The canopy's protection texture is drawn
+    // as a *geographic* quad — the atlas bounds projected through the same camera
+    // matrix every other pass uses — so a pan inside the covered area recomposites
+    // without re-marching. Alpha takes MAX, so wherever a building already covers
+    // the ground its full protection wins and the crown underneath cannot darken
+    // it further: the "darker protection value" rule, per pixel at composite time.
     if (this.canopyFboTexture && this.canopyCompositeProgram && this.canopyAtlas) {
+      const atlas2 = this.canopyAtlas;
+      const [awMin, asMin] = lonLatToMercator(atlas2.bbox[0], atlas2.bbox[1]);
+      const [awMax, asMax] = lonLatToMercator(atlas2.bbox[2], atlas2.bbox[3]);
+      // Vertices are stored relative to `centerMerc` (the matrix is pre-translated).
+      const [ccx, ccy] = this.buildingCache?.centerMerc ?? [0, 0];
+      const x0 = awMin - ccx, y0 = asMin - ccy, x1 = awMax - ccx, y1 = asMax - ccy;
+      // Two triangles, UV 0..1 across the atlas; row 0 (UV y=0) is the north edge.
+      const corners = new Float32Array([
+        x0, y1, 0, 1,  x1, y1, 1, 1,  x1, y0, 1, 0,
+        x0, y1, 0, 1,  x1, y0, 1, 0,  x0, y0, 0, 0,
+      ]);
       const a = LocalShadowAdapter.SHADOW_ALPHA;
       const tint = this.computeShadowColor(geo.sunBelowHorizon);
       gl2.useProgram(this.canopyCompositeProgram);
+      gl2.uniformMatrix4fv(this.canopyCompositeMatrixLoc!, false, matrix);
       gl2.activeTexture(gl.TEXTURE0);
       gl2.bindTexture(gl.TEXTURE_2D, this.canopyFboTexture);
       gl2.uniform1i(this.canopyCompositeTexLoc, 0);
       gl2.uniform3f(this.canopyCompositeTintLoc!, tint[0] / a, tint[1] / a, tint[2] / a);
       gl2.uniform1f(this.canopyCompositeAlphaLoc!, a);
-      gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyQuadBuffer!);
+      gl2.bindBuffer(gl.ARRAY_BUFFER, this.canopyCompositeQuadBuffer!);
+      gl2.bufferData(gl.ARRAY_BUFFER, corners, gl.DYNAMIC_DRAW);
       gl2.enableVertexAttribArray(this.canopyCompositeAttrLoc!);
-      gl2.vertexAttribPointer(this.canopyCompositeAttrLoc, 2, gl.FLOAT, false, 0, 0);
+      gl2.vertexAttribPointer(this.canopyCompositeAttrLoc, 4, gl.FLOAT, false, 0, 0);
       gl2.blendEquationSeparate(gl2.FUNC_ADD, gl2.MAX);
       gl2.blendFuncSeparate(gl2.ONE, gl2.ONE_MINUS_SRC_ALPHA, gl2.ONE, gl2.ONE);
       gl2.drawArrays(gl2.TRIANGLES, 0, 6);
@@ -1519,6 +1549,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     if (this.canopyProgram) gl.deleteProgram(this.canopyProgram);
     if (this.canopyCompositeProgram) gl.deleteProgram(this.canopyCompositeProgram);
     if (this.canopyQuadBuffer) gl.deleteBuffer(this.canopyQuadBuffer);
+    if (this.canopyCompositeQuadBuffer) gl.deleteBuffer(this.canopyCompositeQuadBuffer);
+    this.canopyCompositeQuadBuffer = null;
     this.releaseCanopyResources(gl as WebGL2RenderingContext);
     this.canopyProgram = null;
     this.canopyCompositeProgram = null;
@@ -1685,6 +1717,13 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
    */
   private renderCanopyGround(gl: WebGL2RenderingContext) {
     if (!this.canopyProgram || !this.canopyAtlas) return;
+    // Night: nothing to march for the sun objective, and the composite would
+    // otherwise cache an all-zero frame as clean. Stay dirty so the sunrise
+    // frame recomputes.
+    if (this.hazardMode === "sun" && this.hazardDirection().sunBelow) {
+      this.canopyDirty = true;
+      return;
+    }
     if (!this.canopyNeedsCompute()) return;
 
     const atlas = this.canopyAtlas;
@@ -1710,7 +1749,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const generation = atlas.generation;
 
     this.ensureCanopyTextures(gl, atlas, outW, outH);
-    if (!this.canopyFbo || !this.canopyFboTexture || !this.canopyHeightsTexture || !this.canopyValidTexture) return;
+    if (!this.canopyFbo || !this.canopyFboTexture || !this.canopyHeightsTexture) return;
 
     const prevFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
     const prevViewport = gl.getParameter(gl.VIEWPORT);
@@ -1730,15 +1769,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.canopyHeightsTexture);
       gl.uniform1i(this.canopyCanopyTexLoc, 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.canopyValidTexture);
-      gl.uniform1i(this.canopyValidTexLoc, 1);
 
       // Toward the source, in mercator (x east, y north): the march's own pixel
       // space flips y, as the CPU march does in `samplerFor`.
       const dirX = -Math.sin(hazardDir.azimuthRad);
       const dirY = Math.cos(hazardDir.azimuthRad);
-      gl.uniform4f(this.canopyUOutBounds!, wMin, sMin, wMax, sMax);
       gl.uniform4f(this.canopyUAtlasBounds!, wMin, sMin, wMax, sMax);
       gl.uniform2f(this.canopyUAtlasSize!, atlas.width, atlas.height);
       gl.uniform2f(this.canopyUDir!, dirX, dirY);
@@ -1812,7 +1847,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   ) {
     // Heights + validity as one RGBA8 texture (~8 MB at 2048²) plus protection
     // (~1 MB at 512²): comfortably inside the budget, checked anyway.
-    const bytes = atlas.width * atlas.height * 4 + outW * outH * 4;
+    const bytes = atlas.width * atlas.height * 4 + outW * outH;
     if (bytes > LocalShadowAdapter.CANOPY_GPU_BUDGET_BYTES) {
       this.releaseCanopyResources(gl);
       this.canopyAtlas = null;
@@ -1825,19 +1860,18 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.canopyValidTexture = gl.createTexture();
       }
       gl.bindTexture(gl.TEXTURE_2D, this.canopyHeightsTexture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // single-byte channels, unpadded rows
+      // Heights and validity packed into one RGBA texture — R = whole metres,
+      // G = 1 where the raster populated the pixel. One fetch per march step,
+      // which is why the shader reads validity out of the same `texture()` call.
+      const packed = new Uint8Array(atlas.width * atlas.height * 4);
+      for (let i = 0; i < atlas.width * atlas.height; i++) {
+        packed[i * 4] = atlas.heights[i];
+        packed[i * 4 + 1] = atlas.valid ? atlas.valid[i] : 255;
+      }
       gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.R8, atlas.width, atlas.height, 0, gl.RED, gl.UNSIGNED_BYTE,
-        atlas.heights,
-      );
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-      gl.bindTexture(gl.TEXTURE_2D, this.canopyValidTexture);
-      gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.R8, atlas.width, atlas.height, 0, gl.RED, gl.UNSIGNED_BYTE,
-        atlas.valid ?? new Uint8Array(atlas.width * atlas.height).fill(255),
+        gl.TEXTURE_2D, 0, gl.RGBA, atlas.width, atlas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        packed,
       );
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
