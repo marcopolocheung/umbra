@@ -1267,7 +1267,11 @@ export default function Home() {
       {!accumulation.enabled && (
         <div
           className="absolute bottom-0 left-0 right-0 z-10 md:hidden"
-          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 80 : 0 }}
+          style={{
+            // Sits on the sheet's collapsed band when open (80px), else the
+            // container bottom — plus the iOS home-inset, matching the sheet.
+            bottom: `calc(env(safe-area-inset-bottom) + ${menuOpen && bottomSheetSnap === "collapsed" ? 80 : 0}px)`,
+          }}
         >
           {timelineControls}
         </div>
@@ -1281,7 +1285,9 @@ export default function Home() {
           // Left edge, mirroring the right-edge controls column (zoom etc. at
           // right-3): the reopen affordance keeps to the left, above the
           // timeline the hidden sheet leaves behind.
-          className="fixed z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-level-2 md:hidden"
+          // absolute, not fixed — anchors to the h-dvh map container so it
+          // stays clear of Chrome's bottom toolbar like the sheet/timeline.
+          className="absolute z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-level-2 md:hidden"
           style={{
             bottom: "9.5rem",
             left: "0.75rem",

@@ -171,9 +171,14 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
   return (
     <div
       ref={sheetRef}
-      className="fixed bottom-0 left-0 right-0 z-20 md:hidden flex flex-col"
+      /* absolute (not fixed) inside the map overlay container, which is sized
+         by h-dvh in AppShell — so the sheet clears mobile Chrome's bottom
+         toolbar instead of anchoring to the layout viewport behind it. The
+         safe-area bottom offset lifts it over the iOS home indicator. */
+      className="absolute bottom-0 left-0 right-0 z-20 md:hidden flex flex-col"
       style={{
         height: displayHeight,
+        bottom: "env(safe-area-inset-bottom)",
         touchAction: "none",
         willChange: "height",
         background: "var(--color-raised)",
