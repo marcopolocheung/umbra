@@ -23,6 +23,10 @@ accordingly. Subagents stay read-only here, per the repo rule.
   abortable, cached 5 min per query+anchor, anchored to the map center, ranked
   distance-first. Suggestion rows are rich: photo (or canvas disc), name, `category ·
   hours` caption, star rating on a stated /10 scale, distance from the viewport center.
+  An explicit submit now **races both providers** and merges one distance-ranked list
+  (dedup by name + proximity, Nominatim row wins for the bounding box; a provider
+  failing silently costs its half, never the list) — the owner's "address search often
+  never routes" report, fixed in a follow-up commit on the same PR.
   `suggestPlaces` added to `app/services/foursquare.ts`; `api/fsq.js` allowlist gained
   `fields`/`radius` on `/places/search` (proxy tests cover both the pass and the reject).
   Review findings fixed in the same PR: a map-pan no longer re-fires the typeahead (the
