@@ -9,10 +9,9 @@ import { getFoursquareApiStatus, getPlaceDetails, getPlaceInfoFromAddress, isFou
 import { escapeHtml, renderPlaceInfoHtml } from "./placePopup";
 import { createShadowLayer } from "../lib/shadow/createShadowLayer";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
-import { attachCanopyLayer, type CanopyLayerHandle, type CanopyLegendState } from "../lib/canopyRaster/canopyLayer";
+import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/canopyLayer";
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { token } from "../lib/css-tokens";
-import CanopyLegend from "./CanopyLegend";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
 import type { DebugAccounting } from "../lib/shadowV2Debug/protocol";
@@ -446,7 +445,6 @@ export default function MapView({
     sunAz: 180, riseAz: null, setAz: null, bearing: 0,
   });
   // Local UI state: whether the estimated-canopy fill is on screen, for its legend.
-  const [canopyLegend, setCanopyLegend] = useState<CanopyLegendState | null>(null);
   const [debugAccounting, setDebugAccounting] = useState<DebugAccounting>(EMPTY_DEBUG_ACCOUNTING);
   const [debugGeneration, setDebugGeneration] = useState<string>();
   const [debugCacheSource, setDebugCacheSource] = useState<string>();
@@ -834,7 +832,6 @@ export default function MapView({
         canopyRef.current = attachCanopyLayer(map, {
           belowLayerId: maybeCustom.id,
           enabled: !accumulationOnRef.current,
-          onChange: setCanopyLegend,
         });
 
         // The canopy ground-protection pass: the same shared store the fill reads
@@ -1537,7 +1534,6 @@ export default function MapView({
     <div className="relative w-full h-full">
       <div ref={containerRef} className={`w-full h-full${mapClickActive ? ' cursor-crosshair' : ''}`} />
       <SunCompass sunViz={sunViz} showSunLines={showSunLines} />
-      <CanopyLegend state={canopyLegend} />
       {SHADOW_V2_DEBUG && <ShadowV2DebugPanel generation={debugGeneration} accounting={debugAccounting} cacheSource={debugCacheSource} />}
     </div>
   );

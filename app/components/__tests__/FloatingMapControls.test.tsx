@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type maplibregl from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import FloatingMapControls from "../FloatingMapControls";
+import { Tilt3DButton } from "../FloatingMapControls";
 
 /**
  * There is no `setupFiles` in vitest.config.ts, so unmounting is this file's job.
@@ -31,9 +31,7 @@ function setPrefersReducedMotion(reduce: boolean) {
 
 function renderControls(map: ReturnType<typeof fakeMap> | null, pitch: number) {
   const mapRef = { current: map as unknown as maplibregl.Map | null };
-  render(
-    <FloatingMapControls mapRef={mapRef} pitch={pitch} onLocateMe={vi.fn()} isLocating={false} />
-  );
+  render(<Tilt3DButton mapRef={mapRef} pitch={pitch} />);
   return mapRef;
 }
 

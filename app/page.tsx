@@ -10,7 +10,7 @@ import AppShell from "./components/AppShell";
 import SideNav, { type SideNavTab } from "./components/SideNav";
 import BottomSheet, { type SnapPoint } from "./components/BottomSheet";
 import SearchBar from "./components/SearchBar";
-import FloatingMapControls from "./components/FloatingMapControls";
+import FloatingMapControls, { Tilt3DButton } from "./components/FloatingMapControls";
 import FloatingRouteCards from "./components/FloatingRouteCards";
 import HourlyExposureStrip from "./components/HourlyExposureStrip";
 import QuickActions from "./components/QuickActions";
@@ -207,7 +207,11 @@ function ShadowLegend({ onDismiss }: { onDismiss: () => void }) {
 }
 
 export default function Home() {
-  const [menuOpen, setMenuOpen] = useState(false);
+  // The trip sheet is available from load — planning a trip shouldn't require
+  // searching a place first. Searches still re-open it after a hide.
+  const [menuOpen, setMenuOpen] = useState(true);
+  // Focus mode: every overlay except this toggle and the timeline.
+  const [uiHidden, setUiHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const shadow = useShadowTime();
   const {
@@ -1136,7 +1140,7 @@ export default function Home() {
           pill would otherwise sit half over the sheet's planning form, reading
           as if the search had slid open over the navigation card (U4). It
           returns the moment the trip ends or the user backs out. */}
-      {phase !== "DIRECTIONS" && phase !== "NAVIGATING" && (
+      {!uiHidden && phase !== "DIRECTIONS" && phase !== "NAVIGATING" && (
         <div
           className="absolute top-4 left-4 z-30 md:hidden"
           style={{ width: "min(560px, calc(100vw - 2rem))" }}
@@ -1151,7 +1155,7 @@ export default function Home() {
       )}
 
       {/* Pending waypoint banner */}
-      {pendingSlot && (
+      {!uiHidden && pendingSlot && (
         <div
           className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-2 rounded-full px-4 py-1.5 text-sm select-none border"
           style={{
@@ -1172,7 +1176,7 @@ export default function Home() {
       )}
 
       {/* Floating route cards — desktop only, during DIRECTIONS phase */}
-      {phase === "DIRECTIONS" && filteredRoutes.length > 0 && (
+      {!uiHidden && phase === "DIRECTIONS" && filteredRoutes.length > 0 && (
         <FloatingRouteCards
           routes={filteredRoutes}
           selectedRouteIndex={selectedRouteIndex}
@@ -1193,30 +1197,60 @@ export default function Home() {
           choreography as the timeline card below them (U4): timeline at
           0–~88px with no sheet, at 80–~168px over the collapsed band, under
           the sheet otherwise. */}
-      <div
-        className="absolute md:top-24 md:bottom-auto right-3 z-10"
-        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
-      >
-        <FloatingMapControls
-          mapRef={mapRef}
-          pitch={mapPitch}
-          onLocateMe={handleLocateMe}
-          isLocating={isLocating}
-          onShare={handleShareLink}
-          shareStatus={shareStatus}
-          rainMode={rainMode}
-          onRainModeChange={handleRainModeChange}
-        />
-      </div>
+      {!uiHidden && (
+        <div
+          className="absolute md:top-24 md:bottom-auto right-3 z-10"
+          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+        >
+          <FloatingMapControls
+            mapRef={mapRef}
+            onLocateMe={handleLocateMe}
+            isLocating={isLocating}
+            onShare={handleShareLink}
+            shareStatus={shareStatus}
+            rainMode={rainMode}
+            onRainModeChange={handleRainModeChange}
+          />
+        </div>
+      )}
 
-      {shadowLayerReady && !shadowLegendDismissed && !accumulation.enabled && (
+      {/* 2D/3D tilt — its own left-side column, mirroring the right controls'
+          bottom choreography. Desktop parks it under the shadow legend
+          (top-20 left-6), so it doesn't collide with the legend plate. */}
+      {!uiHidden && (
+        <div
+          className="absolute left-3 md:left-6 md:top-44 md:bottom-auto z-10"
+          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+        >
+          <Tilt3DButton mapRef={mapRef} pitch={mapPitch} />
+        </div>
+      )}
+
+      {/* Focus mode toggle — the one control that survives focus mode: hide
+          every overlay except this button and the timeline. Sits bottom-left,
+          symmetric with the right controls column's foot. */}
+      <button
+        type="button"
+        onClick={() => setUiHidden((v) => !v)}
+        className="absolute left-3 md:left-6 z-30 w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+        aria-pressed={uiHidden}
+        aria-label={uiHidden ? "Show interface" : "Hide interface"}
+        title={uiHidden ? "Show interface" : "Hide interface"}
+      >
+        <span className="material-symbols-outlined" aria-hidden="true">
+          {uiHidden ? "visibility" : "visibility_off"}
+        </span>
+      </button>
+
+      {!uiHidden && shadowLayerReady && !shadowLegendDismissed && !accumulation.enabled && (
         <div className="absolute left-4 top-20 z-20 md:left-6 md:top-20">
           <ShadowLegend onDismiss={handleDismissShadowLegend} />
         </div>
       )}
 
       {/* Rain map legend — only while the rain objective owns the map */}
-      {rainMode && !accumulation.enabled && (
+      {!uiHidden && rainMode && !accumulation.enabled && (
         <div
           className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 rounded-lg px-3 py-2 shadow-lg"
           style={{ background: "var(--color-raised)", borderColor: "var(--color-hairline)", border: "1px solid var(--color-hairline)" }}
@@ -1236,7 +1270,7 @@ export default function Home() {
       )}
 
       {/* Rain wind pill — the conditions used by the shared renderer */}
-      {rainMode && routeExposureContext?.objective === "rain" && (
+      {!uiHidden && rainMode && routeExposureContext?.objective === "rain" && (
         <div
           className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg"
           style={{ background: "var(--color-raised)", border: "1px solid var(--color-hairline)" }}
@@ -1278,7 +1312,7 @@ export default function Home() {
       )}
 
       {/* Mobile bottom sheet */}
-      {menuOpen && bottomSheetSnap === "hidden" && (
+      {!uiHidden && menuOpen && bottomSheetSnap === "hidden" && (
         <button
           type="button"
           onClick={() => setBottomSheetSnap("collapsed")}
@@ -1301,7 +1335,7 @@ export default function Home() {
           <span className="text-xs font-medium">Trip</span>
         </button>
       )}
-      {menuOpen && (
+      {!uiHidden && menuOpen && (
         <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
@@ -1478,22 +1512,24 @@ export default function Home() {
       />
 
       {/* Desktop search bar — rendered outside AppShell so it layers above the sidebar */}
-      <div className="hidden md:block fixed top-4 left-4 z-50" style={{ width: "376px" }}>
-        <SearchBar
-          onSelect={handleSearchSelect}
-          mapCenter={mapCenter}
-          onMenuToggle={handleSidebarToggle}
-          onDirections={handleOpenDirections}
-          onOpenAssistant={() => setAssistantOpen(true)}
-          isAssistantThinking={agent.isThinking}
-        />
-      </div>
+      {!uiHidden && (
+        <div className="hidden md:block fixed top-4 left-4 z-50" style={{ width: "376px" }}>
+          <SearchBar
+            onSelect={handleSearchSelect}
+            mapCenter={mapCenter}
+            onMenuToggle={handleSidebarToggle}
+            onDirections={handleOpenDirections}
+            onOpenAssistant={() => setAssistantOpen(true)}
+            isAssistantThinking={agent.isThinking}
+          />
+        </div>
+      )}
 
       {/* AI assistant: the launcher's one permanent home is the search bar
           (see SearchBar's assistant button); the floating and docked blobs are
           gone. The chat panel itself is unchanged. */}
       <AssistantPanel
-        open={assistantOpen}
+        open={assistantOpen && !uiHidden}
         onClose={() => setAssistantOpen(false)}
         messages={agent.messages}
         isThinking={agent.isThinking}

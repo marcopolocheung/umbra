@@ -146,6 +146,10 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0;
+  /* A vertical drag anywhere (the timeline slider, an empty spot) must not
+     chain up to the browser: without this, mobile Chrome lets that drag
+     scroll its own UI and pull-to-reload the page. */
+  overscroll-behavior: none;
 }
 
 /* ---------------------------------------------------------------------

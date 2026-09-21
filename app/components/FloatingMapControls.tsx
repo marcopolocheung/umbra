@@ -5,8 +5,6 @@ const TILTED_PITCH_DEG = 55;
 
 interface FloatingMapControlsProps {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
-  /** Current camera pitch in degrees, from `useShadowTime`. 0 means top-down. */
-  pitch: number;
   onLocateMe: () => void;
   isLocating: boolean;
   onShare?: () => void;
@@ -21,7 +19,6 @@ interface FloatingMapControlsProps {
 
 export default function FloatingMapControls({
   mapRef,
-  pitch,
   onLocateMe,
   isLocating,
   onShare,
@@ -31,8 +28,6 @@ export default function FloatingMapControls({
   rainIntensity: _rainIntensity = 5,
   onRainIntensityChange: _onRainIntensityChange,
 }: FloatingMapControlsProps) {
-  const is3D = pitch > 0;
-
   return (
     <div className="flex flex-col gap-3">
       {/* Zoom in */}
@@ -126,32 +121,44 @@ export default function FloatingMapControls({
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>my_location</span>
         )}
       </button>
-
-      {/* 2D / 3D */}
-      <button
-        type="button"
-        onClick={() => {
-          const map = mapRef.current;
-          if (!map) return;
-          const to3D = map.getPitch() === 0;
-          // Tilting is the one camera move that can provoke motion sickness, so honour
-          // the OS setting rather than easing into it.
-          const reduceMotion =
-            typeof window.matchMedia === "function" &&
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          const camera = { pitch: to3D ? TILTED_PITCH_DEG : 0 };
-          if (reduceMotion) map.jumpTo(camera);
-          else map.easeTo({ ...camera, duration: 400 });
-        }}
-        className={`w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center transition-colors ${
-          is3D ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
-        }`}
-        aria-pressed={is3D}
-        aria-label={is3D ? "Return to 2D map" : "Tilt to 3D map"}
-        title={is3D ? "Return to 2D map" : "Tilt to 3D map"}
-      >
-        <span className="material-symbols-outlined">3d_rotation</span>
-      </button>
     </div>
+  );
+}
+
+/** The 2D/3D tilt toggle, rendered in its own left-side column by `page.tsx`. */
+export function Tilt3DButton({
+  mapRef,
+  pitch,
+}: {
+  mapRef: React.MutableRefObject<maplibregl.Map | null>;
+  /** Current camera pitch in degrees, from `useShadowTime`. 0 means top-down. */
+  pitch: number;
+}) {
+  const is3D = pitch > 0;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const to3D = map.getPitch() === 0;
+        // Tilting is the one camera move that can provoke motion sickness, so honour
+        // the OS setting rather than easing into it.
+        const reduceMotion =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const camera = { pitch: to3D ? TILTED_PITCH_DEG : 0 };
+        if (reduceMotion) map.jumpTo(camera);
+        else map.easeTo({ ...camera, duration: 400 });
+      }}
+      className={`w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center transition-colors ${
+        is3D ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
+      }`}
+      aria-pressed={is3D}
+      aria-label={is3D ? "Return to 2D map" : "Tilt to 3D map"}
+      title={is3D ? "Return to 2D map" : "Tilt to 3D map"}
+    >
+      <span className="material-symbols-outlined">3d_rotation</span>
+    </button>
   );
 }
