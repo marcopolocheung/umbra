@@ -485,7 +485,12 @@ export function buildNavigationShardFixture(
     budgets: {
       streetShardBytes: streetRefs.reduce((sum, ref) => sum + ref.bytes, 0),
       buildingShardBytes: buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0),
-      totalBytes: bodies.values().reduce((sum, body) => sum + Buffer.byteLength(body, "utf8"), 0),
+      // Iterator helpers (.values().reduce) are not available in every
+      // runtime the e2e suite transpiles under; spread-then-reduce is.
+      totalBytes: [...bodies.values()].reduce(
+        (sum, body) => sum + Buffer.byteLength(body, "utf8"),
+        0,
+      ),
     },
   };
 
