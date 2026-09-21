@@ -5,8 +5,6 @@ import { markdownTable, ms, pct, stats, type Stats } from "./stats";
 import {
   COLD_REPEATS,
   CROSS_BOROUGH_URL,
-  DIAGNOSTIC_CASES,
-  DIAGNOSTIC_URLS,
   FIVE_POINT_URL,
   LONG_MANHATTAN_URL,
   TRANSIT_TWO_POINT_URL,
@@ -96,9 +94,6 @@ interface PhaseSample {
   shadowIndexPrep?: number;
   /** Checkpoint 6 navigation record — counts and bytes, no coordinates. */
   nav?: NavigationSample;
-  /** Stage H per-mode search outcomes, per run. */
-  transitOutcomes?: Partial<Record<"subway" | "bus", string>>;
-  transitCandidateCount?: Partial<Record<"subway" | "bus", number>>;
   total: number;
   shadowFallbackShare: number;
 }
@@ -171,8 +166,6 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
             shadowFallbackShare: number;
             buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static", number>>;
             staticBuildingGeneration?: string | null;
-            transitOutcomes?: Partial<Record<"subway" | "bus", string>>;
-            transitCandidateCount?: Partial<Record<"subway" | "bus", number>>;
             navigation?:
               | {
                   streetSource: string;
@@ -254,8 +247,6 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
               buildingPrismCacheHit: nav.buildingPrismCacheHit,
             }
           : undefined,
-        transitOutcomes: h.transitOutcomes,
-        transitCandidateCount: h.transitCandidateCount,
         nycStaticShare: h.buildingProviderShares?.["nyc-static"] ?? 0,
         staticGeneration: h.staticBuildingGeneration ?? null,
         total: h.phases.total,
@@ -670,58 +661,6 @@ test("nav-static bus-only, cache-warm", async ({ page }) => {
   });
 });
 
-// ── Stage A: the routing-repair audit's frozen diagnostic cases ───────────────
-//
-// Each case rides the NYC-scale transit fixture cold and warm, with the
-// per-mode outcome columns above recording what subway and bus each concluded
-// (offered / no-candidates / no-connected-journey) and how many candidates
-// the cap-free search considered. These are the regression rows the repair's
-// before/after report compares against.
-
-test("diagnostic midtown-normal, cache-warm", async ({ page }) => {
-  await benchWarm(page, "diagnostic midtown-normal warm", DIAGNOSTIC_URLS["midtown-normal"], WARM_REPEATS, {
-    basemap: "fixture",
-    transit: "scale",
-  });
-});
-
-test("diagnostic village-eastbound, cache-warm", async ({ page }) => {
-  await benchWarm(page, "diagnostic village-eastbound warm", DIAGNOSTIC_URLS["village-eastbound"], WARM_REPEATS, {
-    basemap: "fixture",
-    transit: "scale",
-  });
-});
-
-test("diagnostic midtown-eastbound, cache-warm", async ({ page }) => {
-  await benchWarm(page, "diagnostic midtown-eastbound warm", DIAGNOSTIC_URLS["midtown-eastbound"], WARM_REPEATS, {
-    basemap: "fixture",
-    transit: "scale",
-  });
-});
-
-test("diagnostic midtown-westbound, cache-warm", async ({ page }) => {
-  await benchWarm(page, "diagnostic midtown-westbound warm", DIAGNOSTIC_URLS["midtown-westbound"], WARM_REPEATS, {
-    basemap: "fixture",
-    transit: "scale",
-  });
-});
-
-test("diagnostic brooklyn-eastbound, cache-warm", async ({ page }) => {
-  await benchWarm(page, "diagnostic brooklyn-eastbound warm", DIAGNOSTIC_URLS["brooklyn-eastbound"], WARM_REPEATS, {
-    basemap: "fixture",
-    transit: "scale",
-  });
-});
-
-test("diagnostic cases, cache-cold", async ({ page }) => {
-  for (const c of DIAGNOSTIC_CASES) {
-    await benchCold(page, `diagnostic ${c.name} cold`, DIAGNOSTIC_URLS[c.name], COLD_REPEATS, {
-      basemap: "fixture",
-      transit: "scale",
-    });
-  }
-});
-
 test.afterAll(() => {
   if (results.length === 0) return;
 
@@ -821,19 +760,6 @@ test.afterAll(() => {
     console.log(
       `  fallback share:  ${r.samples.map((s) => pct(s.shadowFallbackShare * 100)).join("%, ")}%`,
     );
-    // Stage H: what each mode's search concluded, per run, so a missing bus
-    // card is a recorded outcome rather than an absence to guess about.
-    if (r.samples.some((s) => s.transitOutcomes)) {
-      console.log(
-        `  subway outcome:  ${r.samples.map((s) => s.transitOutcomes?.subway ?? "…").join(", ")}`,
-      );
-      console.log(
-        `  bus outcome:     ${r.samples.map((s) => s.transitOutcomes?.bus ?? "…").join(", ")}`,
-      );
-      console.log(
-        `  bus candidates:  ${r.samples.map((s) => s.transitCandidateCount?.bus ?? "…").join(", ")}`,
-      );
-    }
     // Whether the static dataset answered: A4's whole question is the real
     // shard path, so a zero share on a nav-static scenario is a broken stub
     // (or a silent fallback), and that has to be visible, not guessed.

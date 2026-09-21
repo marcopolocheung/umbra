@@ -907,25 +907,6 @@ const ARRIVED_BY_TRANSFER = "\u0001";
  */
 const ARRIVED_BY_WALK = "\u0002";
 
-/**
- * Joins the route to the direction inside the "arrived on" field, so the
- * onboard identity is route **and direction**. Reversing direction on the same
- * route is then a change of vehicle — a new boarding with its own wait — not
- * "staying aboard", which is what a route-only identity silently claimed.
- * The separator is chosen outside every id/route alphabet the producers use.
- */
-const RAIL_DIRECTION_SEP = "";
-
-/** What "arrived on" looks like for a rider aboard `line` running `direction`. */
-function arrivedOnRail(line: string, direction: number): string {
-  return `${line}${RAIL_DIRECTION_SEP}${direction}`;
-}
-
-/** Whether the rider is aboard `line` running `direction` — both, or neither claim counts. */
-function isAboard(arrivedOn: string, line: string, direction: number): boolean {
-  return arrivedOn === arrivedOnRail(line, direction);
-}
-
 function stateKey(stationId: string, arrivedOn: string, boardings: number): string {
   return `${stationId}${STATE_SEP}${arrivedOn}${STATE_SEP}${boardings}`;
 }
@@ -969,7 +950,7 @@ function boardingCost(
 ): { changeSec: number; waitSec: number } | null {
   if (edge.type !== "rail") return { changeSec: 0, waitSec: 0 };
   const route = edge.line ?? "";
-  if (isAboard(arrivedOn, route, edge.direction ?? 0)) return { changeSec: 0, waitSec: 0 };
+  if (arrivedOn === route) return { changeSec: 0, waitSec: 0 };
 
   const changingLines =
     arrivedOn !== ARRIVED_ON_FOOT && arrivedOn !== ARRIVED_BY_TRANSFER && arrivedOn !== ARRIVED_BY_WALK;
@@ -1084,11 +1065,7 @@ export function trainDijkstra(
         continue;
       const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
       if (boarding === null) continue;
-      // Staying aboard means the same route *and* the same direction; anything
-      // else — another route, or the same route turned around — is a boarding.
-      const boarded =
-        edge.type === "rail" &&
-        !isAboard(arrivedOn, edge.line ?? "", edge.direction ?? 0);
+      const boarded = edge.type === "rail" && arrivedOn !== (edge.line ?? "");
       const nextBoardings = boardings + (boarded ? 1 : 0);
       if (nextBoardings > MAX_TRANSIT_BOARDINGS) continue;
       const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
@@ -1104,7 +1081,7 @@ export function trainDijkstra(
             ? arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK
               ? arrivedOn
               : ARRIVED_BY_TRANSFER
-            : arrivedOnRail(edge.line ?? ARRIVED_ON_FOOT, edge.direction ?? 0),
+            : (edge.line ?? ARRIVED_ON_FOOT),
         nextBoardings
       );
       if (newCost < (dist.get(nextKey) ?? Infinity)) {
@@ -1124,26 +1101,6 @@ export function trainDijkstra(
 
   if (endKey === null) return null;
 
-  return reconstructPath(graph, endKey, { dist, prev, prevLine, waitOnEdgeTo, geomOnEdgeTo });
-}
-
-/**
- * Shared reconstruction for both searches' reached states: stations, lines,
- * geometry, waits, segments and measured exposure, walked backward from the
- * winning end state through each search's own `prev` chain.
- */
-function reconstructPath(
-  graph: TrainGraph,
-  endKey: string,
-  trails: {
-    dist: Map<string, number>;
-    prev: Map<string, string>;
-    prevLine: Map<string, string>;
-    waitOnEdgeTo: Map<string, number>;
-    geomOnEdgeTo: Map<string, string>;
-  },
-): TrainPathResult {
-  const { dist, prev, prevLine, waitOnEdgeTo, geomOnEdgeTo } = trails;
   // Reconstruct path backward, collecting edge line refs
   const stationIds: string[] = [];
   const edgeLines: string[] = []; // one per edge (stationIds.length - 1)
@@ -1323,13 +1280,8 @@ export function findBestTrainRoute(
       const path = trainDijkstra(graph, entry.id, exit.id, opts, mode);
       if (!path) continue;
 
-      // Useful means at least one actual ride edge. The old three-station
-      // minimum excluded the one-stop ride — a real, common, useful journey —
-      // because it counted stations, not rides. `trainDijkstra` guarantees a
-      // rail or transfer edge preceded the arrival (it refuses to end on foot
-      // or on a walked change), so stationIds >= 2 already implies a ride; the
-      // check stays explicit so the intent survives refactors.
-      if (path.stationIds.length < 2) continue;
+      // Need at least 3 stations (entry + 1 intermediate + exit) to be useful
+      if (path.stationIds.length < 3) continue;
 
       const walkIn = haversineMeters(a, [entry.lon, entry.lat]);
       const walkOut = haversineMeters([exit.lon, exit.lat], b);
@@ -1355,238 +1307,6 @@ export function findBestTrainRoute(
   }
 
   return bestRoute;
-}
-
-// ─── Multi-source candidate search ──────────────────────────────────────────
-
-/**
- * What it costs in walk seconds to reach a stop from the trip origin, or to
- * leave it for the destination. Supplied by the caller, who owns the
- * pedestrian graph: the values are the seconds of a *routed* walk (snapped and
- * connectivity-checked), never straight-line guesses. `Infinity` means "no
- * walk reaches this stop" — an unreachable snap, which the search must reject
- * rather than silently attaching the stop to whatever is nearby.
- */
-export interface TransitEndpointCosts {
-  accessSecFor: (station: TrainStation) => number;
-  egressSecFor: (station: TrainStation) => number;
-}
-
-export interface BestTransitRoute {
-  entryStation: TrainStation;
-  exitStation: TrainStation;
-  path: TrainPathResult;
-  /** Routed walk seconds from the origin to the entry stop's snap. */
-  accessSec: number;
-  /** Routed walk seconds from the exit stop's snap to the destination. */
-  egressSec: number;
-  /** Straight-line metres, reported for display only — the ranking used seconds. */
-  walkInDistM: number;
-  walkOutDistM: number;
-  /** Door-to-door seconds: the two routed walks plus the ride. */
-  totalCostSec: number;
-}
-
-/** Why a per-mode search returned no journey — the caller's UI words come from this. */
-export type TransitSearchOutcome =
-  | "offered"
-  | "no-candidates"
-  | "no-connected-journey";
-
-export interface TransitSearchResult {
-  route: BestTransitRoute | null;
-  outcome: TransitSearchOutcome;
-  /** Eligible stops within the endpoint radius, before snap rejection. */
-  candidateCount: number;
-}
-
-/**
- * One multi-source, multi-target search per transit mode — the replacement for
- * `findBestTrainRoute`'s 5×5 point-to-point loop.
- *
- * Every eligible stop within `maxWalkM` of an endpoint is considered; there is
- * no candidate cap, because a useful boarding stop can stand sixth-or-later
- * from either endpoint (the five nearest midtown stops are all one block's bus
- * stops). Boarding states are seeded with the *actual* routed access-walk
- * seconds, and an exit is evaluated with its actual egress seconds added, so
- * the winner is ranked on the times a rider really spends walking — not on
- * straight-line distance.
- *
- * The walk-in to the first boarding and the walk-out from the last are part of
- * the seed and evaluation costs, so `path.totalSec` stays the ride alone:
- * reconstruction subtracts the entry's seed before reporting it.
- *
- * `maxTotalSec` is a search upper bound — the existing walking-dominance
- * threshold, applied during the search so dominated journeys are never found
- * at all. Equality is still accepted (a transit offer as fast as the walk
- * stays an offer), so pruning is strictly-greater.
- *
- * Ties break on insertion sequence, exactly as `trainDijkstra` does: seeds are
- * pushed in (access seconds, station id) order, so a tie between two entry
- * stops resolves towards the quicker walk, and then the earlier id.
- */
-export function findBestTransitRoute(
-  a: [number, number], // [lng, lat]
-  b: [number, number],
-  graph: TrainGraph,
-  maxWalkM: number,
-  costs: TransitEndpointCosts,
-  opts: TrainDepartureOptions = {},
-  mode?: TrainMode,
-  maxTotalSec: number = Infinity,
-): TransitSearchResult {
-  const accept = mode
-    ? (station: TrainStation) => stationServesMode(graph, station, mode)
-    : undefined;
-
-  const entries: Array<{ station: TrainStation; accessSec: number }> = [];
-  const exits = new Map<string, number>(); // station id → egressSec
-  for (const station of graph.stations.values()) {
-    if (accept && !accept(station)) continue;
-    const accessSec = costs.accessSecFor(station);
-    if (haversineMeters(a, [station.lon, station.lat]) <= maxWalkM && accessSec < Infinity) {
-      entries.push({ station, accessSec });
-    }
-    const egressSec = costs.egressSecFor(station);
-    if (haversineMeters(b, [station.lon, station.lat]) <= maxWalkM && egressSec < Infinity) {
-      exits.set(station.id, egressSec);
-    }
-  }
-
-  if (entries.length === 0 || exits.size === 0) {
-    return { route: null, outcome: "no-candidates", candidateCount: entries.length };
-  }
-
-  // Deterministic seed order: quicker access first, then station id.
-  entries.sort((x, y) => x.accessSec - y.accessSec || (x.station.id < y.station.id ? -1 : 1));
-
-  const dist = new Map<string, number>();
-  const waitOnEdgeTo = new Map<string, number>();
-  const geomOnEdgeTo = new Map<string, string>();
-  const prev = new Map<string, string>();
-  const prevLine = new Map<string, string>();
-  // Which entry station's seed this state grew from — the multi-target form
-  // of the old search's `entry.id === exit.id` guard: a journey that boards,
-  // rides a loop and gets off at the very stop it walked into is a connected
-  // journey on the graph and a nonsense one for a rider, so it is never an
-  // exit. Propagated with the relaxation, like `prev`.
-  const seedOf = new Map<string, string>();
-  const pq = new MinHeap<{ key: string; cost: number; seq: number }>(
-    (x, y) => x.cost - y.cost || x.seq - y.seq,
-  );
-  let seq = 0;
-  // The search stops improving once the heap's cheapest state cannot beat the
-  // best found total (every remaining pop costs at least that much again
-  // before its non-negative egress walk) or the dominance bound itself.
-  let bestTotal = Math.min(maxTotalSec, Infinity);
-  let bestKey: string | null = null;
-
-  for (const { station, accessSec } of entries) {
-    // An entry whose access walk alone already exhausts the bound cannot be
-    // part of an acceptable journey; equality stays allowed.
-    if (accessSec > bestTotal) continue;
-    const key = stateKey(station.id, ARRIVED_ON_FOOT, 0);
-    if (accessSec < (dist.get(key) ?? Infinity)) {
-      dist.set(key, accessSec);
-      seedOf.set(key, station.id);
-      pq.push({ key, cost: accessSec, seq: seq++ });
-    }
-  }
-
-  while (pq.size > 0) {
-    const { key, cost } = pq.pop()!;
-    if (cost > (dist.get(key) ?? Infinity)) continue;
-    if (cost > bestTotal) break;
-    const id = stationOfState(key);
-    const arrivedOn = arrivalOfState(key);
-    const boardings = boardingsOfState(key);
-
-    const egressSec = exits.get(id);
-    if (
-      egressSec !== undefined &&
-      arrivedOn !== ARRIVED_BY_WALK &&
-      boardings >= 1 &&
-      seedOf.get(key) !== id &&
-      // `<=` is the dominance policy: an offer exactly as fast as the walk
-      // bound stays an offer; only a strictly slower one is refused.
-      cost + egressSec <= bestTotal
-    ) {
-      bestTotal = cost + egressSec;
-      bestKey = key;
-    }
-
-    for (const edge of graph.adj.get(id) ?? []) {
-      if (
-        edge.transferKind === "walked" &&
-        (arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK)
-      )
-        continue;
-      if (mode && edge.type === "rail" && graph.lineModes.get(edge.line ?? "") !== mode)
-        continue;
-      const boarding = boardingCost(graph, id, arrivedOn, edge, opts);
-      if (boarding === null) continue;
-      const boarded =
-        edge.type === "rail" &&
-        !isAboard(arrivedOn, edge.line ?? "", edge.direction ?? 0);
-      const nextBoardings = boardings + (boarded ? 1 : 0);
-      if (nextBoardings > MAX_TRANSIT_BOARDINGS) continue;
-      const newCost = cost + edge.weightSec + boarding.changeSec + boarding.waitSec;
-      if (newCost > bestTotal) continue;
-      const nextKey = stateKey(
-        edge.to,
-        edge.transferKind === "walked"
-          ? ARRIVED_BY_WALK
-          : edge.type === "transfer"
-            ? arrivedOn === ARRIVED_ON_FOOT || arrivedOn === ARRIVED_BY_WALK
-              ? arrivedOn
-              : ARRIVED_BY_TRANSFER
-            : arrivedOnRail(edge.line ?? ARRIVED_ON_FOOT, edge.direction ?? 0),
-        nextBoardings
-      );
-      if (newCost < (dist.get(nextKey) ?? Infinity)) {
-        dist.set(nextKey, newCost);
-        seedOf.set(nextKey, seedOf.get(key) ?? id);
-        waitOnEdgeTo.set(nextKey, boarding.waitSec);
-        if (edge.geom) geomOnEdgeTo.set(nextKey, edge.geom);
-        else geomOnEdgeTo.delete(nextKey);
-        prev.set(nextKey, key);
-        prevLine.set(nextKey, edge.line ?? "");
-        pq.push({ key: nextKey, cost: newCost, seq: seq++ });
-      }
-    }
-  }
-
-  if (bestKey === null) {
-    return { route: null, outcome: "no-connected-journey", candidateCount: entries.length };
-  }
-
-  // The entry state this journey started from: the first state on the prev
-  // chain with no predecessor. Its seed seconds are part of `dist` and must
-  // come back out for `path.totalSec` to stay the ride alone.
-  let entryKey = bestKey;
-  while (prev.has(entryKey)) entryKey = prev.get(entryKey)!;
-  const entryStation = graph.stations.get(stationOfState(entryKey))!;
-  const entrySeedSec = dist.get(entryKey) ?? 0;
-  const exitStation = graph.stations.get(stationOfState(bestKey))!;
-
-  const path = reconstructPath(graph, bestKey, { dist, prev, prevLine, waitOnEdgeTo, geomOnEdgeTo });
-  const rideSec = dist.get(bestKey)! - entrySeedSec;
-  const egressSec = exits.get(exitStation.id)!;
-
-  return {
-    route: {
-      entryStation,
-      exitStation,
-      path: { ...path, totalSec: rideSec },
-      accessSec: entrySeedSec,
-      egressSec,
-      walkInDistM: haversineMeters(a, [entryStation.lon, entryStation.lat]),
-      walkOutDistM: haversineMeters([exitStation.lon, exitStation.lat], b),
-      totalCostSec: dist.get(bestKey)! + egressSec,
-    },
-    outcome: "offered",
-    candidateCount: entries.length,
-  };
 }
 
 // ─── Entrance matching ──────────────────────────────────────────────────────
