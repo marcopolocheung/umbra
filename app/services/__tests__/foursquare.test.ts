@@ -167,6 +167,9 @@ describe("foursquare service", () => {
   });
 
   it("suggestPlaces ranks distance-first and caches per query+anchor", async () => {
+    // The live Places search API returns coordinates under geocodes.main —
+    // this fixture must match that shape, or the test passes against a
+    // parser the real API never satisfies again.
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -175,15 +178,13 @@ describe("foursquare service", () => {
           {
             fsq_id: "far",
             name: "Far Cafe",
-            latitude: 40.01,
-            longitude: -74.0,
+            geocodes: { main: { latitude: 40.01, longitude: -74.0 } },
             categories: [{ name: "Coffee Shop" }],
           },
           {
             fsq_id: "near",
             name: "Near Cafe",
-            latitude: 40.0005,
-            longitude: -74.0005,
+            geocodes: { main: { latitude: 40.0005, longitude: -74.0005 } },
             categories: [{ name: "Bakery" }],
             rating: 8.9,
           },

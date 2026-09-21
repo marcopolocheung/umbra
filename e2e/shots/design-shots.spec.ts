@@ -35,8 +35,7 @@ test("Umbra mobile design states", async ({ page }) => {
           {
             fsq_id: "shot-library-1",
             name: "Jefferson Market Library",
-            latitude: 40.726,
-            longitude: -74.005,
+            geocodes: { main: { latitude: 40.726, longitude: -74.005 } },
             categories: [{ name: "Library" }],
             hours: { display: "Open until 8 PM" },
             rating: 9.1,
@@ -45,8 +44,7 @@ test("Umbra mobile design states", async ({ page }) => {
           {
             fsq_id: "shot-library-2",
             name: "Dewey Square Reading Room",
-            latitude: 40.72,
-            longitude: -74.0,
+            geocodes: { main: { latitude: 40.72, longitude: -74.0 } },
             categories: [{ name: "Reading Room" }],
             location: { formatted_address: "1 Hudson Sq, New York" },
           },
