@@ -59,9 +59,12 @@ export default function FloatingMapControls({
 
       <div className="h-px w-8 bg-hairline-strong self-center my-1" />
 
+      {/* Objective toggle and share live in the sheet on mobile (the directions
+          panel owns the sun/rain switch; share rides the route card) — the phone
+          keeps only camera controls in this column. */}
       {onRainModeChange && (
           <fieldset
-            className="flex rounded-2xl overflow-hidden shadow-xl self-center border-0 p-0 m-0"
+            className="hidden md:flex rounded-2xl overflow-hidden shadow-xl self-center border-0 p-0 m-0"
             aria-label="Route objective"
           >
             <button
@@ -93,7 +96,7 @@ export default function FloatingMapControls({
         <button
           type="button"
           onClick={onShare}
-          className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+          className="hidden md:flex w-12 h-12 rounded-2xl bg-raised shadow-level-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
           aria-label={shareStatus === "copied" ? "Share link copied" : "Copy share link"}
           title={shareStatus === "copied" ? "Copied" : shareStatus === "error" ? "Copy failed" : "Copy share link"}
         >
