@@ -29,6 +29,8 @@ import {
   type GraphEdge,
   reachableFrom,
   snapToReachable,
+  walkSecondsFrom,
+  walkSecondsTo,
 } from "../routing";
 
 // ── Graph factories ────────────────────────────────────────────────────────────
@@ -1850,5 +1852,64 @@ describe("snapToReachable", () => {
   it("returns -1 when nothing is reachable", () => {
     const graph = graphWithIsland();
     expect(snapToReachable([103.803, 1.3], graph, new Set())).toBe(-1);
+  });
+});
+
+// ── One-to-many walk searches (transit access/egress sharing) ─────────────────
+
+describe("walkSecondsFrom / walkSecondsTo", () => {
+  /**
+   * A diamond: 1→2→4 is 200 m of edges, 1→3→4 is 300 m, and 2↔3 cross-links
+   * at 500 m so a naive shortest-path could be tempted the wrong way. Walk
+   * speed 1.0 m/s keeps the arithmetic readable.
+   */
+  function diamond(): RoutingGraph {
+    const node = (id: number, lat: number, lon: number) => [id, { id, lat, lon }] as const;
+    const edge = (toId: number, distanceM: number): GraphEdge => ({ toId, distanceM });
+    return {
+      nodes: new Map([
+        node(1, 1.3, 103.8),
+        node(2, 1.3, 103.801),
+        node(3, 1.3, 103.8015),
+        node(4, 1.3, 103.802),
+      ]),
+      adj: new Map([
+        [1, [edge(2, 100), edge(3, 150)]],
+        [2, [edge(1, 100), edge(4, 100), edge(3, 500)]],
+        [3, [edge(1, 150), edge(4, 150), edge(2, 500)]],
+        [4, [edge(2, 100), edge(3, 150)]],
+      ]),
+    };
+  }
+
+  it("answers every node's access seconds from one origin in one search", () => {
+    const seconds = walkSecondsFrom(diamond(), 1, 1);
+    expect(seconds.get(1)).toBe(0);
+    expect(seconds.get(2)).toBe(100);
+    expect(seconds.get(3)).toBe(150);
+    // 1→2→4 (200 m) beats 1→3→4 (300 m).
+    expect(seconds.get(4)).toBe(200);
+  });
+
+  it("answers every node's egress seconds to one destination in one search", () => {
+    const seconds = walkSecondsTo(diamond(), 4, 1);
+    expect(seconds.get(4)).toBe(0);
+    // 2→4 is 100 m; 3→4 is 150 m.
+    expect(seconds.get(2)).toBe(100);
+    expect(seconds.get(3)).toBe(150);
+    // 1 reaches 4 over the 200 m arm, not the 300 m one.
+    expect(seconds.get(1)).toBe(200);
+  });
+
+  it("omits nodes an island snap cannot reach", () => {
+    const graph = graphWithIsland() as unknown as RoutingGraph;
+    const seconds = walkSecondsFrom(graph, 1, 1.4);
+    expect(seconds.has(99)).toBe(false);
+    expect(seconds.has(2)).toBe(true);
+  });
+
+  it("prices a metre walked at the given speed, not as a second", () => {
+    const seconds = walkSecondsFrom(diamond(), 1, 1.4);
+    expect(seconds.get(2)).toBeCloseTo(100 / 1.4, 6);
   });
 });
