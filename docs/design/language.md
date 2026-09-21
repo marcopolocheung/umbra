@@ -99,9 +99,11 @@ no lie-flat adjectives. Per surface (U5):
 - **Arrival:** one peak-end sentence states what the trip earned ("340 m route — 2 of 6 min
   in sun at a fixed 5.0 km/h pace"), stating the pace basis and, on a transit trip, the
   scope ("ride not counted") — neither travels with the number on its own. U7 splits it
-  into the display voice (the sun-minutes figure as the verdict line) over the same split
-  bar the route card carries, with the pace/scope caption beneath — no number appears
-  twice on the card, and unknown exposure still gets the honest line and no bar.
+  into the display voice (the sun-minutes figure as the verdict line) over a split bar
+  in the route card's visual language (note: the card's bar fills by distance share, the
+  arrival bar by time share — the same mark, two stated bases), with the pace/scope
+  caption beneath — no number appears twice on the card, and unknown exposure still gets
+  the honest line and no bar.
 - **Hourly strip:** "Sun by hour", verdict "most shadowed around 14:00", unsampled hours say
   "checking…" rather than reading as zero.
 

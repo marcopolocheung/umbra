@@ -577,7 +577,7 @@ export default function Home() {
 
   // Sync phase transitions with navigation hook. ARRIVAL keeps navigation
   // state too — the arrival card reads the calculated route for its peak-end
-  // shade story; DISMISS (the only exit from ARRIVAL) is what clears it.
+  // shade story; its exits (DISMISS, BACK) are what clear it.
   useEffect(() => {
     if (phase === "DIRECTIONS" && !navMode) {
       handleToggleNavMode();
@@ -1352,6 +1352,7 @@ export default function Home() {
               waypointBLabel={waypointBLabel}
               onPlanAnother={() => dispatch({ type: "START_DIRECTIONS" })}
               onDone={() => dispatch({ type: "DISMISS" })}
+              rainMode={rainMode}
             />
           ) : (
             <div className="flex flex-col gap-3">
