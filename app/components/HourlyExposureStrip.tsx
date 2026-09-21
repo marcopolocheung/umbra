@@ -31,12 +31,12 @@ export default function HourlyExposureStrip({
     >
       <div className="flex items-baseline justify-between gap-2">
         <div
-          className="text-[10px] uppercase tracking-widest font-bold"
+          className="text-[11px] uppercase tracking-widest font-bold"
           style={{ color: "var(--color-ink-muted)" }}
         >
           {rain ? "Rain shelter by hour" : "Sun by hour"}
         </div>
-        <div className="text-[10px]" aria-live="polite" style={{ color: "var(--color-ink-muted)" }}>
+        <div className="text-[11px]" aria-live="polite" style={{ color: "var(--color-ink-muted)" }}>
           {readyCount < samples.length
             ? "checking…"
             : best
@@ -89,7 +89,7 @@ export default function HourlyExposureStrip({
         })}
       </fieldset>
 
-      <div className="mt-1 flex justify-between text-[9px]" style={{ color: "var(--color-ink-muted)" }}>
+      <div className="mt-1 flex justify-between text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
         <span>{samples[0].label}</span>
         <span>{samples[samples.length - 1].label}</span>
       </div>

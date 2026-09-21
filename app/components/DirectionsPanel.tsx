@@ -424,13 +424,13 @@ export default function DirectionsPanel({
 
       {/* Additional waypoints */}
       {(additionalWaypoints ?? []).length > 0 || addingStop ? (
-        <div className="pl-4 flex flex-col gap-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
+        <div className="pl-4 flex flex-col gap-1 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
           <div className="flex items-center justify-between">
-            <span className="text-[10px]" style={{ opacity: 0.6 }}>Stops between start and destination</span>
+            <span className="text-[11px]" style={{ opacity: 0.6 }}>Stops between start and destination</span>
             {!addingStop && onAddAdditionalWaypoint && (
               <button type="button"
                 onClick={() => setAddingStop(true)}
-                className="text-[10px] font-medium hover:text-ink transition-colors"
+                className="text-[11px] font-medium hover:text-ink transition-colors"
                 style={{ color: "var(--color-ink-muted)" }}
               >
                 Add stop
@@ -439,7 +439,7 @@ export default function DirectionsPanel({
           </div>
           {(additionalWaypoints ?? []).map((wp, i) => (
             <div key={i} className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded-full text-on-ink text-[9px] flex items-center justify-center shrink-0" style={{ background: "var(--color-ink)" }}>{i + 1}</span>
+              <span className="w-4 h-4 rounded-full text-on-ink text-[11px] flex items-center justify-center shrink-0" style={{ background: "var(--color-ink)" }}>{i + 1}</span>
               <span className="flex-1 tabular-nums truncate" style={{ color: "var(--color-ink)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
               <button type="button"
                 onClick={() => onRemoveAdditionalWaypoint?.(i)}
@@ -544,8 +544,8 @@ export default function DirectionsPanel({
           style={{ background: "var(--color-canvas)" }}
         />
         <div className="flex justify-between mt-1">
-          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
-          <span className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Most sheltered" : "Most shadowed"}</span>
+          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
+          <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Most sheltered" : "Most shadowed"}</span>
         </div>
       </div>
 

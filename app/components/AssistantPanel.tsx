@@ -72,7 +72,7 @@ export default function AssistantPanel({
           <div className="text-sm font-bold" style={{ color: "var(--color-ink)" }}>
             Umbra Assistant
           </div>
-          <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
+          <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
             Plans shadow-aware outings
           </div>
         </div>
@@ -187,7 +187,7 @@ export default function AssistantPanel({
                           {receiptLabel(receipt)}
                         </button>
                         <p
-                          className="mt-0.5 text-[10px]"
+                          className="mt-0.5 text-[11px]"
                           style={{ color: "var(--color-ink-muted)" }}
                         >
                           {receiptDetail(receipt)}

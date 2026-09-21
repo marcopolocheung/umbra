@@ -164,7 +164,7 @@ export default function RouteCard({
             a rain route's shelter figures are still updating. */}
         {recommended && !exposureUpdating && (
           <div
-            className="text-[10px] font-bold uppercase tracking-widest"
+            className="text-[11px] font-bold uppercase tracking-widest"
             style={{ color: "var(--color-route)" }}
           >
             Recommended
@@ -182,7 +182,7 @@ export default function RouteCard({
             </span>
             {isPartial && (
               <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
+                className="text-[11px] font-medium px-1.5 py-0.5 rounded-full"
                 style={{ background: "var(--color-sun-soft)", color: "var(--color-sun)" }}
               >
                 Partial
@@ -233,7 +233,7 @@ export default function RouteCard({
                   : `${shadowPct}% sheltered`
               : routeShadowLabel(r)}
           </span>
-          <span className="ml-auto text-[10px] tabular-nums whitespace-nowrap" style={{ color: "var(--color-ink-muted)" }}>
+          <span className="ml-auto text-[11px] tabular-nums whitespace-nowrap" style={{ color: "var(--color-ink-muted)" }}>
             {formatDist(r.distanceM)}
           </span>
         </div>
@@ -244,10 +244,15 @@ export default function RouteCard({
           {tradeoff}
         </div>
 
-        {/* Provenance/uncertainty caption: what the numbers above are made of. */}
-        <div className="mt-1 text-[10px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
-          {captionParts.join(" · ")}
-        </div>
+        {/* Provenance/uncertainty caption: what the numbers above are made of.
+            Three middle-dot facts are one chunk; a fourth starts a second line
+            instead of diluting the first into an unscannable run (U5). */}
+        {captionParts.length > 0 && (
+          <div className="mt-1 text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+            <div>{captionParts.slice(0, 3).join(" · ")}</div>
+            {captionParts.length > 3 && <div>{captionParts.slice(3).join(" · ")}</div>}
+          </div>
+        )}
       </button>
 
       {/* Details — only the selected card carries them, inside the card
@@ -270,7 +275,7 @@ export default function RouteCard({
           <div className="grid grid-cols-2 gap-2">
             {streak && (
               <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
+                <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
                   {rainCard ? "Continuous shelter" : "Continuous Shadow"}
                 </div>
                 <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{streak}</div>
@@ -278,30 +283,30 @@ export default function RouteCard({
             )}
             {detour && (
               <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-                <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Detour Ratio</div>
+                <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Detour Ratio</div>
                 <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{detour}</div>
               </div>
             )}
             <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
-                  {rainCard ? "Shelter breaks" : "Shadow Breaks"}
+              <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
+                {rainCard ? "Shelter breaks" : "Shadow Breaks"}
               </div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{transitions}</div>
             </div>
             <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
+              <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{r.turnCount}</div>
             </div>
           </div>
 
           {r.legs && r.legs.length > 1 && (
             <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
+              <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
               <div className="mt-1 flex flex-col gap-1">
                 {r.legs.map((leg, index) => {
                   const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
                   return (
-                    <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
+                    <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[11px]">
                       <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}>
                         {index + 1}
                       </span>
@@ -340,7 +345,7 @@ export default function RouteCard({
               ? "outdoor wait shelter unknown"
               : `${Math.round(tLeg.waitExposure.shelter * 100)}% sheltered at stops`;
             return (
-              <div className="text-[10px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
+              <div className="text-[11px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
                 <div className="flex items-center gap-1">
                   <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: lineColor }} />
                   <span style={{ color: "var(--color-ink)" }}>{lineName}</span>

@@ -78,7 +78,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             className="flex-1 text-left px-1.5 py-1 rounded hover:bg-canvas transition-colors min-w-0"
           >
             <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
-            <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</div>
+            <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</div>
           </button>
         )}
         <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
@@ -126,7 +126,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
           {byFolder.map(({ folder, routes: fr }) => (
             <div key={folder.id}>
               <div
-                className="text-[10px] px-1.5 pt-1.5 pb-0.5 uppercase tracking-wide"
+                className="text-[11px] px-1.5 pt-1.5 pb-0.5 uppercase tracking-wide"
                 style={{ color: "var(--color-ink-muted)", opacity: 0.6 }}
               >
                 {folder.name}

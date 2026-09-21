@@ -255,6 +255,27 @@ function formatDeltaMinutes(seconds: number): string {
   return `+${minutes} min`;
 }
 
+function walkLegMetres(route: RouteOption): number {
+  if (!route.legs) return route.distanceM;
+  return route.legs.reduce(
+    (sum, leg) => (leg.type === "walk" ? sum + (leg.distanceM ?? 0) : sum),
+    0,
+  );
+}
+
+/**
+ * The Transit-app voice for a transit detour: a raw "+12 min" on a transit card
+ * does two jobs at once — it is both the time cost and a warning the number
+ * cannot carry, that the extra time is spent walking between stops. Naming the
+ * condition lets the reader judge the cost before parsing it.
+ */
+function longWalkBetweenStops(route: RouteOption, baseline: RouteOption): boolean {
+  if (!transitLegOf(route)) return false;
+  const routeWalkM = walkLegMetres(route);
+  const baselineWalkM = walkLegMetres(baseline);
+  return routeWalkM - baselineWalkM >= 250 && routeWalkM >= baselineWalkM * 1.5;
+}
+
 export function routeTradeoffLine(route: RouteOption, baseline: RouteOption): string {
   if (route.objective === "rain" || baseline.objective === "rain") {
     return rainTradeoffLine(route, baseline);
@@ -264,6 +285,27 @@ export function routeTradeoffLine(route: RouteOption, baseline: RouteOption): st
   }
 
   const timeDeltaSec = Math.max(0, travelSeconds(route) - travelSeconds(baseline));
+  if (longWalkBetweenStops(route, baseline)) {
+    // A transit trip's time delta is mostly walk-leg distance, so the named
+    // condition replaces the bare number as the line's lead clause.
+    const timeClause =
+      timeDeltaSec <= 0 ? "same time" : `+${Math.round(timeDeltaSec / 60)} min`;
+    const routeSun = routeExposureMinutes(route)?.sunMinutes;
+    const baselineSun = routeExposureMinutes(baseline)?.sunMinutes;
+    if (routeSun == null || baselineSun == null) {
+      return `long walk between stops, ${timeClause}, sun exposure unknown`;
+    }
+    const sunDeltaPct = baselineSun > 0
+      ? Math.round(((routeSun - baselineSun) / baselineSun) * 100)
+      : 0;
+    const sunLabel =
+      sunDeltaPct < 0
+        ? `${sunDeltaPct}% sun exposure`
+        : sunDeltaPct > 0
+          ? `+${sunDeltaPct}% sun exposure`
+          : "same sun exposure";
+    return `long walk between stops, ${timeClause}, ${sunLabel}`;
+  }
   // Minutes, not metres, so a transit wait counts; for two routes at one speed
   // the ratio is the same either way.
   const baselineSun = routeExposureMinutes(baseline)?.sunMinutes;

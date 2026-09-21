@@ -148,11 +148,11 @@ const WaypointInput = memo(function WaypointInput({
         )}
       </div>
       {inlineError ? (
-        <p className="text-[10px] text-danger pl-8">{inlineError}</p>
+        <p className="text-[11px] text-danger pl-8">{inlineError}</p>
       ) : searching ? (
-        <p className="text-[10px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Searching…</p>
+        <p className="text-[11px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Searching…</p>
       ) : results.length === 0 && query.trim().length >= 2 && label === null ? (
-        <p className="text-[10px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Press Enter to search</p>
+        <p className="text-[11px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Press Enter to search</p>
       ) : null}
       {results.length > 0 && (
         <div
@@ -177,7 +177,7 @@ const WaypointInput = memo(function WaypointInput({
                   {primary}
                 </div>
                 {secondary && (
-                  <div className="text-[10px] truncate" style={{ color: "var(--color-ink-muted)" }}>{secondary}</div>
+                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>{secondary}</div>
                 )}
               </button>
             );

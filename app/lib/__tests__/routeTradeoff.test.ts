@@ -62,6 +62,24 @@ describe("routeTradeoffLine", () => {
     expect(routeTradeoffLine(bikeShadowed, bikeShortest)).toBe("+1 min, -40% sun exposure");
   });
 
+  it("names the condition when a transit detour is mostly a longer walk between stops", () => {
+    // Transit option: a ride plus 1100 m of walking, against a 400 m walk.
+    // The +minutes are walk-leg distance, so the line leads with the named
+    // condition rather than making "+N min" carry the warning on its own.
+    const walk = route("Walk", 400, 0.2);
+    const transit = transitRoute([walkLeg(550, 0.5), rideLeg(1200, { shadow: 0.4, coverage: 1, boardings: 1 }), walkLeg(550, 0.5)]);
+
+    const line = routeTradeoffLine(transit, walk);
+    expect(line).toMatch(/^long walk between stops, \+\d+ min/);
+  });
+
+  it("keeps the bare time delta when a transit detour's walk legs are comparable", () => {
+    const walk = route("Walk", 900, 0.2);
+    const transit = transitRoute([walkLeg(200, 0.5), rideLeg(600), walkLeg(200, 0.5)]);
+
+    expect(routeTradeoffLine(transit, walk)).not.toContain("long walk");
+  });
+
   it("uses total travel time when a route has transit timing", () => {
     const walk = route("Walk", 1400, 0.5, 1000);
     const transit = route("Transit", 900, 0.16, 1120);
