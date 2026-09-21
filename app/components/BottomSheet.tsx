@@ -142,6 +142,12 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
   }, []);
 
   const displayHeight = height ?? snapToPixels(snap, typeof window !== "undefined" ? window.innerHeight : 800, collapsedHeight);
+  // The collapsed band is prime thumb-zone (Fitts) and carries the trip bar.
+  // At 80px a 44px handle would leave the bar 36px — clipped — so the handle
+  // yields to a 36px row when settled at collapsed, giving the bar its full
+  // 44px target inside the band. Any taller snap keeps the 44px handle.
+  const isCollapsed = snap === "collapsed" && !draggingRef.current;
+  const handleBandPx = isCollapsed ? 36 : 44;
 
   return (
     <div
@@ -159,8 +165,12 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
-      {/* Drag handle */}
-      <div className="flex h-11 items-center justify-center cursor-grab active:cursor-grabbing shrink-0">
+      {/* Drag handle — the band height above; the pointer-drag gate in
+          onPointerDown still accepts drags started anywhere in its top 44px */}
+      <div
+        className="flex items-center justify-center cursor-grab active:cursor-grabbing shrink-0 transition-[height]"
+        style={{ height: handleBandPx }}
+      >
         <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-hairline)" }} />
       </div>
 

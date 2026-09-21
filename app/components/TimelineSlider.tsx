@@ -77,6 +77,86 @@ const TICKS = (() => {
 
 const TOTAL_PX = 1440 * PX_PER_MIN;
 
+// The tick ruler changes at module load and never again (U4/Doherty): memoised
+// so the per-frame re-render during a drag — which exists to move the sun dot —
+// never rebuilds 289 tick subtrees.
+const Ruler = memo(function Ruler() {
+  return (
+    <>
+      {TICKS.map(({ x, h, label }) => (
+        <div key={x} style={{ position: "absolute", left: x, bottom: 0, top: 0 }}>
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: 1,
+              height: h,
+              backgroundColor: label
+                ? "color-mix(in srgb, var(--color-ink) 35%, transparent)"
+                : h === 12
+                ? "color-mix(in srgb, var(--color-ink) 18%, transparent)"
+                : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+            }}
+          />
+          {label && (
+            <span
+              style={{
+                position: "absolute",
+                bottom: h + 4,
+                left: 0,
+                transform: "translateX(-50%)",
+                whiteSpace: "nowrap",
+                fontSize: 9,
+                lineHeight: 1,
+                color: "var(--color-ink-muted)",
+                fontFamily: "var(--font-sans)",
+                fontVariantNumeric: "tabular-nums",
+                userSelect: "none",
+                pointerEvents: "none",
+              }}
+            >
+              {label}
+            </span>
+          )}
+        </div>
+      ))}
+    </>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Sun-arc glyph (U4)
+// ---------------------------------------------------------------------------
+
+// The ruler's height (h-11). The arc's horizon sits at its midline and the
+// apex just under the sunrise/sunset labels, so neither collides with the
+// hour ticks at the bottom.
+const RULER_H = 44;
+const HORIZON_Y = 22;
+const APEX_Y = 7;
+
+/**
+ * The sun's height on the arc at `minutes`, in ruler pixels — the SunCalc
+ * pattern: a thin sun-path curve over the horizon with the sun dot at the
+ * slider's time. The curve is a stylised path, not an ephemeris: the glyph's
+ * job is "morning vs afternoon" at a glance.
+ */
+export function sunArcPoint(
+  minutes: number,
+  riseMin: number,
+  setMin: number
+): { x: number; y: number } | null {
+  if (minutes < riseMin || minutes > setMin) return null; // sun below the horizon
+  const u = (minutes - riseMin) / (setMin - riseMin);
+  // The parabola through (rise, horizon), (midday, apex), (set, horizon) — the
+  // same curve the quadratic Bézier path below draws.
+  return {
+    x: minutes * PX_PER_MIN,
+    y: HORIZON_Y - 4 * (HORIZON_Y - APEX_Y) * u * (1 - u),
+  };
+}
+
 const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, latDeg, lngDeg, utcOffsetMin: utcOffsetMinProp }: Props) {
   const effectiveOffset = utcOffsetMinProp ?? (date ? -date.getTimezoneOffset() : 0);
   const sunRiseSet =
@@ -230,6 +310,10 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
 
   const hasRise = sunriseMin !== undefined;
   const hasSet  = sunsetMin  !== undefined;
+  const sunDot =
+    hasRise && hasSet
+      ? sunArcPoint(minutes, sunriseMin!, sunsetMin!)
+      : null;
 
   return (
     <div
@@ -368,48 +452,55 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           </div>
         )}
 
-        {/* ── Hour/minute ticks ────────────────────────────────────────── */}
-        {TICKS.map(({ x, h, label }) => (
-          <div
-            key={x}
-            style={{ position: "absolute", left: x, bottom: 0, top: 0 }}
+        {/* ── Sun-arc glyph (U4): the SunCalc pattern — a thin sun-path curve
+            with the sun dot at the slider's time. Pure data (sun position),
+            so it is the sun hue; amber stays reserved for it per the law. */}
+        {hasRise && hasSet && (
+          <svg
+            width={TOTAL_PX}
+            height={RULER_H}
+            viewBox={`0 0 ${TOTAL_PX} ${RULER_H}`}
+            preserveAspectRatio="none"
+            style={{ position: "absolute", inset: 0, pointerEvents: "none", userSelect: "none" }}
+            aria-hidden="true"
           >
-            <div
-              style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                width: 1,
-                height: h,
-                backgroundColor: label
-                  ? "color-mix(in srgb, var(--color-ink) 35%, transparent)"
-                  : h === 12
-                  ? "color-mix(in srgb, var(--color-ink) 18%, transparent)"
-                  : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-              }}
+            {/* horizon */}
+            <line
+              x1={sunriseMin! * PX_PER_MIN}
+              y1={HORIZON_Y}
+              x2={sunsetMin! * PX_PER_MIN}
+              y2={HORIZON_Y}
+              stroke="color-mix(in srgb, var(--color-ink) 14%, transparent)"
+              strokeWidth={1}
             />
-            {label && (
-              <span
-                style={{
-                  position: "absolute",
-                  bottom: h + 4,
-                  left: 0,
-                  transform: "translateX(-50%)",
-                  whiteSpace: "nowrap",
-                  fontSize: 9,
-                  lineHeight: 1,
-                  color: "var(--color-ink-muted)",
-                  fontFamily: "var(--font-sans)",
-                  fontVariantNumeric: "tabular-nums",
-                  userSelect: "none",
-                  pointerEvents: "none",
-                }}
-              >
-                {label}
-              </span>
+            {/* the sun path: a quadratic from sunrise through the apex to sunset */}
+            <path
+              d={
+                `M ${sunriseMin! * PX_PER_MIN} ${HORIZON_Y} ` +
+                `Q ${((sunriseMin! + sunsetMin!) / 2) * PX_PER_MIN} ${2 * APEX_Y - HORIZON_Y} ` +
+                `${sunsetMin! * PX_PER_MIN} ${HORIZON_Y}`
+              }
+              fill="none"
+              stroke="color-mix(in srgb, var(--color-sun) 35%, transparent)"
+              strokeWidth={1.5}
+            />
+            {/* sun dot at the slider's time — the only element this component
+                re-renders for during a drag */}
+            {sunDot && (
+              <circle
+                cx={sunDot.x}
+                cy={sunDot.y}
+                r={4}
+                fill="var(--color-sun)"
+                stroke="var(--color-raised)"
+                strokeWidth={1.5}
+              />
             )}
-          </div>
-        ))}
+          </svg>
+        )}
+
+        {/* ── Hour/minute ticks ────────────────────────────────────────── */}
+        <Ruler />
       </div>
 
       {/* Compass needle cursor — diamond cap + gradient shaft */}

@@ -170,3 +170,60 @@ describe("DirectionsPanel — planning collapse (U3)", () => {
     expect(screen.queryByRole("button", { name: /Edit trip: Start point to End point/ })).toBeNull();
   });
 });
+
+describe("DirectionsPanel — warning placement (U4 serial position)", () => {
+  const NOTICE = "Some streets had no sidewalk data";
+
+  function route(label: string): RouteOption {
+    return { ...ROUTE, label };
+  }
+
+  function routes(n: number): RouteOption[] {
+    return ["Shortest", "Balanced", "Most shadowed", "Longest"].slice(0, n).map(route);
+  }
+
+  function renderWithWarning(n: number) {
+    render(
+      <DirectionsPanel
+        waypointA={[-73.9855, 40.753]}
+        waypointB={[-73.9825, 40.755]}
+        waypointALabel="Start point"
+        waypointBLabel="End point"
+        onSetWaypointA={vi.fn()}
+        onSetWaypointB={vi.fn()}
+        onSwapWaypoints={vi.fn()}
+        onClearWaypointA={vi.fn()}
+        onClearWaypointB={vi.fn()}
+        onClear={vi.fn()}
+        onCalculate={vi.fn()}
+        isCalculating={false}
+        routes={routes(n)}
+        selectedRouteIndex={0}
+        onSelectRoute={vi.fn()}
+        error={null}
+        pendingSlot={null}
+        onSetPendingSlot={vi.fn()}
+        onBack={vi.fn()}
+        warning={NOTICE}
+      />,
+    );
+  }
+
+  function cardsAndNotices() {
+    const group = screen.getByRole("radiogroup", { name: "Route options" });
+    // The DOM order inside the group is the visual order of the stack.
+    return Array.from(group.children).map((child) =>
+      child.textContent?.startsWith(NOTICE) ? "notice" : "card",
+    );
+  }
+
+  it("leads the stack with the notice while there are at most three options", () => {
+    renderWithWarning(3);
+    expect(cardsAndNotices()).toEqual(["notice", "card", "card", "card"]);
+  });
+
+  it("moves the notice above the weakest viable card once the stack passes three", () => {
+    renderWithWarning(4);
+    expect(cardsAndNotices()).toEqual(["card", "card", "notice", "card", "card"]);
+  });
+});
