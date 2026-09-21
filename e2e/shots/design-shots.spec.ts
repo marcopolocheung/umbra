@@ -90,7 +90,39 @@ test("Umbra mobile design states", async ({ page }) => {
     )
     .toBe(true);
   await page.waitForTimeout(1200);
+  // The selected card's detail block leaves the sheet scrolled; the U7 hero
+  // (the split shade bar + duration verdict) lives on the card's verdict row,
+  // so the committed shot starts from the top of the stack.
+  await page.evaluate(() => {
+    const sheet = document.querySelector("div.fixed.bottom-0");
+    const scroller = sheet?.querySelector("[class*='overflow']") ?? sheet;
+    if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
+  });
+  await page.waitForTimeout(300);
   await shot("02-directions-cards.png")();
+
+  // 2b. U7 — the arrival card: the peak-end shade story in the display voice
+  // with the split bar. Ride the real phase FSM there (navigate → arrive),
+  // then reopen directions so the choreography steps below still run.
+  await page
+    .getByRole("button", { name: "START NAVIGATING" })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await page.waitForTimeout(800);
+  await page
+    .getByRole("button", { name: "ARRIVED" })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await page.waitForTimeout(800);
+  await shot("07-arrival.png")();
+  await page
+    .getByRole("button", { name: "Plan another" })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await page.waitForTimeout(800);
 
   // 3. Back out to IDLE — the search pill returns (the choreography closes
   // the loop; no ambiguous half-slid search over the card).

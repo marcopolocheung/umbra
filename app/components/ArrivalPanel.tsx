@@ -38,23 +38,52 @@ export default function ArrivalPanel({
           const shelter = route.exposure?.shelteredDistancePct ?? route.dryCoverage ?? null;
           const unknown =
             (route.exposure?.unknownDistanceM ?? 0) > 0 || (route.exposure?.unknownDurationSec ?? 0) > 0;
+          // The headline above already states the shelter figure; the caption
+          // keeps only what the headline leaves out (U5: no number twice).
           const shelterText =
-            unknown ? "shelter partly unknown" : shelter == null ? "shelter unknown" : `${Math.round(shelter * 100)}% sheltered`;
-          return `${formatDistance(route.distanceM)} route with ${shelterText}`;
+            unknown ? "with shelter partly unknown" : shelter == null ? "with shelter unknown" : "";
+          return `${formatDistance(route.distanceM)} route${shelterText ? ` ${shelterText}` : ""}`;
         }
         const exposure = routeExposureMinutes(route);
         const scope = routeExposureScope(route);
         const dist = `${formatDistance(route.distanceM)} route`;
-        if (!exposure) return `${dist} — sun exposure unknown`;
-        const total = Math.round(exposure.sunMinutes + exposure.shadowMinutes);
-        const sun =
-          exposure.sunMinutes < 1
-            ? "under a minute"
-            : `${Math.round(exposure.sunMinutes)} of ${total} min`;
         const paceKmh = (
           (getTravelModePolicy(route.travelMode ?? "walk").speedMps * 3.6).toFixed(1)
         );
-        return `${dist} — ${sun} in sun at a fixed ${paceKmh} km/h pace${scope ? `; ${scope}` : ""}`;
+        if (!exposure) return `${dist} — sun exposure unknown`;
+        const total = Math.round(exposure.sunMinutes + exposure.shadowMinutes);
+        const pace = `at a fixed ${paceKmh} km/h pace`;
+        // The headline above states the sun minutes; the caption keeps only
+        // the basis and the scope (U5: no number twice on one card).
+        if (total >= 1) return `${dist} — ${pace}${scope ? `; ${scope}` : ""}`;
+        return `${dist} — under a minute in sun, ${pace}${scope ? `; ${scope}` : ""}`;
+      })()
+    : null;
+
+  // The shade story the arrival card leads with: the same exposure figures the
+  // earned line cites, as the display voice plus the split bar's fill width —
+  // no new number, only a bigger telling of the measured one. Null whenever
+  // the earned line would say "unknown": an invented split is a fabricated
+  // verdict.
+  const shadeStory = route
+    ? (() => {
+        if (rainMode) {
+          const shelter = route.exposure?.shelteredDistancePct ?? route.dryCoverage ?? null;
+          const unknown =
+            (route.exposure?.unknownDistanceM ?? 0) > 0 || (route.exposure?.unknownDurationSec ?? 0) > 0;
+          if (shelter == null || unknown) return null;
+          const pct = Math.round(shelter * 100);
+          return { headline: `${pct}% sheltered`, pct };
+        }
+        const exposure = routeExposureMinutes(route);
+        if (!exposure) return null;
+        const total = Math.round(exposure.sunMinutes + exposure.shadowMinutes);
+        if (total < 1) return null;
+        const sun =
+          exposure.sunMinutes < 1
+            ? "under a minute in sun"
+            : `${Math.round(exposure.sunMinutes)} of ${total} min in sun`;
+        return { headline: sun, pct: Math.round((exposure.shadowMinutes / total) * 100) };
       })()
     : null;
 
@@ -75,6 +104,10 @@ export default function ArrivalPanel({
         </button>
       </div>
 
+      {/* The peak-end sentence (U7): the walk's shade story told once, at the
+          display voice, with the same split bar the route card carries. The
+          boldness is spent on the story — the badge demotes to a small glyph
+          so nothing on this card competes with it. */}
       <div
         className="rounded-xl border p-4 text-center"
         style={{
@@ -83,15 +116,47 @@ export default function ArrivalPanel({
           color: "var(--color-ink)",
         }}
       >
-        <span
-          className="material-symbols-outlined rounded-full p-3 text-[28px]"
-          style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-        >
-          flag
-        </span>
-        <div className="mt-3 text-sm font-semibold">Arrived at {destination}</div>
+        <div className="flex items-center justify-center gap-1.5">
+          <span
+            className="material-symbols-outlined text-[20px]"
+            style={{ color: "var(--color-shade)" }}
+            aria-hidden="true"
+          >
+            flag
+          </span>
+          <div className="text-[13px] font-semibold">Arrived at {destination}</div>
+        </div>
+        {shadeStory ? (
+          <>
+            <div
+              className="font-display text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]"
+              style={{ color: "var(--color-ink)" }}
+            >
+              {shadeStory.headline}
+            </div>
+            {/* The split bar: the sun wash is the track, the shade fill covers
+                it — the same mark as the route card, so the story ends on the
+                same visual it started with. */}
+            <div
+              className="mt-2 h-3 rounded-full overflow-hidden"
+              style={{
+                background: rainMode
+                  ? "color-mix(in srgb, var(--color-ink) 8%, transparent)"
+                  : "var(--color-sun-soft)",
+              }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${shadeStory.pct}%`,
+                  background: rainMode ? "var(--color-route-mid)" : "var(--color-shade)",
+                }}
+              />
+            </div>
+          </>
+        ) : null}
         {earned && (
-          <div className="mt-1 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+          <div className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
             {earned}
           </div>
         )}

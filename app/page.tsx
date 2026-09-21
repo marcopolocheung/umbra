@@ -575,11 +575,18 @@ export default function Home() {
     });
   };
 
-  // Sync phase transitions with navigation hook
+  // Sync phase transitions with navigation hook. ARRIVAL keeps navigation
+  // state too — the arrival card reads the calculated route for its peak-end
+  // shade story; DISMISS (the only exit from ARRIVAL) is what clears it.
   useEffect(() => {
     if (phase === "DIRECTIONS" && !navMode) {
       handleToggleNavMode();
-    } else if (phase !== "DIRECTIONS" && phase !== "NAVIGATING" && navMode) {
+    } else if (
+      phase !== "DIRECTIONS" &&
+      phase !== "NAVIGATING" &&
+      phase !== "ARRIVAL" &&
+      navMode
+    ) {
       handleToggleNavMode();
     }
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
