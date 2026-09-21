@@ -46,7 +46,10 @@ export default function AppShell({
   }, [resizeMap]);
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--color-canvas)" }}>
+    /* h-dvh (with an h-screen fallback) tracks the *visible* viewport, so
+       mobile Chrome's bottom toolbar / new-tab bar no longer sits on top of
+       the timeline and bottom sheet pinned to the container's bottom edge. */
+    <div className="relative flex h-screen supports-[height:100dvh]:h-dvh w-screen overflow-hidden" style={{ background: "var(--color-canvas)" }}>
       {/* Collapsible sidebar — desktop only */}
       <aside
         className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40 w-sidebar"
