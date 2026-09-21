@@ -116,9 +116,57 @@ function toLngLat(c: [number, number]): [number, number] {
   return [c[1], c[0]];
 }
 
+/**
+ * One dropdown row, whatever provider answered. An explicit submit races both
+ * providers — Nominatim for addresses and streets, Foursquare for POIs — and
+ * the merge interleaves them by distance so the user reads one ranking, not
+ * two provider sections. Neither provider usually *fails* loudly; the real
+ * failure is a silent empty list from one of them, which is exactly what the
+ * race covers. Exported for tests.
+ */
+export type MergedSearchResult =
+  | { kind: "nominatim"; r: NominatimResult; distM: number | null }
+  | { kind: "fsq"; s: FoursquareSuggestion };
+
+export function mergeSearchResults(
+  nominatim: NominatimResult[],
+  fsq: FoursquareSuggestion[],
+  center: [number, number] | null,
+): MergedSearchResult[] {
+  const rows: MergedSearchResult[] = nominatim.map((r) => ({
+    kind: "nominatim",
+    r,
+    distM: center ? haversineM(center, [Number(r.lon), Number(r.lat)]) : null,
+  }));
+  for (const s of fsq) {
+    // A POI the address geocoder also found is the same place twice in one
+    // list; the Nominatim row wins (it carries the bounding box), the
+    // Foursquare duplicate is dropped.
+    const duplicate = rows.some(
+      (row) =>
+        row.kind === "nominatim" &&
+        primaryName(row.r.display_name).trim().toLocaleLowerCase() === s.name.trim().toLocaleLowerCase() &&
+        Math.abs(Number(row.r.lat) - s.lat) < 0.002 &&
+        Math.abs(Number(row.r.lon) - s.lng) < 0.002,
+    );
+    if (!duplicate) rows.push({ kind: "fsq", s });
+  }
+  // Distance-first where the anchor allows it; rows without a distance keep
+  // their provider order at the end.
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      const da = a.row.kind === "fsq" ? (a.row.s.distanceM ?? Number.POSITIVE_INFINITY) : (a.row.distM ?? Number.POSITIVE_INFINITY);
+      const db = b.row.kind === "fsq" ? (b.row.s.distanceM ?? Number.POSITIVE_INFINITY) : (b.row.distM ?? Number.POSITIVE_INFINITY);
+      return da - db || a.i - b.i;
+    })
+    .map(({ row }) => row)
+    .slice(0, 8);
+}
+
 export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections }: SearchBarProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<NominatimResult[]>([]);
+  const [results, setResults] = useState<MergedSearchResult[]>([]);
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isActive, setIsActive] = useState(false);
@@ -156,9 +204,11 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   }, []);
 
   // Only ever called from an explicit submit. Nominatim's usage policy lists
-  // autocomplete under unacceptable use, so no request may fire from a
-  // keystroke; geocodeForward also caches and paces the request.
-  const search = useCallback(async (q: string): Promise<NominatimResult[]> => {
+  // autocomplete under unacceptable use, so no Nominatim request may fire from
+  // a keystroke; on submit, though, both providers race — Nominatim answers
+  // addresses, Foursquare answers POIs, and either alone can come back
+  // silently empty for what the user typed.
+  const search = useCallback(async (q: string): Promise<MergedSearchResult[]> => {
     const gen = ++searchGenRef.current;
     if (q.trim().length === 0) {
       setResults([]);
@@ -166,25 +216,56 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     }
     setIsSearching(true);
     try {
-      const data = await geocodeForward(q);
+      const ll = mapCenterRef.current;
+      const [nominatim, fsq] = await Promise.all([
+        geocodeForward(q).catch(() => [] as NominatimResult[]),
+        ll
+          ? suggestPlaces(q, toLngLat(ll), { limit: 4 }).catch(
+              () => [] as FoursquareSuggestion[],
+            )
+          : Promise.resolve([] as FoursquareSuggestion[]),
+      ]);
+      const merged = mergeSearchResults(nominatim, fsq, ll ?? null);
       // The query moved on while this was in flight — its results belong to a
       // string the user is no longer looking at, and the top one is armed for
       // the next Enter, so dropping them is the whole point of the guard.
       if (gen !== searchGenRef.current) return [];
-      setResults(data);
+      setResults(merged);
       // Highlight the top match so a second Enter takes it.
-      setHighlightIndex(data.length > 0 ? 0 : -1);
-      return data;
-    } catch {
-      if (gen !== searchGenRef.current) return [];
-      setResults([]);
-      return [];
+      setHighlightIndex(merged.length > 0 ? 0 : -1);
+      return merged;
     } finally {
       if (gen === searchGenRef.current) setIsSearching(false);
     }
   }, []);
 
-  const handleSelect = useCallback(function handleSelect(r: NominatimResult) {
+  const handleSelectSuggestion = useCallback(
+    function handleSelectSuggestion(s: FoursquareSuggestion) {
+      setQuery(s.name);
+      setSuggestions([]);
+      setResults([]);
+      setIsActive(false);
+
+      saveRecent({ label: s.name, center: [s.lng, s.lat], zoom: 16 });
+      setRecent(loadRecent());
+
+      onSelect({
+        name: s.name,
+        category: s.category,
+        address: s.address,
+        center: [s.lng, s.lat],
+        zoom: 16,
+      });
+    },
+    [onSelect],
+  );
+
+  const handleSelect = useCallback(function handleSelect(row: MergedSearchResult) {
+    if (row.kind === "fsq") {
+      handleSelectSuggestion(row.s);
+      return;
+    }
+    const r = row.r;
     const name = primaryName(r.display_name);
     setQuery(name);
     setResults([]);
@@ -207,7 +288,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       center,
       zoom,
     });
-  }, [onSelect]);
+  }, [onSelect, handleSelectSuggestion]);
 
   const runSearchNow = useCallback(async () => {
     const q = query.trim();
@@ -259,24 +340,6 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     return () => clearTimeout(timer);
   }, [query]);
 
-  function handleSelectSuggestion(s: FoursquareSuggestion) {
-    setQuery(s.name);
-    setSuggestions([]);
-    setResults([]);
-    setIsActive(false);
-
-    saveRecent({ label: s.name, center: [s.lng, s.lat], zoom: 16 });
-    setRecent(loadRecent());
-
-    onSelect({
-      name: s.name,
-      category: s.category,
-      address: s.address,
-      center: [s.lng, s.lat],
-      zoom: 16,
-    });
-  }
-
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setQuery(e.target.value);
     // Deliberately no Nominatim search here — see the comment on `search`.
@@ -298,7 +361,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   }
 
   // The visible dropdown is the Foursquare suggestions while they exist, else
-  // the submitted Nominatim results; one highlight index serves whichever shows.
+  // the merged submit results; one highlight index serves whichever shows.
   function handleKeyDown(e: React.KeyboardEvent) {
     const suggestionList = results.length === 0 && suggestions.length > 0;
     const listLen = suggestionList ? suggestions.length : results.length;
@@ -556,7 +619,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         </div>
       )}
 
-      {/* Results dropdown */}
+      {/* Results dropdown — merged submit results from both providers */}
       {isOpen && (
         <div
           id={listId}
@@ -564,38 +627,74 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
           style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
         >
-          {results.map((r, i) => (
-            <button
-              key={i}
-              type="button"
-              id={`${listId}-opt-${i}`}
-              role="option"
-              aria-selected={i === highlightIndex}
-              onClick={() => handleSelect(r)}
-              className={`w-full text-left px-4 py-2 transition-colors flex items-center gap-3 ${
-                i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
-              }`}
-            >
-              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
-                <span className="material-symbols-outlined text-base">location_on</span>
-              </div>
+          {results.map((row, i) =>
+            row.kind === "fsq" ? (
+              <button
+                key={`fsq-${row.s.fsqId ?? row.s.name}-${i}`}
+                type="button"
+                id={`${listId}-opt-${i}`}
+                role="option"
+                aria-selected={i === highlightIndex}
+                onClick={() => handleSelect(row)}
+                className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
+                  i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+                }`}
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+                >
+                  <span className="material-symbols-outlined text-base">location_on</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
+                    {row.s.name}
+                  </div>
+                  {(row.s.category || row.s.hours) && (
+                    <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
+                      {[row.s.category, row.s.hours].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </div>
+                {mapCenter && typeof row.s.distanceM === "number" && (
+                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
+                    {formatDistance(row.s.distanceM)}
+                  </div>
+                )}
+              </button>
+            ) : (
+              <button
+                key={`nom-${i}`}
+                type="button"
+                id={`${listId}-opt-${i}`}
+                role="option"
+                aria-selected={i === highlightIndex}
+                onClick={() => handleSelect(row)}
+                className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
+                  i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+                }`}
+              >
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
+                  <span className="material-symbols-outlined text-base">location_on</span>
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
-                  {primaryName(r.display_name)}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
+                    {primaryName(row.r.display_name)}
+                  </div>
+                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
+                    {guessCategory(row.r.display_name)}
+                  </div>
                 </div>
-                <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
-                  {guessCategory(r.display_name)}
-                </div>
-              </div>
 
-              {mapCenter && (
-                <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
-                  {formatDistance(haversineM(toLngLat(mapCenter), [Number(r.lon), Number(r.lat)]))}
-                </div>
-              )}
-            </button>
-          ))}
+                {mapCenter && row.distM != null && (
+                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
+                    {formatDistance(row.distM)}
+                  </div>
+                )}
+              </button>
+            ),
+          )}
         </div>
       )}
     </div>

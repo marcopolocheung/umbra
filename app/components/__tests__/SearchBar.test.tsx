@@ -227,4 +227,55 @@ describe("SearchBar Foursquare typeahead", () => {
     await vi.waitFor(() => expect(geocodeForward).toHaveBeenCalledTimes(1));
     expect(geocodeForward).toHaveBeenCalledWith("brooklyn bridge");
   });
+
+  it("races both providers on submit and interleaves the results by distance", async () => {
+    // Nominatim answers with a far address; Foursquare with a near POI — the
+    // merged list must read as one distance-ranked ranking, POI first.
+    geocodeForward.mockResolvedValue([
+      { ...RESULT, display_name: "Far Library, New York", lat: "40.75", lon: "-73.99" },
+    ]);
+    suggestPlaces.mockResolvedValue([SUGGESTION]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "library" } });
+    await vi.waitFor(() => expect(suggestPlaces).toHaveBeenCalledTimes(1));
+    // The magnifier always submits; Enter with suggestions open takes the
+    // highlighted suggestion instead.
+    fireEvent.click(screen.getByLabelText("Search"));
+    await vi.waitFor(() => expect(geocodeForward).toHaveBeenCalledTimes(1));
+
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0].textContent).toContain("Brooklyn Roasting");
+    expect(options[1].textContent).toContain("Far Library");
+  });
+
+  it("drops a Foursquare duplicate of a Nominatim result instead of listing it twice", async () => {
+    suggestPlaces.mockResolvedValue([
+      { ...SUGGESTION, name: "Brooklyn Bridge", lat: 40.7061, lng: -73.9969 },
+    ]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    await vi.waitFor(() => expect(suggestPlaces).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Search"));
+    await vi.waitFor(() => expect(geocodeForward).toHaveBeenCalledTimes(1));
+
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0].textContent).toContain("Brooklyn Bridge");
+  });
+
+  it("still shows the Foursquare rows when the Nominatim submit fails", async () => {
+    geocodeForward.mockRejectedValue(new Error("nominatim down"));
+    suggestPlaces.mockResolvedValue([SUGGESTION]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "library" } });
+    await vi.waitFor(() => expect(suggestPlaces).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const option = await screen.findByRole("option");
+    expect(option.textContent).toContain("Brooklyn Roasting");
+  });
 });

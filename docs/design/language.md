@@ -127,9 +127,11 @@ The guardrail binds all waves.
   OSMF policy bars Nominatim autocomplete): each row is photo (or a canvas disc with the
   location glyph) → name over one `category · hours` caption line, with the rating
   (star + tabular figure on a stated /10 scale) and the distance stacked on the right.
-  Nominatim's full
-  text results own the dropdown after an explicit submit, same row skeleton minus
-  photo/rating. An explicit submit always hands the dropdown back to Nominatim.
+  An explicit submit **races both providers** and merges into one distance-ranked
+  list — Nominatim for addresses and streets, Foursquare for POIs — deduplicated by
+  name + proximity (the Nominatim row wins, it carries the bounding box); a provider
+  failing silently costs its half, never the list. Enter on the typeahead takes the
+  highlighted suggestion; the magnifier always submits the merged search.
 - **Pins & popups:** origin pin ink, destination pin route blue, assistant itinerary
   pins route blue (numbered teardrops, 28 px, on-ink numerals, L1 shadow), user-location
   dot route blue; popups are raised surfaces with a hairline border and L2 shadow, ink
