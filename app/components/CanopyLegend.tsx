@@ -55,7 +55,9 @@ export default function CanopyLegend({ state }: { state: CanopyLegendState | nul
         Estimated tree canopy (satellite)
       </div>
       <p className="mt-0.5 hidden leading-snug md:block" style={{ color: "var(--color-ink-muted)" }}>
-        Modelled heights, {CANOPY_PAINT_MIN_HEIGHT_M} m and taller. Not a tree survey.
+        Green is where canopy stands — modelled heights, {CANOPY_PAINT_MIN_HEIGHT_M} m and
+        taller, not a tree survey. The estimated protection it provides is the blue
+        shading from the shadow legend, computed from these heights.
       </p>
       {imagery?.leafOff && (
         <p className="mt-0.5 leading-snug font-medium" style={{ color: "var(--color-sun)" }}>
