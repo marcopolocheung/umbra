@@ -102,7 +102,9 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   }
 
   return (
-    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-hairline)" }}>
+    // The strong hairline separates saved trips from the planning form below —
+    // different kinds of content need more than spacing between them (U4).
+    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-hairline-strong)" }}>
       <button type="button"
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 w-full text-left text-[11px] hover:text-ink transition-colors py-0.5"

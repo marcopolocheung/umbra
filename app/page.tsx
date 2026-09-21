@@ -1125,13 +1125,18 @@ export default function Home() {
   // -- Map overlays --
   const mapOverlays = (
     <>
-      {/* Mobile floating search */}
-      <div
-        className="absolute top-4 left-4 z-30 md:hidden"
-        style={{ width: "min(560px, calc(100vw - 2rem))" }}
-      >
-        <SearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
-      </div>
+      {/* Mobile floating search — hidden while directions own the phone: the
+          pill would otherwise sit half over the sheet's planning form, reading
+          as if the search had slid open over the navigation card (U4). It
+          returns the moment the trip ends or the user backs out. */}
+      {phase !== "DIRECTIONS" && phase !== "NAVIGATING" && (
+        <div
+          className="absolute top-4 left-4 z-30 md:hidden"
+          style={{ width: "min(560px, calc(100vw - 2rem))" }}
+        >
+          <SearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
+        </div>
+      )}
 
       {/* Pending waypoint banner */}
       {pendingSlot && (
@@ -1172,8 +1177,14 @@ export default function Home() {
         />
       )}
 
-      {/* Floating map controls — right side */}
-      <div className="absolute bottom-20 md:top-24 md:bottom-auto right-3 z-10">
+      {/* Floating map controls — right side. Their bottom rides the same
+          choreography as the timeline card below them (U4): timeline at
+          0–~88px with no sheet, at 80–~168px over the collapsed band, under
+          the sheet otherwise. */}
+      <div
+        className="absolute md:top-24 md:bottom-auto right-3 z-10"
+        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+      >
         <FloatingMapControls
           mapRef={mapRef}
           pitch={mapPitch}
@@ -1234,9 +1245,18 @@ export default function Home() {
         </div>
       )}
 
-      {/* Mobile timeline — full width at bottom */}
+      {/* Mobile timeline — full width at the map's bottom edge. U4 removed a
+          stray `relative` that lost to `.absolute` in Tailwind's output order,
+          dropping the whole card *below* the map (offscreen at phone widths).
+          While the sheet is settled at its collapsed snap, the timeline rides
+          above the 80px band so the trip bar owns the thumb zone alone; at
+          taller snaps the sheet covers it entirely, which is the honest state
+          (the sheet owns the screen then). */}
       {!accumulation.enabled && (
-        <div className="absolute bottom-0 left-0 right-0 z-10 md:hidden relative">
+        <div
+          className="absolute bottom-0 left-0 right-0 z-10 md:hidden"
+          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 80 : 0 }}
+        >
           {timelineControls}
         </div>
       )}

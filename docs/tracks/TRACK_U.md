@@ -15,30 +15,48 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U3 — the navigation card. Open for owner review on
-  `design/u3-route-glance`. The route-option presentation was redesigned in the Canopy
-  language: recommended-only eyebrow, duration verdict at reading size, one trade-off line
-  against the shortest complete route, provenance caption, and all detail (metric tiles,
-  legs, transit info, conditions/dose, save/export) collapsed into the selected card; the
-  planning form collapses to a one-line trip bar once options exist; `RouteTradeoffSummary`
-  is deleted (folded into `RouteCard`); the two divergent solar pills are one `SolarPill`.
-  `NavigationStatusPanel.tsx` needed no change. Before/after phone shots (390×844, sheet at
-  its first snap point) under `docs/design/shots/u3/`. `grounding-auditor` and
-  `interface-reviewer` ran on the diff; their diff-introduced findings are fixed in the PR
-  (transit duration caption now states the estimated platform wait; partial-baseline
-  fallback removed; saved-routes section starts closed once options exist; trip-bar
-  accessible name matches its visible text; no mount-time `aria-live` block), and the
-  pre-existing findings (hover-only rename/delete on saved routes, sub-44px segmented
-  controls in the reopened form, 9–10px card type, floating stack's missing radiogroup)
-  are for the scribe/U4–U5.
+- **Active checkpoint:** U4 — timeline controls + sliding-panel interplay. Open for owner
+  review as PR [#66](https://github.com/marcopolocheung/umbra/pull/66) on
+  `design/u4-timeline-sheet` (branched from `design/u3-route-glance`, PR #63, because U4
+  edits the same surfaces U3 holds open; rebase onto main at U3's merge).
+- **U3 (open, PR #63):** the route card reads as a ranking — recommended-only eyebrow,
+  duration verdict, one trade-off line against the shortest complete route, provenance
+  caption, detail collapsed into the selected card; planning form collapses to a trip bar.
+  Its pre-existing findings for U4 (sub-44px segmented controls, floating stack's missing
+  radiogroup) are fixed by U4; the hover-only rename/delete on saved routes and 9–10px
+  card type remain for the scribe/U5.
+- **U4's code:** sun-arc glyph on the timeline ruler (thin sun path + horizon, sun dot at
+  the slider's time, sun hue, aria-hidden — data, not chrome); tick ruler memoised so
+  drag-time re-renders move only the sun dot; the mobile timeline wrapper's stray
+  `relative` removed (it beat `absolute` in Tailwind's output order — the whole card was
+  offscreen at phone widths); the timeline rides above the sheet's collapsed band and the
+  floating map controls ride the same choreography; the collapsed sheet's handle yields
+  to 36px, content padding and stale scroll yield too, and the panel leads with the trip
+  bar so the band shows it flush (43 of 44px rendered — the sheet's 1px border takes one;
+  hit area intact); Walk/Transit, Sun/Rain and travel-mode segmented controls at 44px
+  rows with `aria-pressed`; the mobile search pill is hidden during
+  DIRECTIONS/NAVIGATING so it never slides over the navigation card; the partial/failed
+  notice rides above the weakest viable card once the stack passes three options (serial
+  position); SavedRoutesSection's divider is hairline-strong against the planning form
+  (proximity); FloatingRouteCards gained the panel's `role="radiogroup"` + `aria-label`
+  (the radiogroup-of-aria-pressed-buttons semantics are imperfect ARIA — pre-existing
+  pattern, filed for the scribe). Touch-target audit updated in place. Review findings
+  fixed in the same PR: controls/timeline overlap, stale-scroll band, drag-gate overlap.
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
-  port #51), U2 (Canopy language, port PR #60 / private #479 — merge = visual sign-off).
+  port #51), U2 (Canopy language, port PR #60 / private #479 — merge = visual sign-off),
+  U3 (PR #63, open).
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
-- **Blocked on:** nothing for U3 itself; U2's private mirror merge is the owner's.
-- **Next action:** owner review of the U3 PR; then U4 (timeline + sheet choreography).
-- **Last verified:** 2026-09-20 (U3 session) — lint, typecheck, build green; full vitest
-  green on Node 24 except three pre-existing `useNavigation` transit failures that also
-  fail on clean `main` (unrelated to this diff); smoke e2e updated for the trip bar.
+- **Blocked on:** owner review of U3 and U4; the wave is sequential from U5 on.
+- **Next action:** owner review; then U5 (copy & information architecture).
+- **Last verified:** 2026-09-20 (U4 session) — lint and typecheck clean (app scope; the
+  `server/` typecheck errors pre-date this branch and exist on main), new unit tests green
+  (sun-arc geometry, warning placement), `npm run design:check` exit 0. Drag-latency
+  (Doherty, hermetic MutationObserver instrument, median of 30 discrete drags): U3 base
+  ~232–287 ms at desktop; U4 ~109 ms at 390px — no regression; the memoised ruler and the
+  un-occluded band both help. The U3 base phone timeline is offscreen (the stray
+  `relative`), so its 390px number is unmeasurable — the fix is the point. Smoke e2e:
+  the two smoke.spec tests pass; three rebrand.spec failures exist identically on the
+  U3 base commit (pre-existing on this mirror, reproduce at 4a373cc).
 
 ---
 

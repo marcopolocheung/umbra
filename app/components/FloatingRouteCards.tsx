@@ -64,8 +64,13 @@ export default function FloatingRouteCards({
             recommended option needs no header here: the card says it. */}
         {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
 
-        {/* Route cards — the selected card carries the detail block */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto umbra-scrollbar">
+        {/* Route cards — the selected card carries the detail block. Same
+            radiogroup semantics as the panel's stack (U4). */}
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto umbra-scrollbar"
+          role="radiogroup"
+          aria-label="Route options"
+        >
           {routes.map((r, i) => (
             <RouteCard
               key={routeKey(r)}

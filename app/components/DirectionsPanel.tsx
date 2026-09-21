@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
 import type { TravelModeId } from "../lib/travelMode";
@@ -35,6 +35,22 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
       </span>
       <span className="material-symbols-outlined shrink-0 text-base text-route" aria-hidden="true">edit</span>
     </button>
+  );
+}
+
+/**
+ * The partial/failed-route notice, as a pill riding inside the card stack.
+ * Sun-strong ink on sun-soft: a caveat about the data, not chrome.
+ */
+function NoticePill({ text }: { text: string }) {
+  return (
+    <div
+      className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium"
+      style={{ background: "var(--color-sun-soft)", color: "var(--color-sun-strong)" }}
+      role="status"
+    >
+      {text}
+    </div>
   );
 }
 
@@ -153,6 +169,11 @@ export default function DirectionsPanel({
   // Once options exist the planning form collapses to the trip bar — unless
   // the user reopened it, is mid-sketch, or is about to place a pin on the map.
   const showForm = routes.length === 0 || editing || drawMode || pendingSlot !== null;
+  // Where a partial/failed notice rides inside the stack. Up to three options
+  // it stays above the whole stack (after the pill); past three, serial
+  // position puts the end slot in memory's favour, so it moves to just above
+  // the weakest viable card instead of trailing it.
+  const weakNoticeIndex = routes.length > 3 ? routes.length - 2 : 0;
   const progressPercent = routeProgress ? routeProgressPercent(routeProgress) : null;
   const progressCount = routeProgress ? routeProgressCount(routeProgress) : null;
 
@@ -162,7 +183,18 @@ export default function DirectionsPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className={`flex flex-col gap-3 px-3 pb-3 ${showForm ? "pt-3" : "pt-0"}`}>
+      {/* Collapsed trip bar leads the panel (U4): with options on screen the
+          sheet's collapsed band is exactly one trip bar tall, so the bar —
+          the band's whole job — must be the panel's first child, flush to the
+          band's top. Reopening the form restores the normal order. */}
+      {!showForm && (
+        <TripSummaryBar
+          from={waypointALabel ?? "Start"}
+          to={waypointBLabel ?? "Destination"}
+          onEdit={() => setEditing(true)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <button type="button"
@@ -174,7 +206,8 @@ export default function DirectionsPanel({
           <span className="material-symbols-outlined text-base">arrow_back</span>
         </button>
         <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Directions</h2>
-        {/* Walk / Transit tabs */}
+        {/* Walk / Transit tabs — segmented controls carry 44px rows (U4): the
+            buttons may stay narrow, but their height is a thumb target. */}
         <div
           className="flex rounded-lg overflow-hidden border"
           style={{ borderColor: "var(--color-hairline)" }}
@@ -184,7 +217,8 @@ export default function DirectionsPanel({
               key={mode}
               onClick={() => onRouteModeChange?.(mode)}
               disabled={mode === 'transit' && !canTransit}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              aria-pressed={routeMode === mode}
+              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
                 routeMode === mode
                   ? 'text-ink bg-canvas'
                   : 'hover:bg-canvas'
@@ -198,7 +232,10 @@ export default function DirectionsPanel({
         </div>
       </div>
 
-      {/* Saved routes — reachable without reopening the planning form */}
+      {/* Saved routes — reachable without reopening the planning form. Its
+          divider (inside SavedRoutesSection) is hairline-strong: saved trips
+          and this trip's planning controls are different kinds of content, and
+          spacing alone doesn't group them (law of proximity, U4). */}
       {savedRoutes && savedRoutes.length > 0 && savedFolders && onLoadRoute && onDeleteSavedRoute && onRenameSavedRoute && (
         <SavedRoutesSection
           routes={savedRoutes}
@@ -225,7 +262,7 @@ export default function DirectionsPanel({
               key={rain ? "rain" : "sun"}
               onClick={() => onRainModeChange(rain)}
               aria-pressed={rainMode === rain}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
                 rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-canvas'
               }`}
               style={rainMode !== rain ? { color: "var(--color-ink-muted)" } : undefined}
@@ -302,7 +339,7 @@ export default function DirectionsPanel({
               onClick={() => onTravelModeChange(mode)}
               aria-pressed={travelMode === mode}
               aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
-              className={`px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
                   ? 'text-ink bg-canvas'
                   : 'hover:bg-canvas'
@@ -530,13 +567,7 @@ export default function DirectionsPanel({
         </button>
       </div>
         </>
-      ) : (
-        <TripSummaryBar
-          from={waypointALabel ?? "Start"}
-          to={waypointBLabel ?? "Destination"}
-          onEdit={() => setEditing(true)}
-        />
-      )}
+      ) : null}
       {isCalculating && routeProgress && (
         <div
           role="status"
@@ -572,27 +603,32 @@ export default function DirectionsPanel({
       )}
 
       {/* Route cards — hidden on desktop when FloatingRouteCards is used. The
-          selected card carries the conditions/dose detail block itself. */}
+          selected card carries the conditions/dose detail block itself. The
+          partial/failed notice rides above the weakest viable card once the
+          stack passes three options (serial position): trailing the stack
+          puts it at end-position, where memory favours the weakest option. */}
       {!hideRouteCards && routes.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
           {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">
             {routes.map((r, i) => (
-              <RouteCard
-                key={i}
-                route={r}
-                selected={i === selectedRouteIndex}
-                onSelect={() => onSelectRoute(i)}
-                onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
-                onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
-                recommended={r.label === "Balanced"}
-                baselineRoute={completeBaselineRoute ?? undefined}
-                rainMode={rainMode}
-                rainIntensity={_rainIntensity}
-                rainWind={rainWind}
-                weather={weather}
-                exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
-              />
+              <Fragment key={i}>
+                {(i === weakNoticeIndex && warning) && <NoticePill text={warning} />}
+                <RouteCard
+                  route={r}
+                  selected={i === selectedRouteIndex}
+                  onSelect={() => onSelectRoute(i)}
+                  onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
+                  onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
+                  recommended={r.label === "Balanced"}
+                  baselineRoute={completeBaselineRoute ?? undefined}
+                  rainMode={rainMode}
+                  rainIntensity={_rainIntensity}
+                  rainWind={rainWind}
+                  weather={weather}
+                  exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
+                />
+              </Fragment>
             ))}
           </div>
 
@@ -608,8 +644,9 @@ export default function DirectionsPanel({
         </div>
       )}
 
-      {/* Warning */}
-      {warning && (
+      {/* Warning with no route stack to ride in (and errors) stays at the
+          panel's foot — there is no weaker card to anchor it to. */}
+      {warning && routes.length === 0 && (
         <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-sun-strong)", borderColor: "var(--color-hairline)" }}>
           {warning}
         </div>
