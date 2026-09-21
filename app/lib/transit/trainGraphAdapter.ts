@@ -166,6 +166,14 @@ export function buildTrainGraphFromShards(
     return station;
   }
 
+  // One directed rail edge identity: (from, to, route, direction). Borough
+  // shards that meet at a boundary publish the same edge on both sides — both
+  // carry the far end's stop — so an adjacency built without this set would
+  // time every duplicated hop twice and offer phantom "alternatives" that are
+  // the same service. First publication wins; shards are byte-identical where
+  // they overlap by the digest contract, so the choice between equals is free.
+  const publishedRailEdges = new Set<string>();
+
   for (const shard of usable) {
     for (const edge of shard.edges) {
       // Routes the shard ships no colour or mode for cannot be drawn or priced.
@@ -173,6 +181,10 @@ export function buildTrainGraphFromShards(
       const from = ensureStation(edge.from);
       const to = ensureStation(edge.to);
       if (!from || !to) continue;
+
+      const identity = `${edge.from}>${edge.to}>${edge.route}>${edge.direction}`;
+      if (publishedRailEdges.has(identity)) continue;
+      publishedRailEdges.add(identity);
 
       // `lines` has no shard equivalent; it is exactly "routes whose edges
       // touch this station", which is what the Overpass producer meant by it.

@@ -81,3 +81,67 @@ export const CROSS_BOROUGH_URL = benchPairUrl(CROSS_BOROUGH_A, CROSS_BOROUGH_B);
  */
 export const COLD_REPEATS = 5;
 export const WARM_REPEATS = 10;
+
+// ─── Stage A frozen diagnostic cases ─────────────────────────────────────────
+//
+// The routing-repair audit's five cases, frozen at 2026-09-20 09:00
+// America/New_York exactly as the audit measured them. Every before/after
+// comparison in the repair's benchmark rides these URLs, so a phase timing
+// means the same route each time. The date is a Saturday — deliberately not
+// the solstice pin above — because these are transit-behavior diagnostics
+// first, and the day type is what the headway tables read.
+
+export const DIAGNOSTIC_DATE = "2026-09-20";
+export const DIAGNOSTIC_TIME = "09:00";
+
+/** [lng, lat] pairs; the audit's table, verbatim. */
+export const DIAGNOSTIC_CASES: Array<{
+  name: string;
+  a: [number, number];
+  b: [number, number];
+  /** What the audit measured on the audited revision, kept as the label. */
+  audited: string;
+}> = [
+  {
+    name: "midtown-normal",
+    a: [-73.9871, 40.7518],
+    b: [-73.9809, 40.7562],
+    audited: "large data selection; a bus card exists",
+  },
+  {
+    name: "village-eastbound",
+    a: [-74.002, 40.731],
+    b: [-73.99, 40.731],
+    audited: "177.6-minute internal candidate",
+  },
+  {
+    name: "midtown-eastbound",
+    a: [-73.993, 40.752],
+    b: [-73.981, 40.752],
+    audited: "125.2-minute internal candidate",
+  },
+  {
+    name: "midtown-westbound",
+    a: [-73.981, 40.752],
+    b: [-73.993, 40.752],
+    audited: "five candidates miss an option found with twenty",
+  },
+  {
+    name: "brooklyn-eastbound",
+    a: [-73.986, 40.691],
+    b: [-73.974, 40.691],
+    audited: "five candidates miss an option found with twenty",
+  },
+];
+
+function diagnosticUrl(a: [number, number], b: [number, number]): string {
+  const params =
+    `lat=${CENTER.lat}&lng=${CENTER.lng}&z=${CENTER.zoom}` +
+    `&date=${DIAGNOSTIC_DATE}&time=${DIAGNOSTIC_TIME}` +
+    `&a=${a[0]},${a[1]}&b=${b[0]},${b[1]}`;
+  return `/?${params}`;
+}
+
+export const DIAGNOSTIC_URLS: Record<string, string> = Object.fromEntries(
+  DIAGNOSTIC_CASES.map((c) => [c.name, diagnosticUrl(c.a, c.b)]),
+);

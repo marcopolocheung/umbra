@@ -816,7 +816,11 @@ describe("routing reads the shadow field (A4b)", () => {
     await runRouteWith(map);
 
     // Slicing the batch would rebuild the field's internal per-cell shadow indices.
-    expect(shadowStub.sampledBatchSizes).toEqual([2]);
+    // The pipeline's own batch is the first call; later calls (if any) are the
+    // post-landing conditions refresh (routeExposureRefresh), which re-samples
+    // the chosen path's own edges — never a second pipeline batch.
+    expect(shadowStub.sampledBatchSizes[0]).toBe(2);
+    for (const size of shadowStub.sampledBatchSizes.slice(1)) expect(size).toBeLessThan(2);
   });
 
   it("routes anyway when the geometry preload fails", async () => {
@@ -1368,7 +1372,12 @@ describe("a transit option is not lost to an unreachable snap (issue 400)", () =
     // option is discarded — which is what this asserts has stopped happening.
     expect(result.current.filteredRoutes).toHaveLength(1);
     expect(result.current.filteredRoutes[0].label).toBe("Via Subway");
-    expect(result.current.navWarning).toBeNull();
+    // The subway offer carries no warning of its own; the bus mode explains
+    // itself separately (Stage H) — its only stop shares the island, so no
+    // bus stop is reachable on foot.
+    expect(result.current.navWarning).toBe(
+      "No bus stop within walking distance can be reached on foot, so Via Bus is not offered.",
+    );
   });
 
   it("does not cry wolf when the entrance fetch failed but transit still works", async () => {
@@ -1383,7 +1392,11 @@ describe("a transit option is not lost to an unreachable snap (issue 400)", () =
     const result = await routeOverIslandGraph();
 
     expect(result.current.filteredRoutes[0]?.label).toBe("Via Subway");
-    expect(result.current.navWarning).toBeNull();
+    // The entrance failure itself still cries no wolf; the warning that is
+    // present names the bus mode's own outcome, not the entrance fetch.
+    expect(result.current.navWarning).toBe(
+      "No bus stop within walking distance can be reached on foot, so Via Bus is not offered.",
+    );
   });
 });
 
@@ -1538,6 +1551,8 @@ async function publishNav5() {
         id: "test",
         release: "test",
         url: "https://example.invalid/source",
+        bytes: 1000,
+        timestamp: "2026-09-18T12:00:00Z",
         sha256: "1".repeat(64),
       },
     ],
@@ -1787,9 +1802,12 @@ describe("transit access walks use the static street graph when configured", () 
   });
   it("alights over the destination access zone when the exit station stands outside the route bbox", async () => {
     // The exit station is east of the far seam (103.806), past the padded
-    // route bbox (west 103.785 → east 103.8). Only `zoneAround(B, 2000)`
-    // intersects its cell, so walkB proves the B-side zone while walkA still
-    // crosses the west seam through the A-side zone.
+    // route bbox. Only `zoneAround(B, 2000)` intersects its cell, so walkB
+    // proves the B-side zone. A stands further west and B further east than
+    // the other tests so the far-east station is the honest best exit (Mid
+    // would cost a 1.1 km egress walk) and the ~2.9 km direct walk keeps the
+    // offer clear of the walking-dominance gate — the offer itself is what
+    // carries walkB's assertions here.
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(fareastTrainGraph() as never);
     vi.mocked(fetchRoutingGraph).mockClear();
     vi.mocked(fetchStationEntranceBoxes).mockClear();
@@ -1811,8 +1829,8 @@ describe("transit access walks use the static street graph when configured", () 
         setDate: vi.fn(),
       }),
     );
-    act(() => result.current.handleSetWaypointA([103.79, 1.3], "Start"));
-    act(() => result.current.handleSetWaypointB([103.795, 1.3], "End"));
+    act(() => result.current.handleSetWaypointA([103.7815, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointB([103.809, 1.3], "End"));
     act(() => result.current.handleRouteModeChange("transit"));
     await act(async () => {
       result.current.handleCalculateRoute();
