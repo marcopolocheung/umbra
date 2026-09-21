@@ -96,6 +96,22 @@ export function routeExposureMinutes(route: RouteOption): {
   };
 }
 
+/**
+ * The card's time verdict — total trip duration at the route's own mode speed
+ * (`totalTimeSec` on a transit trip, else distance ÷ fixed mode pace).
+ *
+ * The same conversion `routeTradeoffLine` already makes; given the headline
+ * spot it needs its own name. The pace it assumes is stated beside it
+ * (`RouteCard`'s caption line), never left implicit.
+ */
+export function routeDurationLabel(route: RouteOption): string {
+  const minutes = Math.max(1, Math.round(travelSeconds(route) / 60));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder === 0 ? `${hours} hr` : `${hours} hr ${remainder} min`;
+}
+
 function formatDeltaMinutes(seconds: number): string {
   const minutes = Math.round(seconds / 60);
   if (minutes <= 0) return "same time";

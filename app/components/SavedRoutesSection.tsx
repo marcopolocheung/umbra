@@ -16,7 +16,9 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   onDelete,
   onRename,
 }: SavedRoutesSectionProps) {
-  const [open, setOpen] = useState(true);
+  // Open by default — except once route options exist, when the section must
+  // not spend the sheet's first snap point on itself (U3).
+  const [open, setOpen] = useState(!routes.length);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);

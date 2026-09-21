@@ -131,7 +131,9 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
 
   // 4. The Walk/Bike/Scoot travel selector (E1/E4) syncs to the share URL. The desktop
   //    and mobile layouts each mount a directions panel; only one is displayed
-  //    at this viewport.
+  //    at this viewport. Options exist now, so the planning form has collapsed
+  //    to the trip bar (U3) — reopen it before exercising the selector.
+  await page.getByRole("button", { name: /Edit trip: / }).filter({ visible: true }).first().click();
   const travelSelector = page.getByTestId("travel-mode-selector").filter({ visible: true });
   await expect(travelSelector.getByRole("button", { name: "Bike" })).toBeVisible();
   await travelSelector.getByRole("button", { name: "Bike" }).click();

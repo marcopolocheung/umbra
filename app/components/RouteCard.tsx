@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { token } from "../lib/css-tokens";
 import type { RouteOption, RouteLeg } from "../lib/routing";
+import type { WeatherHour } from "../lib/heat/types";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
 import {
@@ -8,14 +10,23 @@ import {
   transitSunCaveat,
   transitSunTone,
 } from "../lib/routeLegSummary";
-import { rainDryPct, rainExposureLine } from "../lib/routeRain";
+import { rainDryPct, rainExposureLine, rainTradeoffLine } from "../lib/routeRain";
 import {
   isTimetableExpired,
   riderFacingNotes,
   transitScheduleLine,
 } from "../lib/transitProvenance";
-import { routeExposureLine, routeExposureMinutes, routeExposureScope, routeShadowLabel } from "../lib/routeTradeoff";
-import { roughSurfaceLine } from "../lib/travelMode";
+import {
+  routeDurationLabel,
+  routeExposureLine,
+  routeExposureMinutes,
+  routeExposureScope,
+  routeShadowLabel,
+  routeTradeoffLine,
+} from "../lib/routeTradeoff";
+import { getTravelModePolicy, roughSurfaceLine } from "../lib/travelMode";
+import RouteConditionsLine from "./RouteConditionsLine";
+import RainRouteSummary from "./RainRouteSummary";
 
 function formatDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
@@ -28,13 +39,34 @@ interface RouteCardProps {
   onSave?: () => void;
   onExport?: (format: "gpx" | "geojson") => void;
   recommended?: boolean;
+  /** The shortest complete route, so every card can state its own trade-off. */
+  baselineRoute?: RouteOption;
   /** Rain objective: show shelter figures; absent dryCoverage keeps the sun card. */
   rainMode?: boolean;
   /** 0–10 intensity setting that scales the wet-minute figure only. */
   rainIntensity?: number;
+  /** Wind the last rain calculation priced, for the rain details to state. */
+  rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** The forecast hour at the map's location, for the heat score (selected card). */
+  weather?: WeatherHour | null;
+  /** The dose line and hourly exposure strip, rendered inside the selected card. */
+  exposureSlot?: ReactNode;
 }
 
-export default function RouteCard({ route: r, selected, onSelect, onSave, onExport, recommended, rainMode = false, rainIntensity = 5 }: RouteCardProps) {
+export default function RouteCard({
+  route: r,
+  selected,
+  onSelect,
+  onSave,
+  onExport,
+  recommended,
+  baselineRoute,
+  rainMode = false,
+  rainIntensity = 5,
+  rainWind = null,
+  weather = null,
+  exposureSlot,
+}: RouteCardProps) {
   const rainCard = rainMode && r.dryCoverage !== undefined;
   const streak =
     rainCard
@@ -73,13 +105,38 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
   // walk, sketch and transit routes.
   const roughLine = roughSurfaceLine(r.surfaceMetresM, r.travelMode ?? "walk");
   const isPartial = !!r.partial;
+  const isTransit = !!r.legs?.some((l: RouteLeg) => l.type === "transit");
+  const duration = routeDurationLabel(r);
+  // The duration verdict is a conversion, and the caption says of what: a
+  // fixed pace for walk-priced routes, the walk legs' pace for transit (the
+  // ride's own time is timetable provenance, stated in the transit details).
+  const policy = getTravelModePolicy(r.travelMode ?? "walk");
+  const paceKmh = (policy.speedMps * 3.6).toFixed(1);
+  const durationBasis = isTransit
+    ? `walk legs at a fixed ${paceKmh} km/h pace + timetable ride + estimated platform wait`
+    : `duration at a fixed ${paceKmh} km/h ${policy.gerund} pace`;
+  // The one-line trade-off against the shortest complete route. The baseline
+  // card's own line drops the trailing shadow/dry figure — it is the verdict
+  // one row above, and saying it twice is the lumpiness this redesign removes.
+  const tradeoff = baselineRoute
+    ? r === baselineRoute
+      ? "Shortest baseline"
+      : rainCard && baselineRoute.dryCoverage !== undefined
+        ? rainTradeoffLine(r, baselineRoute)
+        : routeTradeoffLine(r, baselineRoute)
+    : rainCard
+      ? rainExposureLine(r, rainIntensity)
+      : routeExposureLine(r);
+  const captionParts = [
+    ...(shadowSource ? [shadowSource] : []),
+    ...(exposureScope ? [exposureScope] : []),
+    durationBasis,
+  ];
 
   return (
     <div
-      className={`flex gap-1.5 items-start rounded-lg text-xs transition-all ${
-        selected
-          ? 'bg-raised p-4 shadow-level-2 border-l-4'
-          : 'bg-raised p-3 border-l-4 border-hairline hover:bg-canvas'
+      className={`flex flex-col rounded-xl text-xs transition-all bg-raised border-l-4 ${
+        selected ? "p-3.5 shadow-level-2" : "p-3 border-hairline hover:bg-canvas"
       }`}
       style={selected ? { borderColor: "var(--color-route)" } : undefined}
     >
@@ -87,25 +144,28 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className="min-w-0 flex-1 text-left"
+        className="min-h-11 min-w-0 flex-1 text-left"
       >
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <span className="flex items-center gap-1.5">
+        {/* Ranking: the recommended option is the one card that gets an
+            eyebrow, so the stack reads in rank order at a glance. */}
+        {recommended && (
+          <div
+            className="text-[10px] font-bold uppercase tracking-widest"
+            style={{ color: "var(--color-route)" }}
+          >
+            Recommended
+          </div>
+        )}
+
+        {/* Verdict row: what it costs in time, at reading size. */}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5">
             <span
-              className={`font-semibold ${selected ? 'text-sm' : ''}`}
-              style={{ color: selected ? "var(--color-ink)" : "var(--color-ink-muted)" }}
+              className={`truncate font-semibold ${selected ? "text-sm" : "text-[13px]"}`}
+              style={{ color: "var(--color-ink)" }}
             >
               {r.label}
             </span>
-            {recommended && (
-              <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
-                style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}
-              >
-                Recommended
-              </span>
-            )}
             {isPartial && (
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
@@ -116,19 +176,10 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
             )}
           </span>
           <span
-            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
-              shadowKnown ? "" : "border border-dashed"
-            }`}
-            style={
-              shadowKnown
-                ? {
-                    background: selected ? "var(--color-route-soft)" : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-                    color: selected ? "var(--color-ink)" : "var(--color-ink-muted)",
-                  }
-                : { borderColor: "var(--color-ink-muted)", color: "var(--color-ink-muted)" }
-            }
+            className="shrink-0 text-sm font-bold tabular-nums"
+            style={{ color: "var(--color-ink)" }}
           >
-            {rainCard ? `${shadowPct}% dry` : routeShadowLabel(r)}
+            {duration}
           </span>
         </div>
 
@@ -138,7 +189,7 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
           </div>
         )}
 
-        {/* Shadow bar */}
+        {/* Shade verdict: the bar carries the colour, the number stays ink. */}
         <div className="mt-2 flex items-center gap-2">
           {shadowKnown ? (
             <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--color-ink) 8%, transparent)" }}>
@@ -156,35 +207,47 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               style={{ borderColor: "var(--color-ink-muted)" }}
             />
           )}
-          <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: "var(--color-ink-muted)" }}>
+          <span
+            className={`text-[11px] font-semibold whitespace-nowrap ${shadowKnown ? "" : "italic"}`}
+            style={{ color: shadowKnown ? "var(--color-ink)" : "var(--color-ink-muted)" }}
+          >
+            {rainCard ? `${shadowPct}% dry` : routeShadowLabel(r)}
+          </span>
+          <span className="ml-auto text-[10px] tabular-nums whitespace-nowrap" style={{ color: "var(--color-ink-muted)" }}>
             {formatDist(r.distanceM)}
           </span>
         </div>
 
-        <div className="mt-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
-          {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
-          {!rainCard && exposureScope && ` · ${exposureScope}`}
+        {/* One line states the trade-off; the rest is detail, collapsed away
+            unless this card is the selected one. */}
+        <div className="mt-1.5 text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+          {tradeoff}
         </div>
 
-        {roughLine && (
-          <div className="mt-1 text-[10px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
-            {roughLine}
-          </div>
-        )}
+        {/* Provenance/uncertainty caption: what the numbers above are made of. */}
+        <div className="mt-1 text-[10px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+          {captionParts.join(" · ")}
+        </div>
+      </button>
 
-        {shadowSource && (
-          <div className="mt-1 text-[10px]" style={{ color: "var(--color-ink-muted)" }}>
-            {shadowSource}
+      {/* Details — only the selected card carries them, inside the card
+          rather than a separate panel above the stack. */}
+      {selected && (
+        <div
+          className="mt-3 flex flex-col gap-3 border-t pt-3"
+          style={{ borderColor: "var(--color-hairline)" }}
+        >
+          <div className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+            {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
           </div>
-        )}
 
-        {/* Metrics grid — only on selected */}
-        {selected && (
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
-              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{formatDist(r.distanceM)}</div>
+          {roughLine && (
+            <div className="text-[11px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
+              {roughLine}
             </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
             {streak && (
               <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
                 <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
@@ -205,122 +268,142 @@ export default function RouteCard({ route: r, selected, onSelect, onSave, onExpo
               </div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{transitions}</div>
             </div>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{r.turnCount}</div>
+            </div>
           </div>
-        )}
 
-        {selected && r.legs && r.legs.length > 1 && (
-          <div className="mt-3 rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
-            <div className="mt-1 flex flex-col gap-1">
-              {r.legs.map((leg, index) => {
-                const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
-                return (
-                  <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
-                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}>
-                      {index + 1}
+          {r.legs && r.legs.length > 1 && (
+            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
+              <div className="mt-1 flex flex-col gap-1">
+                {r.legs.map((leg, index) => {
+                  const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
+                  return (
+                    <div key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[10px]">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--color-route-soft)", color: "var(--color-route)" }}>
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>
+                        <span style={{ color: "var(--color-ink-muted)" }}> · {summary.detail}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Transit info */}
+          {r.legs?.find((l: RouteLeg) => l.type === 'transit') && (() => {
+            const tLeg = r.legs!.find((l: RouteLeg) => l.type === 'transit')!;
+            const lineColor = tLeg.lineColor ?? token("color-route");
+            const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
+            const stopCount = (tLeg.stops?.length ?? 2) - 1;
+            const sunExposure = tLeg.sunExposure ?? 0;
+            const sunCoverage = tLeg.sunExposureCoverage;
+            const aboveGround = tLeg.aboveGroundShare;
+            const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
+            const scheduleLine = transitScheduleLine(r.transitProvenance);
+            const notes = riderFacingNotes(r.transitProvenance);
+            const expired = isTimetableExpired(r.transitProvenance);
+            const sunColor = {
+              enclosed: token("color-route"),
+              shaded: token("color-shade"),
+              sunny: token("color-sun"),
+              unknown: "var(--color-ink-muted)",
+            }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
+            return (
+              <div className="text-[10px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
+                <div className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: lineColor }} />
+                  <span style={{ color: "var(--color-ink)" }}>{lineName}</span>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span>{stopCount} stop{stopCount !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex gap-x-2 flex-wrap">
+                  <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
+                </div>
+                {scheduleLine && (
+                  // The producer publishes these statements so a client states
+                  // them; the tooltip carries its words verbatim (#410).
+                  <div
+                    className="flex items-start gap-1"
+                    style={{ opacity: 0.75 }}
+                    title={notes.join("\n\n")}
+                  >
+                    <span
+                      className="material-symbols-outlined shrink-0"
+                      style={{ fontSize: "11px", lineHeight: "1.3" }}
+                      aria-hidden="true"
+                    >
+                      info
                     </span>
-                    <span className="min-w-0">
-                      <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>
-                      <span style={{ color: "var(--color-ink-muted)" }}> · {summary.detail}</span>
+                    <span style={expired ? { color: "var(--color-sun)" } : undefined}>
+                      {expired ? `${scheduleLine} — this timetable has expired` : scheduleLine}
                     </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Compact metrics — only on unselected */}
-        {!selected && (streak || detour || r.turnCount > 0) && (
-          <div className="text-[10px] mt-1 flex flex-wrap gap-x-2" style={{ color: "var(--color-ink-muted)" }}>
-            {streak && <span>{streak}</span>}
-            <span>{transitions}</span>
-            {detour && <span>{detour} detour</span>}
-            {r.turnCount > 0 && <span>{r.turnCount} turn{r.turnCount === 1 ? '' : 's'}</span>}
-          </div>
-        )}
-
-        {/* Transit info */}
-        {r.legs?.find((l: RouteLeg) => l.type === 'transit') && (() => {
-          const tLeg = r.legs!.find((l: RouteLeg) => l.type === 'transit')!;
-          const lineColor = tLeg.lineColor ?? token("color-route");
-          const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
-          const stopCount = (tLeg.stops?.length ?? 2) - 1;
-          const totalMin = Math.ceil((r.totalTimeSec ?? 0) / 60);
-          const sunExposure = tLeg.sunExposure ?? 0;
-          const sunCoverage = tLeg.sunExposureCoverage;
-          const aboveGround = tLeg.aboveGroundShare;
-          const sunLabel = transitSunCardLabel(sunExposure, sunCoverage, aboveGround);
-          const scheduleLine = transitScheduleLine(r.transitProvenance);
-          const notes = riderFacingNotes(r.transitProvenance);
-          const expired = isTimetableExpired(r.transitProvenance);
-          const sunColor = {
-            enclosed: token("color-route"),
-            shaded: token("color-shade"),
-            sunny: token("color-sun"),
-            unknown: "var(--color-ink-muted)",
-          }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
-          return (
-            <div className="mt-2 text-[10px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
-              <div className="flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: lineColor }} />
-                <span style={{ color: "var(--color-ink)" }}>{lineName}</span>
-                <span style={{ opacity: 0.4 }}>·</span>
-                <span>{stopCount} stop{stopCount !== 1 ? 's' : ''}</span>
+                )}
               </div>
-              <div className="flex gap-x-2 flex-wrap">
-                <span>{totalMin} min total</span>
-                <span style={{ opacity: 0.4 }}>·</span>
-                <span style={{ color: sunColor }} title={transitSunCaveat(sunCoverage)}>{sunLabel}</span>
-              </div>
-              {scheduleLine && (
-                // The producer publishes these statements so a client states
-                // them; the tooltip carries its words verbatim (#410).
-                <div
-                  className="flex items-start gap-1"
-                  style={{ opacity: 0.75 }}
-                  title={notes.join("\n\n")}
+            );
+          })()}
+
+          {/* Conditions and dose — the sun/rain detail block the old
+              separate summary panel carried, now folded into the card. The
+              old panel's guard (never on a partial route) carries over. */}
+          {!isPartial && baselineRoute && (
+            rainCard ? (
+              <RainRouteSummary route={r} rainIntensity={rainIntensity} wind={rainWind} />
+            ) : (
+              <RouteConditionsLine route={r} baselineRoute={baselineRoute} weather={weather} />
+            )
+          )}
+          {exposureSlot}
+
+          {/* Actions: explicit labelled buttons rather than icon-only targets
+              with a hover menu that never existed on touch. */}
+          {(onSave || onExport) && !isPartial && (
+            <div className="flex gap-2">
+              {onSave && (
+                <button
+                  type="button"
+                  onClick={onSave}
+                  title="Save this route"
+                  className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
+                  style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
                 >
-                  <span
-                    className="material-symbols-outlined shrink-0"
-                    style={{ fontSize: "11px", lineHeight: "1.3" }}
-                    aria-hidden="true"
+                  <span className="material-symbols-outlined text-base" aria-hidden="true">bookmark</span>
+                  Save
+                </button>
+              )}
+              {onExport && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onExport("gpx")}
+                    title="Export route as GPX"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
+                    style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
                   >
-                    info
-                  </span>
-                  <span style={expired ? { color: "var(--color-sun)" } : undefined}>
-                    {expired ? `${scheduleLine} — this timetable has expired` : scheduleLine}
-                  </span>
-                </div>
+                    <span className="material-symbols-outlined text-base" aria-hidden="true">download</span>
+                    GPX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onExport("geojson")}
+                    title="Export route as GeoJSON"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
+                    style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+                  >
+                    <span className="material-symbols-outlined text-base" aria-hidden="true">download</span>
+                    GeoJSON
+                  </button>
+                </>
               )}
             </div>
-          );
-        })()}
-      </button>
-
-      {onSave && !isPartial && (
-        <button
-          type="button"
-          onClick={onSave}
-          title="Save this route"
-          className="shrink-0 mt-0.5 p-1.5 rounded-lg text-ink-faint hover:text-route hover:bg-route-soft transition-all"
-        >
-          <span className="material-symbols-outlined text-base">bookmark</span>
-        </button>
-      )}
-
-      {onExport && !isPartial && (
-        <div className="relative group/export shrink-0 mt-0.5">
-          <button type="button" className="p-1.5 rounded-lg text-ink-faint hover:text-ink-muted transition-colors" title="Export route">
-            <span className="material-symbols-outlined text-base">download</span>
-          </button>
-          <div
-            className="hidden group-hover/export:flex absolute right-0 top-full mt-1 flex-col rounded-lg shadow-xl z-30 min-w-max border"
-            style={{ background: "white", borderColor: "var(--color-hairline)" }}
-          >
-            <button type="button" onClick={() => onExport("gpx")} className="px-3 py-1.5 text-[11px] hover:bg-canvas text-left transition-colors" style={{ color: "var(--color-ink)" }}>GPX</button>
-            <button type="button" onClick={() => onExport("geojson")} className="px-3 py-1.5 text-[11px] hover:bg-canvas text-left transition-colors" style={{ color: "var(--color-ink)" }}>GeoJSON</button>
-          </div>
+          )}
         </div>
       )}
     </div>

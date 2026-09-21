@@ -89,10 +89,16 @@ no lie-flat adjectives. U5 fills out this section per surface; the guardrail bin
 
 ## Component recipes
 
-- **Route card:** rank chip (route-blue soft fill when recommended) → label + one
-  trade-off line → verdict numbers → fixed metric strip (DIST · SHADE · UV) → provenance
-  footnote. Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar
-  fills in shade green; the card never uses warm colours for ranking.
+- **Route card (U3):** recommended-only eyebrow (route blue — the ranking mark) → label +
+  duration verdict (right, bold tabular) → shade verdict + coverage bar + distance → one
+  trade-off line against the shortest complete route → provenance caption (source · scope ·
+  stated pace). Everything else — metric tiles, legs, transit detail, the conditions/dose
+  block, save/export — collapses into the selected card only, below a hairline divider.
+  Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar fills in
+  shade green (route blue in rain mode); the card never uses warm colours for ranking.
+  Actions are labelled buttons ≥44 px on the selected card — icon-only targets and
+  hover menus are banned. Once options exist the planning form collapses to a one-line
+  trip bar (Edit reopens it), so the stack starts inside the sheet's first snap point.
 - **Timeline:** one time readout; the now-marker is the **only** amber element (sun data);
   sunrise/sunset ticks are sun/route coloured data marks; day ticks are ink washes.
 - **Search:** the one 999-radius pill, ≥70 % white with its allowed blur, route-blue

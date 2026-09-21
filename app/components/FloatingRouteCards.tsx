@@ -3,7 +3,7 @@ import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
 import { shortestRoute } from "../lib/routeTradeoff";
 import RouteCard from "./RouteCard";
-import RouteTradeoffSummary from "./RouteTradeoffSummary";
+import SolarPill from "./SolarPill";
 
 interface FloatingRouteCardsProps {
   routes: RouteOption[];
@@ -15,7 +15,7 @@ interface FloatingRouteCardsProps {
   weather?: WeatherHour | null;
   solarIntensity?: number | null;
   onStartNavigation?: () => void;
-  /** The dose line and hourly exposure strip, rendered under the tradeoff line. */
+  /** The dose line and hourly exposure strip, rendered in the selected card. */
   exposureSlot?: ReactNode;
   /** Rain objective: cards present shelter, and the solar pill steps aside. */
   rainMode?: boolean;
@@ -58,38 +58,11 @@ export default function FloatingRouteCards({
           borderColor: "var(--color-hairline)",
         }}
       >
-        {/* Recommended badge */}
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-shade animate-pulse" />
-          <span className="text-[10px] uppercase tracking-widest font-bold text-ink-muted">
-            Recommended Option
-          </span>
-        </div>
+        {/* Solar pill — sun semantics, so it yields to a rain objective. The
+            recommended option needs no header here: the card says it. */}
+        {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
 
-        {/* Solar pill — sun semantics, so it yields to a rain objective */}
-        {!rainMode && solarIntensity != null && solarIntensity > 0.15 && (
-          <div
-            className="text-xs px-3 py-1.5 rounded-full self-start"
-            style={{
-              background: solarIntensity > 0.6 ? "var(--color-sun)" : "var(--color-sun-soft)",
-              color: solarIntensity > 0.6 ? "var(--color-on-sun)" : "var(--color-sun)",
-            }}
-          >
-            {solarIntensity > 0.6 ? "High solar load — shadow matters" : "Moderate solar load"}
-          </div>
-        )}
-
-        <RouteTradeoffSummary
-          route={selectedRoute}
-          baselineRoute={completeBaselineRoute ?? undefined}
-          weather={weather}
-          rainMode={rainMode}
-          rainIntensity={rainIntensity}
-          rainWind={rainWind}
-        />
-        {exposureSlot}
-
-        {/* Route cards */}
+        {/* Route cards — the selected card carries the detail block */}
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto umbra-scrollbar">
           {routes.map((r, i) => (
             <RouteCard
@@ -100,8 +73,12 @@ export default function FloatingRouteCards({
               onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
               onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
               recommended={r.label === "Balanced"}
+              baselineRoute={completeBaselineRoute ?? undefined}
               rainMode={rainMode}
               rainIntensity={rainIntensity}
+              rainWind={rainWind}
+              weather={weather}
+              exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
             />
           ))}
         </div>
@@ -111,7 +88,7 @@ export default function FloatingRouteCards({
           <button
             type="button"
             onClick={onStartNavigation}
-            className="w-full px-4 py-3 rounded-lg text-sm font-bold transition-colors"
+            className="w-full min-h-11 px-4 py-3 rounded-lg text-sm font-bold transition-colors"
             style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
           >
             START NAVIGATING
