@@ -24,6 +24,36 @@ const OUT = process.env.SHOTS_OUT ?? path.join(process.cwd(), "out", "shots");
 
 test("Umbra mobile design states", async ({ page }) => {
   await stubNetwork(page, { basemap: basemap() });
+  // U6: the Foursquare typeahead is the one autocomplete path — a stubbed
+  // places-search answer so the suggestion rows render in the shot.
+  await page.route("**/api/fsq/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [
+          {
+            fsq_id: "shot-library-1",
+            name: "Jefferson Market Library",
+            latitude: 40.726,
+            longitude: -74.005,
+            categories: [{ name: "Library" }],
+            hours: { display: "Open until 8 PM" },
+            rating: 9.1,
+            location: { formatted_address: "425 Ave of the Americas, New York" },
+          },
+          {
+            fsq_id: "shot-library-2",
+            name: "Dewey Square Reading Room",
+            latitude: 40.72,
+            longitude: -74.0,
+            categories: [{ name: "Reading Room" }],
+            location: { formatted_address: "1 Hudson Sq, New York" },
+          },
+        ],
+      }),
+    })
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(SHARE_URL);
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
@@ -76,7 +106,18 @@ test("Umbra mobile design states", async ({ page }) => {
   await page.waitForTimeout(600);
   await shot("04-search-focused.png")();
 
-  // 5. Search results open — submit-triggered geocode (never autocomplete).
+  // 5. U6 typeahead — typing suggests Foursquare places with rich rows
+  // (photo, category, hours, rating, distance); the dropdown shows them
+  // before any submit.
+  const searchBox = page
+    .getByPlaceholder("Search destinations...")
+    .filter({ visible: true })
+    .first();
+  await searchBox.fill("library");
+  await page.waitForTimeout(1200); // debounce + stubbed typeahead round-trip
+  await shot("05-typeahead.png")();
+
+  // 6. Search results open — submit-triggered geocode (never autocomplete).
   await page.getByPlaceholder("Search destinations...").filter({ visible: true }).first().fill("library");
   await page
     .getByRole("button", { name: "Search", exact: true })

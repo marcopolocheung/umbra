@@ -1006,7 +1006,8 @@ export default function MapView({
   }, [additionalWaypoints]);
 
   // -------------------------------------------------------------------------
-  // Assistant itinerary pins (numbered amber teardrops with label popups)
+  // Assistant itinerary pins — numbered route-blue teardrops (itinerary data,
+  // so the route hue; the language reserves ink for the plain origin pin)
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!mapRef.current) return;
@@ -1015,14 +1016,14 @@ export default function MapView({
     (assistantPins ?? []).forEach((pin, i) => {
       const el = document.createElement("div");
       el.style.cssText = `
-        width:26px;height:26px;border-radius:50% 50% 50% 0;
+        width:28px;height:28px;border-radius:50% 50% 50% 0;
         transform:rotate(-45deg);
-        background:var(--color-ink);border:2px solid var(--color-raised);
-        box-shadow:0 2px 6px color-mix(in srgb, var(--color-ink) 40%, transparent);
+        background:var(--color-route);border:2px solid var(--color-raised);
+        box-shadow:var(--shadow-level-1);
         display:flex;align-items:center;justify-content:center;cursor:pointer;
       `;
       const inner = document.createElement("span");
-      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-ink);`;
+      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-route);font-family:var(--font-sans);`;
       inner.textContent = String(i + 1);
       el.appendChild(inner);
 

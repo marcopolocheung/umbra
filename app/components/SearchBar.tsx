@@ -1,6 +1,7 @@
 import "../lib/storageMigration";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
+import { suggestPlaces, type FoursquareSuggestion } from "../services/foursquare";
 
 interface SearchBarProps {
   onSelect: (place: {
@@ -10,7 +11,7 @@ interface SearchBarProps {
     center: [number, number];
     zoom: number;
   }) => void;
-  /** Map center used to compute distances for dropdown rows. [lng, lat] */
+  /** Map center used to compute distances for dropdown rows. [lat, lng] */
   mapCenter?: [number, number] | null;
   /** Optional: also close the panel when user clears the search */
   onClearPanel?: () => void;
@@ -106,9 +107,19 @@ function computeZoomFromBbox(bb: [string, string, string, string]): number {
   return Math.min(16, Math.max(2, Math.round(8 - Math.log2(latSpan))));
 }
 
+/**
+ * The map hook's `mapCenter` is [lat, lng], but every distance helper here
+ * (and Foursquare's `ll`) speaks [lng, lat]. One swap point so no caller
+ * guesses the convention.
+ */
+function toLngLat(c: [number, number]): [number, number] {
+  return [c[1], c[0]];
+}
+
 export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NominatimResult[]>([]);
+  const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isActive, setIsActive] = useState(false);
   const [recent, setRecent] = useState<RecentItem[]>([]);
@@ -116,6 +127,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   const [isSearching, setIsSearching] = useState(false);
   // Invalidates an in-flight geocode whose query the user has since changed.
   const searchGenRef = useRef(0);
+  // Same guard for the Foursquare typeahead, plus its debounce handle. The
+  // typeahead is the one autocomplete path in the app — Foursquare only; the
+  // Nominatim policy forbids autocomplete, so `search` stays submit-only.
+  const suggestGenRef = useRef(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listId = useRef(`search-results-${Math.random().toString(36).slice(2, 8)}`).current;
@@ -130,6 +147,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsActive(false);
+        // A tap on the map must close the typeahead like every other dropdown.
+        setSuggestions([]);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -196,6 +215,10 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       inputRef.current?.focus();
       return;
     }
+    // An explicit submit hands the dropdown to Nominatim's full results.
+    suggestGenRef.current++;
+    abortRef.current?.abort();
+    setSuggestions([]);
     await search(q);
   }, [query, search]);
 
@@ -203,10 +226,62 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     await runSearchNow();
   }, [runSearchNow]);
 
+  // The typeahead re-anchors on the next keystroke, not on every pan: the map
+  // center flows into a ref, so a completed pan never re-fires the search (and
+  // never drops a surprise dropdown over the map the user is looking at).
+  const mapCenterRef = useRef(mapCenter);
+  mapCenterRef.current = mapCenter;
+
+  // Foursquare typeahead: debounced, abortable, anchored to the map center.
+  // Only Foursquare may autocomplete (OSMF policy — see the comment on
+  // `search`); Nominatim still waits for an explicit submit.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setHighlightIndex(-1);
+      return;
+    }
+    const gen = ++suggestGenRef.current;
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    const timer = setTimeout(() => {
+      const ll = mapCenterRef.current;
+      if (!ll) return;
+      suggestPlaces(q, toLngLat(ll), { signal: controller.signal }).then((data) => {
+        if (gen !== suggestGenRef.current) return;
+        setSuggestions(data);
+        setHighlightIndex(data.length > 0 ? 0 : -1);
+      });
+    }, 300);
+    debounceRef.current = timer;
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  function handleSelectSuggestion(s: FoursquareSuggestion) {
+    setQuery(s.name);
+    setSuggestions([]);
+    setResults([]);
+    setIsActive(false);
+
+    saveRecent({ label: s.name, center: [s.lng, s.lat], zoom: 16 });
+    setRecent(loadRecent());
+
+    onSelect({
+      name: s.name,
+      category: s.category,
+      address: s.address,
+      center: [s.lng, s.lat],
+      zoom: 16,
+    });
+  }
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setQuery(e.target.value);
-    // Deliberately no search here — see the comment on `search`. Retyping does
-    // still invalidate a geocode already in flight for the previous query.
+    // Deliberately no Nominatim search here — see the comment on `search`.
+    // Retyping does still invalidate a geocode already in flight, and the
+    // typeahead effect above re-arms on the new value.
     searchGenRef.current++;
     setResults([]);
     setHighlightIndex(-1);
@@ -222,24 +297,31 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     onSelect({ name: item.label, center: item.center, zoom: item.zoom });
   }
 
+  // The visible dropdown is the Foursquare suggestions while they exist, else
+  // the submitted Nominatim results; one highlight index serves whichever shows.
   function handleKeyDown(e: React.KeyboardEvent) {
+    const suggestionList = results.length === 0 && suggestions.length > 0;
+    const listLen = suggestionList ? suggestions.length : results.length;
     if (e.key === "ArrowDown") {
-      if (results.length === 0) return;
+      if (listLen === 0) return;
       e.preventDefault();
-      setHighlightIndex((i) => Math.min(i + 1, results.length - 1));
+      setHighlightIndex((i) => Math.min(i + 1, listLen - 1));
     } else if (e.key === "ArrowUp") {
-      if (results.length === 0) return;
+      if (listLen === 0) return;
       e.preventDefault();
       setHighlightIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (highlightIndex >= 0 && results[highlightIndex]) {
+      if (suggestionList && highlightIndex >= 0 && suggestions[highlightIndex]) {
+        handleSelectSuggestion(suggestions[highlightIndex]);
+      } else if (!suggestionList && highlightIndex >= 0 && results[highlightIndex]) {
         handleSelect(results[highlightIndex]);
       } else {
         runSearchNow();
       }
     } else if (e.key === "Escape") {
       setResults([]);
+      setSuggestions([]);
       setIsActive(false);
       inputRef.current?.blur();
     }
@@ -252,6 +334,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   function handleClear() {
     setQuery("");
     setResults([]);
+    setSuggestions([]);
     onClearPanel?.();
     inputRef.current?.focus();
   }
@@ -263,7 +346,10 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   }, [highlightIndex, listId]);
 
   const isOpen = results.length > 0;
-  const showSections = isActive && !isOpen && (recent.length > 0 || saved.length > 0);
+  // While the user types, the Foursquare suggestions own the dropdown; the
+  // submitted Nominatim results take it back on submit.
+  const suggestionsOpen = !isOpen && suggestions.length > 0;
+  const showSections = isActive && !isOpen && !suggestionsOpen && (recent.length > 0 || saved.length > 0);
 
   return (
     <div ref={containerRef} className="relative">
@@ -293,8 +379,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           onFocus={handleFocus}
           placeholder="Search destinations..."
           role="combobox"
-          aria-expanded={isOpen}
-          aria-controls={isOpen ? listId : undefined}
+          aria-expanded={isOpen || suggestionsOpen}
+          aria-controls={isOpen || suggestionsOpen ? listId : undefined}
           aria-activedescendant={highlightIndex >= 0 ? `${listId}-opt-${highlightIndex}` : undefined}
           aria-autocomplete="list"
           className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-ink-faint"
@@ -352,7 +438,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                 RECENT
               </div>
               {recent.map((it, i) => {
-                const dist = mapCenter ? formatDistance(haversineM(mapCenter, it.center)) : "";
+                const dist = mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), it.center)) : "";
                 return (
                   <button type="button"
                     key={`${it.label}-${i}`}
@@ -378,7 +464,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                 SAVED
               </div>
               {saved.map((it, i) => {
-                const dist = mapCenter ? formatDistance(haversineM(mapCenter, it.center)) : "";
+                const dist = mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), it.center)) : "";
                 return (
                   <button type="button"
                     key={`${it.label}-${i}`}
@@ -397,6 +483,76 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Foursquare typeahead suggestions — the one autocomplete path */}
+      {suggestionsOpen && (
+        <div
+          id={listId}
+          role="listbox"
+          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
+          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
+        >
+          {suggestions.map((s, i) => (
+            <button
+              key={`${s.fsqId ?? s.name}-${i}`}
+              type="button"
+              id={`${listId}-opt-${i}`}
+              role="option"
+              aria-selected={i === highlightIndex}
+              onClick={() => handleSelectSuggestion(s)}
+              className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
+                i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+              }`}
+            >
+              {s.photo ? (
+                <img
+                  src={s.photo}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="w-10 h-10 rounded-lg object-cover shrink-0"
+                  style={{ border: "1px solid var(--color-hairline)" }}
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+                >
+                  <span className="material-symbols-outlined text-base">location_on</span>
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
+                  {s.name}
+                </div>
+                {(s.category || s.hours) && (
+                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
+                    {[s.category, s.hours].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </div>
+
+              <div className="shrink-0 flex flex-col items-end gap-0.5">
+                {typeof s.rating === "number" && (
+                  <div
+                    className="text-[11px] tabular-nums flex items-center gap-0.5"
+                    style={{ color: "var(--color-ink)" }}
+                  >
+                    <span className="material-symbols-outlined text-xs" aria-hidden="true">star</span>
+                    {s.rating.toFixed(1)}/10
+                  </div>
+                )}
+                {mapCenter && typeof s.distanceM === "number" && (
+                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
+                    {formatDistance(s.distanceM)}
+                  </div>
+                )}
+              </div>
+            </button>
+          ))}
         </div>
       )}
 
@@ -435,7 +591,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
               {mapCenter && (
                 <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
-                  {formatDistance(haversineM(mapCenter, [Number(r.lon), Number(r.lat)]))}
+                  {formatDistance(haversineM(toLngLat(mapCenter), [Number(r.lon), Number(r.lat)]))}
                 </div>
               )}
             </button>

@@ -123,7 +123,10 @@ function allowedUpstreamPath(reqUrl) {
   const upstream = new URL(upstreamPath + url.search, "https://places-api.foursquare.com");
 
   if (upstream.pathname === "/places/search") {
-    if (!hasOnlySearchParams(upstream, new Set(["query", "ll", "limit"]))) return null;
+    // `fields` and `radius` back the search bar's Foursquare typeahead (rich
+    // rows, distance-bounded); the Place-Details lookup sends neither.
+    if (!hasOnlySearchParams(upstream, new Set(["query", "ll", "limit", "fields", "radius"])))
+      return null;
     if (!upstream.searchParams.get("query") || !upstream.searchParams.get("ll")) return null;
     return upstream;
   }

@@ -783,9 +783,12 @@ export function receiptLabel(receipt: ClaimReceipt): string {
 }
 
 export function receiptDetail(receipt: ClaimReceipt): string {
+  // observedAt is the *simulated map date* in UTC (agentLoop's loop clock), so
+  // rendering it as a wall-clock time would be a time-zone claim the receipt
+  // cannot back up — the source and the evidence age carry the provenance.
   const status =
     receipt.verification === "verified"
-      ? `Checked by ${receipt.source ?? "application tool"} at ${receipt.observedAt}${receipt.sourceVersion ? ` (version ${receipt.sourceVersion})` : ""}.`
+      ? `Checked by ${receipt.source ?? "application tool"}${receipt.sourceVersion ? ` (version ${receipt.sourceVersion})` : ""}.`
       : receipt.rejectionReason
         ? `Not verified: ${receipt.rejectionReason.replaceAll("_", " ")}.`
         : "Not verified by the available tools.";

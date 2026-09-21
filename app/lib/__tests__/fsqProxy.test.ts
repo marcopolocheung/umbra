@@ -215,6 +215,45 @@ describe("api/fsq proxy hardening", () => {
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer quoted_fsq_key");
   });
 
+  it("forwards the search bar's typeahead params (fields, radius) on place search", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "Content-Type": "application/json" }),
+      text: async () => "{\"results\":[]}",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    await handler(
+      makeReq({
+        url:
+          "/api/fsq/places/search?query=cafe&ll=40,-74&radius=3000&limit=6" +
+          "&fields=name%2Clocation",
+      }),
+      res
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://places-api.foursquare.com/places/search?query=cafe&ll=40,-74&radius=3000&limit=6&fields=name%2Clocation",
+      expect.any(Object)
+    );
+  });
+
+  it("still rejects place search with a param outside the typeahead allowlist", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    await handler(makeReq({ url: "/api/fsq/places/search?query=park&ll=40,-74&sort=DISTANCE" }), res);
+
+    expect(res.statusCode).toBe(404);
+    expect(res.jsonBody?.error).toBe("Foursquare path is not allowed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("forwards allowed place detail requests", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       status: 200,
