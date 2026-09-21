@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useState, type ReactNode } from "react";
 
-export type SnapPoint = "collapsed" | "mid" | "full";
+export type SnapPoint = "hidden" | "collapsed" | "mid" | "full";
 
 interface BottomSheetProps {
   snap: SnapPoint;
@@ -11,6 +11,7 @@ interface BottomSheetProps {
 }
 
 const SNAP_HEIGHTS: Record<SnapPoint, number> = {
+  hidden: 0, // fully off-screen; the caller renders a reopen affordance
   collapsed: 80,
   mid: 50,   // percentage of vh
   full: 90,  // percentage of vh
@@ -18,6 +19,7 @@ const SNAP_HEIGHTS: Record<SnapPoint, number> = {
 
 function snapToPixels(snap: SnapPoint, viewportHeight: number, collapsedHeight: number): number {
   switch (snap) {
+    case "hidden": return 0;
     case "collapsed": return collapsedHeight;
     case "mid": return viewportHeight * (SNAP_HEIGHTS.mid / 100);
     case "full": return viewportHeight * (SNAP_HEIGHTS.full / 100);
@@ -25,7 +27,7 @@ function snapToPixels(snap: SnapPoint, viewportHeight: number, collapsedHeight: 
 }
 
 function nearestSnap(heightPx: number, viewportHeight: number, collapsedHeight: number): SnapPoint {
-  const snaps: SnapPoint[] = ["collapsed", "mid", "full"];
+  const snaps: SnapPoint[] = ["hidden", "collapsed", "mid", "full"];
   let best: SnapPoint = "collapsed";
   let bestDist = Infinity;
   for (const s of snaps) {
@@ -117,7 +119,9 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
     const dy = startYRef.current - e.clientY; // positive = dragging up = taller
     const vh = window.innerHeight;
     const maxH = vh * (SNAP_HEIGHTS.full / 100);
-    const newH = Math.max(collapsedHeight, Math.min(maxH, startHeightRef.current + dy));
+    // The floor is 0, not the collapsed band: dragging (or flinging) past
+    // collapsed must be able to carry the sheet to the hidden snap (U4).
+    const newH = Math.max(0, Math.min(maxH, startHeightRef.current + dy));
     setHeight(newH);
 
     // EMA velocity (px/ms, positive = dragging up)
@@ -129,7 +133,7 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
     }
     lastYRef.current = e.clientY;
     lastTRef.current = now;
-  }, [collapsedHeight]);
+  }, []);
 
   const onPointerUp = useCallback(() => {
     if (!draggingRef.current) return;
@@ -160,6 +164,9 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
   // 44px target inside the band. Any taller snap keeps the 44px handle.
   const isCollapsed = snap === "collapsed" && !draggingRef.current;
   const handleBandPx = isCollapsed ? 36 : 44;
+  // At the hidden snap the sheet is off-screen; a settled height of 0 must not
+  // leave a 1px hairline riding the viewport's bottom edge.
+  const isHidden = snap === "hidden" && !draggingRef.current;
 
   return (
     <div
@@ -170,8 +177,9 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         touchAction: "none",
         willChange: "height",
         background: "var(--color-raised)",
-        borderTop: "1px solid var(--color-hairline)",
+        borderTop: isHidden ? "none" : "1px solid var(--color-hairline)",
         borderRadius: "20px 20px 0 0",
+        pointerEvents: isHidden ? "none" : undefined,
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

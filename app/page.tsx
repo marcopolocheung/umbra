@@ -1262,6 +1262,25 @@ export default function Home() {
       )}
 
       {/* Mobile bottom sheet */}
+      {menuOpen && bottomSheetSnap === "hidden" && (
+        <button
+          type="button"
+          onClick={() => setBottomSheetSnap("collapsed")}
+          className="fixed z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-level-2 md:hidden"
+          style={{
+            bottom: "0.75rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--color-raised)",
+            border: "1px solid var(--color-hairline)",
+            color: "var(--color-ink)",
+          }}
+          aria-label="Reopen trip panel"
+        >
+          <span className="material-symbols-outlined text-base" aria-hidden="true">expand_less</span>
+          <span className="text-xs font-medium">Trip</span>
+        </button>
+      )}
       {menuOpen && (
         <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
