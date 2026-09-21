@@ -1,5 +1,6 @@
 import type { RouteOption } from "../lib/routing";
-import { routeExposureMinutes } from "../lib/routeTradeoff";
+import { routeExposureMinutes, routeExposureScope } from "../lib/routeTradeoff";
+import { getTravelModePolicy } from "../lib/travelMode";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -22,21 +23,28 @@ export default function ArrivalPanel({
 }: ArrivalPanelProps) {
   const destination = waypointBLabel ?? (waypointB ? `${waypointB[1].toFixed(5)}, ${waypointB[0].toFixed(5)}` : "Destination");
 
-  // The peak-end line: what the walk earned. Journeys are remembered by their
+  // The peak-end line: what the trip earned. Journeys are remembered by their
   // end, and the arrival card used to restate only distance and a percentage.
-  // The earned figure is the same mode-paced conversion the route cards print,
-  // so it inherits their stated basis rather than being a new number.
-  const exposure = route ? routeExposureMinutes(route) : null;
-  const earned =
-    route && exposure
-      ? (() => {
-          const sun = Math.round(exposure.sunMinutes);
-          const total = Math.max(1, Math.round(exposure.sunMinutes + exposure.shadowMinutes));
-          return `${formatDistance(route.distanceM)} walked — ${sun} of ${total} min in sun`;
-        })()
-      : route
-        ? `${formatDistance(route.distanceM)} route — ${Math.round(route.shadowCoverage * 100)}% shadow${exposure === null && route.legs ? ", sun time unknown" : ""}`
-        : null;
+  // It states its basis (the fixed pace, as the route cards' caption does) and
+  // its scope on a transit trip (the ride is never in the figure), because
+  // neither travels with the number once it leaves the card.
+  const earned = route
+    ? (() => {
+        const exposure = routeExposureMinutes(route);
+        const scope = routeExposureScope(route);
+        const dist = `${formatDistance(route.distanceM)} route`;
+        if (!exposure) return `${dist} — sun exposure unknown`;
+        const total = Math.round(exposure.sunMinutes + exposure.shadowMinutes);
+        const sun =
+          exposure.sunMinutes < 1
+            ? "under a minute"
+            : `${Math.round(exposure.sunMinutes)} of ${total} min`;
+        const paceKmh = (
+          (getTravelModePolicy(route.travelMode ?? "walk").speedMps * 3.6).toFixed(1)
+        );
+        return `${dist} — ${sun} in sun at a fixed ${paceKmh} km/h pace${scope ? `; ${scope}` : ""}`;
+      })()
+    : null;
 
   return (
     <div className="flex flex-col gap-3 p-3">

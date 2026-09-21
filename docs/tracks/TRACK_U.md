@@ -28,8 +28,9 @@ accordingly. Subagents stay read-only here, per the repo rule.
   at most three " ·" facts — a fourth starts a second line; PlaceDetail no longer
   fabricates data (the hardcoded 4.4 fallback rating, the invented review histogram and
   placeholder review quotes are gone — absent sources get one honest line); ArrivalPanel
-  carries the peak-end line ("340 m walked — 2 of 6 min in sun", same mode-paced basis as
-  the cards, "sun time unknown" where transit waits went unanswered); both agent system
+  carries the peak-end line ("340 m route — 2 of 6 min in sun at a fixed 5.0 km/h pace",
+  stating its pace basis and, on a transit trip, its scope — "ride not counted" — with
+  "sun exposure unknown" where transit waits went unanswered); both agent system
   prompts cap itineraries at three, best first, and lead with the recommendation.
   `docs/design/language.md` copy-voice section filled out per surface. Before/after phone
   shots in `docs/design/shots/u5/`. Pre-existing for the scribe: QuickActions/SettingsPanel

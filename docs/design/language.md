@@ -96,8 +96,9 @@ no lie-flat adjectives. Per surface (U5):
   at most three itinerary options, best first (Miller). Receipt captions also 11px.
 - **Place detail:** no fabricated data — a rating that does not exist is never shown as one,
   and an absent review source is one honest line, not invented bars and quotes.
-- **Arrival:** one peak-end sentence states what the walk earned ("340 m walked — 2 of 6 min
-  in sun"), on the same mode-paced basis the cards print.
+- **Arrival:** one peak-end sentence states what the trip earned ("340 m route — 2 of 6 min
+  in sun at a fixed 5.0 km/h pace"), stating the pace basis and, on a transit trip, the
+  scope ("ride not counted") — neither travels with the number on its own.
 - **Hourly strip:** "Sun by hour", verdict "most shadowed around 14:00", unsampled hours say
   "checking…" rather than reading as zero.
 
