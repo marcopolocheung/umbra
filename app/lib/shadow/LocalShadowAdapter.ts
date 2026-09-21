@@ -1335,15 +1335,23 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // it further: the "darker protection value" rule, per pixel at composite time.
     if (this.canopyFboTexture && this.canopyCompositeProgram && this.canopyAtlas) {
       const atlas2 = this.canopyAtlas;
-      const [awMin, asMin] = lonLatToMercator(atlas2.bbox[0], atlas2.bbox[1]);
-      const [awMax, asMax] = lonLatToMercator(atlas2.bbox[2], atlas2.bbox[3]);
-      // Vertices are stored relative to `centerMerc` (the matrix is pre-translated).
+      // The atlas bbox arrives in metres (`tiles.ts`' Mercator); the matrix and
+      // the building mesh speak **normalized** Mercator (x,y in [0,1] — see
+      // `lngLatToMercator` below, whose output `centerMerc` is). Converting with
+      // the wrong pair of functions puts the quad ~10⁶ units off-screen, which
+      // is exactly what shipped first: the march ran, the atlas uploaded, and
+      // not one fragment landed in the viewport.
+      const [nwMx, nwMy] = metresToNormalizedMercator(atlas2.bbox[2], atlas2.bbox[3]); // north-west
+      const [seMx, seMy] = metresToNormalizedMercator(atlas2.bbox[0], atlas2.bbox[1]); // south-east
       const [ccx, ccy] = this.buildingCache?.centerMerc ?? [0, 0];
-      const x0 = awMin - ccx, y0 = asMin - ccy, x1 = awMax - ccx, y1 = asMax - ccy;
-      // Two triangles, UV 0..1 across the atlas; row 0 (UV y=0) is the north edge.
+      const x0 = nwMx - ccx, y0 = seMy - ccy, x1 = seMx - ccx, y1 = nwMy - ccy;
+      // Two triangles over the atlas quad, UV 0..1 across it. The atlas array is
+      // north-west origin (row 0 = north) and `texImage2D` uploads row 0 to
+      // v=0, so the geographic north edge samples v=0 — getting this backwards
+      // mirrors every shadow through the equator.
       const corners = new Float32Array([
-        x0, y1, 0, 1,  x1, y1, 1, 1,  x1, y0, 1, 0,
-        x0, y1, 0, 1,  x1, y0, 1, 0,  x0, y0, 0, 0,
+        x0, y1, 0, 0,  x1, y1, 1, 0,  x1, y0, 1, 1,
+        x0, y1, 0, 0,  x1, y0, 1, 1,  x0, y0, 0, 1,
       ]);
       const a = LocalShadowAdapter.SHADOW_ALPHA;
       const tint = this.computeShadowColor(geo.sunBelowHorizon);
@@ -1867,7 +1875,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       const packed = new Uint8Array(atlas.width * atlas.height * 4);
       for (let i = 0; i < atlas.width * atlas.height; i++) {
         packed[i * 4] = atlas.heights[i];
-        packed[i * 4 + 1] = atlas.valid ? atlas.valid[i] : 255;
+        // Validity is stored 0/1 in the atlas but must upload as 0/255: an RGBA8
+        // texture normalizes bytes, so a literal `1` samples back as 1/255 and
+        // the shader's `cell.g > 0.5` would read every masked cell as nodata.
+        packed[i * 4 + 1] = atlas.valid ? (atlas.valid[i] ? 255 : 0) : 255;
       }
       gl.texImage2D(
         gl.TEXTURE_2D, 0, gl.RGBA, atlas.width, atlas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE,
@@ -2092,6 +2103,24 @@ function lngLatToMercator(lng: number, lat: number): [number, number] {
   const y = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
   return [x, y];
 }
+
+/**
+ * Metres-of-Mercator (the `tiles.ts` convention, `EARTH_RADIUS_M` based) →
+ * normalized [0,1] Mercator — the building mesh's convention, and the camera
+ * matrix's. The two coordinate systems differ by exactly a scale and a flip of
+ * the y axis; the canopy atlas speaks the first (it arrives from the tile
+ * store), the renderer speaks the second. Every conversion between them goes
+ * through this one function so the convention clash has one owner.
+ */
+export function metresToNormalizedMercator(metresX: number, metresY: number): [number, number] {
+  return [
+    metresX / (2 * Math.PI * EARTH_MERCATOR_RADIUS_M) + 0.5,
+    0.5 - metresY / (2 * Math.PI * EARTH_MERCATOR_RADIUS_M),
+  ];
+}
+
+/** The radius behind `tiles.ts`' metre-based Mercator (WGS84 semimajor). */
+const EARTH_MERCATOR_RADIUS_M = 6378137;
 
 function createShader(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
