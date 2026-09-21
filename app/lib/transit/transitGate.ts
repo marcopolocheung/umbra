@@ -13,18 +13,6 @@ export const TRANSIT_DOMINANCE_MAX_RATIO = 2;
 export const TRANSIT_DOMINANCE_SLACK_SEC = 15 * 60;
 
 /**
- * The threshold itself: the slower of "twice the walk" and "the walk plus
- * fifteen minutes". Exported so the transit search can apply the same number
- * as its pruning bound — a journey strictly past it is never worth finding.
- * Infinity when there is no valid walk to compare against, which is the same
- * "never dominated" statement the final check makes.
- */
-export function transitDominanceBound(walkSec: number): number {
-  if (!Number.isFinite(walkSec) || walkSec <= 0) return Infinity;
-  return Math.max(TRANSIT_DOMINANCE_MAX_RATIO * walkSec, walkSec + TRANSIT_DOMINANCE_SLACK_SEC);
-}
-
-/**
  * True when the transit offer takes longer than both twice the quickest walk
  * and the quickest walk plus fifteen minutes. Invalid or missing seconds are
  * never dominated: with no walk to compare against, the transit offer stays.
@@ -32,5 +20,8 @@ export function transitDominanceBound(walkSec: number): number {
 export function transitOptionDominated(transitSec: number, walkSec: number): boolean {
   if (!Number.isFinite(transitSec) || transitSec <= 0) return false;
   if (!Number.isFinite(walkSec) || walkSec <= 0) return false;
-  return transitSec > transitDominanceBound(walkSec);
+  return (
+    transitSec >
+    Math.max(TRANSIT_DOMINANCE_MAX_RATIO * walkSec, walkSec + TRANSIT_DOMINANCE_SLACK_SEC)
+  );
 }
