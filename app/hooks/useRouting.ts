@@ -75,17 +75,21 @@ import {
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
-import { directionForWindReport, verticalRainDirection } from "../lib/rain/direction";
-import { fetchWeatherForecast, nearestWeatherHour } from "../services/weather";
-import { MAX_STOP_PRELOADS, waitExposureFrom } from "../lib/transitWaitExposure";
+import { verticalRainDirection } from "../lib/rain/direction";
+import { fetchWeatherForecast } from "../services/weather";
+import { MAX_STOP_PRELOADS, shelterWaitExposureFrom, waitExposureFrom } from "../lib/transitWaitExposure";
 import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
-import { transitOutdoorExposure } from "../lib/routeTradeoff";
+import { transitOutdoorExposure, transitRainMetrics } from "../lib/routeTradeoff";
 import { transitOptionDominated } from "../lib/transit/transitGate";
 import type { TravelModeId } from "../lib/travelMode";
 import type { StopEntry } from "../lib/trip/types";
+import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
+import { resolveExposureContext } from "../lib/exposure";
+import { computeExposureMetrics } from "../lib/exposureMetrics";
+import { markExposureUpdating, refreshRouteExposure } from "../lib/routeExposureRefresh";
 import { routeBounds } from "../lib/routeBounds";
 import {
   RoutePlanJobCoordinator,
@@ -173,10 +177,14 @@ export interface UseRoutingArgs {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
   shadowLayerRef?: React.MutableRefObject<IShadowLayer | null>;
   dateRef: React.MutableRefObject<Date>;
+  /** React date state only to schedule condition refreshes; calculations still read dateRef. */
+  date?: Date;
   travelModeRef: React.MutableRefObject<TravelModeId>;
   routeMode: "walk" | "transit";
   /** Rain objective active: walk/bike legs price shelter, not shadow. */
   rainMode: boolean;
+  /** Shared objective and wind selection used by every rain consumer. */
+  exposureSettings: ExposureSettings;
   waypointA: [number, number] | null;
   waypointB: [number, number] | null;
   additionalWaypoints: [number, number][];
@@ -204,9 +212,11 @@ export function useRouting({
   mapRef,
   shadowLayerRef,
   dateRef,
+  date,
   travelModeRef,
   routeMode,
   rainMode,
+  exposureSettings,
   waypointA,
   waypointB,
   additionalWaypoints,
@@ -227,6 +237,7 @@ export function useRouting({
   const [routeSolarIntensity, setRouteSolarIntensity] = useState<number | null>(null);
   /** Wind (from-bearing, m/s) the last rain calculation priced, for the card to state. */
   const [routeWind, setRouteWind] = useState<{ dirDeg: number | null; windMs: number | null } | null>(null);
+  const [routeExposureContext, setRouteExposureContext] = useState<ResolvedExposureContext | null>(null);
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -237,6 +248,8 @@ export function useRouting({
   // Volatile across renders: `calculateRoute` keeps its identity and reads this.
   const rainModeRef = useRef(rainMode);
   rainModeRef.current = rainMode;
+  const exposureSettingsRef = useRef(exposureSettings);
+  exposureSettingsRef.current = exposureSettings;
   const calcGenRef = useRef(0);
   const calcAbortRef = useRef<AbortController | null>(null);
   const agentRouteJobsRef = useRef(new RoutePlanJobCoordinator());
@@ -646,6 +659,20 @@ export function useRouting({
           const tCanvas = performance.now();
           updateProgress({ message: "Reading shadow layer" });
           buildingMask = shadowLayerRef?.current?.readBuildingShadowMask() ?? null;
+          // A coverage readback is tagged by the renderer. Never let a previous
+          // rain frame satisfy a solar fallback (or vice versa).
+          if (buildingMask && buildingMask.objective && buildingMask.objective !== "sun") {
+            buildingMask = null;
+          }
+          const rendererTag = shadowLayerRef?.current?.getExposureContextTag?.();
+          if (
+            buildingMask &&
+            rendererTag &&
+            buildingMask.contextRevision &&
+            buildingMask.contextRevision !== rendererTag.revision
+          ) {
+            buildingMask = null;
+          }
           dedicatedMaskReadMs = performance.now() - tCanvas;
         }
 
@@ -679,24 +706,48 @@ export function useRouting({
         const rainObjective = rainModeRef.current;
         const midLat = (a[1] + b[1]) / 2;
         const midLng = (a[0] + b[0]) / 2;
-        // Wind-driven v1: tilt the shelter ray by the forecast wind at the trip's
-        // midpoint (D2's shared cache, one more reader not one more request; the
-        // nearest hour that actually carries a direction). Failure or absence
-        // falls back to the vertical v0 ray — rain around a buildingless field.
+        // Resolve one immutable context for this calculation. The first and last
+        // trip stops anchor weather, so panning while planning cannot change it.
         let rainDirection = verticalRainDirection();
         let routeWindNow: { dirDeg: number | null; windMs: number | null } | null = null;
-        if (rainObjective) {
+        let routeExposureContext: ResolvedExposureContext = resolveExposureContext(
+          exposureSettingsRef.current,
+          {
+            time: dateRef.current,
+            mapCenter: [midLng, midLat],
+            tripStops: [routeStops[0], routeStops[routeStops.length - 1]],
+            revision: myGen,
+          },
+        );
+        if (rainObjective && exposureSettingsRef.current.windSource === "forecast") {
           try {
-            const hours = await fetchWeatherForecast(midLat, midLng, { signal: calcSignal });
-            const hour = nearestWeatherHour(hours, dateRef.current, "windDirDeg");
-            if (hour?.windDirDeg != null) {
-              routeWindNow = { dirDeg: hour.windDirDeg, windMs: hour.windMs };
-              rainDirection = directionForWindReport(hour.windDirDeg, hour.windMs);
-            }
+            const reference = routeExposureContext.referenceLocation;
+            const hours = await fetchWeatherForecast(reference.lat, reference.lng, { signal: calcSignal });
+            routeExposureContext = resolveExposureContext(
+              exposureSettingsRef.current,
+              {
+                time: dateRef.current,
+                mapCenter: [midLng, midLat],
+                tripStops: [routeStops[0], routeStops[routeStops.length - 1]],
+                forecast: hours,
+                revision: myGen,
+              },
+            );
+            routeWindNow = {
+              dirDeg: routeExposureContext.windDirectionDeg,
+              windMs: routeExposureContext.windSpeedMps,
+            };
+            rainDirection = routeExposureContext.direction;
           } catch {
-            // No forecast: stay vertical rather than guessing a tilt.
+            // No forecast: the context already carries a labeled vertical fallback.
           }
           if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
+        } else if (rainObjective) {
+          rainDirection = routeExposureContext.direction;
+          routeWindNow = {
+            dirDeg: routeExposureContext.windDirectionDeg,
+            windMs: routeExposureContext.windSpeedMps,
+          };
         }
         updateProgress({
           message: rainObjective ? "Sampling street rain shelter" : "Sampling street shadow",
@@ -808,9 +859,19 @@ export function useRouting({
             const lo = Math.min(fromId, edge.toId);
             const hi = Math.max(fromId, edge.toId);
             const { left, right } = edgeShadowCache.get(`${lo},${hi}`) ?? { left: 0, right: 0 };
-            routingAdj.get(fromId)!.push(
-              ...parallelSidewalkEdges(fromId, edge, left, right, rainObjective ? "rain" : "sun"),
-            );
+            const sidewalkEdges = parallelSidewalkEdges(
+              fromId,
+              edge,
+              left,
+              right,
+              rainObjective ? "rain" : "sun",
+            ).map((sidewalk) => ({
+              ...sidewalk,
+              ...(rainObjective
+                ? { shelterConfidence: edgeShadowCache.get(`${lo},${hi}`)?.confidence ?? 0 }
+                : { exposureConfidence: edgeShadowCache.get(`${lo},${hi}`)?.confidence ?? 0 }),
+            }));
+            routingAdj.get(fromId)!.push(...sidewalkEdges);
           }
         }
         const routingGraph: RoutingGraph = { nodes: graph.nodes, adj: routingAdj };
@@ -932,11 +993,13 @@ export function useRouting({
                   dryCoverage: result.dryCoverage,
                   longestContinuousWetM: result.longestContinuousWetM,
                   wetTransitions: result.wetTransitions,
+                  exposureSegments: result.exposureSegments,
                   // Same summariser, same vocabulary: the sources it names —
                   // building geometry, tree canopy — describe shelter too.
                   shelterSource: summarizeShadowSource(result.nodeIds, edgeShadowCache, edgeDistanceFor),
                 }
               : {}),
+            sampledEdges: result.sampledEdges,
             travelMode,
             totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
             surfaceMetresM: result.surfaceMetresM,
@@ -961,6 +1024,8 @@ export function useRouting({
             // whole route — so the node ids have to outlive the leg that produced them.
             const allNodeIds: number[] = [];
             const legs: RouteLeg[] = [];
+            const exposureSegments: NonNullable<import("../lib/routing").RouteResult["exposureSegments"]> = [];
+            const sampledEdges: NonNullable<import("../lib/routing").RouteResult["sampledEdges"]> = [];
             const surfaceMetresM: Record<string, number> = {};
             let failed = false;
             let failedLeg: number | null = null;
@@ -1003,12 +1068,24 @@ export function useRouting({
               legs.push({
                 type: "walk",
                 geojson: segGeojson,
+                objective: routeExposureContext.objective,
+                evaluatedContext: routeExposureContext,
                 distanceM: segResult.distanceM,
                 shadowCoverage: segResult.shadowCoverage,
+                ...(rainObjective
+                  ? { shelterCoverage: segResult.exposure?.shelteredDistancePct ?? segResult.dryCoverage }
+                  : {}),
+                exposure: segResult.exposure,
+                exposureSegments: segResult.exposureSegments,
+                sampledEdges: segResult.sampledEdges,
               });
               totalDist += segResult.distanceM;
               totalShadowDist += segResult.distanceM * segResult.shadowCoverage;
               totalDryDist += segResult.distanceM * (segResult.dryCoverage ?? 0);
+              if (segResult.exposureSegments) {
+                exposureSegments.push(...segResult.exposureSegments);
+              }
+              if (segResult.sampledEdges) sampledEdges.push(...segResult.sampledEdges);
               for (const [surface, metres] of Object.entries(segResult.surfaceMetresM)) {
                 surfaceMetresM[surface] = (surfaceMetresM[surface] ?? 0) + metres;
               }
@@ -1042,6 +1119,9 @@ export function useRouting({
                         shelterSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
                       }
                     : {}),
+                  exposure: computeExposureMetrics(routeExposureContext.objective, exposureSegments),
+                  exposureSegments,
+                  sampledEdges,
                   travelMode,
                   totalTimeSec: travelTimeSeconds(totalDist, travelMode),
                   surfaceMetresM: { ...surfaceMetresM },
@@ -1087,6 +1167,9 @@ export function useRouting({
                     shelterSource: summarizeShadowSource(allNodeIds, edgeShadowCache, edgeDistanceFor),
                   }
                 : {}),
+              exposure: computeExposureMetrics(routeExposureContext.objective, exposureSegments),
+              exposureSegments,
+              sampledEdges,
               travelMode,
               totalTimeSec: travelTimeSeconds(totalDist, travelMode),
               surfaceMetresM: { ...surfaceMetresM },
@@ -1113,6 +1196,18 @@ export function useRouting({
           throw new Error(
             "No walkable path found between the selected points. Try points on connected streets.",
           );
+
+        // Every consumer receives the exact context that priced the route. Keep
+        // the legacy solar/rain fields readable, but never let a card infer the
+        // objective from whichever mode happens to be visible.
+        options = options.map((option) => ({
+          ...option,
+          objective: routeExposureContext.objective,
+          evaluatedContext: routeExposureContext,
+          exposure: option.exposure
+            ? { ...option.exposure, evaluatedContext: routeExposureContext }
+            : undefined,
+        }));
 
         // Train transit routing
         if (straightLineDistM <= MIN_TRANSIT_DISTANCE_M) {
@@ -1447,9 +1542,20 @@ export function useRouting({
                       const sampleAll = (): BoardingSample[] =>
                         boardingStops.map(({ waitSec, stop }) => ({
                           waitSec,
-                          sample: field.shadowAt(stop.lon, stop.lat, when),
+                          sample: rainObjective
+                            ? null
+                            : field.shadowAt(stop.lon, stop.lat, when),
                         }));
+                      const rainSamples = (): Array<{
+                        waitSec: number;
+                        shelter: number | null;
+                        confidence: number;
+                      }> => boardingStops.map(({ waitSec, stop }) => {
+                        const sample = field.rainAt(stop.lon, stop.lat, rainDirection, when);
+                        return { waitSec, shelter: sample.shelter, confidence: sample.confidence };
+                      });
                       let samples = sampleAll();
+                      let shelterSamples = rainObjective ? rainSamples() : [];
                       // The route preload covered the walk corridor, and a
                       // boarding stop can sit well off it — today's bus answers
                       // board at stops kilometres apart. Load each unanswered
@@ -1460,7 +1566,9 @@ export function useRouting({
                       // and the busiest few boardings carry most of the wait.
                       const unresolved = boardingStops
                         .map((entry, i) => ({ ...entry, i }))
-                        .filter(({ i }) => (samples[i].sample?.confidence ?? 0) < LOW_CONFIDENCE)
+                        .filter(({ i }) => rainObjective
+                          ? shelterSamples[i].confidence < LOW_CONFIDENCE
+                          : (samples[i].sample?.confidence ?? 0) < LOW_CONFIDENCE)
                         .sort((a, b) => b.waitSec - a.waitSec)
                         .slice(0, MAX_STOP_PRELOADS);
                       for (const { stop } of unresolved) {
@@ -1471,8 +1579,13 @@ export function useRouting({
                           .catch(() => {});
                         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
                       }
-                      if (unresolved.length > 0) samples = sampleAll();
-                      waitExposure = waitExposureFrom(samples);
+                      if (unresolved.length > 0) {
+                        samples = sampleAll();
+                        shelterSamples = rainObjective ? rainSamples() : shelterSamples;
+                      }
+                      waitExposure = rainObjective
+                        ? shelterWaitExposureFrom(shelterSamples)
+                        : waitExposureFrom(samples);
                       busPreloadCount += unresolved.length;
                       busWaitMs += performance.now() - tBusWait;
                     }
@@ -1481,15 +1594,40 @@ export function useRouting({
                       {
                         type: "walk",
                         geojson: walkAGeoJSON,
+                        objective: routeExposureContext.objective,
+                        evaluatedContext: routeExposureContext,
                         distanceM: walkA.distanceM,
                         shadowCoverage: walkA.shadowCoverage,
+                        exposure: walkA.exposure,
+                        exposureSegments: walkA.exposureSegments,
+                        sampledEdges: walkA.sampledEdges,
+                        ...(rainObjective
+                          ? {
+                              shelterCoverage: walkA.exposure?.shelteredDistancePct ?? walkA.dryCoverage,
+                              exposure: walkA.exposure,
+                            }
+                          : {}),
                       },
                       {
                         type: "transit",
                         geojson: transitGeoJSON,
+                        objective: routeExposureContext.objective,
+                        evaluatedContext: routeExposureContext,
                         travelTimeSec: transitTimeSec,
                         waitSec: bestTrain.path.waitSec,
+                        ...(boardingStops.length > 0
+                          ? { waitLocations: boardingStops.map(({ stop }) => [stop.lon, stop.lat] as [number, number]) }
+                          : {}),
+                        ...(boardingStops.length > 0
+                          ? { waitDurationsSec: boardingStops.map(({ waitSec }) => waitSec) }
+                          : {}),
                         ...(waitExposure ? { waitExposure } : {}),
+                        ...(rainObjective
+                          ? {
+                              vehicleSheltered: true,
+                              vehicleShelterAssumption: "enclosed vehicle assumed sheltered",
+                            }
+                          : {}),
                         line: primaryLine,
                         lineColor,
                         lineName,
@@ -1501,8 +1639,19 @@ export function useRouting({
                       {
                         type: "walk",
                         geojson: walkBGeoJSON,
+                        objective: routeExposureContext.objective,
+                        evaluatedContext: routeExposureContext,
                         distanceM: walkB.distanceM,
                         shadowCoverage: walkB.shadowCoverage,
+                        exposure: walkB.exposure,
+                        exposureSegments: walkB.exposureSegments,
+                        sampledEdges: walkB.sampledEdges,
+                        ...(rainObjective
+                          ? {
+                              shelterCoverage: walkB.exposure?.shelteredDistancePct ?? walkB.dryCoverage,
+                              exposure: walkB.exposure,
+                            }
+                          : {}),
                       },
                     ];
 
@@ -1518,7 +1667,11 @@ export function useRouting({
                     // Time outdoors — both walks and a sampled stop wait —
                     // weighted by seconds, not the walks alone. The ride keeps
                     // its own words on the card (docs/notes/transit-headline-exposure.md).
-                    const shadowCov = transitOutdoorExposure(legs).shadow;
+                    const outdoor = transitOutdoorExposure(legs, rainObjective ? "rain" : "sun");
+                    const shadowCov = outdoor.shadow;
+                    const transitExposure = rainObjective
+                      ? transitRainMetrics(legs, routeExposureContext)
+                      : undefined;
 
                     const combinedGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
                       type: "Feature",
@@ -1543,6 +1696,15 @@ export function useRouting({
                       detourRatio: 1.0,
                       turnCount: 0,
                       legs,
+                      ...(rainObjective
+                        ? {
+                            exposure: transitExposure,
+                            dryCoverage:
+                              transitExposure && transitExposure.unknownDurationSec === 0
+                                ? transitExposure.shelteredDistancePct ?? undefined
+                                : undefined,
+                          }
+                        : {}),
                       totalTimeSec,
                       mrtEntrances: [
                         [boardEntrance.lon, boardEntrance.lat] as [number, number],
@@ -1564,10 +1726,29 @@ export function useRouting({
           }
         }
 
+        options = options.map((option) => ({
+          ...option,
+          objective: routeExposureContext.objective,
+          evaluatedContext: routeExposureContext,
+          exposure: option.exposure
+            ? { ...option.exposure, evaluatedContext: routeExposureContext }
+            : undefined,
+          legs: option.legs?.map((leg) => ({
+            ...leg,
+            objective: routeExposureContext.objective,
+            evaluatedContext: routeExposureContext,
+            exposure: leg.exposure
+              ? { ...leg.exposure, evaluatedContext: routeExposureContext }
+              : undefined,
+          })),
+        }));
+
         const routeSnapshots = options.map((o) => ({
           label: o.label,
           distanceM: o.distanceM,
-          shadowCoverage: o.shadowCoverage,
+          shadowCoverage: o.objective === "rain"
+            ? (o.exposure?.shelteredDistancePct ?? o.dryCoverage ?? 0)
+            : o.shadowCoverage,
         }));
         const { shadowCoverageGainPp, pathLengthDeltaPct } = computeDerivedKpis(routeSnapshots);
         recordRoutingRun({
@@ -1649,6 +1830,7 @@ export function useRouting({
         setSelectedRouteIndex(0);
         setRouteSolarIntensity(solarIntensity);
         setRouteWind(rainObjective ? routeWindNow : null);
+        setRouteExposureContext(routeExposureContext);
         setRoutePreview(null);
         seam.current.setSketchPoints([]);
         seam.current.setNavWarning(
@@ -1662,7 +1844,14 @@ export function useRouting({
         const metrics = options.map((option) => ({
           label: option.label,
           distanceM: option.distanceM,
-          shadowCoverage: option.shadowCoverage,
+          shadowCoverage: option.objective === "rain"
+            ? (option.exposure?.shelteredDistancePct ?? option.dryCoverage ?? 0)
+            : option.shadowCoverage,
+          objective: option.objective,
+          shelteredDistancePct: option.exposure?.shelteredDistancePct ?? null,
+          exposedMinutes: option.exposure
+            ? option.exposure.exposedDurationSec / 60
+            : null,
           totalTimeSec: option.totalTimeSec,
         }));
         const unroutableLegs = options.flatMap((option) =>
@@ -1671,6 +1860,7 @@ export function useRouting({
         if (unroutableLegs.length > 0) {
           return {
             status: "partial",
+            objective: routeExposureContext.objective,
             metrics,
             shadowProvenance: options[0]?.shadowSource ?? null,
             unroutableLegs,
@@ -1678,6 +1868,7 @@ export function useRouting({
         }
         return {
           status: "completed",
+          objective: routeExposureContext.objective,
           metrics,
           shadowProvenance: options[0]?.shadowSource ?? null,
         };
@@ -1730,6 +1921,83 @@ export function useRouting({
       replaceAllStops,
     ],
   );
+
+  // Conditions changes re-evaluate the displayed geometry after a short settle
+  // window. The search, selected alternative and camera remain untouched; a new
+  // objective still clears alternatives through the explicit mode handler.
+  const lastRefreshKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      navRoutes.length === 0 ||
+      !shadowFieldRef.current ||
+      !routeExposureContext ||
+      isCalculating
+    ) return;
+    const key = [
+      (date ?? dateRef.current).getTime(),
+      exposureSettings.objective,
+      exposureSettings.windSource,
+      exposureSettings.manualWind.directionDeg,
+      exposureSettings.manualWind.speedMps,
+    ].join("|");
+    if (lastRefreshKeyRef.current === key) return;
+    lastRefreshKeyRef.current = key;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      if (cancelled || !shadowFieldRef.current) return;
+      setNavRoutes((routes) => markExposureUpdating(routes));
+      let context = resolveExposureContext(exposureSettings, {
+        time: date ?? dateRef.current,
+        mapCenter: [routeExposureContext.referenceLocation.lng, routeExposureContext.referenceLocation.lat],
+        revision: `refresh:${key}`,
+      });
+      if (exposureSettings.objective === "rain" && exposureSettings.windSource === "forecast") {
+        try {
+          const forecast = await fetchWeatherForecast(
+            context.referenceLocation.lat,
+            context.referenceLocation.lng,
+            { signal: controller.signal },
+          );
+          context = resolveExposureContext(exposureSettings, {
+            time: date ?? dateRef.current,
+            mapCenter: [context.referenceLocation.lng, context.referenceLocation.lat],
+            forecast,
+            revision: `refresh:${key}`,
+          });
+        } catch {
+          // Vertical fallback remains an explicit context when forecast is unavailable.
+        }
+      }
+      if (cancelled || lastRefreshKeyRef.current !== key) return;
+      const field = shadowFieldRef.current;
+      const next = navRoutes.map((route) => refreshRouteExposure(route, field, context));
+      if (cancelled || lastRefreshKeyRef.current !== key) return;
+      setRouteExposureContext(context);
+      setRouteWind(
+        context.objective === "rain"
+          ? { dirDeg: context.windDirectionDeg, windMs: context.windSpeedMps }
+          : null,
+      );
+      setNavRoutes(next);
+    }, 250);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [
+    date,
+    exposureSettings.objective,
+    exposureSettings.windSource,
+    exposureSettings.manualWind.directionDeg,
+    exposureSettings.manualWind.speedMps,
+    isCalculating,
+    navRoutes.length,
+    routeExposureContext,
+    setRouteWind,
+    setNavRoutes,
+  ]);
 
   const createRoutePlanRequest = useCallback(
     (plan: RoutePlan): RoutePlanRequest => {
@@ -1840,6 +2108,7 @@ export function useRouting({
     navError,
     routeSolarIntensity,
     routeWind,
+    routeExposureContext,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
@@ -1862,6 +2131,8 @@ export function useRouting({
     setRouteProgress,
     setRoutePreview,
     setRouteSolarIntensity,
+    setRouteWind,
+    setRouteExposureContext,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,

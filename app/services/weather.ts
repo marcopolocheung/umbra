@@ -33,7 +33,8 @@ export interface CloudCoverForecast {
   forecastTime: Date;
 }
 
-const MAX_HOUR_DELTA_MS = 90 * 60 * 1000;
+/** Forecast freshness accepted by every weather consumer, including rain. */
+export const MAX_WEATHER_HOUR_DELTA_MS = 90 * 60 * 1000;
 
 /** How long one location's forecast is reused before it is fetched again. */
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -109,7 +110,26 @@ export function nearestWeatherHour(
     }
   }
 
-  return best && bestDelta <= MAX_HOUR_DELTA_MS ? best : null;
+  return best && bestDelta <= MAX_WEATHER_HOUR_DELTA_MS ? best : null;
+}
+
+/** A wind row with explicit provenance; speed 0 is a real calm forecast. */
+export interface ForecastWind {
+  hour: WeatherHour;
+  directionDeg: number;
+  speedMps: number;
+}
+
+export function nearestForecastWind(hours: WeatherHour[], target: Date): ForecastWind | null {
+  // First select the nearest forecast row, using the same freshness window as
+  // every other weather consumer. If that row cannot establish an incident ray,
+  // keep the context explicitly vertical rather than silently borrowing wind
+  // from a more distant hour.
+  const hour = nearestWeatherHour(hours, target);
+  if (!hour || hour.windDirDeg == null || !Number.isFinite(hour.windDirDeg)) return null;
+  const speed = hour.windMs ?? hour.windGustMs;
+  if (speed == null || !Number.isFinite(speed) || speed < 0) return null;
+  return { hour, directionDeg: ((hour.windDirDeg % 360) + 360) % 360, speedMps: speed };
 }
 
 interface CacheEntry {

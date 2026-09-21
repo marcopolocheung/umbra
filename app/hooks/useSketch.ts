@@ -16,6 +16,7 @@ import {
   sketchBoundingBox,
   snapToEdge,
   snapToReachableEdge,
+  haversineMeters,
 } from "../lib/routing";
 import type {
   GraphEdge,
@@ -36,6 +37,10 @@ import type { EdgeRef, ShadowField } from "../lib/shadowField/ShadowField";
 import { buildingCentroidAt, snapOutsideBuilding } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
+import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
+import { resolveExposureContext } from "../lib/exposure";
+import { fetchWeatherForecast } from "../services/weather";
+import { computeExposureMetrics } from "../lib/exposureMetrics";
 import {
   ROUTE_READINESS_BUDGET_MS,
   cloneRoutingGraph,
@@ -70,6 +75,8 @@ export interface UseSketchArgs {
   setNavError: React.Dispatch<React.SetStateAction<string | null>>;
   setIsCalculating: React.Dispatch<React.SetStateAction<boolean>>;
   setRouteProgress: React.Dispatch<React.SetStateAction<RouteCalculationProgress | null>>;
+  exposureSettings: ExposureSettings;
+  setRouteExposureContext?: React.Dispatch<React.SetStateAction<ResolvedExposureContext | null>>;
 }
 
 export function useSketch({
@@ -89,6 +96,8 @@ export function useSketch({
   setNavError,
   setIsCalculating,
   setRouteProgress,
+  exposureSettings,
+  setRouteExposureContext,
 }: UseSketchArgs) {
   // Sketch drawing state
   const [sketchPoints, setSketchPoints] = useState<SketchPoint[]>([]);
@@ -359,7 +368,37 @@ export function useSketch({
       const coverage =
         field.coverageEdges?.(sketchRefs, dateRef.current) ??
         field.coverage(shadowBbox, dateRef.current);
-      const needsCanvas = coverage.confidence < LOW_CONFIDENCE;
+      const rainObjective = exposureSettings.objective === "rain";
+      const sketchMidpoint: [number, number] = [
+        (simplified[0][0] + simplified[simplified.length - 1][0]) / 2,
+        (simplified[0][1] + simplified[simplified.length - 1][1]) / 2,
+      ];
+      let exposureContext = resolveExposureContext(exposureSettings, {
+        time: dateRef.current,
+        mapCenter: sketchMidpoint,
+        sketchEndpoints: [simplified[0], simplified[simplified.length - 1]],
+        revision: myGen,
+      });
+      if (rainObjective && exposureSettings.windSource === "forecast") {
+        try {
+          const forecast = await fetchWeatherForecast(
+            exposureContext.referenceLocation.lat,
+            exposureContext.referenceLocation.lng,
+            { signal: calcSignal },
+          );
+          exposureContext = resolveExposureContext(exposureSettings, {
+            time: dateRef.current,
+            mapCenter: sketchMidpoint,
+            sketchEndpoints: [simplified[0], simplified[simplified.length - 1]],
+            forecast,
+            revision: myGen,
+          });
+        } catch {
+          // The context retains its explicit vertical-rain fallback.
+        }
+      }
+      setRouteExposureContext?.(exposureContext);
+      const needsCanvas = !rainObjective && coverage.confidence < LOW_CONFIDENCE;
 
       if (needsCanvas) {
         // Flatten before reading the bounds: a tilted camera sees further, so the
@@ -405,16 +444,19 @@ export function useSketch({
         return [p.x, p.y];
       };
 
-      updateProgress({ message: "Sampling street shadow" });
+      updateProgress({ message: rainObjective ? "Sampling sketch rain shelter" : "Sampling street shadow" });
       // Sketch routing has no per-sidewalk graph — it folds both sides into one
       // `shadowFactor` — so there is no provenance to surface here. The source still
       // has to be the same one `calculateRoute` uses: two definitions of shadow in one
       // app is worse than a sketch card without a label.
-      const sketchShadow =
-        sketchRefs.length > 0 ? field.sampleEdges(sketchRefs, dateRef.current) : [];
+      const sketchShadow = sketchRefs.length > 0
+        ? rainObjective
+          ? field.sampleRainEdges(sketchRefs, exposureContext.direction, dateRef.current)
+          : field.sampleEdges(sketchRefs, dateRef.current)
+        : [];
       for (let i = 0; i < sketchRefs.length; i++) {
         let { left, right } = sketchShadow[i];
-        if (sketchShadow[i].confidence < LOW_CONFIDENCE && buildingMask) {
+        if (!rainObjective && sketchShadow[i].confidence < LOW_CONFIDENCE && buildingMask) {
           ({ left, right } = sampleBuildingMaskBothSidewalks(
             projectToScreen,
             buildingMask,
@@ -423,8 +465,16 @@ export function useSketch({
             edgeSampleCount(sketchDistances[i]),
           ));
         }
-        const shadowFactor = Math.max(left, right);
-        for (const edge of sketchEdges[i]) edge.shadowFactor = shadowFactor;
+        const factor = Math.max(left, right);
+        for (const edge of sketchEdges[i]) {
+          if (rainObjective) {
+            edge.shelterFactor = factor;
+            edge.shelterConfidence = sketchShadow[i].confidence;
+          } else {
+            edge.shadowFactor = factor;
+            edge.exposureConfidence = sketchShadow[i].confidence;
+          }
+        }
       }
 
       updateProgress({ message: "Finding route choices" });
@@ -434,7 +484,7 @@ export function useSketch({
       const variants = [
         { label: "Shortest", shadowStrength: 0.0 },
         { label: "Balanced", shadowStrength: 0.5 },
-        { label: "Most shadowed", shadowStrength: 1.0 },
+        { label: rainObjective ? "Driest" : "Most shadowed", shadowStrength: 1.0 },
       ] as const;
 
       const seen = new Set<string>();
@@ -443,10 +493,16 @@ export function useSketch({
         const fullPath: number[] = [];
         let totalDist = 0;
         let totalShadowDist = 0;
+        let totalDryDist = 0;
+        const exposureSegments: NonNullable<import("../lib/routing").RouteResult["exposureSegments"]> = [];
+        const sampledEdges: NonNullable<import("../lib/routing").RouteResult["sampledEdges"]> = [];
         let failed = false;
 
         for (let i = 0; i < snappedIds.length - 1; i++) {
-          const leg = dijkstra(sketchGraph, snappedIds[i], snappedIds[i + 1], v.shadowStrength);
+          const leg = dijkstra(sketchGraph, snappedIds[i], snappedIds[i + 1], v.shadowStrength, {
+            objective: rainObjective ? "rain" : "sun",
+            straightLineDistM: haversineMeters(simplified[i], simplified[i + 1]),
+          });
           if (!leg) {
             failed = true;
             break;
@@ -455,6 +511,9 @@ export function useSketch({
           else fullPath.push(...leg.nodeIds.slice(1));
           totalDist += leg.distanceM;
           totalShadowDist += leg.distanceM * leg.shadowCoverage;
+          totalDryDist += leg.distanceM * (leg.dryCoverage ?? 0);
+          if (leg.exposureSegments) exposureSegments.push(...leg.exposureSegments);
+          if (leg.sampledEdges) sampledEdges.push(...leg.sampledEdges);
         }
 
         if (failed || fullPath.length < 2 || totalDist <= 0) continue;
@@ -468,6 +527,8 @@ export function useSketch({
           simplified[simplified.length - 1],
         );
         const shadowCoverage = totalShadowDist / totalDist;
+        const dryCoverage = rainObjective ? totalDryDist / totalDist : undefined;
+        const exposure = computeExposureMetrics(exposureContext.objective, exposureSegments, exposureContext);
         options.push({
           label: v.label,
           geojson,
@@ -478,6 +539,12 @@ export function useSketch({
           shadowTransitions: 0,
           detourRatio: 1.0,
           turnCount: 0,
+          objective: exposureContext.objective,
+          evaluatedContext: exposureContext,
+          ...(rainObjective ? { dryCoverage } : {}),
+          exposure,
+          exposureSegments,
+          sampledEdges,
         });
       }
 
@@ -518,6 +585,8 @@ export function useSketch({
     setNavError,
     setIsCalculating,
     setRouteProgress,
+    exposureSettings,
+    setRouteExposureContext,
   ]);
 
   const handleSketchFinish = useCallback(() => {

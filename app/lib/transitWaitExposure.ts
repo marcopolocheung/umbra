@@ -43,8 +43,14 @@ export interface TransitWaitExposure {
    * is the inversion #393 was opened for.
    */
   shadow?: number;
+  /** Rain objective equivalent: 0 exposed, 1 protected at the stop. */
+  shelter?: number;
+  /** Objective used for this wait measurement; absent means legacy sun data. */
+  objective?: "sun" | "rain";
   /** Share of the waiting seconds that got a confident answer. */
   coverage: number;
+  /** Waiting seconds with no confident geometry answer. */
+  unknownSec?: number;
   /** How many times the rider boards, which is how the card words itself. */
   boardings: number;
 }
@@ -91,4 +97,39 @@ export function waitExposureFrom(boardings: BoardingSample[]): TransitWaitExposu
   const known = { coverage, boardings: boardings.length };
   if (coverage < MIN_WAIT_COVERAGE) return known;
   return { ...known, shadow: shadowSec / knownSec };
+}
+
+/** Rain twin of `waitExposureFrom`, preserving the same confidence gate. */
+export interface ShelterBoardingSample {
+  waitSec: number;
+  shelter: number | null;
+  confidence: number;
+}
+
+export function shelterWaitExposureFrom(
+  boardings: ShelterBoardingSample[],
+): TransitWaitExposure | undefined {
+  const totalSec = boardings.reduce((sum, b) => sum + Math.max(0, b.waitSec), 0);
+  if (totalSec <= 0) return undefined;
+  let knownSec = 0;
+  let shelterSec = 0;
+  for (const boarding of boardings) {
+    if (
+      boarding.shelter == null ||
+      !Number.isFinite(boarding.shelter) ||
+      boarding.confidence < LOW_CONFIDENCE
+    ) continue;
+    const waitSec = Math.max(0, boarding.waitSec);
+    knownSec += waitSec;
+    shelterSec += waitSec * Math.max(0, Math.min(1, boarding.shelter));
+  }
+  const coverage = knownSec / totalSec;
+  const result: TransitWaitExposure = {
+    coverage,
+    boardings: boardings.length,
+    objective: "rain",
+    unknownSec: totalSec - knownSec,
+  };
+  if (coverage >= MIN_WAIT_COVERAGE && knownSec > 0) result.shelter = shelterSec / knownSec;
+  return result;
 }

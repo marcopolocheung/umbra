@@ -24,8 +24,8 @@ import {
 } from './heightField';
 
 import { directionForWindReport } from '../rain/direction';
-import { RAIN_WET_RGB } from '../rain/rainComposite';
 import { HAZARD_PROFILES, type HazardDirection, type HazardMode } from './hazard';
+import type { ResolvedExposureContext } from '../exposure';
 
 // Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
 // SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
@@ -112,12 +112,12 @@ interface CachedBuildingGeometry {
 }
 
 /**
- * Local shadow renderer implemented as a MapLibre CustomLayer.
+ * Local exposure renderer implemented as a MapLibre CustomLayer.
  *
  * This fixes the structural pan/zoom lag that occurred when we projected GeoJSON
  * into a separate 2D overlay canvas. By drawing inside MapLibre's WebGL render
- * loop with the provided camera matrix, the shadow geometry is rendered in the
- * exact same frame as tiles and other vector layers.
+ * loop with the provided camera matrix, both sun and rain geometry are rendered
+ * in the exact same frame as tiles and other vector layers.
  */
 export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerInterface {
   /** MapLibre style layer id */
@@ -221,6 +221,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   /** Rain ray direction (radians), fed by `setRainWind`; null = windless vertical. */
   private lastRainAzRad: number | null = null;
   private lastRainAltRad: number | null = null;
+  /** Tags readback and rendering with the objective/context that produced it. */
+  private contextRevision = "initial";
+  private contextObjective: HazardMode = "sun";
+  /** Last context that actually completed a render; pending state must not tag stale FBO pixels. */
+  private renderedContextRevision = "initial";
+  private renderedContextObjective: HazardMode = "sun";
 
   /**
    * Discard the building cache only if the camera has actually invalidated it.
@@ -285,10 +291,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private static readonly BASE_RGB: [number, number, number] = [1 / 255, 17 / 255, 47 / 255]; // #01112f
   private static readonly NOON_RGB: [number, number, number] = [0x22 / 255, 0x46 / 255, 0x7f / 255]; // #22467f (lighter blue)
 
-  // Rain inversion makes the covered FBO read as *exposed*: the channel the
-  // composite inverts carries coverage, and the wet tint is premultiplied by the
-  // same constant so the existing ONE / ONE_MINUS_SRC_ALPHA blending stays exact.
-
   constructor(opts?: { date?: Date; id?: string }) {
     this.currentDate = opts?.date ?? new Date();
     if (opts?.id) this.id = opts.id;
@@ -325,9 +327,14 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   setDate(date: Date) {
     this.currentDate = date;
 
-    // Rain does not read the ephemeris; scrubbing the timeline must not spin the
-    // sun worker (and its dirty check) just to compute a direction nothing draws.
-    if (this.hazardMode === "rain") return;
+    // Rain does not read the ephemeris. Keep the date, though, so switching back
+    // to sun recomputes the current solar direction rather than showing the old
+    // one from before the rain interval.
+    if (this.hazardMode === "rain") {
+      this.dirty = true;
+      this.map?.triggerRepaint();
+      return;
+    }
 
     if (this.map && this.sunWorker) {
       // Phase 4: Delegate sun computation to worker — dirty check happens in onmessage
@@ -360,10 +367,34 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   }
 
   setHazard(hazard: "sun" | "rain") {
-    if (hazard === this.hazardMode) return;
+    if (hazard === this.hazardMode) {
+      if (hazard === "sun") this.requestSunPosition();
+      return;
+    }
     this.hazardMode = hazard;
+    this.contextObjective = hazard;
+    this.dirty = true;
+    if (hazard === "sun") this.requestSunPosition();
+    this.map?.triggerRepaint();
+  }
+
+  /** Apply objective, date, wind, and revision as one renderer transaction. */
+  setExposureContext(context: ResolvedExposureContext) {
+    this.currentDate = new Date(context.time.getTime());
+    this.contextRevision = context.revision;
+    this.contextObjective = context.objective;
+    this.hazardMode = context.objective;
+    if (context.objective === "rain") {
+      this.setRainWind(context.windDirectionDeg, context.windSpeedMps);
+    } else {
+      this.requestSunPosition();
+    }
     this.dirty = true;
     this.map?.triggerRepaint();
+  }
+
+  getExposureContextTag() {
+    return { objective: this.renderedContextObjective, revision: this.renderedContextRevision } as const;
   }
 
   setRainWind(dirDeg: number | null, windMs: number | null) {
@@ -403,6 +434,22 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       altRad = sun.altitude;
     }
     return { azimuthRad: azRad, altitudeRad: altRad, sunBelow: altRad <= 0 };
+  }
+
+  private requestSunPosition() {
+    if (!this.map) return;
+    if (this.sunWorker) {
+      const center = this.map.getCenter();
+      this.sunWorker.postMessage({ lat: center.lat, lon: center.lng, timestamp: this.currentDate.getTime() });
+      return;
+    }
+    const center = this.map.getCenter();
+    const sun = SunCalc.getPosition(this.currentDate, center.lat, center.lng);
+    this.lastSunAzDeg = sun.azimuth * 180 / Math.PI;
+    this.lastSunAltDeg = sun.altitude * 180 / Math.PI;
+    this.lastSunAzRad = sun.azimuth;
+    this.lastSunAltRad = sun.altitude;
+    this.dirty = true;
   }
 
   remove() {
@@ -468,6 +515,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       height: this.fboHeight,
       pixelRatioX: this.fboWidth / cssWidth,
       pixelRatioY: this.fboHeight / cssHeight,
+      objective: this.renderedContextObjective,
+      contextRevision: this.renderedContextRevision,
     };
   }
 
@@ -687,7 +736,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       uniform vec3 u_wallColor;
       uniform vec3 u_shadowTint;
       uniform float u_sunBelow;
-      uniform float u_rainFace;
       uniform float u_bias;
       uniform vec2 u_sunFlat;
       varying float v_hNorm;
@@ -720,20 +768,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         float shadowed = max(step(v_facing, 0.0),
                            step(v_hNorm + v_ceilLift + u_bias, ceilN));
         shadowed = max(shadowed, u_sunBelow);
-        if (u_rainFace > 0.5) {
-          // Rain on a surface is the inverse of shade: the ceiling field the
-          // vertex samples names what blocks the ray, so exposed := 1 - shadowed.
-          float exposed = 1.0 - shadowed;
-          vec3 dry = u_wallColor * (0.82 + 0.18 * max(-v_facing, 0.0));
-          gl_FragColor = vec4(mix(dry, u_shadowTint, exposed), 1.0);
-        } else {
-          float sky = SKY_BASE
-                    + SKY_UP * v_normal.z
-                    + SKY_SUNWARD * max(dot(v_normal.xy, u_sunFlat), 0.0);
-          vec3 lit = u_wallColor * (AMBIENT + (1.0 - AMBIENT) * max(v_facing, 0.0));
-          vec3 dark = mix(u_wallColor * sky, u_shadowTint, SHADOW_TINT);
-          gl_FragColor = vec4(mix(lit, dark, shadowed), 1.0);
-        }
+        float sky = SKY_BASE
+                  + SKY_UP * v_normal.z
+                  + SKY_SUNWARD * max(dot(v_normal.xy, u_sunFlat), 0.0);
+        vec3 lit = u_wallColor * (AMBIENT + (1.0 - AMBIENT) * max(v_facing, 0.0));
+        vec3 dark = mix(u_wallColor * sky, u_shadowTint, SHADOW_TINT);
+        gl_FragColor = vec4(mix(lit, dark, shadowed), 1.0);
       }
     `;
     this.bldgProgram = createProgram(gl, bldgVsSrc, bldgFsSrc);
@@ -744,7 +784,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       'u_matrix', 'u_mercZPerMeter', 'u_maxH', 'u_sunOffset', 'u_normalOffset',
       'u_sunDir',
       'u_heightTex', 'u_wallColor', 'u_shadowTint', 'u_sunFlat',
-      'u_sunBelow', 'u_bias', 'u_ceilLift', 'u_fieldScale', 'u_rainFace',
+      'u_sunBelow', 'u_bias', 'u_ceilLift', 'u_fieldScale',
     ]) {
       this.bldgUniforms[name] = gl.getUniformLocation(this.bldgProgram, name);
     }
@@ -853,6 +893,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const prevBlendEqA = gl.getParameter(gl.BLEND_EQUATION_ALPHA);
     const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
     const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
+    const prevFrontFace = gl.getParameter(gl.FRONT_FACE);
     const wasDepthTest = gl.isEnabled(gl.DEPTH_TEST);
     const prevDepthFunc = gl.getParameter(gl.DEPTH_FUNC);
     const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
@@ -888,8 +929,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.disable(gl.DEPTH_TEST);
     gl2.depthMask(false);
 
-    // ── Pass A (sun): render coverage into FBO with MAX blending ──
-    // Rain has no canvas ground picture: the style-rendered wash owns it.
+    // ── Pass A: render protected ground coverage into the shared FBO ──
     if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl2.viewport(0, 0, w, h);
@@ -914,9 +954,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     }
 
     // ── Pass B + C: ceiling field build, then (profile-gated) roof exclusion ──
-    // Both hazards need the ceiling field — it is what shades the extruded
-    // buildings in Pass E — but rain never erases: its own footprint is the
-    // shelter being painted, the exact inverse of the sun's lit-roof axiom.
+    // Both hazards need the ceiling field — it shades the extruded buildings in
+    // Pass E — and both erase a caster's own roof footprint so a roof is not
+    // credited with protection from itself.
     const roofVertexCount = geo.roofVerts.length / 2;
     const buildCeiling = !geo.sunBelowHorizon && roofVertexCount > 0 &&
         this.heightProgram && this.shadowHeightBuffer &&
@@ -999,12 +1039,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.depthMask(false);
     gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
 
-    // ── Pass D: Composite FBO texture onto main canvas (sun) ──
-    // Rain skips it: its ground picture is the basemap fill layer
-    // (`rainMapLayer.ts`), so the streets never lose the map beneath them.
+    // ── Pass D: Composite the shared FBO texture onto the main canvas ──
     if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    this.renderedContextObjective = this.contextObjective;
+    this.renderedContextRevision = this.contextRevision;
 
     gl2.useProgram(this.quadProgram);
     gl2.activeTexture(gl.TEXTURE0);
@@ -1069,17 +1109,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         normalizedCeilingLift(WALL_SHADOW_NORMAL_OFFSET_M, alt, cache.maxH),
       );
       gl2.uniform3f(u.u_sunDir, sunX * Math.cos(alt), sunY * Math.cos(alt), Math.sin(alt));
-      // The wet tint is the colour exposed surfaces take; the dry wall stays its
-      // normal stone. Premultiplied only inside the ground composite.
-      if (profile.surfaceInverts) {
-        gl2.uniform3f(u.u_shadowTint, RAIN_WET_RGB[0], RAIN_WET_RGB[1], RAIN_WET_RGB[2]);
-      } else {
-        gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
-      }
+      // Blue always denotes protection. Rain changes the incident ray, never the
+      // receiver polarity or the surface palette.
+      gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
       gl2.uniform2f(u.u_sunFlat, sunX, sunY);
       gl2.uniform3f(u.u_wallColor, BUILDING_RGB[0], BUILDING_RGB[1], BUILDING_RGB[2]);
       gl2.uniform1f(u.u_sunBelow, geo.sunBelowHorizon ? 1 : 0);
-      gl2.uniform1f(u.u_rainFace, profile.surfaceInverts ? 1 : 0);
       gl2.uniform1f(u.u_bias, heightBias);
       gl2.uniform1f(u.u_fieldScale, fieldScale);
 
@@ -1126,9 +1161,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.enable(gl.BLEND);
     }
 
+    // Always return to MapLibre's screen target, even when a hazard skips a
+    // pass or a style recreated the layer between frames. This also guarantees
+    // the height texture is never sampled while attached to the active target.
+    gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
+    gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+
     // ── Restore GL state ──
     if (!wasBlend) gl2.disable(gl.BLEND);
     if (wasCull) gl2.enable(gl.CULL_FACE);
+    else gl2.disable(gl.CULL_FACE);
+    gl2.frontFace(prevFrontFace);
     gl2.blendEquationSeparate(prevBlendEqRGB, prevBlendEqA);
     gl2.blendFuncSeparate(prevBlendSrcRGB, prevBlendDstRGB, prevBlendSrcA, prevBlendDstA);
     gl2.activeTexture(prevActiveTexture);
@@ -1142,6 +1185,16 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   }
 
   onRemove(_map: maplibregl.Map, gl: WebGL2RenderingContext | WebGLRenderingContext) {
+    // A style can be removed while the custom layer is still bound to an
+    // offscreen target. Restore the caller's framebuffer and viewport before
+    // deleting those targets so the next style pass never inherits a dangling
+    // framebuffer or the supersampled dimensions.
+    const activeFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
+    const target = activeFbo === this.fbo || activeFbo === this.heightFbo ? null : activeFbo;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target);
+    if (viewport && viewport.length === 4) gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
     // Unregister map listeners
     if (this.map) {
       this.map.off('sourcedata', this.onSourceData);
@@ -1206,6 +1259,14 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private computeShadowColor(sunBelowHorizon: boolean): [number, number, number, number] {
     const a = LocalShadowAdapter.SHADOW_ALPHA;
     const [br, bg, bb] = LocalShadowAdapter.BASE_RGB;
+
+    // Rain has no solar altitude. Use the same blue protection palette at a
+    // stable midpoint rather than inheriting whichever solar frame preceded the
+    // objective switch.
+    if (this.hazardMode === "rain") {
+      const [rr, rg, rb] = LocalShadowAdapter.NOON_RGB;
+      return [rr * a, rg * a, rb * a, a];
+    }
 
     if (sunBelowHorizon) {
       return [br * a, bg * a, bb * a, a];

@@ -1,5 +1,6 @@
 import type { PartialRouteInfo } from "./partialRoute";
 import type { ShadowProvenance } from "./shadowProvenance";
+import type { ExposureObjective } from "./exposure";
 
 export interface RoutePlan {
   from: [number, number];
@@ -29,6 +30,11 @@ export interface RoutePlanMetrics {
   label: string;
   distanceM: number;
   shadowCoverage: number;
+  /** Objective used to score this receipt; omitted by legacy sun callers. */
+  objective?: ExposureObjective;
+  /** Rain reporting fields, retained alongside the legacy shadow name. */
+  shelteredDistancePct?: number | null;
+  exposedMinutes?: number | null;
   totalTimeSec?: number;
 }
 
@@ -45,12 +51,14 @@ interface TerminalBase {
 export interface CompletedRoutePlan extends TerminalBase {
   status: "completed";
   metrics: RoutePlanMetrics[];
+  objective?: ExposureObjective;
   shadowProvenance: ShadowProvenance | null;
 }
 
 export interface PartialRoutePlan extends TerminalBase {
   status: "partial";
   metrics: RoutePlanMetrics[];
+  objective?: ExposureObjective;
   shadowProvenance: ShadowProvenance | null;
   /** Each unreachable leg is retained instead of being hidden behind a partial line. */
   unroutableLegs: PartialRouteInfo[];
@@ -123,6 +131,9 @@ function validMetrics(value: unknown): value is RoutePlanMetrics[] {
   return Array.isArray(value) && value.length > 0 && value.every((metric) =>
     record(metric) && nonEmptyString(metric.label) && finiteNonNegative(metric.distanceM) &&
     finiteUnit(metric.shadowCoverage) &&
+    (metric.objective == null || metric.objective === "sun" || metric.objective === "rain") &&
+    (metric.shelteredDistancePct == null || finiteUnit(metric.shelteredDistancePct)) &&
+    (metric.exposedMinutes == null || finiteNonNegative(metric.exposedMinutes)) &&
     (metric.totalTimeSec == null || finiteNonNegative(metric.totalTimeSec))
   );
 }

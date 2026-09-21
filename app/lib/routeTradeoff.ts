@@ -1,16 +1,25 @@
 import type { RouteLeg, RouteOption } from "./routing";
+import { computeExposureMetrics, type ExposureMetrics } from "./exposureMetrics";
 import { getTravelModePolicy } from "./travelMode";
+import { rainTradeoffLine } from "./routeRain";
 
 /** Speed a route's durations are reported at — its own mode, else walking. */
 function speedOf(route: RouteOption): number {
   return getTravelModePolicy(route.travelMode ?? "walk").speedMps;
 }
 
+const walkMps = getTravelModePolicy("walk").speedMps;
+
 function travelSeconds(route: RouteOption): number {
   return route.totalTimeSec ?? route.distanceM / speedOf(route);
 }
 
 function directSunMeters(route: RouteOption): number {
+  if (route.objective === "rain") {
+    const exposure = route.exposure;
+    if (exposure) return exposure.exposedDistanceM;
+    return route.distanceM * (1 - (route.dryCoverage ?? 0));
+  }
   return Math.max(0, route.distanceM * (1 - route.shadowCoverage));
 }
 
@@ -29,6 +38,10 @@ export interface OutdoorExposure {
    * not be quoted as the trip's (#393).
    */
   known: boolean;
+  /** Rain objective fields; absent on legacy sun calculations. */
+  shelteredSec?: number;
+  unknownSec?: number;
+  objective?: "sun" | "rain";
 }
 
 /**
@@ -46,7 +59,7 @@ export interface OutdoorExposure {
  * states its track fact in words instead. Nor is a subway platform wait, which
  * #423 leaves unmodelled. See docs/notes/transit-headline-exposure.md.
  */
-export function transitOutdoorExposure(legs: RouteLeg[]): OutdoorExposure {
+export function transitOutdoorExposure(legs: RouteLeg[], objective: "sun" | "rain" = "sun"): OutdoorExposure {
   const walkMps = getTravelModePolicy("walk").speedMps;
   let outdoorSec = 0;
   let answeredSec = 0;
@@ -54,17 +67,132 @@ export function transitOutdoorExposure(legs: RouteLeg[]): OutdoorExposure {
   for (const leg of legs) {
     const sec =
       leg.type === "walk" ? (leg.distanceM ?? 0) / walkMps : leg.waitExposure ? (leg.waitSec ?? 0) : 0;
-    const shadow = leg.type === "walk" ? leg.shadowCoverage : leg.waitExposure?.shadow;
+    const shadow = objective === "rain"
+      ? leg.type === "walk"
+        ? leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct
+        : leg.waitExposure?.shelter
+      : leg.type === "walk" ? leg.shadowCoverage : leg.waitExposure?.shadow;
     outdoorSec += sec;
     if (shadow == null) continue;
     answeredSec += sec;
     shadowSec += sec * shadow;
   }
-  return {
+  const result: OutdoorExposure = {
     outdoorSec,
     shadow: answeredSec > 0 ? shadowSec / answeredSec : 0,
     known: answeredSec >= outdoorSec,
   };
+  if (objective === "rain") {
+    result.objective = "rain";
+    result.shelteredSec = shadowSec;
+    result.unknownSec = Math.max(0, outdoorSec - answeredSec);
+  }
+  return result;
+}
+
+export interface TransitRainExposure {
+  /** Outdoor access, egress, transfers and surface waits. */
+  outdoorSec: number;
+  shelteredOutdoorSec: number;
+  unknownOutdoorSec: number;
+  /** Enclosed vehicle riding time covered by the explicit assumption. */
+  shelteredRideSec: number;
+  unknownRideSec: number;
+  totalSec: number;
+  wholeTripKnown: boolean;
+}
+
+/**
+ * Rain accounting for a transit journey. Vehicle time is included only when a
+ * leg explicitly opts into the enclosed-vehicle assumption; unmodelled platform
+ * waits and unsupported vehicles remain unknown.
+ */
+export function transitRainExposure(legs: RouteLeg[]): TransitRainExposure {
+  let outdoorSec = 0;
+  let shelteredOutdoorSec = 0;
+  let unknownOutdoorSec = 0;
+  let shelteredRideSec = 0;
+  let unknownRideSec = 0;
+  let totalSec = 0;
+  for (const leg of legs) {
+    if (leg.type === "walk") {
+      const sec = Math.max(0, leg.distanceM ?? 0) / walkMps;
+      outdoorSec += sec;
+      totalSec += sec;
+      const protection = leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct;
+      if (protection == null) unknownOutdoorSec += sec;
+      else shelteredOutdoorSec += sec * Math.max(0, Math.min(1, protection));
+      continue;
+    }
+    const rideSec = Math.max(0, (leg.travelTimeSec ?? 0) - (leg.waitSec ?? 0));
+    const waitSec = Math.max(0, leg.waitSec ?? 0);
+    totalSec += rideSec + waitSec;
+    if (leg.vehicleSheltered === true) shelteredRideSec += rideSec;
+    else unknownRideSec += rideSec;
+    if (waitSec > 0) {
+      outdoorSec += waitSec;
+      const protection = leg.waitExposure?.shelter;
+      if (protection == null || (leg.waitExposure?.coverage ?? 0) < 0.6) unknownOutdoorSec += waitSec;
+      else shelteredOutdoorSec += waitSec * Math.max(0, Math.min(1, protection));
+    }
+  }
+  return {
+    outdoorSec,
+    shelteredOutdoorSec,
+    unknownOutdoorSec,
+    shelteredRideSec,
+    unknownRideSec,
+    totalSec,
+    wholeTripKnown: unknownOutdoorSec <= 0 && unknownRideSec <= 0,
+  };
+}
+
+/** Full duration-aware rain metrics for a transit result, including the ride. */
+export function transitRainMetrics(
+  legs: RouteLeg[],
+  evaluatedContext?: import("./exposure").ResolvedExposureContext,
+): ExposureMetrics {
+  const segments = [] as Array<{
+    distanceM: number;
+    durationSec: number;
+    protection?: number;
+    confidence?: number;
+    provenance?: string;
+  }>;
+  for (const leg of legs) {
+    if (leg.type === "walk") {
+      const distanceM = Math.max(0, leg.distanceM ?? 0);
+      segments.push({
+        distanceM,
+        durationSec: distanceM / walkMps,
+        protection: leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct ?? undefined,
+        confidence: leg.shelterCoverage == null
+          ? 0
+          : (leg.exposure?.unknownDistanceM ? 0 : 1),
+        provenance: "geometry",
+      });
+      continue;
+    }
+    const waitSec = Math.max(0, leg.waitSec ?? 0);
+    const rideSec = Math.max(0, (leg.travelTimeSec ?? 0) - waitSec);
+    if (waitSec > 0) {
+      segments.push({
+        distanceM: 0,
+        durationSec: waitSec,
+        protection: leg.waitExposure?.shelter,
+        confidence: leg.waitExposure?.shelter == null ? 0 : (leg.waitExposure.coverage ?? 0),
+        provenance: "geometry",
+      });
+    }
+    segments.push({
+      distanceM: 0,
+      durationSec: rideSec,
+      protection: leg.vehicleSheltered === true ? 1 : undefined,
+      confidence: leg.vehicleSheltered === true ? 1 : 0,
+      provenance: leg.vehicleSheltered === true ? "vehicle-assumption" : "unknown",
+    });
+  }
+  return computeExposureMetrics("rain", segments, evaluatedContext);
 }
 
 /**
@@ -81,6 +209,15 @@ export function routeExposureMinutes(route: RouteOption): {
   shadowMinutes: number;
 } | null {
   if (route.legs && transitLegOf(route)) {
+    const objective = route.objective ?? "sun";
+    if (objective === "rain") {
+      const rain = transitRainExposure(route.legs);
+      if (!rain.wholeTripKnown) return null;
+      return {
+        sunMinutes: Math.max(0, rain.totalSec - rain.shelteredOutdoorSec - rain.shelteredRideSec) / 60,
+        shadowMinutes: (rain.shelteredOutdoorSec + rain.shelteredRideSec) / 60,
+      };
+    }
     const { outdoorSec, shadow, known } = transitOutdoorExposure(route.legs);
     if (!known) return null;
     return {
@@ -103,6 +240,9 @@ function formatDeltaMinutes(seconds: number): string {
 }
 
 export function routeTradeoffLine(route: RouteOption, baseline: RouteOption): string {
+  if (route.objective === "rain" || baseline.objective === "rain") {
+    return rainTradeoffLine(route, baseline);
+  }
   if (route === baseline) {
     return `Shortest baseline, ${routeShadowLabel(route)}`;
   }
@@ -144,6 +284,10 @@ export function shortestRoute(routes: RouteOption[]): RouteOption | null {
  * is unknown, rather than quoting a sliver of it.
  */
 export function routeShadowLabel(route: RouteOption): string {
+  if (route.objective === "rain") {
+    const protection = route.exposure?.shelteredDistancePct ?? route.dryCoverage;
+    return protection == null ? "shelter unknown" : `${Math.round(protection * 100)}% sheltered`;
+  }
   const pct = Math.round(route.shadowCoverage * 100);
   if (!transitLegOf(route)) return `${pct}% shadow`;
   if (!routeExposureMinutes(route)) return "shadow unknown";
@@ -183,7 +327,13 @@ function formatSunMinutes(minutes: number): string {
  */
 export function routeExposureLine(route: RouteOption): string {
   const exposure = routeExposureMinutes(route);
-  if (!exposure) return "time in sun unknown";
+  if (!exposure) return route.objective === "rain" ? "rain exposure unknown" : "time in sun unknown";
+  if (route.objective === "rain") {
+    const total = `${formatSunMinutes(exposure.sunMinutes)} rain-exposed`;
+    const stretchM = route.longestContinuousWetM ?? 0;
+    if (stretchM <= 0) return total;
+    return `${total} · longest stretch ${formatSunMinutes(stretchM / speedOf(route) / 60)}`;
+  }
   const total = `${formatSunMinutes(exposure.sunMinutes)} in sun`;
   if (route.longestContinuousSunM <= 0) return total;
   return `${total} · longest stretch ${formatSunMinutes(route.longestContinuousSunM / speedOf(route) / 60)}`;

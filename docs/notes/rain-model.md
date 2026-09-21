@@ -1,6 +1,6 @@
 # How rain shelter is estimated
 
-Method version: **rain-wind-v1**, which falls back to **rain-vertical-v0** whenever the
+Method version: **rain-wind-v2**, which falls back to **rain-vertical-v0** whenever the
 wind forecast cannot answer. The UI links here so that every rain figure can be
 re-derived from this page. Status: **experimental**. None of these numbers is measured
 ground truth — they are priors, stated as ranges where the source evidence is a range,
@@ -44,20 +44,28 @@ long rain events soak through, and the drip line can be wetter than open ground 
 while. The 0.4 prior is the generous end of what the literature supports; the UI does not
 promise "dry under this tree", it reports a fraction with an experimental badge.
 
-## What the intensity slider means (and does not)
+## Conditions and reporting
 
-Rain intensity is an **ordinal 0–10 user setting**, not mm/h. It scales the *reported*
-wet minutes (`exposed minutes × setting/10`) and never changes which route wins — route
-choice is decided by sheltered metres, and a uniform multiplier cannot reorder that
-comparison. No absolute precipitation claim appears anywhere in the UI.
+Rain is a shelter simulation assuming rain is falling. It does not predict whether
+precipitation occurs. The default wind source is the forecast hour nearest the target
+within the shared freshness limit. If that row lacks a usable direction or speed, the
+context uses a clearly labelled vertical-rain fallback. Users can choose a fixed
+wind-from bearing and non-negative speed in metres per second; manual values stay fixed
+when the timeline moves. A blue pixel means the receiver is
+protected in both sun and rain.
+
+The route reports sheltered distance and unscaled rain-exposed minutes. Unknown geometry
+earns no shelter credit and is kept separate from exposed distance. Transit summaries
+separate outdoor access, egress, transfers and surface waits from riding time; enclosed
+vehicle riding is counted as sheltered only when the explicit vehicle assumption applies.
 
 ## Provenance and the unknown rule
 
 Every figure carries where it came from (`shelterSource`), with the same vocabulary as
 shadow: *from building geometry*, *from tree canopy*, *mixed sources*, or *source unknown*.
-**Absent never reads as dry**: an edge the geometry cannot speak for is reported as
-exposed with low confidence, and a low-confidence route says so, exactly as the shadow
-model's "unknown ≠ shaded" rule.
+**Absent never reads as dry**: an edge the geometry cannot speak for contributes to the
+unknown total, earns no shelter credit, and is never promoted to a confident exposed or
+sheltered claim.
 
 ## v1 — wind-driven rain (wired, with a stated fallback)
 
@@ -70,7 +78,8 @@ the 89.5° clamp that keeps `tan(90°)` finite. One caveat is designed in: build
 answers below a 70° ray elevation pay a 0.85 confidence dock, because the wind that
 steepens the ray is measured above the canyon it claims to describe.
 
-The route uses the forecast hour nearest the trip time at the trip's midpoint, from
+The route uses the forecast hour nearest the trip time at the midpoint of its first and
+last stops, from
 the same cached fetch every other weather figure reads (D2); if the response carries no
 wind direction, the calculation stays vertical and the card says so. The card reports
 the wind it actually priced: from-bearing, speed, and resulting tilt.

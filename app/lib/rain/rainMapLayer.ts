@@ -1,13 +1,10 @@
 /**
- * The rain-shelter map surface.
+ * Legacy raster rain helper retained for old fixtures and imports.
  *
- * The renderer paints *sun* shadows and owns its own geometry pipeline; teaching it
- * rain would fork every pass it has. The rain layer instead rasterizes shelter with
- * `ShadowField.sampleRainGrid` (one resolution and index-build per viewport update,
- * the route sampler's exact semantics) and presents the result as a canvas source the
- * basemap draws — blue where direct rain reaches, untouched where geometry blocks it.
+ * Production rain rendering uses LocalShadowAdapter's shared geometry pipeline;
+ * this viewport raster layer is intentionally not installed by the app.
  *
- * The grid is a small canvas the GPU stretches with linear filtering, so adjacent
+ * The legacy grid is a small canvas the GPU stretches with linear filtering, so adjacent
  * cells ramp into each other instead of abutting as hard GeoJSON edges. The value
  * behind each pixel is the same sheltered share the route cards pay for, priced here
  * at the map centre's wind (from-bearing, m/s).
@@ -27,7 +24,7 @@ export const RAIN_GRID_ROWS = 80;
 
 /**
  * The wash image as a straight (non-premultiplied) RGBA strip, one pixel per
- * grid cell: wet blue at `RAIN_WET_ALPHA × exposed`, transparent under shelter.
+ * grid cell: legacy wet blue at `RAIN_WET_ALPHA × exposed`, transparent under shelter.
  * Pure so the exposure→pixel mapping stays pinned by a test without a DOM.
  */
 export function rainWashPixels(grid: RainGrid): { data: Uint8ClampedArray<ArrayBuffer>; width: number; height: number } {
@@ -93,7 +90,7 @@ const canvasFor = (map: maplibregl.Map, bounds: BBox): maplibregl.CanvasSource =
   return source;
 };
 
-/** Adds the layer above the street but under the shadow canvas and the labels. */
+/** Adds the legacy layer for compatibility fixtures; production does not call this. */
 export function ensureRainMapLayer(map: maplibregl.Map): void {
   if (map.getLayer(RAIN_LAYER_ID)) return;
   canvasFor(map, rainBoundsOf(map));

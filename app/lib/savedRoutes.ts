@@ -3,6 +3,17 @@ import "./storageMigration";
 import type { RouteOption } from "./routing";
 import { buildTrip } from "./trip/trip";
 import type { Trip } from "./trip/types";
+import { normalizeExposureSettings, type ExposureSettings, type ResolvedExposureContext } from "./exposure";
+
+export interface SavedExposureConditions {
+  objective: "sun" | "rain";
+  windSource: "forecast" | "manual";
+  manualWind: { directionDeg: number; speedMps: number };
+  evaluatedContext?: Omit<ResolvedExposureContext, "time" | "forecastHour"> & {
+    time: string;
+    forecastHour: string | null;
+  };
+}
 
 export interface SavedFolder {
   id: string;
@@ -27,6 +38,11 @@ export interface SavedRoute {
   version?: 1 | 2;
   /** The journey, preferred over the legacy waypoint fields when present. */
   trip?: Trip;
+  /** Conditions selected when this route was evaluated. */
+  exposureSettings?: ExposureSettings;
+  evaluatedConditions?: SavedExposureConditions;
+  /** A pre-objective rain record; its original wind is intentionally unknown. */
+  legacyRainResult?: boolean;
 }
 
 const FOLDERS_KEY = "umbra:folders";
@@ -143,7 +159,11 @@ export function migrateV1ToV2(value: RecordValue): SavedRoute {
       },
     ],
   });
-  return { ...(value as unknown as SavedRoute), version: 2, trip };
+  const migrated: SavedRoute = { ...(value as unknown as SavedRoute), version: 2, trip };
+  return migrated.routeOption?.objective === undefined &&
+    (migrated.routeOption?.dryCoverage !== undefined || migrated.routeOption?.exposure?.objective === "rain")
+    ? { ...migrated, legacyRainResult: true }
+    : migrated;
 }
 
 /**
@@ -155,7 +175,58 @@ export function migrateV1ToV2(value: RecordValue): SavedRoute {
 export function normalizeSavedRoute(raw: unknown): SavedRoute | null {
   if (!record(raw)) return null;
   if (raw.version !== undefined && raw.version !== 1 && raw.version !== 2) return null;
-  if (raw.version === 2) return isV2Record(raw) ? (raw as unknown as SavedRoute) : null;
+  if (raw.version === 2) {
+    if (!isV2Record(raw)) return null;
+    const saved = raw as unknown as SavedRoute;
+    // Older v2 records sometimes stored conditions only in the evaluated
+    // snapshot. Normalize both sources at the storage boundary so a malformed
+    // or partial manual-wind object cannot throw while a saved-route list is
+    // being opened.
+    if (saved.exposureSettings || saved.evaluatedConditions) {
+      saved.exposureSettings = normalizeExposureSettings(
+        saved.exposureSettings ?? saved.evaluatedConditions,
+      );
+    }
+    // JSON storage turns context dates into strings. Restore them before a
+    // consumer passes the route to the renderer or a refresh job. Older v2
+    // records may have kept the same context in `evaluatedConditions` rather
+    // than on the route option, so accept both locations.
+    const context = saved.routeOption?.evaluatedContext ?? saved.evaluatedConditions?.evaluatedContext;
+    if (context) {
+      const rawTime = (context as unknown as { time?: unknown }).time;
+      const parsedTime = rawTime instanceof Date
+        ? new Date(rawTime.getTime())
+        : typeof rawTime === "string"
+          ? new Date(rawTime)
+          : null;
+      const forecastRaw = (context as unknown as { forecastHour?: unknown }).forecastHour;
+      const parsedForecast = forecastRaw instanceof Date
+        ? new Date(forecastRaw.getTime())
+        : typeof forecastRaw === "string"
+          ? new Date(forecastRaw)
+          : null;
+      if (parsedTime && !Number.isNaN(parsedTime.getTime())) {
+        saved.routeOption = {
+          ...saved.routeOption,
+          ...(saved.routeOption.objective == null && saved.evaluatedConditions?.objective
+            ? { objective: saved.evaluatedConditions.objective }
+            : {}),
+          evaluatedContext: {
+            ...(context as unknown as ResolvedExposureContext),
+            time: parsedTime,
+            forecastHour: parsedForecast && !Number.isNaN(parsedForecast.getTime()) ? parsedForecast : null,
+          },
+        };
+      }
+    }
+    if (
+      saved.routeOption?.objective === undefined &&
+      (saved.routeOption?.dryCoverage !== undefined || saved.routeOption?.exposure?.objective === "rain")
+    ) {
+      return { ...saved, legacyRainResult: true };
+    }
+    return saved;
+  }
   return isV1Record(raw) ? migrateV1ToV2(raw) : null;
 }
 

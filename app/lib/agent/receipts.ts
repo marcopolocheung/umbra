@@ -230,7 +230,11 @@ export interface ShadowClaimReceipt
 export interface TimeClaimReceipt
   extends ClaimBase<"time", { localTime: string; unit: "local-time" }> {}
 
-export interface RouteClaimReceipt extends ClaimBase<"route", { status: "completed" | "partial" }> {
+export interface RouteClaimReceipt extends ClaimBase<"route", {
+  status: "completed" | "partial";
+  /** Objective used by the application-owned route calculation. */
+  objective?: "sun" | "rain";
+}> {
   requestId: string;
   actionId: string;
   planRevision: number;
@@ -336,6 +340,7 @@ interface LooseReceipt {
   requestId?: unknown;
   actionId?: unknown;
   planRevision?: unknown;
+  objective?: unknown;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -642,8 +647,16 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     }
     const terminal = envelope!.payload as RoutePlanTerminalResult;
     const desired = isRecord(value.value) ? asString(value.value.status) : undefined;
+    const requestedObjective = isRecord(value.value) ? asString(value.value.objective) : undefined;
     if ((desired !== "completed" && desired !== "partial") || terminal.status !== desired) {
       receipts.push(reject(kind, "contradictory_route_status"));
+      return;
+    }
+    if (
+      requestedObjective != null &&
+      (requestedObjective !== "sun" && requestedObjective !== "rain" || requestedObjective !== terminal.objective)
+    ) {
+      receipts.push(reject(kind, "subject_mismatch"));
       return;
     }
     if (terminal.planRevision !== options.currentPlanRevision) {
@@ -666,7 +679,7 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
       ...base({ ...value, subject: "route" }, index, kind, envelope, "verified"),
       subject: "route",
       kind,
-      value: { status: desired },
+      value: { status: desired, ...(terminal.objective ? { objective: terminal.objective } : {}) },
       requestId: terminal.requestId,
       actionId: terminal.actionId,
       planRevision: terminal.planRevision,

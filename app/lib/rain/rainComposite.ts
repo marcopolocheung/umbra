@@ -1,11 +1,7 @@
 /**
- * The wet-paint constants the rain picture shares.
- *
- * `rainMapLayer.ts` tints the style-rendered ground wash with these, and Pass E
- * hands `RAIN_WET_RGB` to the 3D building pass so a fully exposed surface takes
- * exactly the wash colour. Peak alpha 0.5 read as solid blue in flat
- * screenshots; 0.30 was tried and read too faint next to shadow-strength
- * tinting. 0.35 keeps the basemap legible while the exposed streets stay blue.
+ * Legacy raster-composite constants retained for compatibility tests.
+ * Production rain surfaces use the shared blue protection palette in
+ * LocalShadowAdapter and do not apply a wet/exposed inversion.
  */
 
 export const RAIN_WET_RGB: [number, number, number] = [
@@ -18,8 +14,7 @@ export const RAIN_WET_RGB: [number, number, number] = [
 export const RAIN_WET_ALPHA = 0.35;
 
 /**
- * The wall/roof colour Pass E renders for the rain hazard — kept here so
- * "exposed = wet, dry = stone" is testable without a WebGL context.
+ * Legacy colour helper; production wall/roof shading is objective agnostic.
  */
 export function rainSurfaceColor(
   dry: [number, number, number],

@@ -19,15 +19,17 @@ interface FloatingRouteCardsProps {
   exposureSlot?: ReactNode;
   /** Rain objective: cards present shelter, and the solar pill steps aside. */
   rainMode?: boolean;
-  /** 0–10 intensity setting that scales wet-minute figures only. */
+  /** Deprecated compatibility prop; rain exposure is never intensity-scaled. */
   rainIntensity?: number;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
 }
 
 function routeKey(route: RouteOption): string {
-  const shadow = Math.round(route.shadowCoverage * 1000);
-  return `${route.label}-${Math.round(route.distanceM)}-${shadow}`;
+  const protection = route.objective === "rain"
+    ? route.exposure?.shelteredDistancePct ?? route.dryCoverage ?? 0
+    : route.shadowCoverage;
+  return `${route.label}-${Math.round(route.distanceM)}-${Math.round(protection * 1000)}`;
 }
 
 export default function FloatingRouteCards({
@@ -99,7 +101,7 @@ export default function FloatingRouteCards({
               onSelect={() => onSelectRoute(i)}
               onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
               onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
-              recommended={r.label === "Balanced"}
+              recommended={!r.exposureUpdating && (rainMode ? r.label === "Driest" : r.label === "Balanced")}
               rainMode={rainMode}
               rainIntensity={rainIntensity}
             />

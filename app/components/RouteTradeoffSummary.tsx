@@ -12,7 +12,7 @@ interface RouteTradeoffSummaryProps {
   weather?: WeatherHour | null;
   /** Rain objective active: swap the figures and suppress the sun-derived ones. */
   rainMode?: boolean;
-  /** 0–10 user setting that scales the wet-minute figure only. */
+  /** Deprecated compatibility prop; rain exposure is never intensity-scaled. */
   rainIntensity?: number;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
@@ -23,7 +23,6 @@ export default function RouteTradeoffSummary({
   baselineRoute,
   weather = null,
   rainMode = false,
-  rainIntensity = 5,
   rainWind = null,
 }: RouteTradeoffSummaryProps) {
   if (!route || route.partial || !baselineRoute) return null;
@@ -44,15 +43,19 @@ export default function RouteTradeoffSummary({
       >
         Selected route
       </div>
-      {rainMode && route.dryCoverage !== undefined && baselineRoute.dryCoverage !== undefined ? (
+      {rainMode && (route.objective === "rain" || route.dryCoverage !== undefined) ? (
         <>
           <div className="text-sm font-semibold leading-snug" style={{ color: "var(--color-route)" }}>
-            {rainTradeoffLine(route, baselineRoute)}
+            {route.dryCoverage !== undefined && baselineRoute.dryCoverage !== undefined
+              ? rainTradeoffLine(route, baselineRoute)
+              : route.exposure?.unknownDurationSec
+                ? "Rain shelter comparison unavailable"
+                : rainTradeoffLine(route, baselineRoute)}
           </div>
           <div className="text-xs leading-snug" style={{ color: "var(--color-ink-muted)" }}>
-            {rainExposureLine(route, rainIntensity)}
+            {rainExposureLine(route)}
           </div>
-          <RainRouteSummary route={route} rainIntensity={rainIntensity} wind={rainWind} />
+          <RainRouteSummary route={route} wind={rainWind} />
         </>
       ) : (
         <>

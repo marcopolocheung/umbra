@@ -22,6 +22,7 @@ export default function HourlyExposureStrip({
 }: HourlyExposureStripProps) {
   const { samples, readyCount, best } = exposure;
   if (samples.length === 0) return null;
+  const rain = samples[0].objective === "rain";
 
   return (
     <div
@@ -33,22 +34,23 @@ export default function HourlyExposureStrip({
           className="text-[10px] uppercase tracking-widest font-bold"
           style={{ color: "var(--color-ink-muted)" }}
         >
-          Sun by hour
+          {rain ? "Rain shelter by hour" : "Sun by hour"}
         </div>
         <div className="text-[10px]" aria-live="polite" style={{ color: "var(--color-ink-muted)" }}>
           {readyCount < samples.length
             ? "checking…"
             : best
-              ? `most shadowed around ${best.label}`
+              ? rain ? `most sheltered around ${best.label}` : `most shadowed around ${best.label}`
               : null}
         </div>
       </div>
 
       <fieldset className="mt-1.5 flex items-end gap-1 border-0 p-0 m-0">
-        <legend className="sr-only">Sun exposure by hour</legend>
+        <legend className="sr-only">{rain ? "Rain shelter by hour" : "Sun exposure by hour"}</legend>
         {samples.map((sample, i) => {
-          const ready = i < readyCount;
+          const ready = i < readyCount && sample.available !== false;
           const sunPct = Math.round(sample.sunExposure * 100);
+          const shelterPct = Math.round(sample.shadowCoverage * 100);
           const isNow = sample.hour === currentHour;
           return (
             <button
@@ -61,22 +63,24 @@ export default function HourlyExposureStrip({
               className="group relative flex h-11 flex-1 items-end justify-center"
               aria-label={
                 ready
-                  ? `${sample.label}: ${sunPct}% in sun. Set the timeline to ${sample.label}.`
-                  : `${sample.label}: not sampled yet`
+                  ? rain
+                    ? `${sample.label}: ${shelterPct}% sheltered. Set the timeline to ${sample.label}.`
+                    : `${sample.label}: ${sunPct}% in sun. Set the timeline to ${sample.label}.`
+                  : `${sample.label}: unavailable for recommendation`
               }
               aria-current={isNow ? "time" : undefined}
-              title={ready ? `${sample.label} · ${sunPct}% sun` : sample.label}
+              title={ready ? `${sample.label} · ${rain ? `${shelterPct}% sheltered` : `${sunPct}% sun`}` : sample.label}
             >
               <span
                 className="w-full rounded-sm transition-[height] duration-200 motion-reduce:transition-none"
                 style={{
                   // A fully shadowed hour still gets a sliver, so the bar reads as a
                   // measurement rather than a gap in the data.
-                  height: ready ? `${Math.max(6, sample.sunExposure * 100)}%` : "6%",
+                  height: ready ? `${Math.max(6, (rain ? sample.shadowCoverage : sample.sunExposure) * 100)}%` : "6%",
                   background: ready
                     ? isNow
                       ? "var(--color-sun)"
-                      : "var(--color-sun-mid)"
+                      : rain ? "var(--color-route-mid)" : "var(--color-sun-mid)"
                     : "color-mix(in srgb, var(--color-ink) 18%, transparent)",
                 }}
               />

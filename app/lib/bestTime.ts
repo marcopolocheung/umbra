@@ -6,6 +6,9 @@ export interface HourlyExposureSample {
   label: string;
   shadowCoverage: number;
   sunExposure: number;
+  /** Forecast-backed rain hours can be unavailable without claiming exposure. */
+  available?: boolean;
+  objective?: "sun" | "rain";
 }
 
 export interface HourlyExposureOptions {
@@ -57,9 +60,14 @@ export function buildHourlyExposureSeries(
   return samples;
 }
 
-export function bestExposureSample(samples: HourlyExposureSample[]): HourlyExposureSample | null {
-  if (samples.length === 0) return null;
-  return samples.reduce((best, sample) =>
-    sample.sunExposure < best.sunExposure ? sample : best
+export function bestExposureSample(
+  samples: HourlyExposureSample[],
+  objective: "sun" | "rain" = samples[0]?.objective ?? "sun",
+): HourlyExposureSample | null {
+  const available = samples.filter((sample) => sample.available !== false);
+  if (available.length === 0) return null;
+  return available.reduce((best, sample) => objective === "rain"
+    ? sample.shadowCoverage > best.shadowCoverage ? sample : best
+    : sample.sunExposure < best.sunExposure ? sample : best
   );
 }

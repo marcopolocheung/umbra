@@ -1,6 +1,7 @@
 import { toMapLocal } from "./timezone";
 import { parseTravelMode } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
+import type { ExposureObjective, WindSource, ManualWind } from "./exposure";
 
 export type LngLat = [number, number];
 export type MapCenterLatLng = [number, number];
@@ -15,6 +16,9 @@ export interface ParsedShareState {
   /** Dwell minutes positional over [A, ...via, B]; [] when the link has none. */
   dwell: number[];
   travelMode: TravelModeId;
+  objective: ExposureObjective;
+  windSource: WindSource;
+  manualWind: ManualWind;
 }
 
 export interface ShareStateInput {
@@ -28,6 +32,9 @@ export interface ShareStateInput {
   /** Dwell minutes positional over [A, ...via, B]. All-zero/omitted stays unwritten. */
   dwellMinutes?: number[];
   travelMode: TravelModeId;
+  objective?: ExposureObjective;
+  windSource?: WindSource;
+  manualWind?: Partial<ManualWind>;
 }
 
 const COORD_PRECISION = 5;
@@ -54,6 +61,10 @@ function parseCoord(raw: string | null): LngLat | null {
   const lat = finiteNum(latRaw ?? null);
   if (lng == null || lat == null || !validLng(lng) || !validLat(lat)) return null;
   return [lng, lat];
+}
+
+function normalizeDirection(value: number): number {
+  return ((value % 360) + 360) % 360;
 }
 
 function formatCoord(coord: LngLat): string {
@@ -106,6 +117,12 @@ export function parseShareState(search: string, utcOffsetMin: number): ParsedSha
     additionalWaypoints,
     dwell,
     travelMode: parseTravelMode(params.get("mode")),
+    objective: params.get("objective") === "rain" ? "rain" : "sun",
+    windSource: params.get("wind") === "manual" ? "manual" : "forecast",
+    manualWind: {
+      directionDeg: normalizeDirection(Number.isFinite(Number(params.get("windDir"))) ? Number(params.get("windDir")) : 0),
+      speedMps: Math.max(0, Number.isFinite(Number(params.get("windSpeed"))) ? Number(params.get("windSpeed")) : 0),
+    },
   };
 }
 
@@ -139,6 +156,21 @@ export function serializeShareState(state: ShareStateInput): string {
   }
   // Walk is the default and stays unwritten so old links keep parsing.
   if (state.travelMode !== "walk") params.set("mode", state.travelMode);
+  // Sun remains the default so pre-objective links stay byte-for-byte readable.
+  if (state.objective === "rain") {
+    params.set("objective", "rain");
+    params.set("wind", state.windSource === "manual" ? "manual" : "forecast");
+    if (state.windSource === "manual") {
+      const dir = Number.isFinite(state.manualWind?.directionDeg ?? NaN)
+        ? normalizeDirection(state.manualWind!.directionDeg!)
+        : 0;
+      const speed = Number.isFinite(state.manualWind?.speedMps ?? NaN)
+        ? Math.max(0, state.manualWind!.speedMps!)
+        : 0;
+      params.set("windDir", dir.toFixed(1));
+      params.set("windSpeed", speed.toFixed(2));
+    }
+  }
 
   return `?${params.toString()}`;
 }

@@ -145,6 +145,10 @@ export function transitWaitLabel(
   const wait = `incl. ~${formatMinutes(waitSec)} wait`;
   if (!exposure) return wait;
   const noun = exposure.boardings === 1 ? "stop" : "stops";
+  if (exposure.objective === "rain") {
+    if (exposure.shelter == null) return `${wait}, rain shelter at the ${noun} unknown`;
+    return `${wait}, ${noun} ${sunPercent(exposure.shelter)}% sheltered`;
+  }
   if (exposure.shadow == null) return `${wait}, sun at the ${noun} unknown`;
   return `${wait}, ${noun} ${sunPercent(exposure.shadow)}% shadowed`;
 }
@@ -169,7 +173,9 @@ export function routeLegSummary(
       // the sun they stand in.
       transitWaitLabel(leg.waitSec, leg.waitExposure),
       stopCount != null ? `${stopCount} stop${stopCount === 1 ? "" : "s"}` : null,
-      transitSunLabel(leg.sunExposure, leg.sunExposureCoverage, leg.aboveGroundShare),
+      (leg.waitExposure?.objective === "rain" || leg.vehicleSheltered === true)
+        ? (leg.vehicleSheltered ? "enclosed vehicle assumed sheltered" : "vehicle shelter unknown")
+        : transitSunLabel(leg.sunExposure, leg.sunExposureCoverage, leg.aboveGroundShare),
     ].filter(Boolean);
 
     return {
@@ -178,9 +184,11 @@ export function routeLegSummary(
     };
   }
 
+  const rain = leg.exposure?.objective === "rain" || leg.shelterCoverage != null;
+  const protection = rain ? leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct : leg.shadowCoverage;
   const parts = [
     leg.distanceM != null ? formatDist(leg.distanceM) : null,
-    leg.shadowCoverage != null ? `${Math.round(leg.shadowCoverage * 100)}% shadow` : null,
+    protection != null ? `${Math.round(protection * 100)}% ${rain ? "sheltered" : "shadow"}` : null,
   ].filter(Boolean);
 
   // `type` stays "walk" for active-travel legs (E6 generalizes it); the label

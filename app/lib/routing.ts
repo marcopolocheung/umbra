@@ -6,6 +6,8 @@ import type { ShadowProvenance } from "./shadowProvenance";
 import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 import type { TransitWaitExposure } from "./transitWaitExposure";
+import type { ExposureMetrics } from "./exposureMetrics";
+import { computeExposureMetrics } from "./exposureMetrics";
 
 export interface OsmNode {
   id: number;
@@ -34,6 +36,10 @@ export interface GraphEdge {
    * provenance, never as dry. Set by `parallelSidewalkEdges` in rain mode.
    */
   shelterFactor?: number;
+  /** Confidence for rain shelter. Missing means the shelter measurement is unknown. */
+  shelterConfidence?: number;
+  /** Confidence for whichever objective populated this edge. */
+  exposureConfidence?: number;
   side?: SidewalkSide;
   highway?: string;
   surface?: string;
@@ -101,6 +107,20 @@ export interface RouteResult {
    * `dijkstra` and `paretoRoutes` from the exact traversed edges.
    */
   surfaceMetresM: Record<string, number>;
+  /** Objective used to score this path. Added without changing legacy fields. */
+  objective?: ExposureObjective;
+  /** Honest objective-aware aggregate; unknown coverage is kept separate. */
+  exposure?: ExposureMetrics;
+  /** Exact sampled segments, retained so multi-stop refreshes preserve continuity. */
+  exposureSegments?: Array<{
+    distanceM: number;
+    protection?: number;
+    confidence?: number;
+    provenance?: string;
+    durationSec?: number;
+  }>;
+  /** Exact coordinates and sidewalk side used by the search. */
+  sampledEdges?: Array<{ from: [number, number]; to: [number, number]; side?: SidewalkSide | null }>;
 }
 
 export interface TransitLeg {
@@ -116,10 +136,17 @@ export interface TransitLeg {
 export interface RouteLeg {
   type: 'walk' | 'transit';
   geojson: GeoJSON.Feature<GeoJSON.LineString>;
+  /** Objective and conditions that produced this leg's exposure fields. */
+  objective?: ExposureObjective;
+  evaluatedContext?: import("./exposure").ResolvedExposureContext;
   distanceM?: number;        // walk legs
   travelTimeSec?: number;    // transit legs — riding, changing, and waiting
   /** Transit legs: the waiting half of `travelTimeSec`, 0 where unpriced. */
   waitSec?: number;
+  /** Transit stop coordinates used to refresh waiting exposure under new wind. */
+  waitLocations?: Array<[number, number]>;
+  /** Per-stop waiting durations aligned with `waitLocations`. */
+  waitDurationsSec?: number[];
   /**
    * Transit legs whose wait is spent in the open — bus: the sun at the boarding
    * stop, sampled rather than assumed from the mode.
@@ -129,7 +156,16 @@ export interface RouteLeg {
    * stop. The three states read differently on the card on purpose.
    */
   waitExposure?: TransitWaitExposure;
+  /** Rain objective: whether the vehicle is treated as an enclosed shelter. */
+  vehicleSheltered?: boolean;
+  /** Explicit assumption shown with a rain transit total. */
+  vehicleShelterAssumption?: string;
   shadowCoverage?: number;    // walk legs only (0–1)
+  shelterCoverage?: number;   // rain legs only (0–1)
+  exposure?: ExposureMetrics;
+  /** Retained samples for condition-only refresh and connected-leg continuity. */
+  exposureSegments?: RouteResult["exposureSegments"];
+  sampledEdges?: RouteResult["sampledEdges"];
   line?: string;             // transit legs: line ref/code
   lineColor?: string;        // transit legs: hex color
   lineName?: string;         // transit legs: display name
@@ -211,6 +247,15 @@ export interface RouteOption {
    * present on partial routes for the completed legs only.
    */
   surfaceMetresM?: Record<string, number>;
+  /** Objective used for this route and the context it was evaluated under. */
+  objective?: ExposureObjective;
+  evaluatedContext?: import("./exposure").ResolvedExposureContext;
+  exposure?: ExposureMetrics;
+  /** Retained edge measurements used for condition-only refresh and multi-stop continuity. */
+  exposureSegments?: RouteResult["exposureSegments"];
+  sampledEdges?: RouteResult["sampledEdges"];
+  /** True while a path is retained during a conditions refresh. */
+  exposureUpdating?: boolean;
 }
 
 export interface DijkstraOptions {
@@ -232,7 +277,7 @@ export interface DijkstraOptions {
   travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
   /** "sun" (default) prices `shadowFactor`; "rain" prices `shelterFactor`. */
   objective?: ExposureObjective;
-  /** Rain objective: 0–1 intensity multiplier on the shelter saving (a slider, today). */
+  /** Deprecated compatibility input. Rain no longer has an intensity scale. */
   precipIntensity?: number;
 }
 
@@ -574,13 +619,13 @@ export function dijkstra(
     straightLineDistM = 0,
     travelMode = "walk",
     objective = "sun",
-    precipIntensity = 1.0,
+    precipIntensity: _precipIntensity = 1.0,
   } = options;
-  // Rain reads `shelterFactor` and scales its saving by the precipitation slider;
-  // every sun default is the literal old arithmetic.
+  // Rain uses the same fixed detour bound as sun.  The old intensity argument is
+  // accepted for saved callers but deliberately has no effect on route choice.
   const rain = objective === "rain";
   const effectiveMaxShadowSaving = rain
-    ? MAX_RAIN_SAVING * precipIntensity
+    ? MAX_RAIN_SAVING
     : MAX_SHADOW_SAVING * solarIntensity;
   const exposureFactor = (edge: GraphEdge): number =>
     rain ? (edge.shelterFactor ?? 0) : edge.shadowFactor;
@@ -647,6 +692,14 @@ export function dijkstra(
   let prevWet: boolean | null = null;
   let turnCount = 0, prevBearing: number | null = null;
   const surfaceMetresM: Record<string, number> = {};
+  const exposureSegments: Array<{
+    distanceM: number;
+    protection?: number;
+    confidence?: number;
+    provenance?: string;
+    speedMps?: number;
+  }> = [];
+  const sampledEdges: NonNullable<RouteResult["sampledEdges"]> = [];
 
   for (let i = 0; i < nodeIds.length - 1; i++) {
     // Use prevEdge (the exact edge Dijkstra chose) so parallel sidewalk edges
@@ -655,10 +708,35 @@ export function dijkstra(
     if (!edge || edge.toId !== nodeIds[i + 1]) { sides.push(null); continue; }
     sides.push(edge.side ?? null);
     totalDist += edge.distanceM;
+    const fromNode = graph.nodes.get(nodeIds[i]);
+    const toNodeForSample = graph.nodes.get(nodeIds[i + 1]);
+    if (fromNode && toNodeForSample) {
+      sampledEdges.push({
+        from: [fromNode.lon, fromNode.lat],
+        to: [toNodeForSample.lon, toNodeForSample.lat],
+        side: edge.side ?? null,
+      });
+    }
     shadowedDist += edge.distanceM * edge.shadowFactor;
-    dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
+    const shelterConfidence = edge.shelterFactor == null
+      ? undefined
+      : edge.shelterConfidence ?? edge.exposureConfidence ?? 1;
+    if (shelterConfidence == null || shelterConfidence < 0.5) {
+      // Unknown geometry carries no shelter credit. Legacy `dryCoverage` keeps
+      // its old shape for known edges, while `exposure` carries the uncertainty.
+    } else {
+      dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
+    }
     surfaceMetresM[edge.surface ?? "unknown"] =
       (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
+    const protection = rain ? edge.shelterFactor : edge.shadowFactor;
+    const exposureConfidence = rain ? shelterConfidence : edge.exposureConfidence ?? 1;
+    exposureSegments.push({
+      distanceM: edge.distanceM,
+      protection,
+      confidence: exposureConfidence,
+      provenance: protection == null ? "unknown" : "geometry",
+    });
 
     // Shadow continuity tracking
     const isShadowed = edge.shadowFactor > SHADOW_THRESH;
@@ -675,15 +753,22 @@ export function dijkstra(
     prevShadowed = isShadowed;
 
     // Rain continuity tracking (absence of a shelter figure reads wet, never dry)
+    const knownRain = rain && edge.shelterFactor != null && (shelterConfidence ?? 0) >= 0.5;
     const isWet = (edge.shelterFactor ?? 0) <= WET_EXPOSURE_THRESH;
-    if (isWet) {
+    if (rain && !knownRain) {
+      currentWetStreakM = 0;
+      prevWet = null;
+    }
+    if (knownRain && isWet) {
       currentWetStreakM += edge.distanceM;
       longestContinuousWetM = Math.max(longestContinuousWetM, currentWetStreakM);
     } else {
       currentWetStreakM = 0;
     }
-    if (prevWet !== null && isWet !== prevWet) wetTransitions++;
-    prevWet = isWet;
+    if (knownRain) {
+      if (prevWet !== null && isWet !== prevWet) wetTransitions++;
+      prevWet = isWet;
+    }
 
     // Turn counting
     const fn = graph.nodes.get(nodeIds[i])!;
@@ -710,7 +795,6 @@ export function dijkstra(
     detourRatio,
     turnCount,
     surfaceMetresM,
-    // Present only for rain searches: sun results keep their exact old shape.
     ...(rain
       ? {
           dryCoverage: totalDist > 0 ? dryDist / totalDist : 0,
@@ -718,6 +802,10 @@ export function dijkstra(
           wetTransitions,
         }
       : {}),
+    objective,
+    exposure: computeExposureMetrics(objective, exposureSegments),
+    exposureSegments,
+    sampledEdges,
   };
 }
 
@@ -1027,12 +1115,41 @@ export function paretoRoutes(
     let prevWet: boolean | null = null;
     let turnCount = 0, prevBearing: number | null = null;
     const surfaceMetresM: Record<string, number> = {};
+    const exposureSegments: Array<{
+      distanceM: number;
+      protection?: number;
+      confidence?: number;
+      provenance?: string;
+    }> = [];
+    const sampledEdges: NonNullable<RouteResult["sampledEdges"]> = [];
 
     for (let i = 0; i < edgePath.length; i++) {
       const edge = edgePath[i];
       totalDist  += edge.distanceM;
+      const fromNode = graph.nodes.get(nodeIds[i]);
+      const toNodeForSample = graph.nodes.get(nodeIds[i + 1]);
+      if (fromNode && toNodeForSample) {
+        sampledEdges.push({
+          from: [fromNode.lon, fromNode.lat],
+          to: [toNodeForSample.lon, toNodeForSample.lat],
+          side: edge.side ?? null,
+        });
+      }
       shadowedDist += edge.distanceM * edge.shadowFactor;
-      dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
+      const shelterConfidence = edge.shelterFactor == null
+        ? undefined
+        : edge.shelterConfidence ?? edge.exposureConfidence ?? 1;
+      if (shelterConfidence != null && shelterConfidence >= 0.5) {
+        dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
+      }
+      const protection = rain ? edge.shelterFactor : edge.shadowFactor;
+      const exposureConfidence = rain ? shelterConfidence : edge.exposureConfidence ?? 1;
+      exposureSegments.push({
+        distanceM: edge.distanceM,
+        protection,
+        confidence: exposureConfidence,
+        provenance: protection == null ? "unknown" : "geometry",
+      });
       surfaceMetresM[edge.surface ?? "unknown"] =
         (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
       const isShadowed = edge.shadowFactor > SHADOW_THRESH;
@@ -1048,15 +1165,22 @@ export function paretoRoutes(
       if (prevShadowed !== null && isShadowed !== prevShadowed) shadowTransitions++;
       prevShadowed = isShadowed;
 
+      const knownRain = rain && edge.shelterFactor != null && (shelterConfidence ?? 0) >= 0.5;
       const isWet = (edge.shelterFactor ?? 0) <= WET_EXPOSURE_THRESH;
-      if (isWet) {
+      if (rain && !knownRain) {
+        currentWetStreakM = 0;
+        prevWet = null;
+      }
+      if (knownRain && isWet) {
         currentWetStreakM += edge.distanceM;
         longestContinuousWetM = Math.max(longestContinuousWetM, currentWetStreakM);
       } else {
         currentWetStreakM = 0;
       }
-      if (prevWet !== null && isWet !== prevWet) wetTransitions++;
-      prevWet = isWet;
+      if (knownRain) {
+        if (prevWet !== null && isWet !== prevWet) wetTransitions++;
+        prevWet = isWet;
+      }
 
       const fn = graph.nodes.get(nodeIds[i]);
       const tn = graph.nodes.get(nodeIds[i + 1]);
@@ -1090,6 +1214,10 @@ export function paretoRoutes(
             wetTransitions,
           }
         : {}),
+      objective,
+      exposure: computeExposureMetrics(objective, exposureSegments),
+      exposureSegments,
+      sampledEdges,
     };
   };
 

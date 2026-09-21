@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import type maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { haversineMeters } from "../lib/routing";
@@ -7,6 +7,9 @@ import { routeToGPX, routeToGeoJSON, downloadBlob } from "../lib/exportRoute";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { partialRouteNotice } from "../lib/partialRoute";
 import type { TravelModeId } from "../lib/travelMode";
+import { resolveExposureContext, type ExposureSettings, type ManualWind, type WindSource } from "../lib/exposure";
+import type { SavedRoute } from "../lib/savedRoutes";
+import { fetchWeatherForecast, nearestForecastWind } from "../services/weather";
 import { useSketch } from "./useSketch";
 import { useTrip } from "./useTrip";
 import { useRouting } from "./useRouting";
@@ -20,9 +23,10 @@ interface UseNavigationArgs {
   shadowLayerRef?: React.MutableRefObject<IShadowLayer | null>;
   dateRef: React.MutableRefObject<Date>;
   setDate: React.Dispatch<React.SetStateAction<Date>>;
+  date?: Date;
 }
 
-export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseNavigationArgs) {
+export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }: UseNavigationArgs) {
   // Navigation state
   const [navMode, setNavMode] = useState(false);
 
@@ -31,10 +35,18 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
   const [shadowPreference, setShadowPreference] = useState(0.5);
 
   // Rain objective: walk/bike routes are priced on rain shelter instead of sun.
-  // The intensity is an ordinal 0–10 setting (no mm/h claim anywhere); it scales
-  // reported exposure only — route choice does not depend on it.
+  // Keep the legacy intensity value in the facade for old consumers, but it is
+  // no longer rendered or used in routing; exposure is reported unscaled.
   const [rainMode, setRainMode] = useState(false);
+  const [windSource, setWindSource] = useState<WindSource>("forecast");
+  const [manualWind, setManualWind] = useState<ManualWind>({ directionDeg: 0, speedMps: 0 });
   const [rainIntensity, setRainIntensity] = useState(5);
+  const manualWindInitRef = useRef(0);
+  const exposureSettings = useMemo<ExposureSettings>(() => ({
+    objective: rainMode ? "rain" : "sun",
+    windSource,
+    manualWind,
+  }), [rainMode, windSource, manualWind]);
 
   // Active-travel mode for walk routing (E1). Transit access legs stay
   // pedestrian — mixed-mode journeys are E6.
@@ -74,7 +86,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSaveModalRouteIndex,
     handleOpenSaveModal,
     handleConfirmSave,
-    handleLoadRoute,
+    handleLoadRoute: loadSavedRoute,
     handleRemoveAdditionalWaypoint,
     handleSetAdditionalWaypoints,
     handleAddAdditionalWaypoint,
@@ -108,6 +120,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     navError,
     routeSolarIntensity,
     routeWind,
+    routeExposureContext,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
@@ -130,6 +143,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setRouteProgress,
     setRoutePreview,
     setRouteSolarIntensity,
+    setRouteExposureContext,
+    setRouteWind,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,
@@ -138,9 +153,11 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     mapRef,
     shadowLayerRef,
     dateRef,
+    date,
     travelModeRef,
     routeMode,
     rainMode,
+    exposureSettings,
     waypointA,
     waypointB,
     additionalWaypoints,
@@ -189,6 +206,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setNavError,
     setIsCalculating,
     setRouteProgress,
+    exposureSettings,
+    setRouteExposureContext,
   });
 
   // Publish this render's routing and sketch outputs to the event-time seam.
@@ -253,6 +272,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setNavError(null);
     setRoutePreview(null);
     setRouteSolarIntensity(null);
+    setRouteExposureContext(null);
+    setRouteWind(null);
     setPendingSlot(null);
     setDrawMode(false);
     setSketchPoints([]);
@@ -276,6 +297,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSelectedRouteIndex,
     setRoutePreview,
     setRouteSolarIntensity,
+    setRouteExposureContext,
+    setRouteWind,
   ]);
 
   const handleExportRoute = useCallback(
@@ -313,6 +336,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setSelectedRouteIndex(0);
     setNavError(null);
     setRouteSolarIntensity(null);
+    setRouteExposureContext(null);
+    setRouteWind(null);
     setPendingSlot(null);
     setDrawMode(false);
     setSketchPoints([]);
@@ -336,6 +361,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     setNavRoutes,
     setSelectedRouteIndex,
     setRouteSolarIntensity,
+    setRouteExposureContext,
+    setRouteWind,
   ]);
 
   const handleRouteModeChange = useCallback(
@@ -365,7 +392,10 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       let bestIdx = 0;
       let bestDiff = Infinity;
       for (let i = 0; i < routes.length; i++) {
-        const diff = Math.abs(routes[i].shadowCoverage - v);
+        const protection = routes[i].objective === "rain"
+          ? routes[i].exposure?.shelteredDistancePct ?? routes[i].dryCoverage ?? 0
+          : routes[i].shadowCoverage;
+        const diff = Math.abs(protection - v);
         if (diff < bestDiff) {
           bestDiff = diff;
           bestIdx = i;
@@ -384,11 +414,101 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
       setRainMode(mode);
       setNavRoutes([]);
       setSelectedRouteIndex(0);
+      setRouteExposureContext(null);
+      setRouteWind(null);
     },
-    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex],
+    [cancelInFlightCalculation, setNavRoutes, setSelectedRouteIndex, setRouteExposureContext, setRouteWind],
   );
 
-  // Intensity rescales reported wet time without changing which route won.
+  const handleWindSourceChange = useCallback((source: WindSource) => {
+    if (source === "manual") {
+      const token = ++manualWindInitRef.current;
+      const pricedWind = routeWind?.dirDeg != null && routeWind.windMs != null
+        ? { directionDeg: routeWind.dirDeg, speedMps: routeWind.windMs }
+        : routeExposureContext?.windProvenance === "forecast" &&
+            routeExposureContext.windDirectionDeg != null && routeExposureContext.windSpeedMps != null
+          ? { directionDeg: routeExposureContext.windDirectionDeg, speedMps: routeExposureContext.windSpeedMps }
+          : null;
+      setManualWind(pricedWind ?? { directionDeg: 0, speedMps: 0 });
+
+      // Before the first route is found, the forecast is still available from
+      // the shared weather cache. Seed the manual controls from the trip anchor
+      // (or the map centre) instead of making users retype a wind that is already
+      // known. A later keystroke invalidates this asynchronous initializer.
+      if (!pricedWind) {
+        const anchor = waypointA && waypointB
+          ? { lat: (waypointA[1] + waypointB[1]) / 2, lng: (waypointA[0] + waypointB[0]) / 2 }
+          : mapRef.current?.getCenter();
+        if (anchor) {
+          void fetchWeatherForecast(anchor.lat, anchor.lng)
+            .then((hours) => {
+              if (manualWindInitRef.current !== token) return;
+              const wind = nearestForecastWind(hours, dateRef.current);
+              if (wind) setManualWind({ directionDeg: wind.directionDeg, speedMps: wind.speedMps });
+            })
+            .catch(() => {});
+        }
+      }
+    } else {
+      manualWindInitRef.current++;
+    }
+    setWindSource(source);
+    cancelInFlightCalculation();
+  }, [cancelInFlightCalculation, dateRef, mapRef, routeExposureContext, routeWind, waypointA, waypointB]);
+
+  const handleManualWindChange = useCallback((wind: Partial<ManualWind>) => {
+    manualWindInitRef.current++;
+    setManualWind((previous) => ({
+      directionDeg: Number.isFinite(wind.directionDeg) ? ((wind.directionDeg! % 360) + 360) % 360 : previous.directionDeg,
+      speedMps: Number.isFinite(wind.speedMps) ? Math.max(0, wind.speedMps!) : previous.speedMps,
+    }));
+  }, []);
+
+  const handleLoadRoute = useCallback((saved: SavedRoute) => {
+    loadSavedRoute(saved);
+    const objective = saved.exposureSettings?.objective ?? (saved.legacyRainResult ? "rain" : "sun");
+    const settings: ExposureSettings = {
+      objective,
+      windSource: saved.exposureSettings?.windSource ?? "forecast",
+      manualWind: saved.exposureSettings?.manualWind ?? { directionDeg: 0, speedMps: 0 },
+    };
+    setRainMode(objective === "rain");
+    // Legacy rain records have no trustworthy source or wind. Reopen them in
+    // forecast mode so the refresh can resolve current conditions; new manual
+    // records restore their exact override.
+    if (objective === "rain") {
+      setWindSource(settings.windSource);
+      if (saved.exposureSettings?.manualWind) setManualWind(settings.manualWind);
+    }
+    const savedContext = saved.routeOption.evaluatedContext;
+    if (savedContext) {
+      setRouteExposureContext(savedContext);
+      setRouteWind(
+        savedContext.objective === "rain"
+          ? { dirDeg: savedContext.windDirectionDeg, windMs: savedContext.windSpeedMps }
+          : null,
+      );
+    } else if (objective === "rain") {
+      // Legacy rain records have no trustworthy original context. Seed an
+      // explicitly vertical context so the refresh job can resolve forecast
+      // wind once it has the saved route's fixed reference point.
+      const coordinates = saved.routeOption.geojson.geometry.coordinates as Array<[number, number]>;
+      const start = saved.waypointA ?? coordinates[0] ?? [0, 0];
+      const end = saved.waypointB ?? coordinates[coordinates.length - 1] ?? start;
+      const context = resolveExposureContext(settings, {
+        time: dateRef.current,
+        tripStops: [start, end],
+        revision: `saved:${saved.id}`,
+      });
+      setRouteExposureContext(context);
+      setRouteWind({ dirDeg: context.windDirectionDeg, windMs: context.windSpeedMps });
+    } else {
+      setRouteExposureContext(null);
+      setRouteWind(null);
+    }
+  }, [dateRef, loadSavedRoute, setRouteExposureContext, setRouteWind]);
+
+  // Legacy no-op compatibility handler. Rain exposure is always unscaled.
   const handleRainIntensityChange = useCallback((v: number) => {
     setRainIntensity(Math.max(0, Math.min(10, Math.round(v))));
   }, []);
@@ -435,6 +555,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     navError,
     routeSolarIntensity,
     routeWind,
+    routeExposureContext,
     waypointALabel,
     waypointBLabel,
     pendingSlot,
@@ -451,6 +572,9 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     routeMode,
     shadowPreference,
     rainMode,
+    windSource,
+    manualWind,
+    exposureSettings,
     rainIntensity,
     travelMode,
 
@@ -479,6 +603,8 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate }: UseN
     handleTravelModeChange,
     handleShadowPreferenceChange,
     handleRainModeChange,
+    handleWindSourceChange,
+    handleManualWindChange,
     handleRainIntensityChange,
     handleSketchPointClick,
     handleSketchPointDrag,

@@ -39,7 +39,15 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   }
 
   function renderRoute(r: SavedRoute) {
-    const shadowPct = Math.round(r.routeOption.shadowCoverage * 100);
+    const rain = r.routeOption.objective === "rain"
+      || r.routeOption.dryCoverage !== undefined
+      || r.legacyRainResult === true;
+    const shelteredPct = r.routeOption.exposure?.shelteredDistancePct ?? r.routeOption.dryCoverage;
+    const exposureUnknown = (r.routeOption.exposure?.unknownDistanceM ?? 0) > 0
+      || (r.routeOption.exposure?.unknownDurationSec ?? 0) > 0;
+    const protectionLabel = rain
+      ? shelteredPct == null || exposureUnknown ? "shelter unknown" : `${Math.round(shelteredPct * 100)}% sheltered`
+      : `${Math.round(r.routeOption.shadowCoverage * 100)}% shadow`;
     const distKm = r.routeOption.distanceM >= 1000
       ? `${(r.routeOption.distanceM / 1000).toFixed(1)} km`
       : `${Math.round(r.routeOption.distanceM)} m`;
@@ -68,7 +76,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             className="flex-1 text-left px-1.5 py-1 rounded hover:bg-canvas transition-colors min-w-0"
           >
             <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
-            <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {shadowPct}% shadow</div>
+            <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</div>
           </button>
         )}
         <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
