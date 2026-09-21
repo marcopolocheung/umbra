@@ -582,8 +582,11 @@ export default function MapView({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${MAPTILER_KEY}`,
-      center: [0, 20],
-      zoom: 2,
+      // Central Park, NYC — the shadow data is NYC-only, so every session
+      // starts where the product has something to show instead of a
+      // zoomed-out globe.
+      center: [-73.9654, 40.7829],
+      zoom: 13,
       maxTileCacheSize: 50,
       // @ts-expect-error — property exists at runtime but is missing from MapLibre types
       maxParallelImageRequests: 6,
