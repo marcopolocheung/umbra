@@ -517,8 +517,18 @@ export async function suggestPlaces(
   }
 
   // Search fields stay minimal — the row shows name/category/hours/rating/photo;
-  // anything richer belongs to Place Details.
-  const searchFields = ["name", "location", "categories", "hours", "rating", "photos"].join(",");
+  // anything richer belongs to Place Details. `geocodes` is where the Places
+  // search API actually puts coordinates (`geocodes.main.latitude/longitude`) —
+  // `location` is the address object, and there is no top-level `latitude`.
+  const searchFields = [
+    "name",
+    "location",
+    "geocodes",
+    "categories",
+    "hours",
+    "rating",
+    "photos",
+  ].join(",");
   const url =
     `${FSQ_BASE_URL}/places/search?query=${encodeURIComponent(q)}` +
     `&ll=${ll[1]},${ll[0]}&radius=${radiusM}&limit=${limit}` +
@@ -559,10 +569,21 @@ export async function suggestPlaces(
     const suggestions: FoursquareSuggestion[] = (data.results ?? [])
       .map((raw) => {
         const place = (raw ?? {}) as Record<string, unknown>;
+        // The live API's shape is geocodes.main.{latitude,longitude}; the
+        // top-level/`location` reads stay only for the legacy fixture shape.
+        const geocodes = (place.geocodes as any)?.main;
         const lat =
-          typeof place.latitude === "number" ? place.latitude : (place.location as any)?.lat;
+          typeof geocodes?.latitude === "number"
+            ? geocodes.latitude
+            : typeof place.latitude === "number"
+              ? place.latitude
+              : (place.location as any)?.lat;
         const lng =
-          typeof place.longitude === "number" ? place.longitude : (place.location as any)?.lng;
+          typeof geocodes?.longitude === "number"
+            ? geocodes.longitude
+            : typeof place.longitude === "number"
+              ? place.longitude
+              : (place.location as any)?.lng;
         if (typeof lat !== "number" || typeof lng !== "number") return null;
         const info = mapToFoursquarePlaceInfo(place, place.fsq_id as string | undefined);
         return { ...info, lat, lng } as FoursquareSuggestion;
