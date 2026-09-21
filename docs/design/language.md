@@ -100,7 +100,10 @@ no lie-flat adjectives. U5 fills out this section per surface; the guardrail bin
   hover menus are banned. Once options exist the planning form collapses to a one-line
   trip bar (Edit reopens it), so the stack starts inside the sheet's first snap point.
 - **Timeline:** one time readout; the now-marker is the **only** amber element (sun data);
-  sunrise/sunset ticks are sun/route coloured data marks; day ticks are ink washes.
+  sunrise/sunset ticks are sun/route coloured data marks; day ticks are ink washes. A thin
+  sun-arc glyph rides the ruler (horizon line + quadratic sun path, sun dot at the slider's
+  time, absent at night) — sun position, so it takes the sun hue; it is data, not chrome,
+  and the only ornament-looking element the language allows (U4).
 - **Search:** the one 999-radius pill, ≥70 % white with its allowed blur, route-blue
   highlight on the active row; result rows on raised with hairline separators.
 - **Pins & popups:** origin pin ink, destination pin route blue, user-location dot route

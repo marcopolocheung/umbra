@@ -22,10 +22,11 @@
     "bench": "vitest bench --run",
     "eval:agent": "vitest run --config vitest.live.config.ts",
     "e2e": "playwright test",
+    "shots": "playwright test --config=playwright.shots.config.ts",
+    "design:check": "node scripts/verify/design-tokens.mjs --all",
     "e2e:shadow-v2-debug": "playwright test --config=playwright.shadow-v2-debug.config.ts",
     "bench:route": "playwright test --config=playwright.bench.config.ts",
-    "bench:canopy": "playwright test --config=playwright.canopy.config.ts",
-    "design:check": "node scripts/verify/design-tokens.mjs --all"
+    "bench:canopy": "playwright test --config=playwright.canopy.config.ts"
   },
   "dependencies": {
     "@photostructure/tz-lookup": "^11.6.1",
