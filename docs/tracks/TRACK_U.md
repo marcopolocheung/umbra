@@ -16,7 +16,7 @@ accordingly. Subagents stay read-only here, per the repo rule.
 ## Current state
 
 - **Active checkpoint:** U5 — copy & information architecture. Open for owner review as PR
-  [#68](https://github.com/marcopolocheung/umbra/pull/68) on `design/u5-copy-ia` (branched
+  [#67](https://github.com/marcopolocheung/umbra/pull/67) on `design/u5-copy-ia` (branched
   from `design/u4-timeline-sheet`, PR #66, because U5 rewrites the surfaces U4 styled;
   rebase onto main at U4's merge). Rewritten verdict-first: the transit trade-off line
   names its condition ("long walk between stops, +N min") when the detour is mostly extra
