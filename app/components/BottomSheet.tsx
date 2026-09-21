@@ -8,8 +8,6 @@ interface BottomSheetProps {
   children: ReactNode;
   /** Height in px for collapsed state */
   collapsedHeight?: number;
-  /** Rendered astride the sheet's top-right corner — where a docked blob rides. */
-  cornerSlot?: ReactNode;
 }
 
 const SNAP_HEIGHTS: Record<SnapPoint, number> = {
@@ -42,7 +40,7 @@ function nearestSnap(heightPx: number, viewportHeight: number, collapsedHeight: 
   return best;
 }
 
-export default function BottomSheet({ snap, onSnapChange, children, collapsedHeight = 80, cornerSlot }: BottomSheetProps) {
+export default function BottomSheet({ snap, onSnapChange, children, collapsedHeight = 80 }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
   const draggingRef = useRef(false);
@@ -195,13 +193,6 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
       >
         <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-hairline)" }} />
       </div>
-
-      {/* Corner slot — astride the sheet's top edge so a docked blob reads as
-          riding the sheet, not floating over it. Outside the scrollable
-          content, so it never scrolls away. */}
-      {cornerSlot && (
-        <div className="absolute right-4 top-0 z-30 -translate-y-1/2">{cornerSlot}</div>
-      )}
 
       {/* Content — the bottom padding yields to the collapsed band (U4): at
           80px the trip bar needs the full 36+44, so pb-3 would clip it. */}
