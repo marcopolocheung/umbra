@@ -96,6 +96,10 @@ import {
   transitDominanceBound,
   transitOptionDominated,
 } from "../lib/transit/transitGate";
+import {
+  transitModeNoticeText,
+  transitModeNotices,
+} from "../lib/transit/transitOutcomeNotice";
 import type { TravelModeId } from "../lib/travelMode";
 import type { StopEntry } from "../lib/trip/types";
 import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
@@ -497,6 +501,8 @@ export function useRouting({
       // showing nothing. Outcome names come from `findBestTransitRoute`.
       const transitOutcomes: Partial<Record<TrainMode, TransitSearchOutcome>> = {};
       const transitCandidateCount: Partial<Record<TrainMode, number>> = {};
+      /** Door-to-door minutes when an offer existed but the walk dominated it. */
+      const dominatedMin: Partial<Record<TrainMode, { transitMin: number; walkMin: number }>> = {};
       // Phase-0 graph-fetch attribution split: the three pieces of the
       // `tFetch` span that gate different fix decisions. `fieldReady`
       // overlaps `staticStreets` by construction (the broad preload starts
@@ -1796,10 +1802,10 @@ export function useRouting({
                         ? routedAccessSec + transitTimeSec + routedEgressSec
                         : travelTimeSeconds(totalWalkDistM, "walk") + transitTimeSec;
                     if (transitOptionDominated(totalTimeSec, quickestWalkSec)) {
-                      transitNotice =
-                        transitMode === "bus"
-                          ? `Via Bus would take about ${Math.round(totalTimeSec / 60)} min against a ${Math.round(quickestWalkSec / 60)} min walk, so it is not offered.`
-                          : `Via Subway would take about ${Math.round(totalTimeSec / 60)} min against a ${Math.round(quickestWalkSec / 60)} min walk, so it is not offered.`;
+                      dominatedMin[transitMode] = {
+                        transitMin: Math.round(totalTimeSec / 60),
+                        walkMin: Math.round(quickestWalkSec / 60),
+                      };
                       continue;
                     }
                     // Time outdoors — both walks and a sampled stop wait —
@@ -1973,8 +1979,29 @@ export function useRouting({
         setRouteExposureContext(routeExposureContext);
         setRoutePreview(null);
         seam.current.setSketchPoints([]);
+        // Stage H: the panel words come from the outcome records, so the
+        // per-mode distinction (no journey / slower than walking / no
+        // reachable stop) survives the trip to the UI.
+        const modeNotices = transitModeNotices([
+          {
+            mode: "subway",
+            outcome: transitOutcomes.subway,
+            ...(dominatedMin.subway ? { dominatedMin: dominatedMin.subway } : {}),
+          },
+          {
+            mode: "bus",
+            outcome: transitOutcomes.bus,
+            ...(dominatedMin.bus ? { dominatedMin: dominatedMin.bus } : {}),
+          },
+        ]);
+        const outcomeNotice =
+          modeNotices.length > 0
+            ? modeNotices.map((notice) => transitModeNoticeText(notice)).join(" ")
+            : null;
         seam.current.setNavWarning(
-          partialWarning ? partialRouteNotice(partialWarning) : transitNotice,
+          partialWarning
+            ? partialRouteNotice(partialWarning)
+            : transitNotice ?? outcomeNotice,
         );
         seam.current.setSimplifiedWaypoints(null);
         // The panel shows one mode's list, and selection resets to its first

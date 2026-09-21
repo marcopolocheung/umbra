@@ -1372,7 +1372,12 @@ describe("a transit option is not lost to an unreachable snap (issue 400)", () =
     // option is discarded — which is what this asserts has stopped happening.
     expect(result.current.filteredRoutes).toHaveLength(1);
     expect(result.current.filteredRoutes[0].label).toBe("Via Subway");
-    expect(result.current.navWarning).toBeNull();
+    // The subway offer carries no warning of its own; the bus mode explains
+    // itself separately (Stage H) — its only stop shares the island, so no
+    // bus stop is reachable on foot.
+    expect(result.current.navWarning).toBe(
+      "No bus stop within walking distance can be reached on foot, so Via Bus is not offered.",
+    );
   });
 
   it("does not cry wolf when the entrance fetch failed but transit still works", async () => {
@@ -1387,7 +1392,11 @@ describe("a transit option is not lost to an unreachable snap (issue 400)", () =
     const result = await routeOverIslandGraph();
 
     expect(result.current.filteredRoutes[0]?.label).toBe("Via Subway");
-    expect(result.current.navWarning).toBeNull();
+    // The entrance failure itself still cries no wolf; the warning that is
+    // present names the bus mode's own outcome, not the entrance fetch.
+    expect(result.current.navWarning).toBe(
+      "No bus stop within walking distance can be reached on foot, so Via Bus is not offered.",
+    );
   });
 });
 
