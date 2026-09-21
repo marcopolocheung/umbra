@@ -35,7 +35,7 @@ export default function SettingsPanel({
             boxShadow: "var(--shadow-level-1)",
           }}
         >
-          <div className="uppercase tracking-widest text-[9px] font-bold" style={{ color: "var(--color-ink-muted)" }}>
+          <div className="uppercase tracking-widest text-[11px] font-bold" style={{ color: "var(--color-ink-muted)" }}>
             Display
           </div>
 

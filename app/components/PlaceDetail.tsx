@@ -35,14 +35,25 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
           {place.category ?? "Place"}
         </div>
 
+        {/* A rating that does not exist is never shown as one (U5): the
+            fallback "4.4" was a fabricated number, so the row renders only
+            from real Foursquare data, and absent parts are named as absent. */}
         <div className="flex items-center gap-2 mt-2 text-[13px]" style={{ color: "var(--color-ink)" }}>
-          <div className="flex items-center gap-1">
-            <span className="font-semibold">{place.rating != null ? place.rating.toFixed(1) : "4.4"}</span>
-            <span style={{ color: "var(--color-sun)" }}>★</span>
-          </div>
-          <span style={{ color: "var(--color-ink-faint)" }}>·</span>
-          <span style={{ color: "var(--color-ink-muted)" }}>{reviewCount > 0 ? `${reviewCount} reviews` : "(reviews unavailable)"}</span>
-          <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+          {place.rating != null && (
+            <>
+              <div className="flex items-center gap-1">
+                <span className="font-semibold">{place.rating.toFixed(1)}</span>
+                <span style={{ color: "var(--color-sun)" }}>★</span>
+              </div>
+              <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+              {reviewCount > 0 && (
+                <>
+                  <span style={{ color: "var(--color-ink-muted)" }}>{reviewCount} reviews</span>
+                  <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+                </>
+              )}
+            </>
+          )}
           <span style={{ color: "var(--color-ink-muted)" }}>{price}</span>
         </div>
       </div>
@@ -108,40 +119,14 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
         <InfoRow icon="wheelchair" label="Accessibility info" rightText="" />
       </div>
 
-      {/* Reviews section (placeholder) */}
+      {/* Reviews: no source ships review text, so the section says that in
+          one line. The old placeholder showed a fabricated histogram and
+          invented reviews as data — the honesty guardrail bans both (U5). */}
       <section>
         <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>Reviews</h3>
         <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)", background: "var(--color-raised)" }}>
           <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>
-            Reviews are not available from the current data source. Showing placeholders.
-          </div>
-          <div className="mt-3 grid grid-cols-5 gap-1">
-            {[5,4,3,2,1].map((s, idx) => (
-              <div key={s} className="flex flex-col items-start gap-1">
-                <div className="text-[10px]" style={{ color: "var(--color-ink-muted)" }}>{s}★</div>
-                <div className="w-full h-1.5 rounded-full" style={{ background: "var(--color-hairline)" }}>
-                  <div className="h-1.5 rounded-full" style={{ width: `${[65,18,10,5,2][idx]}%`, background: "var(--color-sun)" }} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-col gap-2">
-            {[0, 1].map((i) => (
-              <div key={i} className="border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)", background: "var(--color-raised)" }}>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full" style={{ background: "var(--color-hairline)" }} />
-                  <div className="flex-1">
-                    <div className="text-[13px] font-semibold" style={{ color: "var(--color-ink)" }}>User</div>
-                    <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>2 weeks ago</div>
-                  </div>
-                  <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>★★★★★</div>
-                </div>
-                <div className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
-                  Great place. Placeholder review text.
-                </div>
-              </div>
-            ))}
+            No reviews from the current data source.
           </div>
         </div>
       </section>
@@ -151,7 +136,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
         <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>About</h3>
         <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)" }}>
           <div className="text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
-            {place.description ?? "No description available. (Placeholder)"}
+            {place.description ?? "No description from the current data source."}
           </div>
         </div>
       </section>

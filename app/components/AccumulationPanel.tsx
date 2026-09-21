@@ -214,7 +214,7 @@ export default function AccumulationPanel({
               <span style={{ color: "var(--color-ink)" }}>
                 {qualityLabel(accumulation.iterations)}
               </span>
-              <span className="text-[10px] ml-1" style={{ color: "var(--color-ink-muted)" }}>
+              <span className="text-[11px] ml-1" style={{ color: "var(--color-ink-muted)" }}>
                 ({accumulation.iterations})
               </span>
             </span>
@@ -237,7 +237,7 @@ export default function AccumulationPanel({
               }}
             />
             <div
-              className="flex justify-between text-[9px] tabular-nums px-px"
+              className="flex justify-between text-[11px] tabular-nums px-px"
               style={{ color: "var(--color-ink-muted)" }}
             >
               <span>0h</span>

@@ -85,7 +85,23 @@ selects route data, sun only when the glyph reads a sun metric.
 
 Verdict first (`18 min — 86% shaded`), the number with its scope second, method link third.
 Every user-facing number must trace to a method with uncertainty stated; no marketing words,
-no lie-flat adjectives. U5 fills out this section per surface; the guardrail binds all waves.
+no lie-flat adjectives. Per surface (U5):
+
+- **Route card:** duration is the verdict row; the trade-off line prefers a named condition
+  over a bare delta where the delta does two jobs ("long walk between stops, +12 min", the
+  Transit-app voice) — the number quantifies, the name warns. The provenance caption joins
+  at most three facts with " · "; a fourth starts a second line, never a fourth dot.
+  Captions and tile labels sit at an **11px floor** — 9–10px is below outdoor legibility.
+- **Assistant answers:** lead with the recommendation in one sentence, then the reasons;
+  at most three itinerary options, best first (Miller). Receipt captions also 11px.
+- **Place detail:** no fabricated data — a rating that does not exist is never shown as one,
+  and an absent review source is one honest line, not invented bars and quotes.
+- **Arrival:** one peak-end sentence states what the walk earned ("340 m walked — 2 of 6 min
+  in sun"), on the same mode-paced basis the cards print.
+- **Hourly strip:** "Sun by hour", verdict "most shadowed around 14:00", unsampled hours say
+  "checking…" rather than reading as zero.
+
+The guardrail binds all waves.
 
 ## Component recipes
 

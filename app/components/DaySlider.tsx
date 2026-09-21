@@ -205,7 +205,7 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
           <div key={day} className="absolute bottom-0" style={{ left: day * PX_PER_DAY }}>
             {label && (
               <span
-                className="absolute text-[9px] whitespace-nowrap select-none"
+                className="absolute text-[11px] whitespace-nowrap select-none"
                 style={{ bottom: height + 2, left: 2, color: "var(--color-ink-muted)", fontFamily: "var(--font-sans)" }}
               >
                 {label}

@@ -9,7 +9,7 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: Quic
     <div className="p-4 rounded-xl" style={{ background: "var(--color-raised)", border: "1px solid var(--color-hairline)" }}>
       <div className="flex items-center gap-2 mb-3">
         <span className="w-2 h-2 rounded-full bg-ink-faint animate-pulse" />
-        <span className="text-[10px] uppercase tracking-widest font-bold text-ink-faint">Device Idle</span>
+        <span className="text-[11px] uppercase tracking-widest font-bold text-ink-faint">Device Idle</span>
       </div>
       <h3 className="text-sm font-bold mb-2" style={{ color: "var(--color-ink)" }}>Quick Entry</h3>
       <div className="grid grid-cols-2 gap-2">
@@ -18,7 +18,7 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: Quic
           className="flex flex-col items-center justify-center p-3 bg-raised shadow-level-1 rounded-xl hover:bg-canvas transition-colors"
         >
           <span className="material-symbols-outlined text-ink mb-1">route</span>
-          <span className="text-[10px] font-bold" style={{ color: "var(--color-ink)" }}>Directions</span>
+          <span className="text-[11px] font-bold" style={{ color: "var(--color-ink)" }}>Directions</span>
         </button>
         <button type="button"
           onClick={onDrawRoute}
@@ -27,7 +27,7 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: Quic
           }`}
         >
           <span className="material-symbols-outlined text-ink mb-1">draw</span>
-          <span className="text-[10px] font-bold" style={{ color: "var(--color-ink)" }}>Draw Route</span>
+          <span className="text-[11px] font-bold" style={{ color: "var(--color-ink)" }}>Draw Route</span>
         </button>
       </div>
     </div>

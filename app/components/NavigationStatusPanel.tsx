@@ -84,7 +84,7 @@ export default function NavigationStatusPanel({
             navigation
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--color-shade)" }}>
+            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--color-shade)" }}>
               Navigation active
             </div>
             <div className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
@@ -100,19 +100,19 @@ export default function NavigationStatusPanel({
       {route ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Shadow</div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Shadow</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct}%</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{route.turnCount}</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
               {duration ? "Time" : "Shadow breaks"}
             </div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
@@ -130,7 +130,7 @@ export default function NavigationStatusPanel({
         <div className="flex items-start gap-2">
           <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }}>trip_origin</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>
               {waypointALabel ?? coordLabel(waypointA)}
             </div>
@@ -140,7 +140,7 @@ export default function NavigationStatusPanel({
         <div className="flex items-start gap-2">
           <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-danger)" }}>location_on</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>
           </div>
         </div>

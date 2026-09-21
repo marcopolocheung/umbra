@@ -43,7 +43,7 @@ export default function RainRouteSummary({ route, rainIntensity, wind = null }: 
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-x-1.5">
         <span
-          className="text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full"
+          className="text-[11px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full"
           style={{ background: "color-mix(in srgb, var(--color-ink) 14%, transparent)", color: "var(--color-ink-muted)" }}
         >
           Experimental
