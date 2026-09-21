@@ -322,6 +322,10 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
       // selector anyone should have to keep working.
       data-testid="timeline-slider"
       className="relative w-full h-11 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      // The slider owns its gesture entirely: without this, a slightly
+      // vertical drag hands the browser a pan it can turn into
+      // pull-to-refresh on mobile.
+      style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

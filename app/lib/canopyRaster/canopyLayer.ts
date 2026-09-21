@@ -91,7 +91,8 @@ export function attachCanopyLayer(
   opts: {
     belowLayerId: string;
     enabled: boolean;
-    onChange: (state: CanopyLegendState | null) => void;
+    /** Optional since the legend was removed; tests still assert on it. */
+    onChange?: (state: CanopyLegendState | null) => void;
     /** Injected by tests; the app reads through the one shared store. */
     getStore?: () => Promise<Pick<CanopyTileStore, "read">>;
     /** Injected by tests, which have no canvas; the app encodes a PNG object URL. */
@@ -119,7 +120,7 @@ export function attachCanopyLayer(
     const key = JSON.stringify(state);
     if (key === legendKey) return;
     legendKey = key;
-    opts.onChange(state);
+    opts.onChange?.(state);
   }
 
   function hide(): void {
