@@ -32,11 +32,14 @@ export default function CanopyLegend({ state }: { state: CanopyLegendState | nul
 
   return (
     <div
-      // Phone: under the search bar and the shadow legend. Desktop: bottom-left above
+      // Phone: docked above the collapsed sheet band and the timeline, the same
+      // bottom-anchored treatment as desktop — it no longer floats mid-map under
+      // the two top legends. At taller snaps the sheet (z-20) covers it, which is
+      // the honest state: the sheet owns the screen then. Desktop: bottom-left above
       // the timeline, but past the 408 px sidebar (`AppShell.tsx`), which covers the
       // map's left edge whenever it is open — exactly when a route card is quoting
       // canopy. The map container spans the sidebar, so a centred plate slid under it.
-      className="pointer-events-none absolute left-4 top-36 z-10 max-w-[calc(100%-2rem)] rounded-lg border px-3 py-1.5 text-xs shadow-lg md:top-auto md:bottom-36 md:left-[calc(408px+1rem)] md:max-w-legend"
+      className="pointer-events-none absolute left-4 bottom-60 z-10 max-w-[calc(100%-2rem)] rounded-lg border px-3 py-1.5 text-xs shadow-lg md:top-auto md:bottom-36 md:left-[calc(408px+1rem)] md:max-w-legend"
       style={{
         background: "var(--color-raised)",
         borderColor: "var(--color-hairline)",
