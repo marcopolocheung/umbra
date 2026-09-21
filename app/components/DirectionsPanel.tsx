@@ -246,11 +246,9 @@ export default function DirectionsPanel({
         />
       )}
 
-      {/* Planning form — collapses to the trip bar once options exist, so the
-          route stack starts inside the sheet's first snap point. */}
-      {showForm ? (
-        <>
-      {/* Rain objective — walk pricing only; transit cards keep their sun model */}
+      {/* Rain objective — walk pricing only; transit cards keep their sun model.
+          Lives outside the planning form so the objective stays flippable after
+          the form collapses to the trip bar (the map-column toggle is desktop-only). */}
       {onRainModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
@@ -274,6 +272,10 @@ export default function DirectionsPanel({
         </div>
       )}
 
+      {/* Planning form — collapses to the trip bar once options exist, so the
+          route stack starts inside the sheet's first snap point. */}
+      {showForm ? (
+        <>
       {rainMode && onWindSourceChange && (
         <div className="flex flex-col gap-2 self-start rounded-lg border p-2 text-[11px]" style={{ borderColor: "var(--color-hairline)" }}>
           <div className="font-semibold" style={{ color: "var(--color-ink)" }}>Rain conditions</div>
