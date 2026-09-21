@@ -46,7 +46,9 @@ export default function AssistantPanel({
 
   return (
     <div
-      className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border shadow-2xl"
+      // `umbra-rise-in` (globals.css) plays only under prefers-reduced-motion:
+      // no-preference, and rises from the blob's bottom-right corner.
+      className="umbra-rise-in fixed z-50 flex flex-col overflow-hidden rounded-2xl border shadow-2xl"
       style={{
         bottom: "1rem",
         right: "1rem",
