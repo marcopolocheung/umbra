@@ -816,7 +816,11 @@ describe("routing reads the shadow field (A4b)", () => {
     await runRouteWith(map);
 
     // Slicing the batch would rebuild the field's internal per-cell shadow indices.
-    expect(shadowStub.sampledBatchSizes).toEqual([2]);
+    // The pipeline's own batch is the first call; later calls (if any) are the
+    // post-landing conditions refresh (routeExposureRefresh), which re-samples
+    // the chosen path's own edges — never a second pipeline batch.
+    expect(shadowStub.sampledBatchSizes[0]).toBe(2);
+    for (const size of shadowStub.sampledBatchSizes.slice(1)) expect(size).toBeLessThan(2);
   });
 
   it("routes anyway when the geometry preload fails", async () => {
@@ -1538,6 +1542,8 @@ async function publishNav5() {
         id: "test",
         release: "test",
         url: "https://example.invalid/source",
+        bytes: 1000,
+        timestamp: "2026-09-18T12:00:00Z",
         sha256: "1".repeat(64),
       },
     ],
@@ -1787,9 +1793,11 @@ describe("transit access walks use the static street graph when configured", () 
   });
   it("alights over the destination access zone when the exit station stands outside the route bbox", async () => {
     // The exit station is east of the far seam (103.806), past the padded
-    // route bbox (west 103.785 → east 103.8). Only `zoneAround(B, 2000)`
-    // intersects its cell, so walkB proves the B-side zone while walkA still
-    // crosses the west seam through the A-side zone.
+    // route bbox. Only `zoneAround(B, 2000)` intersects its cell, so walkB
+    // proves the B-side zone. A stands further west than the other tests so
+    // the direct walk (~1.5 km) is slow enough that the transit offer is not
+    // suppressed by the walking-dominance gate — the offer itself is what
+    // carries walkB's assertions here.
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(fareastTrainGraph() as never);
     vi.mocked(fetchRoutingGraph).mockClear();
     vi.mocked(fetchStationEntranceBoxes).mockClear();
@@ -1811,7 +1819,7 @@ describe("transit access walks use the static street graph when configured", () 
         setDate: vi.fn(),
       }),
     );
-    act(() => result.current.handleSetWaypointA([103.79, 1.3], "Start"));
+    act(() => result.current.handleSetWaypointA([103.7815, 1.3], "Start"));
     act(() => result.current.handleSetWaypointB([103.795, 1.3], "End"));
     act(() => result.current.handleRouteModeChange("transit"));
     await act(async () => {
