@@ -1,4 +1,5 @@
-import type { RouteOption } from "../lib/routing";
+import type { RouteLeg, RouteOption } from "../lib/routing";
+import { getTravelModePolicy, type TravelModeId } from "../lib/travelMode";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -15,6 +16,74 @@ function formatDuration(seconds: number): string {
 function coordLabel(coord: [number, number] | null): string {
   if (!coord) return "Not set";
   return `${coord[1].toFixed(5)}, ${coord[0].toFixed(5)}`;
+}
+
+/**
+ * The leg list, in the pattern a rider already knows: walk / ride / walk, each
+ * step with its own time and distance, and for transit the station to board at
+ * and the station to exit at. Data comes from `route.legs` — the same records
+ * the route cards summarize — so nothing here is a new claim to ground.
+ */
+function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelModeId }) {
+  const paceMps = getTravelModePolicy(travelMode).speedMps;
+  return (
+    <ol className="flex flex-col gap-2" aria-label="Route steps">
+      {legs.map((leg, i) => {
+        if (leg.type === "transit") {
+          const board = leg.stops?.[0];
+          const exit = leg.stops?.[leg.stops.length - 1];
+          const line = leg.lineName || leg.line || "Transit";
+          const rideSec = leg.travelTimeSec != null && leg.waitSec != null
+            ? leg.travelTimeSec - leg.waitSec
+            : leg.travelTimeSec;
+          return (
+            <li key={i} className="flex items-start gap-2">
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                style={{ background: leg.lineColor ?? "var(--color-route-soft)", color: "var(--color-on-route)" }}
+                aria-hidden="true"
+              >
+                <span className="material-symbols-outlined text-base">directions_transit</span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium" style={{ color: "var(--color-ink)" }}>
+                  Ride {line}
+                  {rideSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(rideSec)}</span>}
+                </div>
+                {board && (
+                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+                    Enter at {board}
+                  </div>
+                )}
+                {exit && exit !== board && (
+                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+                    Exit at {exit}
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        }
+        const walkSec = leg.distanceM != null ? leg.distanceM / paceMps : null;
+        return (
+          <li key={i} className="flex items-start gap-2">
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+              aria-hidden="true"
+            >
+              <span className="material-symbols-outlined text-base">directions_walk</span>
+            </span>
+            <div className="min-w-0 flex-1 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
+              {getTravelModePolicy(travelMode).label}
+              {leg.distanceM != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDistance(leg.distanceM)}</span>}
+              {walkSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(walkSec)}</span>}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 interface NavigationStatusPanelProps {
@@ -134,6 +203,15 @@ export default function NavigationStatusPanel({
       ) : (
         <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink-muted)" }}>
           Pick a complete route before starting navigation.
+        </div>
+      )}
+
+      {/* Leg list — walk / ride / walk with times and board/exit stations,
+          the pattern a rider already knows. Single-leg walk routes skip it:
+          the stats grid already says everything there is to say. */}
+      {route?.legs && route.legs.length > 1 && (
+        <div className="rounded-xl p-3" style={{ background: "var(--color-canvas)" }}>
+          <LegList legs={route.legs} travelMode={route.travelMode ?? "walk"} />
         </div>
       )}
 
