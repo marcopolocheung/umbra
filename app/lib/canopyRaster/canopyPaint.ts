@@ -71,10 +71,13 @@ export const CANOPY_FILL_RGB: readonly [number, number, number] = [46, 139, 87];
 
 /**
  * How strongly the fill covers the basemap. The predicate holds at any value, so this
- * is legibility alone: at 0.45 the fill measured ~1.5:1 against bare ground under a
- * rough glare model, and 0.55 buys back some of what bright sun takes.
+ * is legibility alone — and the role shrank when the shadow layer learned to paint
+ * canopy protection (stage 2): the fill is the *location* layer now, not the shading.
+ * Where a crown's protection is estimated, the blue-dominant shadow pass paints it,
+ * the same palette buildings use; the fill only has to say "vegetation stands here",
+ * which reads at 0.30 and stops competing with the protection it used to fake.
  */
-export const CANOPY_FILL_OPACITY = 0.55;
+export const CANOPY_FILL_OPACITY = 0.30;
 
 /**
  * Below this zoom the layer paints nothing and reads nothing.
