@@ -68,6 +68,10 @@ export default function ArrivalPanel({
   const shadeStory = route
     ? (() => {
         if (rainMode) {
+          // While shelter is still recomputing, no verdict: the display voice
+          // must not present a stale figure as the trip's final split
+          // (grounding audit — RouteCard suppresses its bar for the same reason).
+          if (route.exposureUpdating) return null;
           const shelter = route.exposure?.shelteredDistancePct ?? route.dryCoverage ?? null;
           const unknown =
             (route.exposure?.unknownDistanceM ?? 0) > 0 || (route.exposure?.unknownDurationSec ?? 0) > 0;
