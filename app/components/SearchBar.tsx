@@ -19,6 +19,10 @@ interface SearchBarProps {
   onMenuToggle?: () => void;
   /** Called when the directions button is clicked */
   onDirections?: () => void;
+  /** Called when the assistant button is clicked — the launcher's only home. */
+  onOpenAssistant?: () => void;
+  /** The agent's turn status, for the thinking ping on the assistant button. */
+  isAssistantThinking?: boolean;
 }
 
 type RecentItem = { label: string; center: [number, number]; zoom: number };
@@ -164,7 +168,7 @@ export function mergeSearchResults(
     .slice(0, 8);
 }
 
-export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections }: SearchBarProps) {
+export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections, onOpenAssistant, isAssistantThinking = false }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MergedSearchResult[]>([]);
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
@@ -485,6 +489,30 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
             aria-label="Directions"
           >
             <span className="material-symbols-outlined">directions</span>
+          </button>
+        )}
+
+        {/* Assistant — its single permanent launcher home; the bottom-of-screen
+            blobs are gone. Ping while the agent is thinking. */}
+        {onOpenAssistant && (
+          <button type="button"
+            onClick={onOpenAssistant}
+            className="relative shrink-0 text-ink hover:opacity-80 transition-opacity"
+            aria-label="Open Umbra Assistant"
+          >
+            {isAssistantThinking && (
+              <span
+                className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping"
+                style={{ background: "var(--color-ink)" }}
+                aria-hidden="true"
+              />
+            )}
+            <span
+              className="material-symbols-outlined"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              assistant
+            </span>
           </button>
         )}
       </div>

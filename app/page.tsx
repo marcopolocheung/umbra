@@ -1141,7 +1141,12 @@ export default function Home() {
           className="absolute top-4 left-4 z-30 md:hidden"
           style={{ width: "min(560px, calc(100vw - 2rem))" }}
         >
-          <SearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
+          <SearchBar
+            onSelect={handleSearchSelect}
+            mapCenter={mapCenter}
+            onOpenAssistant={() => setAssistantOpen(true)}
+            isAssistantThinking={agent.isThinking}
+          />
         </div>
       )}
 
@@ -1273,11 +1278,13 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setBottomSheetSnap("collapsed")}
+          // Left edge, mirroring the right-edge controls column (zoom etc. at
+          // right-3): the reopen affordance keeps to the left, above the
+          // timeline the hidden sheet leaves behind.
           className="fixed z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-level-2 md:hidden"
           style={{
-            bottom: "0.75rem",
-            left: "50%",
-            transform: "translateX(-50%)",
+            bottom: "9.5rem",
+            left: "0.75rem",
             background: "var(--color-raised)",
             border: "1px solid var(--color-hairline)",
             color: "var(--color-ink)",
@@ -1289,31 +1296,7 @@ export default function Home() {
         </button>
       )}
       {menuOpen && (
-        <BottomSheet
-          snap={bottomSheetSnap}
-          onSnapChange={setBottomSheetSnap}
-          cornerSlot={!assistantOpen ? (
-            <button
-              type="button"
-              onClick={() => setAssistantOpen(true)}
-              className="umbra-pop-in relative flex h-11 w-11 items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105"
-              style={{
-                background: "var(--color-ink)",
-                color: "var(--color-on-ink)",
-                border: "2px solid var(--color-raised)",
-              }}
-              title="Ask the Umbra Assistant"
-              aria-label="Open Umbra Assistant"
-            >
-              {agent.isThinking && (
-                <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
-              )}
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-                assistant
-              </span>
-            </button>
-          ) : undefined}
-        >
+        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
               place={selectedPlace}
@@ -1495,62 +1478,14 @@ export default function Home() {
           mapCenter={mapCenter}
           onMenuToggle={handleSidebarToggle}
           onDirections={handleOpenDirections}
+          onOpenAssistant={() => setAssistantOpen(true)}
+          isAssistantThinking={agent.isThinking}
         />
       </div>
 
-      {/* AI assistant: launcher blob + chat panel. On mobile the blob docks to
-          the bottom sheet's top-right corner — one surface, not a second floating
-          thing — and falls back above the timeline while the sheet is hidden.
-          A ping rings the blob while the agent is thinking. */}
-      {!assistantOpen && (
-        <button
-          type="button"
-          onClick={() => setAssistantOpen(true)}
-          className="umbra-pop-in fixed z-40 hidden items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105 md:flex"
-          style={{
-            bottom: "6rem",
-            right: "1rem",
-            width: 52,
-            height: 52,
-            background: "var(--color-ink)",
-            color: "var(--color-on-ink)",
-          }}
-          title="Ask the Umbra Assistant"
-          aria-label="Open Umbra Assistant"
-        >
-          {agent.isThinking && (
-            <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
-          )}
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-            assistant
-          </span>
-        </button>
-      )}
-      {!assistantOpen && (!menuOpen || bottomSheetSnap === "hidden") && (
-        <button
-          type="button"
-          onClick={() => setAssistantOpen(true)}
-          className="umbra-pop-in fixed z-40 flex items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105 md:hidden"
-          style={{
-            bottom: "9.5rem",
-            right: "1rem",
-            width: 44,
-            height: 44,
-            background: "var(--color-ink)",
-            color: "var(--color-on-ink)",
-            border: "2px solid var(--color-raised)",
-          }}
-          title="Ask the Umbra Assistant"
-          aria-label="Open Umbra Assistant"
-        >
-          {agent.isThinking && (
-            <span className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" style={{ background: "var(--color-ink)" }} aria-hidden="true" />
-          )}
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-            assistant
-          </span>
-        </button>
-      )}
+      {/* AI assistant: the launcher's one permanent home is the search bar
+          (see SearchBar's assistant button); the floating and docked blobs are
+          gone. The chat panel itself is unchanged. */}
       <AssistantPanel
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
