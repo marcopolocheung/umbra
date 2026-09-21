@@ -98,7 +98,12 @@ no lie-flat adjectives. Per surface (U5):
   and an absent review source is one honest line, not invented bars and quotes.
 - **Arrival:** one peak-end sentence states what the trip earned ("340 m route — 2 of 6 min
   in sun at a fixed 5.0 km/h pace"), stating the pace basis and, on a transit trip, the
-  scope ("ride not counted") — neither travels with the number on its own.
+  scope ("ride not counted") — neither travels with the number on its own. U7 splits it
+  into the display voice (the sun-minutes figure as the verdict line) over a split bar
+  in the route card's visual language (note: the card's bar fills by distance share, the
+  arrival bar by time share — the same mark, two stated bases), with the pace/scope
+  caption beneath — no number appears twice on the card, and unknown exposure still gets
+  the honest line and no bar.
 - **Hourly strip:** "Sun by hour", verdict "most shadowed around 14:00", unsampled hours say
   "checking…" rather than reading as zero.
 
@@ -111,8 +116,13 @@ The guardrail binds all waves.
   trade-off line against the shortest complete route → provenance caption (source · scope ·
   stated pace). Everything else — metric tiles, legs, transit detail, the conditions/dose
   block, save/export — collapses into the selected card only, below a hairline divider.
-  Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar fills in
-  shade green (route blue in rain mode); the card never uses warm colours for ranking.
+  Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar is the card's
+  hero mark (U7): 12 px tall, rounded, its track the sun portion as the sun wash
+  (`--color-sun-soft` — sun data, so the warm hue is legal there) with the shade-green
+  fill covering it, so the shade/sun split reads at arm's length; rain mode keeps the
+  neutral ink-wash track with a route-mid fill (shelter is not sun data). The duration
+  verdict is set in the display voice (`--text-verdict`, Inter Tight 700, tabular) — the
+  number people decide with. The card never uses warm colours for ranking.
   Actions are labelled buttons ≥44 px on the selected card — icon-only targets and
   hover menus are banned. Once options exist the planning form collapses to a one-line
   trip bar (Edit reopens it), so the stack starts inside the sheet's first snap point.

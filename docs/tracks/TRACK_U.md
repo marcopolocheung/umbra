@@ -15,7 +15,26 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U6 — search: manual and assistant. Open for owner review as PR
+- **Active checkpoint:** U7 — the beauty pass. On `design/u7-beauty-pass`, open for owner
+  review. The route card's shadow-coverage bar is the card's hero mark (U7): 12 px tall,
+  rounded, its **track the sun portion** as the sun wash (`--color-sun-soft` — sun data,
+  so the warm hue is legal there) with the shade-green fill covering it, so the shade/sun
+  split reads at arm's length; rain cards keep the neutral ink-wash track with a
+  route-mid fill (shelter is not sun data). The duration verdict is set in the display
+  voice (`--text-verdict`, Inter Tight 700, tabular) — the number people decide with, no
+  second typeface. ArrivalPanel tells the walk's shade story once: the sun-minutes figure
+  as the verdict line over the same split bar, the oversized flag badge demoted to a
+  small glyph, the pace/scope caption beneath, and **no number twice on one card**; an
+  unknown figure still gets the honest line and no bar. Fixed en route (pre-existing,
+  load-bearing): the phase-sync effect in `page.tsx` treated `ARRIVAL` as "left
+  navigation" and wiped `navRoutes`, so the arrival card always rendered with
+  `route=null` — the U5 peak-end sentence had never actually displayed; `ARRIVAL` now
+  keeps navigation state like `NAVIGATING` (`DISMISS` still clears). New arrival shot in
+  the harness (`07-arrival.png`); the cards shot scrolls the sheet to the top so the
+  verdict row is in frame. Before/after phone shots in `docs/design/shots/u7/`.
+  `interface-reviewer` and `grounding-auditor` ran on the diff (see PR body).
+- **U6 (merged as #68):** search: manual and assistant.
+
   #68 on `design/u6-search` (branched from `design/u5-copy-ia`, PR #67, because U6 touches
   the search surface U4/U5 styled; rebase onto main at U5's merge). Manual search gained
   Foursquare-backed typeahead — the one autocomplete path in the app, Foursquare-only per

@@ -189,8 +189,11 @@ export default function RouteCard({
               </span>
             )}
           </span>
+          {/* The decision number earns the display voice (U7): Inter Tight at
+              the verdict step — one family, intentional weight, no second
+              typeface. */}
           <span
-            className="shrink-0 text-sm font-bold tabular-nums"
+            className="font-display text-verdict shrink-0 font-bold leading-none tabular-nums tracking-[-0.02em]"
             style={{ color: "var(--color-ink)" }}
           >
             {duration}
@@ -203,10 +206,20 @@ export default function RouteCard({
           </div>
         )}
 
-        {/* Shade verdict: the bar carries the colour, the number stays ink. */}
+        {/* Shade verdict — the hero mark (U7): the track IS the sun portion
+            (a warm wash — sun data, not decoration) and the shade fill covers
+            it, so the shade/sun split is visible at arm's length. Rain cards
+            keep the neutral track: shelter is not sun data. */}
         <div className="mt-2 flex items-center gap-2">
           {shadowKnown ? (
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--color-ink) 8%, transparent)" }}>
+            <div
+              className="flex-1 h-3 rounded-full overflow-hidden"
+              style={{
+                background: rainCard
+                  ? "color-mix(in srgb, var(--color-ink) 8%, transparent)"
+                  : "var(--color-sun-soft)",
+              }}
+            >
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
