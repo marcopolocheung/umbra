@@ -1147,8 +1147,14 @@ export default function Home() {
         />
       )}
 
-      {/* Floating map controls — right side */}
-      <div className="absolute bottom-20 md:top-24 md:bottom-auto right-3 z-10">
+      {/* Floating map controls — right side. Their bottom rides the same
+          choreography as the timeline card below them (U4): timeline at
+          0–~88px with no sheet, at 80–~168px over the collapsed band, under
+          the sheet otherwise. */}
+      <div
+        className="absolute md:top-24 md:bottom-auto right-3 z-10"
+        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+      >
         <FloatingMapControls
           mapRef={mapRef}
           pitch={mapPitch}

@@ -54,6 +54,13 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
     if (draggingRef.current) return;
     const vh = window.innerHeight;
     setHeight(snapToPixels(snap, vh, collapsedHeight));
+    // Collapsing with a stale scroll position would leave the collapsed
+    // band showing mid-content (the browser preserves scrollTop); the band
+    // is exactly one trip bar tall, so it always starts at the top (U4).
+    if (snap === "collapsed" && sheetRef.current) {
+      const content = sheetRef.current.querySelector<HTMLDivElement>("div.flex-1");
+      if (content) content.scrollTop = 0;
+    }
   }, [snap, collapsedHeight]);
 
   // Animate to target height
@@ -82,10 +89,15 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
   }, [onSnapChange]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    // Only respond to drag handle area (top 44px minimum touch target)
+    // Only respond to drag handle area — the handle's own band, so a tap on
+    // the content below it (the trip bar, prime thumb zone) never starts a
+    // drag. At the collapsed snap that band is 36px; the sheet's top 44px
+    // otherwise. The 36px band is still the drag affordance; the content's
+    // own 44px targets sit below it untouched (U4).
     const rect = sheetRef.current?.getBoundingClientRect();
     if (!rect) return;
-    if (e.clientY < rect.top || e.clientY > rect.top + 44) return;
+    const gate = snap === "collapsed" ? 36 : 44;
+    if (e.clientY < rect.top || e.clientY > rect.top + gate) return;
 
     if (animRef.current !== null) {
       cancelAnimationFrame(animRef.current);
@@ -174,8 +186,11 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-hairline)" }} />
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 umbra-scrollbar">
+      {/* Content — the bottom padding yields to the collapsed band (U4): at
+          80px the trip bar needs the full 36+44, so pb-3 would clip it. */}
+      <div
+        className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 umbra-scrollbar ${isCollapsed ? "" : "pb-3"}`}
+      >
         {children}
       </div>
     </div>

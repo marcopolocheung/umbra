@@ -26,14 +26,21 @@ accordingly. Subagents stay read-only here, per the repo rule.
   card type remain for the scribe/U5.
 - **U4's code:** sun-arc glyph on the timeline ruler (thin sun path + horizon, sun dot at
   the slider's time, sun hue, aria-hidden — data, not chrome); tick ruler memoised so
-  drag-time re-renders move only the sun dot; collapsed sheet's handle yields to 36px so
-  the trip bar keeps its full 44px band (Fitts); Walk/Transit, Sun/Rain and travel-mode
-  segmented controls at 44px rows with `aria-pressed`; the mobile search pill is hidden
-  during DIRECTIONS/NAVIGATING so it never slides over the navigation card; the
-  partial/failed notice rides above the weakest viable card once the stack passes three
-  options (serial position); SavedRoutesSection's divider is hairline-strong against the
-  planning form (proximity); FloatingRouteCards gained the panel's `role="radiogroup"` +
-  `aria-label`. Touch-target audit updated in place.
+  drag-time re-renders move only the sun dot; the mobile timeline wrapper's stray
+  `relative` removed (it beat `absolute` in Tailwind's output order — the whole card was
+  offscreen at phone widths); the timeline rides above the sheet's collapsed band and the
+  floating map controls ride the same choreography; the collapsed sheet's handle yields
+  to 36px, content padding and stale scroll yield too, and the panel leads with the trip
+  bar so the band shows it flush (43 of 44px rendered — the sheet's 1px border takes one;
+  hit area intact); Walk/Transit, Sun/Rain and travel-mode segmented controls at 44px
+  rows with `aria-pressed`; the mobile search pill is hidden during
+  DIRECTIONS/NAVIGATING so it never slides over the navigation card; the partial/failed
+  notice rides above the weakest viable card once the stack passes three options (serial
+  position); SavedRoutesSection's divider is hairline-strong against the planning form
+  (proximity); FloatingRouteCards gained the panel's `role="radiogroup"` + `aria-label`
+  (the radiogroup-of-aria-pressed-buttons semantics are imperfect ARIA — pre-existing
+  pattern, filed for the scribe). Touch-target audit updated in place. Review findings
+  fixed in the same PR: controls/timeline overlap, stale-scroll band, drag-gate overlap.
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
   port #51), U2 (Canopy language, port PR #60 / private #479 — merge = visual sign-off),
   U3 (PR #63, open).

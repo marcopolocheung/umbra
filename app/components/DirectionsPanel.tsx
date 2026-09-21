@@ -170,7 +170,18 @@ export default function DirectionsPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className={`flex flex-col gap-3 px-3 pb-3 ${showForm ? "pt-3" : "pt-0"}`}>
+      {/* Collapsed trip bar leads the panel (U4): with options on screen the
+          sheet's collapsed band is exactly one trip bar tall, so the bar —
+          the band's whole job — must be the panel's first child, flush to the
+          band's top. Reopening the form restores the normal order. */}
+      {!showForm && (
+        <TripSummaryBar
+          from={waypointALabel ?? "Start"}
+          to={waypointBLabel ?? "Destination"}
+          onEdit={() => setEditing(true)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <button type="button"
@@ -506,13 +517,7 @@ export default function DirectionsPanel({
         </button>
       </div>
         </>
-      ) : (
-        <TripSummaryBar
-          from={waypointALabel ?? "Start"}
-          to={waypointBLabel ?? "Destination"}
-          onEdit={() => setEditing(true)}
-        />
-      )}
+      ) : null}
       {isCalculating && routeProgress && (
         <div
           role="status"
