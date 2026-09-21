@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { useState } from "react";
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
 import type { TravelModeId } from "../lib/travelMode";
@@ -10,40 +10,33 @@ import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
 import { shortestRoute } from "../lib/routeTradeoff";
 import WaypointInput from "./WaypointInput";
 import RouteCard from "./RouteCard";
-import RouteTradeoffSummary from "./RouteTradeoffSummary";
+import SolarPill from "./SolarPill";
 import type { ReactNode } from "react";
 import SavedRoutesSection from "./SavedRoutesSection";
 
-const SolarPill = memo(function SolarPill({ intensity }: { intensity: number }) {
-  if (intensity < 0.15) {
-    return (
-      <div
-        className="text-xs px-2.5 py-1 rounded-full self-start"
-        style={{ background: "color-mix(in srgb, var(--color-ink) 8%, transparent)", color: "var(--color-ink-muted)" }}
-      >
-        Low sun — shadow routing minimal
-      </div>
-    );
-  }
-  if (intensity <= 0.6) {
-    return (
-      <div
-        className="text-xs px-2.5 py-1 rounded-full self-start"
-        style={{ background: "var(--color-sun-soft)", color: "var(--color-sun)" }}
-      >
-        Moderate solar load
-      </div>
-    );
-  }
+/**
+ * The collapsed trip bar: once options exist, the planning form folds into one
+ * origin → destination row so the route stack starts inside the sheet's first
+ * snap point instead of below ~600px of inputs. One tap (Edit) reopens the form.
+ */
+function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit: () => void }) {
   return (
-    <div
-      className="text-xs px-2.5 py-1 rounded-full self-start"
-      style={{ background: "var(--color-sun)", color: "var(--color-on-sun)" }}
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`Edit trip: ${from} to ${to}`}
+      title="Edit trip"
+      className="flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 py-2 transition-colors hover:bg-canvas"
+      style={{ background: "var(--color-canvas)", borderColor: "var(--color-hairline)" }}
     >
-      High solar load — shadow matters
-    </div>
+      <span className="material-symbols-outlined shrink-0 text-base text-ink-muted" aria-hidden="true">route</span>
+      <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--color-ink)" }}>
+        {from} <span className="text-ink-faint">→</span> {to}
+      </span>
+      <span className="material-symbols-outlined shrink-0 text-base text-route" aria-hidden="true">edit</span>
+    </button>
   );
-});
+}
 
 export interface DirectionsPanelProps {
   waypointA: [number, number] | null;
@@ -156,6 +149,10 @@ export default function DirectionsPanel({
   const completeBaselineRoute = shortestRoute(routes.filter((route) => !route.partial)) ?? baselineRoute;
   const selectedRoute = routes[selectedRouteIndex];
   const [addingStop, setAddingStop] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Once options exist the planning form collapses to the trip bar — unless
+  // the user reopened it, is mid-sketch, or is about to place a pin on the map.
+  const showForm = routes.length === 0 || editing || drawMode || pendingSlot !== null;
   const progressPercent = routeProgress ? routeProgressPercent(routeProgress) : null;
   const progressCount = routeProgress ? routeProgressCount(routeProgress) : null;
 
@@ -201,6 +198,21 @@ export default function DirectionsPanel({
         </div>
       </div>
 
+      {/* Saved routes — reachable without reopening the planning form */}
+      {savedRoutes && savedRoutes.length > 0 && savedFolders && onLoadRoute && onDeleteSavedRoute && onRenameSavedRoute && (
+        <SavedRoutesSection
+          routes={savedRoutes}
+          folders={savedFolders}
+          onLoad={onLoadRoute}
+          onDelete={onDeleteSavedRoute}
+          onRename={onRenameSavedRoute}
+        />
+      )}
+
+      {/* Planning form — collapses to the trip bar once options exist, so the
+          route stack starts inside the sheet's first snap point. */}
+      {showForm ? (
+        <>
       {/* Rain objective — walk pricing only; transit cards keep their sun model */}
       {onRainModeChange && (
         <div
@@ -302,17 +314,6 @@ export default function DirectionsPanel({
             </button>
           ))}
         </div>
-      )}
-
-      {/* Saved routes */}
-      {savedRoutes && savedRoutes.length > 0 && savedFolders && onLoadRoute && onDeleteSavedRoute && onRenameSavedRoute && (
-        <SavedRoutesSection
-          routes={savedRoutes}
-          folders={savedFolders}
-          onLoad={onLoadRoute}
-          onDelete={onDeleteSavedRoute}
-          onRename={onRenameSavedRoute}
-        />
       )}
 
       {/* Waypoint inputs */}
@@ -514,7 +515,7 @@ export default function DirectionsPanel({
       {/* Calculate button */}
       <div className="flex gap-2 shrink-0">
         <button type="button"
-          onClick={onCalculate}
+          onClick={() => { setEditing(false); onCalculate(); }}
           disabled={drawMode ? sketchPointCount < 2 || isCalculating : !waypointA || !waypointB || isCalculating}
           className="flex-1 px-2 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
           style={{ background: "var(--color-route)", color: "var(--color-on-route)" }}
@@ -528,6 +529,14 @@ export default function DirectionsPanel({
           {isCalculating ? 'Calculating...' : rainMode ? 'Find Sheltered Route' : 'Find Shadowed Route'}
         </button>
       </div>
+        </>
+      ) : (
+        <TripSummaryBar
+          from={waypointALabel ?? "Start"}
+          to={waypointBLabel ?? "Destination"}
+          onEdit={() => setEditing(true)}
+        />
+      )}
       {isCalculating && routeProgress && (
         <div
           role="status"
@@ -562,19 +571,11 @@ export default function DirectionsPanel({
         </div>
       )}
 
-      {/* Route cards — hidden on desktop when FloatingRouteCards is used */}
+      {/* Route cards — hidden on desktop when FloatingRouteCards is used. The
+          selected card carries the conditions/dose detail block itself. */}
       {!hideRouteCards && routes.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
           {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
-          <RouteTradeoffSummary
-            route={selectedRoute}
-            baselineRoute={completeBaselineRoute ?? undefined}
-            weather={weather}
-            rainMode={rainMode}
-            rainIntensity={_rainIntensity}
-            rainWind={rainWind}
-          />
-          {exposureSlot}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">
             {routes.map((r, i) => (
               <RouteCard
@@ -585,8 +586,12 @@ export default function DirectionsPanel({
                 onSave={onSaveRoute ? () => onSaveRoute(i) : undefined}
                 onExport={onExportRoute ? (fmt) => onExportRoute(i, fmt) : undefined}
                 recommended={r.label === "Balanced"}
+                baselineRoute={completeBaselineRoute ?? undefined}
                 rainMode={rainMode}
                 rainIntensity={_rainIntensity}
+                rainWind={rainWind}
+                weather={weather}
+                exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
               />
             ))}
           </div>
@@ -594,8 +599,8 @@ export default function DirectionsPanel({
           {onStartNavigation && routes.length > 0 && !selectedRoute?.partial && (
             <button type="button"
               onClick={onStartNavigation}
-              className="mt-2 w-full px-3 py-2.5 rounded-lg text-sm font-bold transition-colors"
-              style={{ background: "var(--color-route)", color: "var(--color-on-route)" }}
+              className="mt-2 w-full min-h-11 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors"
+              style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
             >
               START NAVIGATING
             </button>

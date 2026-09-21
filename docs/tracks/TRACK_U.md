@@ -15,26 +15,30 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
-- **Active checkpoint:** U2 — implement the chosen language. Open for owner review on the
-  public-mirror port branch `port/design-u2-strata-carmine`: PR
-  [#60](https://github.com/marcopolocheung/umbra/pull/60) — private PR
-  [#479](https://github.com/marcopolocheung/umbrapriv/pull/479) carries the same change; this
-  mirror deliberately omits the U0 screenshot harness and the developer hooks around it.
-  **The owner re-picked Canopy during U2 review (was Strata/Carmine) and both open PRs were
-  reworked to Canopy. Merge = visual sign-off (D2); never self-merged.**
+- **Active checkpoint:** U3 — the navigation card. Open for owner review on
+  `design/u3-route-glance`. The route-option presentation was redesigned in the Canopy
+  language: recommended-only eyebrow, duration verdict at reading size, one trade-off line
+  against the shortest complete route, provenance caption, and all detail (metric tiles,
+  legs, transit info, conditions/dose, save/export) collapsed into the selected card; the
+  planning form collapses to a one-line trip bar once options exist; `RouteTradeoffSummary`
+  is deleted (folded into `RouteCard`); the two divergent solar pills are one `SolarPill`.
+  `NavigationStatusPanel.tsx` needed no change. Before/after phone shots (390×844, sheet at
+  its first snap point) under `docs/design/shots/u3/`. `grounding-auditor` and
+  `interface-reviewer` ran on the diff; their diff-introduced findings are fixed in the PR
+  (transit duration caption now states the estimated platform wait; partial-baseline
+  fallback removed; saved-routes section starts closed once options exist; trip-bar
+  accessible name matches its visible text; no mount-time `aria-live` block), and the
+  pre-existing findings (hover-only rename/delete on saved routes, sub-44px segmented
+  controls in the reopened form, 9–10px card type, floating stack's missing radiogroup)
+  are for the scribe/U4–U5.
 - **Implemented:** U0 (harness, PR #465), U1 (research + candidates + sign-off, PR #470,
-  port #51). U2's code: **Canopy** token registry in `app/globals.css` (amber reserved for
-  sun data, zero decorative accents, route/sun/shade data colours, two elevation levels,
-  radius 12/16/20 + 999 search pill), `docs/design/language.md` as canonical spec, `--md-*` tokens/helpers deleted,
-  `NavigationPanel.tsx` (deprecated) deleted, every inventoried literal migrated so
-  `npm run design:check` exits 0, `.claude/rules/design-language.md` now states the
-  enforcement path, before/after phone shots under `docs/design/shots/u2/`.
+  port #51), U2 (Canopy language, port PR #60 / private #479 — merge = visual sign-off).
 - **Owner decisions** D1–D12 unchanged (`docs/handoffs/DESIGN_LANGUAGE.md` §1).
-- **Blocked on:** U3 starts after the U2 sign-off merge.
-- **Next action:** owner review of U2; then U3 redesigns the route card in the U2 language.
-- **Last verified:** 2026-09-20 (Canopy rework) — U2 leaves `node scripts/verify/design-tokens.mjs --all`
-  clean (exit 0); shadow-canvas suites (agreement/v2/adapter, 108 tests) green —
-  invariant #5 holds; smoke e2e updated to count the new route-blue line and passes.
+- **Blocked on:** nothing for U3 itself; U2's private mirror merge is the owner's.
+- **Next action:** owner review of the U3 PR; then U4 (timeline + sheet choreography).
+- **Last verified:** 2026-09-20 (U3 session) — lint, typecheck, build green; full vitest
+  green on Node 24 except three pre-existing `useNavigation` transit failures that also
+  fail on clean `main` (unrelated to this diff); smoke e2e updated for the trip bar.
 
 ---
 
