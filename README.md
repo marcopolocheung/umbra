@@ -1,9 +1,20 @@
 # Umbra
 
+[![CI](https://github.com/marcopolocheung/umbra/actions/workflows/ci.yml/badge.svg)][ci]
+
 **Shadowed-route navigation for any city on Earth, computed in the browser.** Pick a place and a
 time; it puts the sun where it will actually be, casts every building's shadow, and finds a
 walking route that stays out of it.
 
+![Umbra's shadows sweeping across Midtown Manhattan as the sun rises from 5:44 to 9:00 AM](docs/hero.gif)
+
+*Midtown Manhattan, 21 June. Dragging the timeline from dawn to morning sweeps every building's
+shadow — rendered in WebGL from building geometry — across the map.*
+
+| In 3D | In the rain |
+|---|---|
+| ![The same sunrise shadow sweep with the camera tilted over extruded buildings](docs/hero-3d.gif) | ![Rain shelter over Midtown changing hour by hour from 6 AM to 10 PM as the forecast wind shifts](docs/hero-rain.gif) |
+| Tilted, the shadows fall across extruded buildings and still land on the ground under them. | In Rain mode blue means sheltered, and the timeline moves the wind rather than the sun: each hour takes the forecast wind, which slants the rain and moves the dry side of the street. |
 
 ## See it work
 
@@ -90,6 +101,14 @@ different evidence.
 Worth being precise about, since an earlier description of this project got it backwards: this
 is a geometry-backed shadow field with a pixel fallback, **not** a pixel sampler.
 
+## Built with
+
+React 19 · TypeScript · Vite · Tailwind v4 · MapLibre GL · a custom WebGL shadow renderer ·
+suncalc for solar positions · OSM (Overpass) for streets and footprints · Google Gemini for the
+assistant. Everything computes client-side except four thin serverless proxies — place details,
+geocoding, Overpass and the assistant — which exist so service keys and required `User-Agent`
+headers never reach the browser.
+
 ## Running it locally
 
 ```bash
@@ -117,6 +136,7 @@ The repository is self-describing for contributors and coding agents:
 
 [MIT](LICENSE).
 
+[ci]: https://github.com/marcopolocheung/umbra/actions/workflows/ci.yml
 [live]: https://shademapnav.vercel.app/
 [demo]: https://shademapnav.vercel.app/?lat=40.754&lng=-73.984&z=17&date=2026-06-21&time=09:00&a=-73.9855,40.753&b=-73.9825,40.755
 [smoke]: e2e/smoke.spec.ts
