@@ -24,7 +24,7 @@ export async function queryOffscreenBuildingShadow(
 }
 
 /** Largest square half-side, in metres, that one multi-point prefetch may ask for. */
-const PREFETCH_MAX_RADIUS_M = 750;
+const PREFETCH_MAX_RADIUS_M = 400;
 
 /**
  * Fetch footprints once for a set of points, so that each point's own

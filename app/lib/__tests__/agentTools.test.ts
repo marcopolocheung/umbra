@@ -271,6 +271,33 @@ describe("agent route tools", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves spots inside the viewport out of the footprint prefetch", async () => {
+    const ctx = makeCtx();
+    ctx.mapRef.current = { getBounds: () => ({ contains: () => true }) } as any;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => JSON.stringify({ elements: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // No shadow layer answers them, so each spot still falls through on its own:
+    // one request per spot, and no union request on top.
+    await executeTool(
+      "check_shadow",
+      {
+        points: [
+          { lat: 40.72, lng: -74.02 },
+          { lat: 40.72, lng: -74.0152 },
+        ],
+      },
+      ctx,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 // Bryant Park, the anchor every search below is made from.
