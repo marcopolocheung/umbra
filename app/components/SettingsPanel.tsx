@@ -91,8 +91,8 @@ export default function SettingsPanel({
                 }}
               />
               <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
-                NYC permits, shown after a route; placement is approximate. Their shade counts
-                in routing but is not painted on the map.
+                Current NYC permits near the last route's streets; placement is approximate.
+                Their shade counts in routing but is not painted on the map.
               </span>
             </div>
           )}
