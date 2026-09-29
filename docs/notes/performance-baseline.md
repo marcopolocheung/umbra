@@ -421,8 +421,8 @@ SunCalc at this location shows every 2-minute play tick moves the sun past 0.15Â
 a full day in time mode; 170â€“186 of 200 ticks in day mode). The waste was duplicates. Each
 tick reached the worker up to three times with the same timestamp and center: through
 `setDate`, and through `page.tsx`'s exposure effect calling `setExposureContext` and then
-`setHazard("sun")`. The fix drops a request identical to the previous one, so posts now equal
-dirty replies. SwiftShader holds React to about 1.6 ticks/s here. A real GPU runs up to
+`setHazard("sun")`. The fix drops a request identical to the previous one. In time mode that
+leaves posts equal to dirty replies. In day mode a few ticks still fall under the gate. SwiftShader holds React to about 1.6 ticks/s here. A real GPU runs up to
 20 ticks/s, so the saving there is up to 40 structured-clone round-trips per second of play.
 
 ## Missing Measurements
