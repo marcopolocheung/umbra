@@ -724,6 +724,35 @@ describe("createShedProvider", () => {
     expect(truncated.prismsFor(MIDTOWN)).toBeNull();
   });
 
+  it("lists the drawn sheds for the bound edges only, and nothing before a calculation", async () => {
+    const provider = createShedProvider({ fetchPermits: async () => permitResult() });
+    await provider.load?.(MIDTOWN);
+    expect(provider.drawnRings()).toEqual([]);
+    provider.bindEdges([edge]);
+    expect(provider.drawnRings()).toEqual([]); // not sampled yet
+    provider.prismsFor(MIDTOWN);
+    expect(provider.drawnRings()).toHaveLength(1);
+    // A later calculation over a graph with no street near the permit.
+    provider.bindEdges([{ from: [-73.95, 40.78], to: [-73.949, 40.78] }]);
+    provider.prismsFor(MIDTOWN);
+    expect(provider.drawnRings()).toEqual([]);
+  });
+
+  it("draws a shed once even when two cached areas both hold its permit", async () => {
+    // Two cached areas that overlap around the permit, neither containing the other.
+    const WEST = { west: -73.99, south: 40.75, east: -73.98, north: 40.76 };
+    const EAST = { west: -73.986, south: 40.75, east: -73.976, north: 40.76 };
+    const provider = createShedProvider({
+      fetchPermits: async (bbox) => ({ ...permitResult(), coverage: bbox }),
+    });
+    await provider.load?.(WEST);
+    await provider.load?.(EAST);
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(WEST)?.prisms).toHaveLength(1);
+    expect(provider.prismsFor(EAST)?.prisms).toHaveLength(1);
+    expect(provider.drawnRings()).toHaveLength(1);
+  });
+
   it("never fetches outside NYC", async () => {
     const fetchPermits = vi.fn(async () => permitResult());
     const provider = createShedProvider({ fetchPermits });

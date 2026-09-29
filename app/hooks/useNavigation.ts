@@ -121,6 +121,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     routeSolarIntensity,
     routeWind,
     routeExposureContext,
+    shedRings,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
@@ -145,6 +146,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     setRouteSolarIntensity,
     setRouteExposureContext,
     setRouteWind,
+    setShedRings,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,
@@ -274,6 +276,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     setRouteSolarIntensity(null);
     setRouteExposureContext(null);
     setRouteWind(null);
+    setShedRings([]);
     setPendingSlot(null);
     setDrawMode(false);
     setSketchPoints([]);
@@ -299,6 +302,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     setRouteSolarIntensity,
     setRouteExposureContext,
     setRouteWind,
+    setShedRings,
   ]);
 
   const handleExportRoute = useCallback(
@@ -338,6 +342,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     setRouteSolarIntensity(null);
     setRouteExposureContext(null);
     setRouteWind(null);
+    setShedRings([]);
     setPendingSlot(null);
     setDrawMode(false);
     setSketchPoints([]);
@@ -363,6 +368,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     setRouteSolarIntensity,
     setRouteExposureContext,
     setRouteWind,
+    setShedRings,
   ]);
 
   const handleRouteModeChange = useCallback(
@@ -556,6 +562,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     routeSolarIntensity,
     routeWind,
     routeExposureContext,
+    shedRings,
     waypointALabel,
     waypointBLabel,
     pendingSlot,

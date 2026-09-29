@@ -11,6 +11,7 @@ import { createShadowLayer } from "../lib/shadow/createShadowLayer";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/canopyLayer";
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
+import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { token } from "../lib/css-tokens";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
@@ -48,6 +49,9 @@ interface MapViewProps {
   onSketchPointDrag?: (index: number, coord: LatLng) => void;
   onSketchFinish?: () => void;
   simplifiedWaypoints?: LatLng[] | null;
+  /** Sidewalk sheds the last route calculation sampled, drawn where they stand. */
+  shedRings?: [number, number][][];
+  showSheds?: boolean;
 }
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? "";
@@ -403,6 +407,8 @@ export default function MapView({
   onSketchPointDrag,
   onSketchFinish,
   simplifiedWaypoints,
+  shedRings,
+  showSheds = false,
 }: MapViewProps) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const mapRef          = useRef<maplibregl.Map | null>(null);
@@ -449,6 +455,10 @@ export default function MapView({
   const [debugGeneration, setDebugGeneration] = useState<string>();
   const [debugCacheSource, setDebugCacheSource] = useState<string>();
   const canopyRef = useRef<CanopyLayerHandle | null>(null);
+  const shedRef = useRef<ShedLayerHandle | null>(null);
+  // Read at map load, like `accumulationOnRef`: the props may have changed since mount.
+  const shedRingsRef = useRef(shedRings);
+  const showShedsRef = useRef(showSheds);
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
@@ -834,6 +844,14 @@ export default function MapView({
           enabled: !accumulationOnRef.current,
         });
 
+        // Sidewalk sheds from the last route (#85). Beneath the buildings and the
+        // shadow layer, never above it — see `shedLayer.ts`.
+        shedRef.current = attachShedLayer(map, {
+          belowLayerId: maybeCustom.id,
+          enabled: showShedsRef.current && !accumulationOnRef.current,
+        });
+        shedRef.current.setRings(shedRingsRef.current ?? []);
+
         // The canopy ground-protection pass: the same shared store the fill reads
         // through, but as one prepared atlas the renderer can march. Excluded in
         // accumulation/export mode like the fill, and its viewport reads are
@@ -882,6 +900,8 @@ export default function MapView({
       placePopupRef.current = null;
       canopyRef.current?.remove();
       canopyRef.current = null;
+      shedRef.current?.remove();
+      shedRef.current = null;
       canopyAtlasCleanupRef.current?.();
       canopyAtlasCleanupRef.current = null;
       shadowRef.current?.remove();
@@ -946,6 +966,16 @@ export default function MapView({
     });
   }, [showSunLines]);
 
+  useEffect(() => {
+    shedRingsRef.current = shedRings;
+    shedRef.current?.setRings(shedRings ?? []);
+  }, [shedRings]);
+
+  useEffect(() => {
+    showShedsRef.current = showSheds;
+    shedRef.current?.setEnabled(showSheds && !accumulationOnRef.current);
+  }, [showSheds]);
+
   // -------------------------------------------------------------------------
   // Accumulation mode
   // -------------------------------------------------------------------------
@@ -953,6 +983,7 @@ export default function MapView({
     // Sun Exposure's GeoTIFF export writes the canvas as drawn; keep the fill out of it.
     accumulationOnRef.current = accumulation.enabled;
     canopyRef.current?.setEnabled(!accumulation.enabled);
+    shedRef.current?.setEnabled(showShedsRef.current && !accumulation.enabled);
     if (!shadowRef.current) return;
     if (accumulation.enabled) {
       shadowRef.current.setSunExposure(true, {

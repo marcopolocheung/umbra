@@ -240,6 +240,8 @@ export function useRouting({
   /** Wind (from-bearing, m/s) the last rain calculation priced, for the card to state. */
   const [routeWind, setRouteWind] = useState<{ dirDeg: number | null; windMs: number | null } | null>(null);
   const [routeExposureContext, setRouteExposureContext] = useState<ResolvedExposureContext | null>(null);
+  /** Map rings of the sidewalk sheds the last calculation's field sampled. */
+  const [shedRings, setShedRings] = useState<[number, number][][]>([]);
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -460,6 +462,7 @@ export function useRouting({
       updateProgress({ message: "Preparing route area" });
       setRoutePreview(null);
       setNavError(null);
+      setShedRings([]);
 
       await yieldToBrowser();
 
@@ -768,6 +771,7 @@ export function useRouting({
             : field.sampleEdges(edgeRefs, dateRef.current, navPhases)
           : [];
         if (myGen !== calcGenRef.current) return cancelled();
+        setShedRings(shedsRef.current?.drawnRings() ?? []);
 
         // Per edge: trust the geometry, or fall back to pixels for that edge alone.
         // When the canvas was never read — the field covered the route — a weak edge
@@ -2121,6 +2125,7 @@ export function useRouting({
     routeSolarIntensity,
     routeWind,
     routeExposureContext,
+    shedRings,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
@@ -2145,6 +2150,7 @@ export function useRouting({
     setRouteSolarIntensity,
     setRouteWind,
     setRouteExposureContext,
+    setShedRings,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,

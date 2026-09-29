@@ -65,6 +65,7 @@
   /* ── Map-facing legend mirrors (pinned by canvas tests) ───────── */
   --color-basemap-street: #f1f3f1; /* outdoor-v2 street zoom background */
   --color-canopy-map: #2e8b57; /* canopyPaint fill, invariant #5 warmth budget */
+  --color-shed-map: #1c2321; /* shedLayer fill (ink, drawn at 30%) — invariant #5 pinned */
   --color-shadow-noon: #22467f; /* LocalShadowAdapter NOON_RGB — legend swatch mirror */
 
   /* ── Elevation: two levels, hairlines preferred ────────────────── */

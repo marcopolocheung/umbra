@@ -212,6 +212,8 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(true);
   // Focus mode: every overlay except this toggle and the timeline.
   const [uiHidden, setUiHidden] = useState(false);
+  // Sidewalk sheds from the last route, on the map (#85). Off by default.
+  const [showSheds, setShowSheds] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const shadow = useShadowTime();
   const {
@@ -324,6 +326,7 @@ export default function Home() {
     filteredRoutes,
     canTransit,
     shadowField,
+    shedRings,
   } = nav;
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
@@ -974,7 +977,12 @@ export default function Home() {
               | undefined
           }
         />
-        <SettingsPanel showSunLines={showSunLines} onShowSunLinesChange={setShowSunLines} />
+        <SettingsPanel
+          showSunLines={showSunLines}
+          onShowSunLinesChange={setShowSunLines}
+          showSheds={showSheds}
+          onShowShedsChange={setShowSheds}
+        />
         <a
           href="/about"
           className="text-[11px] hover:underline"
@@ -1446,7 +1454,12 @@ export default function Home() {
                       | undefined
                   }
                 />
-                <SettingsPanel showSunLines={showSunLines} onShowSunLinesChange={setShowSunLines} />
+                <SettingsPanel
+                  showSunLines={showSunLines}
+                  onShowSunLinesChange={setShowSunLines}
+                  showSheds={showSheds}
+                  onShowShedsChange={setShowSheds}
+                />
                 <a
                   href="/about"
                   className="text-[10px] px-1.5 pt-0.5 pb-0.5 transition-colors hover:underline"
@@ -1505,6 +1518,8 @@ export default function Home() {
               onSketchPointDrag={handleSketchPointDrag}
               onSketchFinish={handleSketchFinish}
               simplifiedWaypoints={simplifiedWaypoints}
+              shedRings={shedRings}
+              showSheds={showSheds}
             />
           </Suspense>
         }

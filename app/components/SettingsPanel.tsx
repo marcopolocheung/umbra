@@ -3,11 +3,15 @@ import { useState } from "react";
 interface SettingsPanelProps {
   showSunLines: boolean;
   onShowSunLinesChange: (v: boolean) => void;
+  showSheds: boolean;
+  onShowShedsChange: (v: boolean) => void;
 }
 
 export default function SettingsPanel({
   showSunLines,
   onShowSunLinesChange,
+  showSheds,
+  onShowShedsChange,
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
@@ -63,6 +67,33 @@ export default function SettingsPanel({
                 <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-route)" }} />
                 <span style={{ color: "var(--color-ink-muted)" }}>Sunset</span>
               </div>
+            </div>
+          )}
+
+          <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
+            <span style={{ color: "var(--color-ink)" }}>Sidewalk sheds</span>
+            <input
+              type="checkbox"
+              checked={showSheds}
+              onChange={(e) => onShowShedsChange(e.target.checked)}
+              className="accent-ink w-4 h-4"
+            />
+          </label>
+
+          {showSheds && (
+            <div className="flex items-start gap-2 pl-1 border-l" style={{ borderColor: "var(--color-hairline)" }}>
+              {/* The map fill: --color-shed-map at 30% (shedLayer.ts). */}
+              <span
+                className="inline-block w-3 h-3 rounded-sm shrink-0 mt-0.5 border"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--color-shed-map) 30%, transparent)",
+                  borderColor: "var(--color-hairline-strong)",
+                }}
+              />
+              <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
+                NYC permits, shown after a route; placement is approximate. Their shade counts
+                in routing but is not painted on the map.
+              </span>
             </div>
           )}
         </div>
