@@ -141,6 +141,20 @@ describe("RoutePlanJobCoordinator", () => {
     await expect(active).resolves.toMatchObject({ status: "cancelled", reason: "superseded" });
   });
 
+  it("accepts provenance from sidewalk sheds", async () => {
+    const result = await new RoutePlanJobCoordinator().submit(request(1), async () => ({
+      ...completed,
+      shadowProvenance: {
+        bySource: { shed: 1 },
+        dominant: "shed",
+        sampledFraction: 1,
+        minConfidence: 0.3,
+        meanConfidence: 0.3,
+      },
+    }));
+    expect(result).toMatchObject({ status: "completed", shadowProvenance: { dominant: "shed" } });
+  });
+
   it("fails closed when a runner returns a malformed completed result", async () => {
     const result = await new RoutePlanJobCoordinator().submit(request(1), async () => ({
       status: "completed", metrics: [], shadowProvenance: null,

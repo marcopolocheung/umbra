@@ -7,6 +7,7 @@ import {
   type CanopyRasterProvider,
   type EdgeRef,
   type PrismProvider,
+  type ShedProvider,
   bboxAroundEdges,
   bboxAroundPoint,
   bboxContains,
@@ -17,9 +18,11 @@ import {
   sidewalkOffsets,
   staticCanopyProvider,
   staticPrismProvider,
+  staticShedProvider,
 } from "../ShadowField";
 import type { CanopyHeightField } from "../canopyRasterField";
 import { type PrismSet, metersPerDegree } from "../geometry";
+import { shedPrismsFromPermits } from "../sheds";
 
 // ─── A scene with a known sun ─────────────────────────────────────────────────
 
@@ -554,7 +557,7 @@ describe("readiness cache", () => {
   it("re-resolves the same bbox under a different generation", async () => {
     let generation: string | null = "nyc-2026-09-18-aaaaaaaaaaaa";
     const loaded: BBox[] = [];
-    const field = createGeometryShadowField([countingProvider(loaded)], [], [], {
+    const field = createGeometryShadowField([countingProvider(loaded)], [], [], [], {
       generationOf: () => generation,
     });
 
@@ -1313,5 +1316,149 @@ describe("raster canopy", () => {
 
     await createGeometryShadowField([building], [], [tiles]).ready(WIDE_COVERAGE);
     expect(order).toEqual(["raster", "overpass"]);
+  });
+});
+
+describe("sheds", () => {
+  /** Far enough across the shadow direction that no building shadow reaches it. */
+  const SPOT = acrossShadow(300);
+  const at = (east: number, north: number): [number, number] => [
+    SPOT[0] + east / mPerLng,
+    SPOT[1] + north / mPerLat,
+  ];
+  /** A 10 m south→north street. Its field "left" sidewalk is the west one. */
+  const street: EdgeRef = { from: at(0, -5), to: at(0, 5) };
+  /** One permit geocoded 1 m west of the centerline — a shed on the left sidewalk. */
+  const shedSet = () => {
+    const [lng, lat] = at(-1, 0);
+    return shedPrismsFromPermits([{ lng, lat }], [street]).set;
+  };
+  const sheds = (set = shedSet()) => staticShedProvider(set, WIDE_COVERAGE);
+  const tiles = () => staticPrismProvider(oneBuilding(), WIDE_COVERAGE, "tiles");
+  const VERTICAL = { fromDeg: 0, altitudeDeg: 89.5, windMs: 0 };
+
+  it("shades the sidewalk under the shed at high sun, and not the far side", () => {
+    const [edge] = createGeometryShadowField([tiles()], [], [], [sheds()]).sampleEdges(
+      [street], NOON
+    );
+    expect(edge.left).toBe(1);
+    expect(edge.right).toBe(0);
+  });
+
+  it("needs the slab elevated: a grounded one would leave its own pavement lit", () => {
+    // The F3 regression. A caster standing on the ground excludes its own footprint,
+    // which for a shed is exactly the pavement it roofs.
+    const grounded: PrismSet = {
+      ...shedSet(),
+      prisms: shedSet().prisms.map((p) => ({ ...p, baseM: 0 })),
+    };
+    const [edge] = createGeometryShadowField([tiles()], [], [], [sheds(grounded)]).sampleEdges(
+      [street], NOON
+    );
+    expect(edge.left).toBe(0);
+  });
+
+  it("keeps the sidewalk under the shed shaded at low sun, without reaching across", () => {
+    // 18:30 in Madrid: ~13° up, from the west-north-west. A roof at its real 2.5 m
+    // would throw its shadow ~11 m east, off this line — there is no wall in this
+    // frame to hold it over the pavement, so the sheet casts in place instead.
+    const evening = new Date("2026-06-21T18:30:00Z");
+    const [edge] = createGeometryShadowField([tiles()], [], [], [sheds()]).sampleEdges(
+      [street], evening
+    );
+    expect(edge.left).toBe(1);
+    expect(edge.right).toBe(0);
+  });
+
+  it("keeps a building-backed answer's label and confidence, and records the sheds", () => {
+    const without = createGeometryShadowField([tiles()]).sampleEdges([street], NOON)[0];
+    const [edge] = createGeometryShadowField([tiles()], [], [], [sheds()]).sampleEdges(
+      [street], NOON
+    );
+    expect(edge.source).toBe(without.source);
+    expect(edge.confidence).toBe(without.confidence);
+    expect(edge.sheds).toBe(true);
+    expect(without.sheds).toBe(false);
+  });
+
+  it("answers from sheds alone below LOW_CONFIDENCE when no building source can", () => {
+    const [edge] = createGeometryShadowField([], [], [], [sheds()]).sampleEdges([street], NOON);
+    expect(edge.source).toBe("shed");
+    expect(edge.confidence).toBeGreaterThan(0);
+    expect(edge.confidence).toBeLessThan(LOW_CONFIDENCE);
+    expect(edge.left).toBe(1);
+  });
+
+  it("changes nothing when the shed provider declines", () => {
+    const declining: ShedProvider = { source: "shed", prismsFor: () => null };
+    const without = createGeometryShadowField([tiles()]).sampleEdges([street], NOON);
+    const with_ = createGeometryShadowField([tiles()], [], [], [declining]).sampleEdges(
+      [street], NOON
+    );
+    expect(with_).toEqual(without);
+  });
+
+  it("sweeps to the same numbers sampleEdges gives", () => {
+    const field = createGeometryShadowField([tiles()], [], [], [sheds()]);
+    expect(field.sweep([street], [NOON])[0]).toEqual(field.sampleEdges([street], NOON));
+  });
+
+  it("shelters the shed side from vertical rain", () => {
+    const [edge] = createGeometryShadowField([tiles()], [], [], [sheds()]).sampleRainEdges(
+      [street], VERTICAL, NOON
+    );
+    expect(edge.left).toBeCloseTo(1, 5);
+    expect(edge.right).toBe(0);
+    expect(edge.sheds).toBe(true);
+  });
+
+  it("shelters a stop under the shed, and paints it on the rain grid", () => {
+    const field = createGeometryShadowField([tiles()], [], [], [sheds()]);
+    const under = at(-4, 0);
+    const point = field.rainAt(under[0], under[1], VERTICAL, NOON);
+    expect(point.shelter).toBe(1);
+    expect(point.sheds).toBe(true);
+
+    const [west, south] = at(-5, -1);
+    const [east, north] = at(-3, 1);
+    const grid = field.sampleRainGrid({ west, south, east, north }, 1, 1, VERTICAL, NOON);
+    expect(grid.values[0]).toBe(1);
+  });
+
+  it("loads shed providers on ready and readyEdges", async () => {
+    const loaded: BBox[] = [];
+    const provider: ShedProvider = {
+      source: "shed",
+      prismsFor: () => null,
+      load: async (bbox) => {
+        loaded.push(bbox);
+      },
+    };
+    const field = createGeometryShadowField([], [], [], [provider]);
+    await field.ready(WIDE_COVERAGE);
+    await field.readyEdges([street]);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0]).toEqual(WIDE_COVERAGE);
+  });
+
+  it("does not let a hanging shed load outlive the readiness deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const provider: ShedProvider = {
+        source: "shed",
+        prismsFor: () => null,
+        load: () => new Promise<void>(() => {}),
+      };
+      const field = createGeometryShadowField([], [], [], [provider]);
+      let settled = false;
+      const pending = field.readyEdges([street], { deadlineAt: Date.now() + 25 }).then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(25);
+      await pending;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

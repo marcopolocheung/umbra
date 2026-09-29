@@ -144,7 +144,7 @@ function validPartialLegs(value: unknown): value is PartialRouteInfo[] {
     leg.completedLegs < leg.failedLeg && leg.failedLeg <= leg.totalLegs
   );
 }
-const SHADOW_SOURCES = new Set(["tiles", "overpass", "nyc-static", "canopy", "mixed", "canvas", "none"]);
+const SHADOW_SOURCES = new Set(["tiles", "overpass", "nyc-static", "canopy", "shed", "mixed", "canvas", "none"]);
 function validShadowProvenance(value: unknown): value is ShadowProvenance | null {
   if (value === null) return true;
   if (!record(value) || !record(value.bySource) || !SHADOW_SOURCES.has(value.dominant as string)) return false;
