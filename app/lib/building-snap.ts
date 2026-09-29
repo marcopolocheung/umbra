@@ -158,6 +158,22 @@ export function snapOutsideBuilding(
 }
 
 /**
+ * Queries the building layer once and returns a `snapOutsideBuilding` bound to
+ * that result, so snapping every stop of a route costs one tile scan, not one
+ * per stop (#98).
+ */
+export function createBuildingSnapper(
+  map: MapBuildingQuery,
+  bufferM = 3
+): (coord: [number, number]) => [number, number] {
+  const features = map.querySourceFeatures("maptiler_planet", {
+    sourceLayer: "building",
+  });
+  const queried: MapBuildingQuery = { querySourceFeatures: () => features };
+  return (coord) => snapOutsideBuilding(coord, queried, bufferM);
+}
+
+/**
  * If coord falls inside any building polygon, returns the centroid of that
  * building (outer ring only) as [lng, lat]. Otherwise returns null.
  * Uses maptiler_planet / building source layer; no network requests.

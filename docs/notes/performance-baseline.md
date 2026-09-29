@@ -424,6 +424,26 @@ tick, so a memoized `MapView` would still render ~8 times a second. The commit c
 confirms it. Both costs are small in absolute terms, about 1 ms per second of play in a dev
 build.
 
+## Building snap, once per calculation (#98)
+
+Measured 2026-09-29 ("before" on `main` at `7c10926`, "after" on the fix branch) on the 5-point
+benchmark URL (`FIVE_POINT_URL`, G1 fixture basemap). The fixture has 586 building features per
+`querySourceFeatures` scan. Each side was a `vite build` + `vite preview` under Playwright
+Chromium. `npm run dev` stalled on "Fetching walk network" often enough to spoil a series. Each
+run did 11 calculations on one page load, dropped the first, and recorded the other 10. The
+timer was temporary and is not committed. It summed the two snap spans in `calculateRoute`
+(A and B; the via stops) and left out the `yieldToBrowser` between them.
+
+| snap block p50 (ms) | run 1 | run 2 | run 3 |
+|---|---:|---:|---:|
+| before: one scan per stop (5) | 13.1 | 14.3 | 14.4 |
+| after: one scan per calculation | 3.6 | 3.6 | 4.0 |
+
+That is about **−73%**, or roughly 10 ms per 5-point calculation, on a fixture with a few hundred
+buildings. The saving scales with stop count × loaded building features, so real MapTiler tiles
+zoomed out over Manhattan should save more. That case was not measured here: it needs a key,
+and the smoke fixture is what keeps this repeatable.
+
 ## Missing Measurements
 
 The backlog (#37) asks for throttled-4G time-to-interactive **and** representative
