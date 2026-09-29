@@ -404,7 +404,7 @@ below, which is now accurate about TTI alone.
 
 ## Playback re-renders (#97)
 
-Measured 2026-09-29 on `main` at `7c10926`, on the G1 fixture (`SHARE_URL`, keyless basemap) in
+Measured 2026-09-29 ("before" on `main` at `7c10926`, "after" on the fix branch), on the G1 fixture (`SHARE_URL`, keyless basemap) in
 `npm run dev` under Playwright Chromium on SwiftShader. Each run clicks Play for 10 s. The counters
 were temporary and are not committed: a `<Profiler>` around `MapView` counted commits and
 summed `actualDuration`, and a counter plus `performance.now()` inside the `[navWaypoints]`
