@@ -239,6 +239,35 @@ describe("agent route tools", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(ctx.setDate).not.toHaveBeenCalled();
   });
+
+  it("fetches footprints once for several off-viewport spots in one check_shadow call", async () => {
+    const ctx = makeCtx();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => JSON.stringify({ elements: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // ~400 m apart: each spot's own 180 m box misses the others', so the old
+    // per-spot path made one Overpass request per spot.
+    const result = await executeTool(
+      "check_shadow",
+      {
+        points: [
+          { lat: 40.71, lng: -74.02 },
+          { lat: 40.71, lng: -74.0152 },
+          { lat: 40.7136, lng: -74.02 },
+        ],
+      },
+      ctx,
+    );
+
+    expect(result.results).toHaveLength(3);
+    for (const r of result.results) expect(r).toMatchObject({ source: "overpass-buildings" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Bryant Park, the anchor every search below is made from.
