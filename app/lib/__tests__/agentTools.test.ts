@@ -264,8 +264,11 @@ describe("agent route tools", () => {
       ctx,
     );
 
-    expect(result.results).toHaveLength(3);
-    for (const r of result.results) expect(r).toMatchObject({ source: "overpass-buildings" });
+    expect(result.results).toMatchObject([
+      { source: "overpass-buildings" },
+      { source: "overpass-buildings" },
+      { source: "overpass-buildings" },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
