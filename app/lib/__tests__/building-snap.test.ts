@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { snapOutsideBuilding } from "../building-snap";
+import { createBuildingSnapper, snapOutsideBuilding } from "../building-snap";
 import type { MapBuildingQuery } from "../building-snap";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -155,5 +155,29 @@ describe("snapOutsideBuilding", () => {
     // Should NOT snap — the coord is inside a courtyard (hole), not the solid building
     const result = snapOutsideBuilding(inHole, map);
     expect(result).toEqual(inHole);
+  });
+});
+
+describe("createBuildingSnapper", () => {
+  it("queries the building layer once for any number of stops", () => {
+    const map = mockMap([SQUARE_POLYGON]);
+    let queries = 0;
+    const counting: MapBuildingQuery = {
+      querySourceFeatures: (...args) => {
+        queries++;
+        return map.querySourceFeatures(...args);
+      },
+    };
+    const snap = createBuildingSnapper(counting);
+    const stops: [number, number][] = [
+      [0.0005, 0.0002],
+      [0.002, 0.002],
+      [0.0002, 0.0005],
+      [0.0008, 0.0005],
+      [0.0005, 0.0009],
+    ];
+    const snapped = stops.map(snap);
+    expect(queries).toBe(1);
+    expect(snapped).toEqual(stops.map((s) => snapOutsideBuilding(s, map)));
   });
 });

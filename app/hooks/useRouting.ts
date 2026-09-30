@@ -28,7 +28,7 @@ import {
   navigationRecordFrom,
   recordNavigationDecline,
 } from "../lib/metrics";
-import { snapOutsideBuilding } from "../lib/building-snap";
+import { createBuildingSnapper } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
   findBestTrainRoute,
@@ -69,9 +69,11 @@ import {
 } from "../lib/shadowField/ShadowField";
 import type { ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
 import {
+  type NycShedProvider,
   createOverpassCanopyProvider,
   createOverpassPrismProvider,
   createRasterCanopyProvider,
+  createShedProvider,
   createTilePrismProvider,
 } from "../lib/shadowField/providers";
 import { summarizeShadowSource } from "../lib/shadowProvenance";
@@ -238,6 +240,8 @@ export function useRouting({
   /** Wind (from-bearing, m/s) the last rain calculation priced, for the card to state. */
   const [routeWind, setRouteWind] = useState<{ dirDeg: number | null; windMs: number | null } | null>(null);
   const [routeExposureContext, setRouteExposureContext] = useState<ResolvedExposureContext | null>(null);
+  /** Map rings of the sidewalk sheds the last calculation's field sampled. */
+  const [shedRings, setShedRings] = useState<[number, number][][]>([]);
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -283,11 +287,15 @@ export function useRouting({
    * first-one-wins and canopy is additive on top of whichever of them answered. The
    * raster gets a third list of its own because it answers a height field rather than
    * prisms — see `canopyRasterField.ts` for why a raster is marched, not tessellated.
+   * Sidewalk sheds are a fourth, additive list; like the static provider, each
+   * calculation binds them to the edges of the graph it fetched.
    */
   const shadowFieldRef = useRef<ShadowField | null>(null);
   const staticBuildingsRef = useRef<NycStaticBuildingProvider | null>(null);
+  const shedsRef = useRef<NycShedProvider | null>(null);
   if (!shadowFieldRef.current) {
     staticBuildingsRef.current = createNycStaticPrismProvider();
+    shedsRef.current = createShedProvider();
     shadowFieldRef.current = createGeometryShadowField(
       [
         staticBuildingsRef.current,
@@ -296,6 +304,7 @@ export function useRouting({
       ],
       [createOverpassCanopyProvider()],
       [createRasterCanopyProvider()],
+      [shedsRef.current],
       // The readiness cache is scoped to the static dataset generation the
       // provider is currently bound to, so a promotion never reuses a stale
       // area's cached readiness.
@@ -414,8 +423,9 @@ export function useRouting({
         ]);
       }
 
-      const a = snapOutsideBuilding(rawA, map as unknown as MapBuildingQuery);
-      const b = snapOutsideBuilding(rawB, map as unknown as MapBuildingQuery);
+      const snapOutsideBuilding = createBuildingSnapper(map as unknown as MapBuildingQuery);
+      const a = snapOutsideBuilding(rawA);
+      const b = snapOutsideBuilding(rawB);
       if (process.env.NODE_ENV !== "production") {
         if (a[0] !== rawA[0] || a[1] !== rawA[1])
           console.log(`[routing] waypoint A snapped out of building: [${rawA}] → [${a}]`);
@@ -453,6 +463,7 @@ export function useRouting({
       updateProgress({ message: "Preparing route area" });
       setRoutePreview(null);
       setNavError(null);
+      setShedRings([]);
 
       await yieldToBrowser();
 
@@ -501,9 +512,7 @@ export function useRouting({
         const padding = basePadding;
         let routeStops: [number, number][] = [
           a,
-          ...(plan?.via ?? additionalWaypoints).map((wp) =>
-            snapOutsideBuilding(wp, map as unknown as MapBuildingQuery),
-          ),
+          ...(plan?.via ?? additionalWaypoints).map((wp) => snapOutsideBuilding(wp)),
           b,
         ];
         const allLats = routeStops.map((w) => w[1]);
@@ -598,6 +607,7 @@ export function useRouting({
         // Enumerate as soon as the graph arrives. These exact cells, rather than the
         // graph's large enclosing rectangle, are what sampling and confidence use.
         const edgeBatch = routingEdgeBatch(graph);
+        shedsRef.current?.bindEdges(edgeBatch.refs);
         const edgeRefs = edgeBatch.refs;
         const edgeKeys = edgeBatch.keys;
         const edgeDistances = edgeBatch.distances;
@@ -760,16 +770,20 @@ export function useRouting({
             : field.sampleEdges(edgeRefs, dateRef.current, navPhases)
           : [];
         if (myGen !== calcGenRef.current) return cancelled();
+        setShedRings(shedsRef.current?.drawnRings() ?? []);
 
         // Per edge: trust the geometry, or fall back to pixels for that edge alone.
         // When the canvas was never read — the field covered the route — a weak edge
         // keeps the field's answer and its real confidence, and the route says so
         // rather than pretending to a certainty nothing measured.
         let canvasFallbackEdges = 0;
+        let shedEdges = 0;
         const buildingProviders: Array<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none"> = [];
         const canopyProviders: Array<"osm" | "raster" | "both" | "none"> = [];
         for (let i = 0; i < edgeRefs.length; i++) {
           const sample = fieldShadow[i];
+          const fieldAnswered = rainObjective || sample.confidence >= LOW_CONFIDENCE || !buildingMask;
+          if (fieldAnswered && sample.sheds) shedEdges++;
           if (rainObjective) {
             edgeShadowCache.set(edgeKeys[i], {
               left: sample.left,
@@ -1812,6 +1826,7 @@ export function useRouting({
             both: shareOf(canopyProviders, "both"),
             none: shareOf(canopyProviders, "none"),
           },
+          shedEdgeShare: edgeRefs.length > 0 ? shedEdges / edgeRefs.length : 0,
           fallbackReason: needsCanvas
             ? buildingMask
               ? "low-confidence"
@@ -2109,6 +2124,7 @@ export function useRouting({
     routeSolarIntensity,
     routeWind,
     routeExposureContext,
+    shedRings,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
@@ -2133,6 +2149,7 @@ export function useRouting({
     setRouteSolarIntensity,
     setRouteWind,
     setRouteExposureContext,
+    setShedRings,
     selectedNavRoute,
     navTrainDrawData,
     navMrtEntrances,

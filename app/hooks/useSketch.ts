@@ -34,7 +34,7 @@ import {
   edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
 import type { EdgeRef, ShadowField } from "../lib/shadowField/ShadowField";
-import { buildingCentroidAt, snapOutsideBuilding } from "../lib/building-snap";
+import { buildingCentroidAt, createBuildingSnapper } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import type { ExposureSettings, ResolvedExposureContext } from "../lib/exposure";
@@ -223,9 +223,7 @@ export function useSketch({
       graph: RoutingGraph,
       map: maplibregl.Map,
     ): { snappedIds: number[]; snappedCoords: LatLng[] } => {
-      const coords = waypoints.map((wp) =>
-        snapOutsideBuilding(wp, map as unknown as MapBuildingQuery),
-      );
+      const coords = waypoints.map(createBuildingSnapper(map as unknown as MapBuildingQuery));
 
       const snappedIds: number[] = [];
       const MAX_RESNAP_DIST_M = 250;

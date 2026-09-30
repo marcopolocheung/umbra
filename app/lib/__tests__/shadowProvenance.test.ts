@@ -141,6 +141,12 @@ describe("describeShadowProvenance", () => {
     );
   });
 
+  it("names sidewalk sheds when they alone answered", () => {
+    expect(summarize([shadow("shed"), shadow("shed"), shadow("shed")])).toBe(
+      "from sidewalk sheds"
+    );
+  });
+
   it("names the map view when the pixel sampler answered", () => {
     expect(summarize([shadow("canvas"), shadow("canvas"), shadow("canvas")])).toBe(
       "from the map view"

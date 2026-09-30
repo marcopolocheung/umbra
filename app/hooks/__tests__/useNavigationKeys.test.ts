@@ -107,6 +107,7 @@ describe("useNavigation return contract", () => {
         "setSelectedRouteIndex",
         "shadowField",
         "shadowPreference",
+        "shedRings",
         "simplifiedWaypoints",
         "sketchPoints",
         "submitRoutePlan",

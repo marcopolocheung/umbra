@@ -19,8 +19,10 @@ import {
   createOverpassCanopyProvider,
   createOverpassPrismProvider,
   createRasterCanopyProvider,
+  createShedProvider,
   createTilePrismProvider,
 } from "../providers";
+import type { ShedPermitResult } from "../../../services/sidewalkSheds";
 
 const LAT = 40.4168;
 const LNG = -3.7038;
@@ -669,5 +671,110 @@ describe("the two providers together", () => {
     const sample = field.shadowAt(LNG, LAT, new Date("2026-06-21T12:00:00Z"));
 
     expect(sample).toEqual({ shadow: 0, source: "none", confidence: 0 });
+  });
+});
+
+describe("createShedProvider", () => {
+  const MIDTOWN = { west: -73.99, south: 40.75, east: -73.98, north: 40.76 };
+  const edge = { from: [-73.986, 40.755] as [number, number], to: [-73.984, 40.755] as [number, number] };
+  const permitResult = (complete = true): ShedPermitResult => ({
+    // ~1 m north of the edge — the left sidewalk.
+    permits: [{ jobFilingNumber: "A", lng: -73.985, lat: 40.75501, expiresAt: "2026-12-01T00:00:00.000" }],
+    coverage: MIDTOWN,
+    complete,
+  });
+
+  it("declines until both permits are loaded and edges are bound", async () => {
+    const provider = createShedProvider({ fetchPermits: async () => permitResult() });
+    expect(provider.prismsFor(MIDTOWN)).toBeNull();
+    await provider.load?.(MIDTOWN);
+    expect(provider.prismsFor(MIDTOWN)).toBeNull();
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(MIDTOWN)?.prisms).toHaveLength(1);
+  });
+
+  it("hands back the same array until the edges are rebound", async () => {
+    const provider = createShedProvider({ fetchPermits: async () => permitResult() });
+    await provider.load?.(MIDTOWN);
+    provider.bindEdges([edge]);
+    const first = provider.prismsFor(MIDTOWN);
+    expect(provider.prismsFor(MIDTOWN)).toBe(first);
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(MIDTOWN)).not.toBe(first);
+  });
+
+  it("reports an empty set, not a decline, when NYC has no sheds there", async () => {
+    const provider = createShedProvider({
+      fetchPermits: async () => ({ permits: [], coverage: MIDTOWN, complete: true }),
+    });
+    await provider.load?.(MIDTOWN);
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(MIDTOWN)?.prisms).toEqual([]);
+  });
+
+  it("caches nothing when the fetch fails or may be truncated", async () => {
+    const failing = createShedProvider({ fetchPermits: async () => { throw new Error("503"); } });
+    await failing.load?.(MIDTOWN);
+    failing.bindEdges([edge]);
+    expect(failing.prismsFor(MIDTOWN)).toBeNull();
+
+    const truncated = createShedProvider({ fetchPermits: async () => permitResult(false) });
+    await truncated.load?.(MIDTOWN);
+    truncated.bindEdges([edge]);
+    expect(truncated.prismsFor(MIDTOWN)).toBeNull();
+  });
+
+  it("lists the drawn sheds for the bound edges only, and nothing before a calculation", async () => {
+    const provider = createShedProvider({ fetchPermits: async () => permitResult() });
+    await provider.load?.(MIDTOWN);
+    expect(provider.drawnRings()).toEqual([]);
+    provider.bindEdges([edge]);
+    expect(provider.drawnRings()).toEqual([]); // not sampled yet
+    provider.prismsFor(MIDTOWN);
+    expect(provider.drawnRings()).toHaveLength(1);
+    // A later calculation over a graph with no street near the permit.
+    provider.bindEdges([{ from: [-73.95, 40.78], to: [-73.949, 40.78] }]);
+    provider.prismsFor(MIDTOWN);
+    expect(provider.drawnRings()).toEqual([]);
+  });
+
+  it("draws a shed once even when two cached areas both hold its permit", async () => {
+    // Two cached areas that overlap around the permit, neither containing the other.
+    const WEST = { west: -73.99, south: 40.75, east: -73.98, north: 40.76 };
+    const EAST = { west: -73.986, south: 40.75, east: -73.976, north: 40.76 };
+    const provider = createShedProvider({
+      fetchPermits: async (bbox) => ({ ...permitResult(), coverage: bbox }),
+    });
+    await provider.load?.(WEST);
+    await provider.load?.(EAST);
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(WEST)?.prisms).toHaveLength(1);
+    expect(provider.prismsFor(EAST)?.prisms).toHaveLength(1);
+    expect(provider.drawnRings()).toHaveLength(1);
+  });
+
+  it("never fetches outside NYC", async () => {
+    const fetchPermits = vi.fn(async () => permitResult());
+    const provider = createShedProvider({ fetchPermits });
+    await provider.load?.(bboxAroundPoint(LNG, LAT, 500));
+    expect(fetchPermits).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting on abort but lets the fetch fill the cache", async () => {
+    let finish = (_: ShedPermitResult) => {};
+    const provider = createShedProvider({
+      fetchPermits: () => new Promise<ShedPermitResult>((resolve) => { finish = resolve; }),
+    });
+    const controller = new AbortController();
+    const waiting = provider.load?.(MIDTOWN, controller.signal);
+    controller.abort();
+    await waiting;
+    provider.bindEdges([edge]);
+    expect(provider.prismsFor(MIDTOWN)).toBeNull();
+
+    finish(permitResult());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(provider.prismsFor(MIDTOWN)?.prisms).toHaveLength(1);
   });
 });

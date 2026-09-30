@@ -229,4 +229,8 @@ export async function stubNetwork(page: Page, opts: StubNetworkOptions): Promise
   // would move the shadow pixel counts. Both consumers treat a failed read as "no
   // canopy known here", which is what this run then tests.
   await page.route("**data.source.coop/**", (route) => route.abort());
+
+  // Sidewalk-shed permits (NYC Open Data). The smoke route is in Midtown, so without
+  // this it would hit the live dataset; a failed read is "no sheds known here".
+  await page.route("**data.cityofnewyork.us/**", (route) => route.abort());
 }

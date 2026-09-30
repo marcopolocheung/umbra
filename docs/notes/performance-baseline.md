@@ -402,6 +402,48 @@ is a blue-pixel-derived fraction with tens of percentage points of worst-case un
 G2's acceptance names route calculation only, and TTI is still outstanding — see the section
 below, which is now accurate about TTI alone.
 
+## Playback re-renders (#97)
+
+Measured 2026-09-29 ("before" on `main` at `7c10926`, "after" on the fix branch), on the G1 fixture (`SHARE_URL`, keyless basemap) in
+`npm run dev` under Playwright Chromium on SwiftShader. Each run clicks Play for 10 s. The counters
+were temporary and are not committed: a `<Profiler>` around `MapView` counted commits and
+summed `actualDuration`, and a counter plus `performance.now()` inside the `[navWaypoints]`
+marker effect counted its runs and time. There were three runs per side.
+
+| per 10 s of play | before | after |
+|---|---:|---:|
+| `MapView` commits | 81 / 80 / 79 | 80 / 77 / 75 |
+| marker-effect runs | 81 / 80 / 79 | **0 / 0 / 0** |
+| marker-effect time (ms) | 10.9 / 10.0 / 10.3 | 0 |
+| `MapView` render + effect (ms, mean) | 28.8 | 19.3 (**−33%**) |
+
+The fix memoizes the `navWaypoints` object in `page.tsx`, which stops the marker effect from
+running on every tick. It does not wrap `MapView` in `React.memo`, and on this evidence that
+would buy nothing during play or drag: `date` is itself a `MapView` prop and changes on every
+tick, so a memoized `MapView` would still render ~8 times a second. The commit count above
+confirms it. Both costs are small in absolute terms, about 1 ms per second of play in a dev
+build.
+
+## Building snap, once per calculation (#98)
+
+Measured 2026-09-29 ("before" on `main` at `7c10926`, "after" on the fix branch) on the 5-point
+benchmark URL (`FIVE_POINT_URL`, G1 fixture basemap). The fixture has 586 building features per
+`querySourceFeatures` scan. Each side was a `vite build` + `vite preview` under Playwright
+Chromium. `npm run dev` stalled on "Fetching walk network" often enough to spoil a series. Each
+run did 11 calculations on one page load, dropped the first, and recorded the other 10. The
+timer was temporary and is not committed. It summed the two snap spans in `calculateRoute`
+(A and B; the via stops) and left out the `yieldToBrowser` between them.
+
+| snap block p50 (ms) | run 1 | run 2 | run 3 |
+|---|---:|---:|---:|
+| before: one scan per stop (5) | 13.1 | 14.3 | 14.4 |
+| after: one scan per calculation | 3.6 | 3.6 | 4.0 |
+
+That is about **−73%**, or roughly 10 ms per 5-point calculation, on a fixture with a few hundred
+buildings. The saving scales with stop count × loaded building features, so real MapTiler tiles
+zoomed out over Manhattan should save more. That case was not measured here: it needs a key,
+and the smoke fixture is what keeps this repeatable.
+
 ## Playback sun-worker posts (#101)
 
 Measured 2026-09-29, before on `main` at `7c10926` and after on the fix branch. Setup: G1
