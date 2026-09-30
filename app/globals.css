@@ -492,8 +492,60 @@ body {
     font-weight: 800;
     font-size: var(--text-small);
     letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
   .umbra-start-button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+
+  /* Segmented control (ui/Segmented): square, ≥44px rows, selected = full ink
+     inversion, inset focus ring, disabled text stays at the readable 75% role. */
+  .umbra-segmented {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid var(--color-ink);
+    border-radius: 0;
+    background: var(--color-panel);
+  }
+  .umbra-segmented__option {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 0.75rem;
+    font-size: var(--text-caption);
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--color-ink);
+  }
+  .umbra-segmented__option + .umbra-segmented__option { border-left: 1px solid var(--color-rule); }
+  .umbra-segmented__option:hover:not(:disabled, [aria-pressed="true"]) { background: var(--color-ground); }
+  .umbra-segmented__option[aria-pressed="true"] { background: var(--color-ink); color: var(--color-on-ink); }
+  .umbra-segmented__option:disabled { color: var(--color-ink-muted); cursor: not-allowed; text-decoration: line-through; }
+  .umbra-segmented__option:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+
+  /* Itinerary rail (NavigationStatusPanel): each node above the segment that
+     leaves it — round dots on foot, a solid bar in the line's colour for a ride,
+     ending in a ring at the exit stop. */
+  .umbra-leg-rail-column {
+    display: flex;
+    width: 2.75rem;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+  }
+  .umbra-leg-rail { flex: 1; min-height: 1rem; width: 0; }
+  .umbra-leg-rail--foot { margin-block: 0.25rem; border-left: 4px dotted var(--color-ink-muted); }
+  .umbra-leg-rail--ride { border-left: 6px solid var(--leg-color, var(--color-ink)); }
+  .umbra-leg-stop {
+    display: block;
+    width: 1rem;
+    height: 1rem;
+    border: 4px solid var(--leg-color, var(--color-ink));
+    border-radius: var(--radius-circle);
+    background: var(--color-panel);
+  }
 
   .umbra-kicker {
     display: inline-block;

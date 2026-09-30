@@ -10,7 +10,7 @@ import type { RouteOption } from "../../lib/routing";
 afterEach(cleanup);
 
 function renderPanel(
-  props: { travelMode?: "walk" | "bike" | "scoot"; routeMode?: "walk" | "transit" } = {},
+  props: { travelMode?: "walk" | "bike" | "scoot"; routeMode?: "walk" | "transit"; canTransit?: boolean } = {},
 ) {
   const onTravelModeChange = vi.fn();
   render(
@@ -225,5 +225,22 @@ describe("DirectionsPanel — warning placement (U4 serial position)", () => {
   it("moves the notice above the weakest viable card once the stack passes three", () => {
     renderWithWarning(4);
     expect(cardsAndNotices()).toEqual(["card", "card", "notice", "card", "card"]);
+  });
+});
+
+describe("DirectionsPanel chrome (R5b)", () => {
+  it("says on screen why Transit is off, not only in a tooltip touch never shows", () => {
+    renderPanel({ canTransit: false });
+    const transit = screen.getByRole("button", { name: "Transit" }) as HTMLButtonElement;
+    expect(transit.disabled).toBe(true);
+    expect(screen.getByText("Transit needs a start and a destination")).toBeTruthy();
+  });
+
+  it("names every segmented control as a group", () => {
+    renderPanel();
+    for (const name of ["Route mode", "Travel mode", "Route input"]) {
+      expect(screen.getByRole("group", { name })).toBeTruthy();
+    }
+    expect(screen.getByRole("button", { name: "Swap start and destination" })).toBeTruthy();
   });
 });

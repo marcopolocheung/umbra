@@ -1,5 +1,10 @@
+import type { CSSProperties, ReactNode } from "react";
+import { lineCssColor } from "../lib/lineBulletInk";
 import type { RouteLeg, RouteOption } from "../lib/routing";
+import { routeAfterSunset, routeDurationLabel, routeExposureMinutes, routeShadowShare } from "../lib/routeTradeoff";
 import { getTravelModePolicy, type TravelModeId } from "../lib/travelMode";
+import Kicker from "./ui/Kicker";
+import LineBullet from "./ui/LineBullet";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -18,70 +23,149 @@ function coordLabel(coord: [number, number] | null): string {
   return `${coord[1].toFixed(5)}, ${coord[0].toFixed(5)}`;
 }
 
+type RailKind = "foot" | "ride";
+
+interface ItineraryRow {
+  id: string;
+  node: ReactNode;
+  /** The segment that leaves this node, drawn down to the next one; none after the last. */
+  rail: RailKind | null;
+  color?: string;
+  body: ReactNode;
+}
+
 /**
- * The leg list, in the pattern a rider already knows: walk / ride / walk, each
- * step with its own time and distance, and for transit the station to board at
- * and the station to exit at. Data comes from `route.legs` — the same records
- * the route cards summarize — so nothing here is a new claim to ground.
+ * The trip as one itinerary, in the pattern a rider already knows: the start
+ * pin, dots on foot to the walk step, dots on to the boarding stop, where the
+ * line's bullet heads a solid bar in its colour that ends in a ring at the exit
+ * stop, then dots again past the walk step to the destination pin. A trip that
+ * starts or ends at the station door has no walk there: the bullet is the
+ * start, or the exit ring the destination. Data comes from `route.legs` (a
+ * plain walk is one leg) — the same records the route cards summarize — so
+ * nothing here is a new claim to ground.
  */
-function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelModeId }) {
-  const paceMps = getTravelModePolicy(travelMode).speedMps;
-  return (
-    <ol className="flex flex-col gap-2" aria-label="Route steps">
-      {legs.map((leg, i) => {
-        if (leg.type === "transit") {
-          const board = leg.stops?.[0];
-          const exit = leg.stops?.[leg.stops.length - 1];
-          const line = leg.lineName || leg.line || "Transit";
-          const rideSec = leg.travelTimeSec != null && leg.waitSec != null
-            ? leg.travelTimeSec - leg.waitSec
-            : leg.travelTimeSec;
-          return (
-            <li key={i} className="flex items-start gap-2">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                style={{ background: leg.lineColor ?? "var(--color-route-soft)", color: "var(--color-on-route)" }}
-                aria-hidden="true"
-              >
-                <span className="material-symbols-outlined text-base">directions_transit</span>
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-                  Ride {line}
-                  {rideSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(rideSec)}</span>}
-                </div>
-                {board && (
-                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-                    Enter at {board}
-                  </div>
-                )}
-                {exit && exit !== board && (
-                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-                    Exit at {exit}
-                  </div>
-                )}
-              </div>
-            </li>
-          );
-        }
-        const walkSec = leg.distanceM != null ? leg.distanceM / paceMps : null;
-        return (
-          <li key={i} className="flex items-start gap-2">
-            <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-              aria-hidden="true"
-            >
-              <span className="material-symbols-outlined text-base">directions_walk</span>
-            </span>
-            <div className="min-w-0 flex-1 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-              {getTravelModePolicy(travelMode).label}
-              {leg.distanceM != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDistance(leg.distanceM)}</span>}
-              {walkSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(walkSec)}</span>}
+function Itinerary({
+  legs,
+  travelMode,
+  startLabel,
+  destinationLabel,
+}: {
+  legs: RouteLeg[];
+  travelMode: TravelModeId;
+  startLabel: string;
+  destinationLabel: string;
+}) {
+  const policy = getTravelModePolicy(travelMode);
+  const muted = { color: "var(--color-ink-muted)" };
+  const ink = { color: "var(--color-ink)" };
+  // The transit pipeline always emits a walk on each side of the ride; one of
+  // no length is no step, and its "1 min" floor would break the sum to Time.
+  const steps = legs.length > 1
+    ? legs.filter((leg) => !(leg.type === "walk" && leg.distanceM != null && Math.round(leg.distanceM) === 0))
+    : legs;
+  const rows: ItineraryRow[] = steps[0]?.type === "transit" ? [] : [
+    {
+      id: "start",
+      node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">trip_origin</span>,
+      rail: "foot",
+      body: (
+        <>
+          <div className="umbra-kicker">Start</div>
+          <div className="truncate text-xs font-medium" style={ink}>{startLabel}</div>
+        </>
+      ),
+    },
+  ];
+  steps.forEach((leg, n) => {
+    if (leg.type === "transit") {
+      const board = leg.stops?.[0];
+      const exit = leg.stops?.[leg.stops.length - 1];
+      const color = leg.lineColor ? lineCssColor(leg.lineColor) : undefined;
+      const first = n === 0;
+      const last = n === steps.length - 1;
+      const boardName = board ?? (first ? startLabel : undefined);
+      rows.push({
+        id: `board-${n}`,
+        node: <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />,
+        rail: "ride",
+        color,
+        body: (
+          <>
+            {first && <div className="umbra-kicker">Start</div>}
+            {boardName && <div className="text-xs font-semibold" style={ink}>{boardName}</div>}
+            <div className="text-xs font-medium" style={ink}>
+              Ride {leg.lineName || leg.line || "Transit"}
+              {leg.travelTimeSec != null && (
+                <span style={muted}>
+                  {/* The whole leg, wait included, so the steps add up to Time. */}
+                  {" "}· {formatDuration(leg.travelTimeSec)}
+                  {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
+                </span>
+              )}
             </div>
-          </li>
-        );
-      })}
+          </>
+        ),
+      });
+      rows.push({
+        id: `exit-${n}`,
+        node: <span className="umbra-leg-stop" style={color ? ({ "--leg-color": color } as CSSProperties) : undefined} aria-hidden="true" />,
+        // Off the train, the rider is on foot again until the next boarding or
+        // the end — unless the exit is the end.
+        rail: last ? null : "foot",
+        body: (
+          <>
+            {last && <div className="umbra-kicker">Destination</div>}
+            <div className="text-xs font-semibold" style={ink}>
+              {exit && exit !== board ? `Exit at ${exit}` : last ? destinationLabel : "Exit"}
+            </div>
+          </>
+        ),
+      });
+      return;
+    }
+    const walkSec = leg.distanceM != null ? leg.distanceM / policy.speedMps : null;
+    rows.push({
+      id: `walk-${n}`,
+      node: <span className="material-symbols-outlined text-base" style={muted} aria-hidden="true">directions_walk</span>,
+      rail: "foot",
+      body: (
+        <div className="text-xs font-medium" style={ink}>
+          {policy.label}
+          {leg.distanceM != null && <span style={muted}> · {formatDistance(leg.distanceM)}</span>}
+          {walkSec != null && <span style={muted}> · {formatDuration(walkSec)}</span>}
+        </div>
+      ),
+    });
+  });
+  if (steps[steps.length - 1]?.type !== "transit") rows.push({
+    id: "end",
+    node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">location_on</span>,
+    rail: null,
+    body: (
+      <>
+        <div className="umbra-kicker">Destination</div>
+        <div className="truncate text-xs font-medium" style={ink}>{destinationLabel}</div>
+      </>
+    ),
+  });
+
+  return (
+    <ol className="flex flex-col" aria-label="Route steps">
+      {rows.map((row) => (
+        <li key={row.id} className="flex gap-2">
+          <div className="umbra-leg-rail-column">
+            {row.node}
+            {row.rail && (
+              <span
+                className={`umbra-leg-rail umbra-leg-rail--${row.rail}`}
+                style={row.color ? ({ "--leg-color": row.color } as CSSProperties) : undefined}
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          <div className="min-w-0 flex-1 pb-4">{row.body}</div>
+        </li>
+      ))}
     </ol>
   );
 }
@@ -109,18 +193,37 @@ export default function NavigationStatusPanel({
   onExit,
   rainMode = false,
 }: NavigationStatusPanelProps) {
+  // The same figures, by the same rules, as the route card it came from: a
+  // rain card only for a rain-priced route, a transit share from its legs
+  // (#144) and none where its time outdoors is unmeasured (#393), and no
+  // shade share after sunset.
+  const rainCard = !!route && rainMode && (route.objective === "rain" || route.dryCoverage !== undefined);
   const protectedPct = route?.exposure?.shelteredDistancePct ?? route?.dryCoverage ?? null;
-  const exposureUnknown = !!route && rainMode && (
+  const exposureUnknown = !!route && rainCard && (
     (route.exposure?.unknownDistanceM ?? 0) > 0 ||
     (route.exposure?.unknownDurationSec ?? 0) > 0
   );
-  const shadowPct = route
-    ? (rainMode
-      ? (protectedPct == null || exposureUnknown ? null : Math.round(protectedPct * 100))
-      : Math.round(route.shadowCoverage * 100))
-    : null;
-  const duration = route?.totalTimeSec ? formatDuration(route.totalTimeSec) : null;
+  const afterSunset = !!route && !rainCard && routeAfterSunset(route);
+  const shadeValue = !route
+    ? null
+    : rainCard
+      ? route.exposureUpdating
+        ? "Updating…"
+        : protectedPct == null || exposureUnknown ? "Unknown" : `${Math.round(protectedPct * 100)}%`
+      : afterSunset
+        ? "After sunset"
+        : routeExposureMinutes(route) === null ? "Unknown" : `${Math.round(routeShadowShare(route) * 100)}%`;
+  const duration = route ? routeDurationLabel(route) : null;
   const destination = waypointBLabel ?? coordLabel(waypointB);
+
+  const cells: [string, string][] = route
+    ? [
+        ["Time", duration ?? ""],
+        ["Distance", formatDistance(route.distanceM)],
+        [rainCard ? "Shelter" : route.legs?.some((l) => l.type === "transit") ? "Shadow on foot" : "Shadow", shadeValue ?? ""],
+        ["Turns", String(route.turnCount)],
+      ]
+    : [];
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -128,121 +231,76 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 items-center justify-center rounded-sm border-2 transition-colors hover:bg-ground"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
           title="Back to route options"
           aria-label="Back to route options"
         >
-          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
         </button>
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Navigating</h2>
+        <h2 className="umbra-kicker" style={{ color: "var(--color-ink)" }}>Navigating</h2>
         <button
           type="button"
           onClick={onExit}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 items-center justify-center rounded-sm border-2 transition-colors hover:bg-ground"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
           title="End navigation"
           aria-label="End navigation"
         >
-          <span className="material-symbols-outlined text-base">close</span>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">close</span>
         </button>
       </div>
 
-      <div
-        className="rounded-xl border p-4"
-        style={{
-          background: "var(--color-shade-soft)",
-          borderColor: "var(--color-shade-mid)",
-          color: "var(--color-ink)",
-        }}
-      >
-        <div className="flex items-start gap-3">
-          <span
-            className="material-symbols-outlined mt-0.5 rounded-full p-2 text-[20px]"
-            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-          >
-            navigation
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--color-shade)" }}>
-              Navigation active
-            </div>
-            <div className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
-              {route?.label ?? "No route selected"}
-            </div>
-            <div className="mt-1 truncate text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-              To {destination}
-            </div>
-          </div>
+      {/* The ticket: the ridden option on its kicker plate and where it goes. */}
+      <div className="border-2 p-3" style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", color: "var(--color-ink)" }}>
+        <Kicker plated>{route?.label ?? "No route selected"}</Kicker>
+        <div className="mt-2 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+          To {destination}
         </div>
       </div>
 
       {route ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter" : "Shadow"}</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct == null ? "Unknown" : `${shadowPct}%`}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{route.turnCount}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
-              {duration ? "Time" : "Shadow breaks"}
+        <dl className="grid grid-cols-2 border-t" style={{ borderColor: "var(--color-rule)" }}>
+          {cells.map(([key, value], i) => (
+            <div
+              key={key}
+              className={`border-b py-1.5 ${i % 2 === 0 ? "pr-2" : "border-l pl-2"}`}
+              style={{ borderColor: "var(--color-rule)" }}
+            >
+              <dt className="umbra-kicker">{key}</dt>
+              {/* Figures in the numeric face; a word in place of one reads as a word. */}
+              <dd
+                className={`mt-0.5 text-sm ${/\d/.test(value) ? "font-numeric font-bold tabular-nums" : "font-semibold italic"}`}
+                style={{ color: /\d/.test(value) ? "var(--color-ink)" : "var(--color-ink-muted)" }}
+              >
+                {value}
+              </dd>
             </div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
-              {duration ?? route.shadowTransitions}
-            </div>
-          </div>
-        </div>
+          ))}
+        </dl>
       ) : (
-        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>
+        <div className="rounded-sm border-2 p-3 text-xs" style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>
           Pick a complete route before starting navigation.
         </div>
       )}
 
-      {/* Leg list — walk / ride / walk with times and board/exit stations,
-          the pattern a rider already knows. Single-leg walk routes skip it:
-          the stats grid already says everything there is to say. */}
-      {route?.legs && route.legs.length > 1 && (
-        <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
-          <LegList legs={route.legs} travelMode={route.travelMode ?? "walk"} />
-        </div>
-      )}
-
-      <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
-        <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }}>trip_origin</span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-              {waypointALabel ?? coordLabel(waypointA)}
-            </div>
-          </div>
-        </div>
-        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-rule)" }} />
-        <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-route)" }}>location_on</span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>
-          </div>
-        </div>
+      {/* The itinerary: start to destination on one rail, every leg between. */}
+      <div className="border-t pt-3" style={{ borderColor: "var(--color-rule)" }}>
+        <Itinerary
+          legs={route?.legs && route.legs.length > 0 ? route.legs : route ? [{ type: "walk", geojson: route.geojson, distanceM: route.distanceM }] : []}
+          travelMode={route?.travelMode ?? "walk"}
+          startLabel={waypointALabel ?? coordLabel(waypointA)}
+          destinationLabel={destination}
+        />
       </div>
 
       <button
         type="button"
         onClick={onArrive}
         disabled={!route}
-        className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
+        className="umbra-start-button gap-1 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <span className="material-symbols-outlined text-base">flag</span>
+        <span className="material-symbols-outlined text-base" aria-hidden="true">flag</span>
         ARRIVED
       </button>
     </div>

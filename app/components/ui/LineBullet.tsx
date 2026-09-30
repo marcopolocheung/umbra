@@ -1,5 +1,5 @@
 import type { CSSProperties, HTMLAttributes } from "react";
-import { lineBulletInk } from "../../lib/lineBulletInk";
+import { lineBulletInk, lineCssColor } from "../../lib/lineBulletInk";
 
 export type LineColor = "blue" | "green" | "yellow";
 
@@ -14,8 +14,7 @@ export interface LineBulletProps extends HTMLAttributes<HTMLSpanElement> {
 
 /** A transit line bullet: the identifier in a circle inside a pill of the line's color. */
 export default function LineBullet({ line = "blue", accent, code, label, className, style, ...rest }: LineBulletProps) {
-  // OSM `colour` may arrive as bare hex, which CSS would reject outright.
-  const color = accent && /^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(accent) ? `#${accent}` : accent;
+  const color = accent ? lineCssColor(accent) : undefined;
   const ink = color ? lineBulletInk(color) : null;
   const classes = [
     "umbra-line-bullet",
