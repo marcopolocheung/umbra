@@ -54,12 +54,13 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
     })
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(SHARE_URL);
-  // R1 preview seam. R2 will choose UI theme from selected solar time;
-  // the basemap remains on its current day style until R4.
-  await page.evaluate((value) => {
-    document.documentElement.dataset.theme = value;
+  // R2: force the UI theme the way a user does — the persisted Settings override
+  // (the share link is 09:00 in June, so Auto would always be day). The basemap
+  // stays on its day style until R4.
+  await page.addInitScript((value) => {
+    localStorage.setItem("umbra:uiTheme", value);
   }, theme);
+  await page.goto(SHARE_URL);
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-ground").trim()))
     .toBe(theme === "day" ? "#efe4d2" : "#0e0c0b");
@@ -192,6 +193,23 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
   await page.mouse.move(sx - 120, sy, { steps: 2 });
   await shot("06-timeline-dragging.png")();
   await page.mouse.up();
+
+  // 8. R2 — the sheet raised to Settings, open on the theme override (Auto / Day / Night).
+  const handleBox = await sheet.boundingBox();
+  if (!handleBox) throw new Error("bottom sheet has no layout box");
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, 80, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  await page.getByTitle("Settings", { exact: true }).filter({ visible: true }).first().click();
+  const themeGroup = page.getByRole("group", { name: "Theme" }).filter({ visible: true }).first();
+  await themeGroup.scrollIntoViewIfNeeded();
+  await expect(themeGroup.getByRole("button", { name: theme === "day" ? "Day" : "Night" }))
+    .toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+  await shot("08-settings-theme.png")();
 
   console.log(`SHOTS_DONE ${path.join(OUT, theme)}`);
 });

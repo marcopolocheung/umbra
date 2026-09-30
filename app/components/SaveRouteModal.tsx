@@ -42,7 +42,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
       <div
         className="rounded-2xl shadow-2xl w-80 p-5 flex flex-col gap-4 border"
         style={{
-          background: "white",
+          background: "var(--color-panel)",
           borderColor: "var(--color-rule)",
           fontFamily: "var(--font-sans)",
         }}
@@ -77,7 +77,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             onChange={e => setFolderId(e.target.value || null)}
             className="border rounded px-2 py-1.5 text-xs focus:outline-none"
             style={{
-              background: "white",
+              background: "var(--color-ground)",
               color: "var(--color-ink)",
               borderColor: "var(--color-rule)",
               fontFamily: "var(--font-sans)",

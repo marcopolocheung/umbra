@@ -1,6 +1,15 @@
 import { useState } from "react";
+import type { ThemePreference } from "../lib/uiTheme";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "day", label: "Day" },
+  { value: "night", label: "Night" },
+];
 
 interface SettingsPanelProps {
+  themePreference: ThemePreference;
+  onThemePreferenceChange: (v: ThemePreference) => void;
   showSunLines: boolean;
   onShowSunLinesChange: (v: boolean) => void;
   showSheds: boolean;
@@ -8,6 +17,8 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({
+  themePreference,
+  onThemePreferenceChange,
   showSunLines,
   onShowSunLinesChange,
   showSheds,
@@ -42,6 +53,35 @@ export default function SettingsPanel({
           <div className="uppercase tracking-widest text-[11px] font-bold" style={{ color: "var(--color-ink-muted)" }}>
             Display
           </div>
+
+          {/* Umbra redesign 2.0 D2: the override changes panels only; the basemap
+              follows the sun so shadow detection never runs on a dark map. The focus
+              ring is inset because the rounded group clips an outer outline. */}
+          <fieldset className="flex flex-col gap-1.5 min-w-0 border-0 p-0 m-0">
+            <legend className="mb-1.5 p-0" style={{ color: "var(--color-ink)" }}>Theme</legend>
+            <div
+              className="flex rounded-lg overflow-hidden border"
+              style={{ borderColor: "var(--color-rule)" }}
+            >
+              {THEME_OPTIONS.map(({ value, label }) => (
+                <button type="button"
+                  key={value}
+                  onClick={() => onThemePreferenceChange(value)}
+                  aria-pressed={themePreference === value}
+                  aria-describedby="settings-theme-scope"
+                  className={`flex flex-1 min-h-11 items-center justify-center px-2.5 font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current ${
+                    themePreference === value ? "bg-ink text-on-ink" : "text-ink hover:bg-ground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span id="settings-theme-scope" className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
+              Auto follows the sun at the map's place and time. Day and Night change the
+              panels only, not the map.
+            </span>
+          </fieldset>
 
           <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
             <span style={{ color: "var(--color-ink)" }}>Sun direction lines</span>
