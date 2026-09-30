@@ -120,11 +120,7 @@ export function refreshRouteExposure(
     const durationSegments: ExposureSegment[] = [];
     for (const leg of nextLegs) {
       if (leg.type === "walk") {
-        const edges = leg.sampledEdges?.length
-          ? leg.sampledEdges
-          : geometryEdges({ ...route, geojson: leg.geojson, sampledEdges: undefined });
-        const result = sample(edges);
-        durationSegments.push(...result.segments);
+        durationSegments.push(...(leg.exposureSegments ?? []));
         continue;
       }
       const waitSec = Math.max(0, leg.waitSec ?? 0);
