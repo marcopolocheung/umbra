@@ -62,6 +62,51 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function abortReason(signal: AbortSignal): Error {
+  const reason = signal.reason;
+  return reason instanceof Error ? reason : new DOMException("Aborted", "AbortError");
+}
+
+/**
+ * Races a shared fetch against one waiter's signal without wiring the signal
+ * into the fetch itself: a cancelled waiter rejects here while the shared
+ * request continues for the callers that still need it. Mirrors
+ * `navigationData/remoteNavigation.ts`.
+ */
+function withCallerSignal<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    shared.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/** In-flight pointer/manifest fetches, keyed by URL. Entries are deleted on settle. */
+const inflight = new Map<string, Promise<unknown>>();
+
+function getOrFetch<T>(url: string, task: () => Promise<T>): Promise<T> {
+  const existing = inflight.get(url);
+  if (existing) return existing as Promise<T>;
+  const pending = task();
+  inflight.set(url, pending);
+  const cleanup = () => {
+    if (inflight.get(url) === pending) inflight.delete(url);
+  };
+  pending.then(cleanup, cleanup);
+  return pending;
+}
+
 /**
  * Fetches the tiny mutable pointer. `cache: "default"` on purpose: the pointer
  * ships `max-age=300`, and honouring that TTL keeps a route calculation from
@@ -71,13 +116,16 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 export async function loadTransitPointer(signal?: AbortSignal): Promise<TransitPointer | null> {
   const base = configuredBase();
   if (!base) return null;
-  const response = await fetch(`${base}/transit/nyc/current.json`, {
-    signal,
-    headers: { Accept: "application/json" },
-    cache: "default",
+  const url = `${base}/transit/nyc/current.json`;
+  const shared = getOrFetch(url, async () => {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "default",
+    });
+    if (!response.ok) throw new Error(`NYC transit pointer request failed (${response.status})`);
+    return parseTransitPointer(await response.json());
   });
-  if (!response.ok) throw new Error(`NYC transit pointer request failed (${response.status})`);
-  return parseTransitPointer(await response.json());
+  return withCallerSignal(shared, signal);
 }
 
 /** Fetches the manifest and verifies its bytes against the pointer's digest. */
@@ -87,18 +135,21 @@ export async function loadTransitManifest(
 ): Promise<TransitManifest> {
   const base = configuredBase();
   if (!base) throw new Error("VITE_TRANSIT_BASE is not configured");
-  const response = await fetch(`${base}/${pointer.manifestPath}`, {
-    signal,
-    headers: { Accept: "application/json" },
-    cache: "default",
+  const url = `${base}/${pointer.manifestPath}`;
+  const shared = getOrFetch(url, async () => {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "default",
+    });
+    if (!response.ok) throw new Error(`NYC transit manifest request failed (${response.status})`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_MANIFEST_BYTES)
+      throw new Error("NYC transit manifest exceeds its budget");
+    if ((await sha256Hex(bytes)) !== pointer.manifestSha256)
+      throw new Error("NYC transit manifest hash mismatch");
+    return parseTransitManifest(JSON.parse(new TextDecoder().decode(bytes)), pointer.generation);
   });
-  if (!response.ok) throw new Error(`NYC transit manifest request failed (${response.status})`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > MAX_MANIFEST_BYTES)
-    throw new Error("NYC transit manifest exceeds its budget");
-  if ((await sha256Hex(bytes)) !== pointer.manifestSha256)
-    throw new Error("NYC transit manifest hash mismatch");
-  return parseTransitManifest(JSON.parse(new TextDecoder().decode(bytes)), pointer.generation);
+  return withCallerSignal(shared, signal);
 }
 
 /**
@@ -204,4 +255,5 @@ export async function loadTransitDataset(
 /** Test seam: the module cache outlives a single route calculation by design. */
 export function clearTransitCache(): void {
   cached = undefined;
+  inflight.clear();
 }

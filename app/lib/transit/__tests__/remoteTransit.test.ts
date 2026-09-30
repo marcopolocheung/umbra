@@ -145,8 +145,11 @@ function stubFetch(published: Published): string[] {
   const calls: string[] = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(url);
+      // Like a real fetch, a signal aborted before the response lands rejects it.
+      await Promise.resolve();
+      if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (url.endsWith("/current.json")) return { ok: true, status: 200, json: async () => published.pointer };
       if (url.endsWith("/manifest.json")) return bytesResponse(published.manifestBytes);
       const key = url.slice(url.lastIndexOf("/") + 1);
@@ -635,6 +638,25 @@ describe("transit transport", () => {
     await loadTransitDataset({ subway: true });
     expect(afterFirst).toBe(1);
     expect(calls.filter((u) => u.endsWith("subway.json"))).toHaveLength(1);
+  });
+
+  it("shares one pointer and one manifest request between overlapping loads", async () => {
+    const published = await publish({ "subway.json": subwayShard() });
+    const calls = stubFetch(published);
+    await Promise.all([loadTransitDataset({ subway: true }), loadTransitDataset({ subway: true })]);
+    expect(calls.filter((u) => u.endsWith("/current.json"))).toHaveLength(1);
+    expect(calls.filter((u) => u.endsWith("/manifest.json"))).toHaveLength(1);
+  });
+
+  it("does not let one waiter's abort cancel another's shared request", async () => {
+    const published = await publish({ "subway.json": subwayShard() });
+    stubFetch(published);
+    const controller = new AbortController();
+    const aborted = loadTransitDataset({ subway: true }, undefined, controller.signal);
+    const kept = loadTransitDataset({ subway: true });
+    controller.abort();
+    await expect(aborted).rejects.toThrow(/abort/i);
+    expect((await kept)?.generation).toBe(generation);
   });
 
   it("drops everything when a new generation is promoted", async () => {
