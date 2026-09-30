@@ -37,7 +37,7 @@ inspiration; the public mirror publishes everything here.
   quad, tilt and grain live on inner layers, the plate's 10% inner stroke is the band between
   two nested clipped quads and turns full ink on focus, and the small primitives get a
   page-ink ring outside the box. Nothing consumes the primitives yet; R5 is the first user.
-- **Open PRs:** R3 — see #131. Follow-ups filed: #124, #125, #126 (R2); #128 (Plate cannot
+- **Open PRs:** R3 — #132 (fixes #131). Follow-ups filed: #124, #125, #126 (R2); #128 (Plate cannot
   be a control — R5 needs `as="button"`), #129 (R9: ink reveal is a straight wipe, not an
   ink-threshold mask), #130 (grain vs Safari/Firefox reduce-transparency; danger tag 6.39:1
   by day).
