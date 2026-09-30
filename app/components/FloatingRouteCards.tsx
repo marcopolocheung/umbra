@@ -4,6 +4,7 @@ import type { RouteOption } from "../lib/routing";
 import { shortestRoute } from "../lib/routeTradeoff";
 import RouteCard from "./RouteCard";
 import SolarPill from "./SolarPill";
+import Plate from "./ui/Plate";
 
 interface FloatingRouteCardsProps {
   routes: RouteOption[];
@@ -92,14 +93,9 @@ export default function FloatingRouteCards({
 
         {/* Start navigating */}
         {onStartNavigation && !selectedRoute?.partial && (
-          <button
-            type="button"
-            onClick={onStartNavigation}
-            className="w-full min-h-11 px-4 py-3 rounded-lg text-sm font-bold transition-colors"
-            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-          >
+          <Plate as="button" tone="ink" onClick={onStartNavigation} className="umbra-start-plate">
             START NAVIGATING
-          </button>
+          </Plate>
         )}
       </div>
     </div>

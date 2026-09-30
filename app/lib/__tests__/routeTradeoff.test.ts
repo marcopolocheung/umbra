@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { RouteLeg, RouteOption } from "../routing";
+import type { ResolvedExposureContext } from "../exposure";
 import {
+  routeAfterSunset,
   routeExposureLine,
   routeExposureMinutes,
   routeExposureScope,
   routeShadowLabel,
+  routeSplitBasis,
   routeTradeoffLine,
   shortestRoute,
   transitOutdoorExposure,
@@ -267,5 +270,54 @@ describe("transit exposure — time outdoors, not walk metres", () => {
   it("leaves walk routes exactly as they were", () => {
     expect(routeShadowLabel(route("Shortest", 1000, 0.25))).toBe("25% shadow");
     expect(routeExposureScope(route("Shortest", 1000, 0.25))).toBeNull();
+  });
+});
+
+/** Evaluated in Midtown at a UTC instant: 14:00Z is 10:00 EDT, 03:00Z is 23:00 EDT. */
+function evaluatedAt(r: RouteOption, iso: string, objective: "sun" | "rain" = "sun"): RouteOption {
+  const evaluatedContext = {
+    objective,
+    time: new Date(iso),
+    referenceLocation: { lat: 40.754, lng: -73.984 },
+  } as ResolvedExposureContext;
+  return { ...r, objective, evaluatedContext };
+}
+
+describe("after sunset (R5)", () => {
+  const night = "2026-06-21T03:00:00Z";
+  const day = "2026-06-21T14:00:00Z";
+
+  it("follows the route's own evaluated time and place, not the card's clock", () => {
+    expect(routeAfterSunset(evaluatedAt(route("Shortest", 600, 1), night))).toBe(true);
+    expect(routeAfterSunset(evaluatedAt(route("Shortest", 600, 0.3), day))).toBe(false);
+    // Unknown context is never assumed dark.
+    expect(routeAfterSunset(route("Shortest", 600, 1))).toBe(false);
+    // Shelter from rain does not depend on the sun.
+    expect(routeAfterSunset(evaluatedAt(route("Driest", 600, 1), night, "rain"))).toBe(false);
+  });
+
+  it("quotes no shadow share after sunset — every metre is dark by definition", () => {
+    const r = evaluatedAt(route("Shortest", 600, 1), night);
+    expect(routeShadowLabel(r)).toBe("after sunset");
+    expect(routeExposureLine(r)).toBe("no sun at the selected time");
+  });
+
+  it("keeps the time cost and drops the sun comparison after sunset", () => {
+    const baseline = evaluatedAt(route("Shortest", 600, 1), night);
+    const longer = evaluatedAt(route("Most shadowed", 900, 1), night);
+    expect(routeTradeoffLine(longer, baseline)).toBe("+4 min, no sun at the selected time");
+  });
+});
+
+describe("routeSplitBasis", () => {
+  it("names distance for a walk and time outdoors for a transit trip", () => {
+    const walk = route("Shortest", 600, 0.3);
+    const transit: RouteOption = {
+      ...walk,
+      legs: [{ type: "transit", geojson: walk.geojson, travelTimeSec: 600 }],
+    };
+    expect(routeSplitBasis(walk)).toBe("distance");
+    expect(routeSplitBasis(transit)).toBe("time outdoors");
+    expect(routeSplitBasis({ ...transit, objective: "rain" })).toBe("distance");
   });
 });
