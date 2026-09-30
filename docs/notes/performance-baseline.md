@@ -444,6 +444,29 @@ buildings. The saving scales with stop count × loaded building features, so rea
 zoomed out over Manhattan should save more. That case was not measured here: it needs a key,
 and the smoke fixture is what keeps this repeatable.
 
+## Playback sun-worker posts (#101)
+
+Measured 2026-09-29, before on `main` at `7c10926` and after on the fix branch. Setup: G1
+camera and clock (`?lat=40.754&lng=-73.984&z=17&date=2026-06-21&time=09:00`, real MapTiler
+tiles), `npm run dev`, Playwright Chromium on SwiftShader. Each run clicks Play for 10 s. The
+counters were temporary and are not committed: one on every `sunWorker.postMessage`, one on
+every reply, and one on every reply that cleared the 0.15° gate and marked the layer dirty.
+There were three runs per side.
+
+| per 10 s of play | before | after |
+|---|---:|---:|
+| worker posts | 38 / 38 / 38 | **16 / 17 / 12** |
+| dirty replies | 16 / 16 / 16 | 16 / 17 / 12 |
+
+The issue's premise was that the gate discards most answers. It doesn't. A Node replay of
+SunCalc at this location shows every 2-minute play tick moves the sun past 0.15° (720/720 over
+a full day in time mode; 170–186 of 200 ticks in day mode). The waste was duplicates. Each
+tick reached the worker up to three times with the same timestamp and center: through
+`setDate`, and through `page.tsx`'s exposure effect calling `setExposureContext` and then
+`setHazard("sun")`. The fix drops a request identical to the previous one. In time mode that
+leaves posts equal to dirty replies. In day mode a few ticks still fall under the gate. SwiftShader holds React to about 1.6 ticks/s here. A real GPU runs up to
+20 ticks/s, so the saving there is up to 40 structured-clone round-trips per second of play.
+
 ## Missing Measurements
 
 The backlog (#37) asks for throttled-4G time-to-interactive **and** representative

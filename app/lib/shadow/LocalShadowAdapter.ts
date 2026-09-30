@@ -175,6 +175,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private visuallyEnabled = true;
 
   private sunWorker: Worker | null = null;
+  // The last request sent to the worker. Each play tick reaches the worker
+  // through setDate, setExposureContext and setHazard with the same time and
+  // center, so repeats are dropped here rather than answered and discarded.
+  private lastSunRequestKey: string | null = null;
 
   // Offscreen FBO for single-write shadow compositing
   private fbo: WebGLFramebuffer | null = null;
@@ -400,8 +404,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     if (this.map && this.sunWorker) {
       // Phase 4: Delegate sun computation to worker — dirty check happens in onmessage
-      const center = this.map.getCenter();
-      this.sunWorker.postMessage({ lat: center.lat, lon: center.lng, timestamp: date.getTime() });
+      this.postSunRequest(date);
       return;
     }
 
@@ -528,11 +531,19 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     return { azimuthRad: azRad, altitudeRad: altRad, sunBelow: altRad <= 0 };
   }
 
+  private postSunRequest(date: Date) {
+    if (!this.map || !this.sunWorker) return;
+    const center = this.map.getCenter();
+    const key = `${center.lat},${center.lng},${date.getTime()}`;
+    if (key === this.lastSunRequestKey) return;
+    this.lastSunRequestKey = key;
+    this.sunWorker.postMessage({ lat: center.lat, lon: center.lng, timestamp: date.getTime() });
+  }
+
   private requestSunPosition() {
     if (!this.map) return;
     if (this.sunWorker) {
-      const center = this.map.getCenter();
-      this.sunWorker.postMessage({ lat: center.lat, lon: center.lng, timestamp: this.currentDate.getTime() });
+      this.postSunRequest(this.currentDate);
       return;
     }
     const center = this.map.getCenter();
