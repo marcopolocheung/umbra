@@ -506,3 +506,11 @@ over. Playwright Chromium runs on this machine (`LD_LIBRARY_PATH=$HOME/miniconda
 and since G1 the repo owns a browser setup that runs in CI. What TTI still needs is
 a throttling profile and a definition of "interactive" for a map that keeps painting
 after first render; neither is inherited from the route benchmark.
+
+## Perf-audit fixes (2026-09-29 audit of `7c10926`)
+
+One row per issue from the read-only audit. "Method" is the issue's own before/after check.
+
+| Issue | Method | Before | After |
+|---|---|---|---|
+| #106 `suggestPlaces` cache key omits `limit` | unit test: typeahead (default 6) then submit (`limit: 4`), same query + anchor | 1 fetch; submit reads the typeahead's 6-row entry | 2 fetches; submit requests `limit=4` |
