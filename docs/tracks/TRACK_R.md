@@ -24,27 +24,36 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R2 — theme engine, awaiting owner review.
-- **Done:** R0 (#120) and R1 (#122) merged; the #91 navigation-hook baseline was repaired in
-  #121. R2 adds `useUiTheme` (`app/lib/uiTheme.ts` holds the pure rule): `data-theme` follows
-  SunCalc altitude at the selected map place/time (day > 0°, night ≤ 0°; day while the place
-  is unknown), and Settings → Theme (Auto/Day/Night) persists an override under
-  `umbra:uiTheme`. The hook also returns `solar`, which ignores the override — R4's
-  basemap switch reads that. Three literal `white` surfaces moved to role tokens; the night
-  block sets `color-scheme: dark`. `main.tsx` applies a saved override before React mounts,
-  so it also reaches `/about`; on Auto the UI is day until the map place is known. The shot harness forces a theme through the persisted
-  override and adds `08-settings-theme.png`.
-- **Open PRs:** R2 — #127 (fixes #123). Follow-ups filed: #124 (Auto paints day until the map place is known), #125 (design:check misses named colours), #126 (segmented-control and Settings touch/contrast debt for R3/R5).
+- **Active checkpoint:** R3 — primitives, awaiting owner review.
+- **Done:** R0 (#120), R1 (#122) and R2 (#127, fixes #123) merged; the #91 navigation-hook
+  baseline was repaired in #121. R2's `useUiTheme` drives `data-theme` from SunCalc altitude
+  at the selected place/time, with a persisted Settings override (`umbra:uiTheme`); its
+  `solar` output ignores the override and is what R4's basemap switch reads. R3 adds
+  `app/components/ui/` — `Plate` (tone panel/shade/ink, optional tilt), `Kicker` (bare or
+  plated), `Tag` (neutral + meaning tones), `LineBullet` (`code` always shown, "Line Q Uptown"
+  to screen readers), `StampBadge`, `GrainSurface` — and `motion.ts` (`STAMP`, `INK_REVEAL`).
+  Their CSS is one `@layer components` section of `app/globals.css`, with two new tokens
+  (`--filter-plate`, `--grain-opacity`, day and night). Every host box stays square: the
+  quad, tilt and grain live on inner layers, the plate's 10% inner stroke is the band between
+  two nested clipped quads and turns full ink on focus, and the small primitives get a
+  page-ink ring outside the box. `INK_REVEAL` now uses a rough SVG alpha mask that moves
+  left to right and clears at completion. Nothing consumes the primitives yet; R5 is the first user.
+- **Open PRs:** R3 — #132 (fixes #131, closes #129). Follow-ups filed: #124, #125, #126 (R2);
+  #128 (Plate cannot be a control — R5 needs `as="button"`), #130 (grain vs Safari/Firefox
+  reduce-transparency; danger tag 6.39:1 by day).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
-  `docs/design/language.md` is binding. R2's Settings copy says the override changes "the
-  panels only, not the map" — true before and after R4.
-- **Blocked on:** owner visual review of R2.
-- **Next action:** review the R2 shots under `docs/design/shots/r2/`, merge on sign-off, then
-  R3 (primitives).
-- **Last verified:** 2026-09-30; lint, typecheck, build, design:check and 1,663 unit tests
-  pass; the day and night shot runs pass on the live basemap, and all nine states per theme
-  are committed before (R1 seam) and after. `08-settings-theme.png` has no before.
-
+  `docs/design/language.md` is binding. R3 reads the brief's "Plate (inner stroke)" as the
+  reference's 10%-ink inner stroke; plate focus reuses that band at full ink.
+- **Blocked on:** owner visual review of R3.
+- **Next action:** review `docs/design/shots/r3/` (R2/R3 app pairs plus primitive, focus and
+  paused-reveal specimens in both themes),
+  merge on sign-off, then R4 (the map — main session only, invariant #5).
+- **Last verified:** 2026-09-30; Node 24 lint (0 errors), typecheck, build, design:check and
+  1,685 unit tests pass. The 390×844 fixture-basemap app shots from R2 and R3 are pixel
+  identical in both themes, and all 10 committed shots are 780×1688 physical pixels.
+  Browser checks cover the rough edge at 150 ms, full visibility and an unclipped hard
+  shadow at completion, and immediate visibility under reduced motion. A real-phone cost
+  check of the new mask is still outstanding.
 ---
 
 ## Decisions R0 must settle (owner's call)

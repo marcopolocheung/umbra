@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RemoteTileController, MAX_CONCURRENT_TILE_LOADS, PEAK_TILE_BYTES } from "../RemoteTileController";
 import type { DebugWorkerEvent } from "../protocol";
 import { FIXTURE_GENERATION, FIXTURE_TILE, makeDebugV2Fixtures } from "./v2Fixtures";
@@ -10,8 +10,8 @@ function response(bytes: Uint8Array, status = 200) {
     clone() { return response(bytes, status); },
   };
 }
-async function settle() {
-  for (let i = 0; i < 30; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+async function waitForEvent(events: DebugWorkerEvent[], predicate: (event: DebugWorkerEvent) => boolean) {
+  await vi.waitFor(() => expect(events.some(predicate)).toBe(true), { timeout: 10_000, interval: 20 });
 }
 
 async function configured(options: { bundle?: Uint8Array; schedule?: (task: () => void) => void; budget?: number; cache?: boolean } = {}) {
@@ -36,7 +36,7 @@ async function configured(options: { bundle?: Uint8Array; schedule?: (task: () =
     },
   });
   controller.handle({ type: "configureGeneration", requestId: 1, baseUrl: "https://shadow.fixture.test", budget: options.budget ?? 96 * 1024 * 1024 });
-  await settle();
+  await waitForEvent(events, (event) => event.type === "generationReady");
   expect(events.some((event) => event.type === "generationReady")).toBe(true);
   return { controller, events, fixture, tileFetches: () => tileFetches };
 }
@@ -45,7 +45,7 @@ describe("RemoteTileController", () => {
   it("pins a valid v2 pointer/root/coverage and rejects corrupt bundles as errors, never empty tiles", async () => {
     const { controller, events } = await configured({ bundle: (await makeDebugV2Fixtures()).corruptBundle });
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileError" && event.tile === FIXTURE_TILE);
     expect(events.some((event) => event.type === "tileError" && event.tile === FIXTURE_TILE)).toBe(true);
     expect(events.some((event) => event.type === "tileReady" && event.tile === FIXTURE_TILE)).toBe(false);
   });
@@ -55,7 +55,7 @@ describe("RemoteTileController", () => {
     for (const bundle of [fixtures.mixedGenerationBundle, fixtures.rootIdentityMismatchBundle]) {
       const { controller, events } = await configured({ bundle });
       controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
-      await settle();
+      await waitForEvent(events, (event) => event.type === "tileError" && event.tile === FIXTURE_TILE);
       expect(events.some((event) => event.type === "tileError" && event.tile === FIXTURE_TILE)).toBe(true);
       expect(events.some((event) => event.type === "tileReady")).toBe(false);
     }
@@ -65,7 +65,7 @@ describe("RemoteTileController", () => {
     const fixtures = await makeDebugV2Fixtures();
     const { controller, events } = await configured({ bundle: fixtures.unknownSupportBundle });
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileIncomplete" && event.tile === FIXTURE_TILE);
     expect(events.some((event) => event.type === "tileReady" && !event.complete)).toBe(true);
     expect(events.some((event) => event.type === "tileIncomplete" && /unknown source support/.test(event.error ?? ""))).toBe(true);
   });
@@ -76,7 +76,7 @@ describe("RemoteTileController", () => {
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
     controller.handle({ type: "setInterests", requestId: 3, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [] });
     queued.splice(0).forEach((task) => task());
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileReleased" && event.tile === FIXTURE_TILE);
     expect(tileFetches()).toBe(0);
     expect(events.some((event) => event.type === "tileReady")).toBe(false);
     expect(events.some((event) => event.type === "tileReleased" && event.tile === FIXTURE_TILE)).toBe(true);
@@ -87,7 +87,7 @@ describe("RemoteTileController", () => {
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
     controller.handle({ type: "setInterests", requestId: 3, generation: FIXTURE_GENERATION, interestId: "probe", tiles: [FIXTURE_TILE] });
     controller.handle({ type: "releaseInterest", requestId: 4, generation: FIXTURE_GENERATION, interestId: "viewport" });
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileReady" && event.tile === FIXTURE_TILE);
     expect(events.some((event) => event.type === "tileReady" && event.tile === FIXTURE_TILE)).toBe(true);
     expect(events.some((event) => event.type === "tileReleased" && event.requestId === 4)).toBe(false);
   });
@@ -95,10 +95,10 @@ describe("RemoteTileController", () => {
   it("accounts Cache Storage per generation and resets the visible namespace on supersession", async () => {
     const { controller, events } = await configured({ cache: true });
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileReady" && event.tile === FIXTURE_TILE);
     expect(events.filter((event) => event.type === "accounting").some((event) => event.type === "accounting" && event.accounting.cacheBytes > 0)).toBe(true);
     controller.handle({ type: "configureGeneration", requestId: 3, baseUrl: "https://shadow.fixture.test", budget: 96 * 1024 * 1024 });
-    await settle();
+    await vi.waitFor(() => expect(events.filter((event) => event.type === "generationReady")).toHaveLength(2), { timeout: 10_000, interval: 20 });
     const accounting = events.filter((event) => event.type === "accounting").at(-1);
     expect(accounting?.type === "accounting" && accounting.accounting.cacheBytes).toBe(0);
   });
@@ -106,7 +106,7 @@ describe("RemoteTileController", () => {
   it("reserves before fetch and refuses a load that cannot fit the 96 MiB-style budget", async () => {
     const { controller, events, tileFetches } = await configured({ budget: PEAK_TILE_BYTES - 1 });
     controller.handle({ type: "setInterests", requestId: 2, generation: FIXTURE_GENERATION, interestId: "viewport", tiles: [FIXTURE_TILE] });
-    await settle();
+    await waitForEvent(events, (event) => event.type === "tileIncomplete" && event.tile === FIXTURE_TILE);
     expect(events.some((event) => event.type === "tileIncomplete" && /budget refusal/.test(event.error ?? ""))).toBe(true);
     expect(tileFetches()).toBe(0);
   });
