@@ -158,10 +158,16 @@ export interface RouteLegSummary {
   detail: string;
 }
 
+/**
+ * `afterSunset` drops the per-leg shadow shares a sun route would quote: with
+ * the sun down they are every metre by definition, not a daylight estimate,
+ * and the card already says why (`routeAfterSunset`). Rain figures stay.
+ */
 export function routeLegSummary(
   leg: RouteLeg,
   index: number,
   travelMode: TravelModeId = "walk",
+  afterSunset = false,
 ): RouteLegSummary {
   if (leg.type === "transit") {
     const line = leg.lineName || leg.line || "Transit";
@@ -171,7 +177,7 @@ export function routeLegSummary(
       // Named rather than folded in silently: the quoted time includes the
       // platform, and where the rider stands waiting for a bus it also includes
       // the sun they stand in.
-      transitWaitLabel(leg.waitSec, leg.waitExposure),
+      transitWaitLabel(leg.waitSec, afterSunset && leg.waitExposure?.objective !== "rain" ? undefined : leg.waitExposure),
       stopCount != null ? `${stopCount} stop${stopCount === 1 ? "" : "s"}` : null,
       (leg.waitExposure?.objective === "rain" || leg.vehicleSheltered === true)
         ? (leg.vehicleSheltered ? "enclosed vehicle assumed sheltered" : "vehicle shelter unknown")
@@ -185,7 +191,9 @@ export function routeLegSummary(
   }
 
   const rain = leg.exposure?.objective === "rain" || leg.shelterCoverage != null;
-  const protection = rain ? leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct : leg.shadowCoverage;
+  const protection = rain
+    ? leg.shelterCoverage ?? leg.exposure?.shelteredDistancePct
+    : afterSunset ? undefined : leg.shadowCoverage;
   const parts = [
     leg.distanceM != null ? formatDist(leg.distanceM) : null,
     protection != null ? `${Math.round(protection * 100)}% ${rain ? "sheltered" : "shadow"}` : null,

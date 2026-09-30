@@ -334,7 +334,7 @@ export default function RouteCard({
               <div className="umbra-kicker">Journey legs</div>
               <ol className="mt-1 flex flex-col gap-1.5">
                 {r.legs.map((leg, index) => {
-                  const summary = routeLegSummary(leg, index, r.travelMode ?? "walk");
+                  const summary = routeLegSummary(leg, index, r.travelMode ?? "walk", afterSunset);
                   return (
                     <li key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[11px]">
                       {leg.type === "transit" ? (

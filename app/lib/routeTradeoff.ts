@@ -364,13 +364,6 @@ export function shortestRoute(routes: RouteOption[]): RouteOption | null {
 }
 
 /**
- * The headline shadow figure, worded for what it covers.
- *
- * On a transit card a bare "N% shadow" beside a twenty-minute ride reads as a
- * claim about the ride, so it says it is about the time on foot — or that it
- * is unknown, rather than quoting a sliver of it.
- */
-/**
  * The headline shade share, 0–1. A transit trip's is re-derived from its legs:
  * a conditions refresh re-samples those legs but leaves the route-level
  * `shadowCoverage` at its calculation-time value, so reading that field put a
@@ -383,6 +376,13 @@ export function routeShadowShare(route: RouteOption): number {
   return route.shadowCoverage;
 }
 
+/**
+ * The headline shadow figure, worded for what it covers.
+ *
+ * On a transit card a bare "N% shadow" beside a twenty-minute ride reads as a
+ * claim about the ride, so it says it is about the time on foot — or that it
+ * is unknown, rather than quoting a sliver of it.
+ */
 export function routeShadowLabel(route: RouteOption): string {
   if (route.objective === "rain") {
     const protection = route.exposure?.shelteredDistancePct ?? route.dryCoverage;

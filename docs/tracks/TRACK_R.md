@@ -39,7 +39,8 @@ inspiration; the public mirror publishes everything here.
   ink-ruled, shade against solid `--color-sun-signal`, with its basis stated under it
   (`routeSplitBasis`: distance for a walk, time outdoors for transit). After sunset at the
   route's own `evaluatedContext` time and place (`routeAfterSunset`, the theme's 0° rule),
-  the card says "after sunset", draws no bar and drops the continuity/breaks cells; it used
+  the card says "after sunset", draws no bar and drops the continuity/breaks cells and the
+  per-leg shadow shares (`routeLegSummary(..., afterSunset)`); it used
   to read "100% shadow". A transit card's figure comes from its legs (`routeShadowShare`),
   because the route-level field goes stale after a refresh (#144). R4a adds `app/lib/basemapTheme.ts`:
   day (warm paper) and night (warm black) palettes, tokens `--color-basemap-{day,night}-*`,
@@ -72,9 +73,11 @@ inspiration; the public mirror publishes everything here.
 - **Blocked on:** owner visual review of R5a (`docs/design/shots/r5/`). Open owner calls:
   the ink start plate is clipped like the decorative plates (hit area stays square), and
   transit bullets use the line's published colour rather than the three reference quartets.
+  The transit bar's basis reads "time outdoors share" where `language.md` says "distance
+  share": the figure is time-weighted, so the recipe wording needs the amendment.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R5b (#143) — directions chrome and navigation status, with #126.
-- **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,741 unit
+- **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,742 unit
   tests, build, design:check and e2e 16/16 (smoke, smoke-live, nav-smoke). At 390×844 the
   selected card's verdict, bar and key sit inside the mid snap (bar ends ~y777 of 844 in the
   headless shot, ~31px lower than R4b); a real-phone check with browser chrome is outstanding.
