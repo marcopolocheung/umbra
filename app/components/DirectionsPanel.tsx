@@ -13,7 +13,6 @@ import RouteCard from "./RouteCard";
 import SolarPill from "./SolarPill";
 import type { ReactNode } from "react";
 import SavedRoutesSection from "./SavedRoutesSection";
-import Plate from "./ui/Plate";
 
 /**
  * The collapsed trip bar: once options exist, the planning form folds into one
@@ -636,9 +635,9 @@ export default function DirectionsPanel({
           </div>
 
           {onStartNavigation && routes.length > 0 && !selectedRoute?.partial && (
-            <Plate as="button" tone="ink" onClick={onStartNavigation} className="umbra-start-plate mt-2">
+            <button type="button" onClick={onStartNavigation} className="umbra-start-button mt-2">
               START NAVIGATING
-            </Plate>
+            </button>
           )}
         </div>
       )}

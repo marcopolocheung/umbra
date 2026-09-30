@@ -31,8 +31,9 @@ inspiration; the public mirror publishes everything here.
 - **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139) and R4b (#141) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
-  the start action as `Plate as="button" tone="ink"` (`Plate` now takes `button`/`a`, #128;
-  a focused ink plate also takes the page-ink outline, since its cream band matches the page).
+  `Plate` now takes `button`/`a` (#128; a focused ink plate also takes the page-ink outline,
+  since its cream band matches the page), though the start action ended up a square ink
+  `.umbra-start-button` by owner call.
   `LineBullet accent` fills with the line's published colour; `lib/lineBulletInk.ts` picks the
   identifier ink by WCAG contrast (`--color-line-ink-{dark,light}`), or rings the identifier
   when neither reaches 4.5:1 (the 7's purple, the J/Z brown). The split bar is square and
@@ -70,11 +71,10 @@ inspiration; the public mirror publishes everything here.
   (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
   panels the UI theme. R4a maps all trail and bike-route lines to the neutral path role (their
   magenta had no 2.0 meaning), and keeps outdoor-v2's residential wash translucent (`tint`).
-- **Blocked on:** owner visual review of R5a (`docs/design/shots/r5/`). Open owner calls:
-  the ink start plate is clipped like the decorative plates (hit area stays square), and
-  transit bullets use the line's published colour rather than the three reference quartets.
-  The transit bar's basis reads "time outdoors share" where `language.md` says "distance
-  share": the figure is time-weighted, so the recipe wording needs the amendment.
+- **Blocked on:** owner visual review of R5a (`docs/design/shots/r5/`). Owner calls settled
+  in review and written into `language.md`: transit bars say "time outdoors share"; the
+  start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
+  bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R5b (#143) — directions chrome and navigation status, with #126.
 - **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,742 unit

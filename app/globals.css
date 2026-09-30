@@ -475,19 +475,25 @@ body {
      ink plate also takes the small-host ring: page ink outside its square box. */
   .umbra-plate--ink:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
-  /* The trip's one primary action: a full-width ink plate, square 44px+ hit area. */
-  .umbra-start-plate {
+  /* The trip's one primary action: a control, so square and untilted (D4) — an
+     ink block with the hard offset shadow, ≥44px tall, focus ringed outside it. */
+  .umbra-start-button {
     display: flex;
     width: 100%;
     min-height: 2.75rem;
     align-items: center;
     justify-content: center;
     padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-ink);
+    color: var(--color-on-ink);
+    box-shadow: var(--shadow-hard-2);
     font-family: var(--font-label);
     font-weight: 800;
     font-size: var(--text-small);
     letter-spacing: 0.08em;
   }
+  .umbra-start-button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
   .umbra-kicker {
     display: inline-block;
