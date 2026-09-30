@@ -181,6 +181,8 @@
 }
 
 html[data-theme="night"] {
+  /* Native controls (checkboxes, selects, date pickers, scrollbars) follow the theme. */
+  color-scheme: dark;
   --color-ground: #0e0c0b;
   --color-panel: #171412;
   --color-ink: #f4e6d1;

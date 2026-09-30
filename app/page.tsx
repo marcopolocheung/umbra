@@ -36,6 +36,7 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
+import { useUiTheme } from "./hooks/useUiTheme";
 import { contextConditionsLabel, resolveExposureContext } from "./lib/exposure";
 
 import { useAgent } from "./hooks/useAgent";
@@ -242,6 +243,7 @@ export default function Home() {
     mapRef,
     dateRef,
   } = shadow;
+  const { preference: themePreference, setPreference: setThemePreference } = useUiTheme(date, mapCenter);
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
   const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date });
@@ -971,7 +973,7 @@ export default function Home() {
     <div className="flex flex-col gap-2">
       <div
         className="rounded-xl border p-2 flex flex-col gap-2"
-        style={{ background: "white", borderColor: "var(--color-rule)" }}
+        style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
       >
         <AccumulationPanel
           accumulation={accumulation}
@@ -984,6 +986,8 @@ export default function Home() {
           }
         />
         <SettingsPanel
+          themePreference={themePreference}
+          onThemePreferenceChange={setThemePreference}
           showSunLines={showSunLines}
           onShowSunLinesChange={setShowSunLines}
           showSheds={showSheds}
@@ -1442,7 +1446,7 @@ export default function Home() {
               />
               <div
                 className="mt-2 rounded-xl border p-1.5 flex flex-col gap-1"
-                style={{ background: "white", borderColor: "var(--color-rule)" }}
+                style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
               >
                 <AccumulationPanel
                   accumulation={accumulation}
@@ -1460,6 +1464,8 @@ export default function Home() {
                   }
                 />
                 <SettingsPanel
+                  themePreference={themePreference}
+                  onThemePreferenceChange={setThemePreference}
                   showSunLines={showSunLines}
                   onShowSunLinesChange={setShowSunLines}
                   showSheds={showSheds}

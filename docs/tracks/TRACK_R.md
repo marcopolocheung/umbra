@@ -24,18 +24,26 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R1 — registry and enforcement, awaiting owner review.
-- **Done:** R0 — decision record, canonical spec, contrast table, reference and day/night
-  vignettes; owner approved #120 for merge on 2026-09-29. Navigation-hook baseline #91
-  was repaired in #121 before R1.
-- **Open PRs:** R1; R0 and the #91 baseline fix merged as #120 and #121.
-- **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved. Sun = signal
-  orange; shade = cool; route = neutral cased line; UI theme may be overridden, while the
-  basemap follows solar altitude. `docs/design/language.md` becomes binding with #120's merge.
-- **Blocked on:** owner visual review of R1.
-- **Next action:** review the R1 day/night phone shots and PR, then merge on sign-off.
-- **Last verified:** 2026-09-30; lint, typecheck, build, design:check, 1,652 unit tests and
-  all nine browser checks pass. Day/night phone shots were refreshed.
+- **Active checkpoint:** R2 — theme engine, awaiting owner review.
+- **Done:** R0 (#120) and R1 (#122) merged; the #91 navigation-hook baseline was repaired in
+  #121. R2 adds `useUiTheme` (`app/lib/uiTheme.ts` holds the pure rule): `data-theme` follows
+  SunCalc altitude at the selected map place/time (day > 0°, night ≤ 0°; day while the place
+  is unknown), and Settings → Theme (Auto/Day/Night) persists an override under
+  `umbra:uiTheme`. The hook also returns `solar`, which ignores the override — R4's
+  basemap switch reads that. Three literal `white` surfaces moved to role tokens; the night
+  block sets `color-scheme: dark`. `main.tsx` applies a saved override before React mounts,
+  so it also reaches `/about`; on Auto the UI is day until the map place is known. The shot harness forces a theme through the persisted
+  override and adds `08-settings-theme.png`.
+- **Open PRs:** R2.
+- **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
+  `docs/design/language.md` is binding. R2's Settings copy says the override changes "the
+  panels only, not the map" — true before and after R4.
+- **Blocked on:** owner visual review of R2.
+- **Next action:** review the R2 shots under `docs/design/shots/r2/`, merge on sign-off, then
+  R3 (primitives).
+- **Last verified:** 2026-09-30; lint, typecheck, build, design:check and 1,663 unit tests
+  pass; the day and night shot runs pass on the live basemap, and all nine states per theme
+  are committed before (R1 seam) and after. `08-settings-theme.png` has no before.
 
 ---
 
