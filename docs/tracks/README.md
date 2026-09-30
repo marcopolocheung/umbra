@@ -36,6 +36,8 @@ Tracks are `a`–`h` plus `p` and `u`. `h` (Sun Budget) is gated on A6+G2; `p` (
 unblocked and owns the cheapest work on the board — see `docs/ROADMAP.md` §3. `u` (UI &
 Design Language) is the design wave: strictly sequential, mobile-first, every PR visually
 reviewed by the owner — read `docs/handoffs/DESIGN_LANGUAGE.md` before starting it.
+`r` (Umbra Redesign 2.0) succeeds U's design wave under the same sequential rules; U and R
+never run at the same time.
 
 …or to resume a specific checkpoint:
 
