@@ -1260,7 +1260,7 @@ export default function Home() {
         </span>
       </button>
 
-      {!uiHidden && shadowLayerReady && !shadowLegendDismissed && !accumulation.enabled && (
+      {!uiHidden && shadowLayerReady && !shadowLegendDismissed && !accumulation.enabled && !rainMode && solar === "day" && (
         <div className="absolute left-4 top-20 z-20 md:left-6 md:top-20">
           <ShadowLegend onDismiss={handleDismissShadowLegend} />
         </div>

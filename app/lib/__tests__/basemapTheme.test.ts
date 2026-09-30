@@ -16,6 +16,14 @@ const rgb = (color: string): Rgb =>
     ? [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16))
     : color.slice(color.indexOf("(") + 1).split(",").slice(0, 3).map(Number)) as unknown as Rgb;
 const warmth = ([r, g, b]: Rgb) => (r + g) / 2 - b;
+const luminance = (c: Rgb) => c.reduce((sum, channel, i) => {
+  const s = channel / 255;
+  return sum + (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4) * [0.2126, 0.7152, 0.0722][i];
+}, 0);
+const contrast = (a: Rgb, b: Rgb) => {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+};
 const detected = (c: Rgb) => isBlueDominantShadowPixel(c[0], c[1], c[2]);
 /** The renderer's shadow colour runs from dawn (0) to the day's highest sun (1); rain uses the midpoint. */
 const SUN_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
@@ -25,6 +33,15 @@ const surfaces = Object.entries(BASEMAP_PALETTES).flatMap(([theme, colors]) =>
 );
 
 describe("the basemap palettes and the shadow predicate (invariant #5)", () => {
+  it("gives opaque night roads and paths 3:1 and labels 4.5:1 on adjacent ground", () => {
+    const night = BASEMAP_PALETTES.night;
+    for (const surface of [night.land, night.landuse, night.field, night.wood]) {
+      for (const stroke of [night.road, night.path]) {
+        expect(contrast(rgb(stroke), rgb(surface))).toBeGreaterThanOrEqual(3);
+      }
+      expect(contrast(rgb(night.label), rgb(surface))).toBeGreaterThanOrEqual(4.5);
+    }
+  });
   it("keeps every colour inside the warmth range the argument rests on", () => {
     for (const { name, color } of surfaces) {
       const w = warmth(color);
@@ -155,5 +172,23 @@ describe("applyBasemapTheme", () => {
     ] as LayerSpecification[];
     applyBasemapTheme(map, layers, "night");
     expect(calls).toEqual([`Background background-color ${BASEMAP_PALETTES.night.land}`]);
+  });
+
+  it("makes night road and label centres opaque and restores their loaded day opacity", () => {
+    const calls: Array<[string, string, unknown]> = [];
+    const map = {
+      getLayer: (id: string) => ({ id }),
+      setPaintProperty: (id: string, property: string, value: unknown) => calls.push([id, property, value]),
+    };
+    const layers = [
+      { id: "Road", type: "line", "source-layer": "transportation", paint: { "line-color": "#000000", "line-opacity": 0.45 } },
+      { id: "Labels", type: "symbol", "source-layer": "place", paint: { "text-color": "#000000", "text-opacity": 0.6 } },
+    ] as LayerSpecification[];
+    applyBasemapTheme(map, layers, "night");
+    expect(calls).toContainEqual(["Road", "line-opacity", 1]);
+    expect(calls).toContainEqual(["Labels", "text-opacity", 1]);
+    applyBasemapTheme(map, layers, "day");
+    expect(calls).toContainEqual(["Road", "line-opacity", 0.45]);
+    expect(calls).toContainEqual(["Labels", "text-opacity", 0.6]);
   });
 });

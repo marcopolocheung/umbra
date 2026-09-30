@@ -10,8 +10,8 @@ import type { UiTheme } from "./uiTheme";
  * top. Layers are classified by type and source-layer, not by id, so the rules also
  * cover the e2e fixture style and survive MapTiler renaming a layer.
  *
- * The theme is `solarTheme`, never the UI override (decision D2), so the night palette
- * only ever carries the renderer's below-horizon shadow, never a daylight one.
+ * The theme is `solarTheme`, never the UI override (decision D2). Solar night
+ * carries no painted shadow; rain protection can still be painted over either palette.
  *
  * ## Invariant #5
  *
@@ -173,7 +173,7 @@ export function basemapPaint(layer: LayerSpecification, theme: UiTheme): Record<
  * before any Umbra layer is added, so nothing of ours is touched.
  */
 export function applyBasemapTheme(
-  map: { getLayer(id: string): unknown; setPaintProperty(id: string, property: string, value: string): void },
+  map: { getLayer(id: string): unknown; setPaintProperty(id: string, property: string, value: unknown): void },
   layers: readonly LayerSpecification[],
   theme: UiTheme
 ): void {
@@ -181,6 +181,17 @@ export function applyBasemapTheme(
     if (!map.getLayer(layer.id)) continue;
     for (const [property, color] of Object.entries(basemapPaint(layer, theme))) {
       map.setPaintProperty(layer.id, property, color);
+    }
+    // Some outdoor-v2 roads and labels carry translucent paint. Night contrast
+    // needs an opaque centre stroke; the captured style restores its exact value
+    // when solar time returns to day (null resets an undeclared property).
+    const role = mainRole(layer);
+    const opacity = layer.type === "line" && (role === "road" || role === "path")
+      ? "line-opacity"
+      : layer.type === "symbol" ? "text-opacity" : null;
+    if (opacity) {
+      const original = "paint" in layer ? (layer.paint as Record<string, unknown> | undefined)?.[opacity] : undefined;
+      map.setPaintProperty(layer.id, opacity, theme === "night" ? 1 : original ?? null);
     }
   }
 }

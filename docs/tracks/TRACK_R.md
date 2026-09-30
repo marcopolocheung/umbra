@@ -24,7 +24,7 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R4 — split into R4a (#133, basemaps, in review) and R4b (#134, pins,
+- **Active checkpoint:** R4 — split into R4a (#139, basemaps, in review) and R4b (#134, pins,
   popups, legend, cased route line — next).
 - **Done:** R0 (#120), R1 (#122), R2 (#127) and R3 (#132) merged. R3's `app/components/ui/`
   primitives (`Plate`, `Kicker`, `Tag`, `LineBullet`, `StampBadge`, `GrainSurface`,
@@ -35,23 +35,28 @@ inspiration; the public mirror publishes everything here.
   `MapView`'s `basemapTheme` prop — never the UI override. Invariant #5 rests on one bound:
   every basemap colour keeps warmth `(r+g)/2 − b` in −17..14, so sunlit ground is never
   blue-dominant, dawn shadow is detected, and a shadow's rim needs no more coverage than
-  the harness grey (+0.05). The palette also fixes two `main` faults: outdoor-v2's sunlit
-  water was a false shadow, and its wood lost the dawn shadow.
-- **Open PRs:** R4a — #139 (fixes #133). Follow-ups: #124, #125, #126 (R2); #128, #130 (R3); #135
-  (Track A: the below-horizon veil covers one quadrant), #136 (night basemap under that
-  veil — owner decision), #137 (labels in shade ~2:1), #138 (R6 sheet edge).
+  the harness grey (+0.05). Solar night now paints no shadow overlay or stale readback;
+  rain protection and routing continue over the dark basemap. Night roads and paths use
+  `#7c716a` and labels use `#fff9f3`; night stroke and text opacity are 1 and the loaded
+  opacity returns in daylight. The palette also fixes two `main` faults: outdoor-v2's
+  sunlit water was a false shadow, and its wood lost the dawn shadow.
+- **Open PRs:** R4a — #139 (fixes #133, #135, #136). Follow-ups: #124, #125, #126 (R2);
+  #128, #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. R4a keeps route/marker `--color-map-*-current`
   tokens for R4b, maps all trail and bike-route lines to the neutral path role (their
   magenta had no 2.0 meaning), and keeps outdoor-v2's residential wash translucent (`tint`).
-- **Blocked on:** owner visual review of R4a (`docs/design/shots/r4/`).
+- **Blocked on:** owner visual review of R4a (`docs/design/shots/r4/`). The updated
+  day, night Sun, and night Rain phone shots use live MapTiler tiles.
 - **Next action:** R4b — neutral cased route line and restyled pins, popups, legend over
   both basemaps (see the heads-up on #134), then R5.
-- **Last verified:** 2026-09-30; lint (0 errors), typecheck, 1,701 unit tests, build and
-  design:check pass; `npm run e2e` 14/14 including smoke-live on real MapTiler tiles. The
-  live 09:00 Midtown frame reads 43.5% shadow-predicate pixels after vs 44.3% before; the A3
-  agreement report is identical over every day street surface. A real-phone outdoor look at
-  the new basemap is still outstanding.
+- **Last verified:** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,706 unit
+  suite, build, design:check, diff check and live-tile e2e 16/16 pass. The live R4a
+  phone frame reads 43.5% shadow pixels in daytime Sun, 0.0% at night in Sun mode,
+  and visible rain protection at night. Rendered central road pixels read 3.36:1
+  against park and cream label pixels read 15.3:1 against park; unit tests require
+  roads and paths ≥3:1 and labels ≥4.5:1 across night ground and park surfaces.
+  A real-phone outdoor look remains outstanding.
 ---
 
 ## Decisions R0 must settle (owner's call)

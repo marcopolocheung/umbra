@@ -30,6 +30,30 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     );
     fs.writeFileSync(path.join(out, `map-${theme}.png`), Buffer.from(png.split(",")[1], "base64"));
     const shaded = shadowedFraction(shadowMask(await sampleMapCanvas(page, 4)));
+    if (stage === "after") {
+      if (theme === "night") expect(shaded).toBeLessThan(0.002);
+      else expect(shaded).toBeGreaterThan(0.02);
+    }
     console.log(`R4 ${stage} ${theme} ${live ? "live" : "fixture"}: shadow-predicate share ${(shaded * 100).toFixed(1)}%`);
   });
 }
+
+test("R4 review night rain", async ({ page }) => {
+  test.skip(stage !== "after", "The rain comparison belongs to the R4a after set");
+  await stubNetwork(page, { basemap: live ? "live" : "fixture" });
+  await page.goto(SHARE_URL.replace(`time=${START_TIME}`, "time=22:00"));
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
+  const rain = page.getByTestId("rain-mode-selector").filter({ visible: true }).getByRole("button", { name: "Rain" });
+  await rain.click();
+  await expect(rain).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => shadowedFraction(shadowMask(await sampleMapCanvas(page, 4))), {
+    timeout: 90_000,
+  }).toBeGreaterThan(0.002);
+  await page.evaluate(async () => { await document.fonts.ready; });
+  fs.mkdirSync(out, { recursive: true });
+  await page.screenshot({ path: path.join(out, "app-night-rain.png") });
+  const png = await page.evaluate(() =>
+    document.querySelector<HTMLCanvasElement>("canvas.maplibregl-canvas")!.toDataURL("image/png")
+  );
+  fs.writeFileSync(path.join(out, "map-night-rain.png"), Buffer.from(png.split(",")[1], "base64"));
+});

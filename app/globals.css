@@ -147,12 +147,12 @@
   --color-basemap-night-wood: #1d2a1c;
   --color-basemap-night-water: #142129;
   --color-basemap-night-tint: rgba(27, 23, 20, 0.3);
-  --color-basemap-night-road: #2e2823;
-  --color-basemap-night-path: #4a4139;
+  --color-basemap-night-road: #7c716a;
+  --color-basemap-night-path: #7c716a;
   --color-basemap-night-rail: #5a5048;
   --color-basemap-night-building: #231e1a;
   --color-basemap-night-edge: #2e2823;
-  --color-basemap-night-label: #d6cfc6;
+  --color-basemap-night-label: #fff9f3;
   --color-basemap-night-water-label: #9fb0b8;
   --color-basemap-night-park-label: #a6b2a0;
   --color-canopy-map: #2e8b57;
