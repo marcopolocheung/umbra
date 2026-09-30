@@ -253,6 +253,11 @@ test("routes on the published transit data and draws the line", async ({ page },
     })
     .toBeGreaterThan(0);
 
+  // The ride's line bullet is pinned onto the drawn track (#149), one per ride.
+  const badge = page.locator(".maplibregl-marker[role='img'][aria-label='Line E']");
+  await expect(badge).toHaveCount(1);
+  await expect(badge).toBeVisible();
+
   // Half the published headway, on the day type the clock is actually set to.
   // The fixture ships 600 s for Sunday hour 9 and 300 s for the weekday, and
   // `SHARE_URL` pins a Sunday — so 5 minutes is also the assertion that the

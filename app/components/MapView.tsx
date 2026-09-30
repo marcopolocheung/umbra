@@ -14,7 +14,8 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { mapPinElement } from "./mapPins";
+import { lineBadgeElement, mapPinElement } from "./mapPins";
+import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
@@ -302,6 +303,7 @@ export default function MapView({
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
+  const lineBadgeRefs      = useRef<maplibregl.Marker[]>([]);
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
   const assistantPinRefs      = useRef<maplibregl.Marker[]>([]);
   const userLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -804,6 +806,7 @@ export default function MapView({
       markerBRef.current?.remove();     markerBRef.current = null;
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
+      lineBadgeRefs.current.forEach((m) => m.remove()); lineBadgeRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1275,6 +1278,8 @@ export default function MapView({
     ] as const;
 
     const apply = () => {
+      lineBadgeRefs.current.forEach((m) => m.remove());
+      lineBadgeRefs.current = [];
       if (!navTrainDrawData) {
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
@@ -1283,6 +1288,12 @@ export default function MapView({
       }
 
       const { polylines, stops, transfers } = navTrainDrawData;
+
+      // Each ride's line bullet pinned onto its track (#149): DOM markers, so the
+      // shadow sampler's canvas readback never sees them.
+      lineBadgeRefs.current = lineBadgePlacements(polylines).map(({ line, color, at }) =>
+        new maplibregl.Marker({ element: lineBadgeElement(line, color), anchor: "bottom" }).setLngLat(at).addTo(map),
+      );
       const transferIds = new Set(transfers.map((t) => t.at.id));
 
       // Line polylines — one color per train line segment
