@@ -145,8 +145,11 @@ function stubFetch(published: Published): string[] {
   const calls: string[] = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(url);
+      // Like a real fetch, a signal aborted before the response lands rejects it.
+      await Promise.resolve();
+      if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (url.endsWith("/current.json")) return { ok: true, status: 200, json: async () => published.pointer };
       if (url.endsWith("/manifest.json")) return bytesResponse(published.manifestBytes);
       const key = url.slice(url.lastIndexOf("/") + 1);
