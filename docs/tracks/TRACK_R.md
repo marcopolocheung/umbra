@@ -74,7 +74,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R5a — #148 (fixes #142, #128); R5b — stacked on #148 (fixes #143). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R5a — #148 (fixes #142, #128); R5b — #152, stacked on #148 (fixes #143). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
