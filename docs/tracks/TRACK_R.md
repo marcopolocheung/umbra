@@ -47,7 +47,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R4b (fixes #134). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R4b — #141 (fixes #134). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #128, #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. The route casing is paper by day, not dark
