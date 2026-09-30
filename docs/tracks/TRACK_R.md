@@ -24,16 +24,19 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R0 — not started. Decision record and canonical spec (docs only).
-- **Done:** nothing yet. The reference document exists outside the repo (see above).
-- **Open PRs:** none.
-- **Decisions made:** none binding. Proposed in the reference: sun = signal orange, shade =
-  the cool ramp, route leaves blue, theme follows the solar model. Canopy
-  (`docs/design/language.md`) stays the binding spec until R0 merges.
-- **Blocked on:** nothing. Track U's wave is closed out (U7 merged as #72 on 2026-09-21) and
-  no design PRs are open, so R0 can start now and R1 follows R0's merge.
-- **Next action:** R0.
-- **Last verified:** 2026-09-29, brief written; no code touched.
+- **Active checkpoint:** R0 — draft PR #120 open for owner visual review.
+- **Done:** no checkpoint merged yet; R0's reference, decision, spec and vignettes are in #120.
+- **Open PRs:** #120 (R0, draft).
+- **Decisions made:** D1–D5 are recorded in `docs/design/decision.md`, pending owner sign-off
+  on merge. Sun = signal orange; shade = cool; route = neutral cased line; UI theme may be
+  overridden, while the basemap follows solar altitude. Canopy on `main` stays binding until
+  #120 merges.
+- **Blocked on:** #91 — five pre-existing navigation-hook test failures also reproduced on
+  unchanged `umbra/main`; the R0 PR remains draft until the four-gate requirement is green.
+- **Next action:** owner reviews the R0 day/night vignettes; after #91 is fixed and #120 merges,
+  start R1 from updated `main`.
+- **Last verified:** 2026-09-29; lint, typecheck, build, design:check, browser renders and
+  mirror-guard pass; 1647 tests pass and 5 fail on the branch, with the same 5 on `main` (#91).
 
 ---
 
