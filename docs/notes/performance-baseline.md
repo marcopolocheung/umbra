@@ -423,3 +423,4 @@ One row per issue from the read-only audit. "Method" is the issue's own before/a
 | Issue | Method | Before | After |
 |---|---|---|---|
 | #106 `suggestPlaces` cache key omits `limit` | unit test: typeahead (default 6) then submit (`limit: 4`), same query + anchor | 1 fetch; submit reads the typeahead's 6-row entry | 2 fetches; submit requests `limit=4` |
+| #102 `FSQ_DEBUG` hardcoded `true` | `npm run build`, then `grep -o 'Foursquare[^"]\{0,30\}' dist/assets/index-*.js`; Vite's size line for `index-*.js` | 5 debug strings (`request`, `response`, `429`, `SEARCH`, `DETAILS`); 418.47 kB / gzip 129.78 kB | 0 debug strings (2 hits remain: the real `console.error` for failed details and a comment); 417.52 kB / gzip 129.42 kB |
