@@ -1,5 +1,5 @@
 import "../lib/storageMigration";
-const FSQ_DEBUG = true;
+const FSQ_DEBUG = import.meta.env.DEV;
 
 export interface FoursquarePlaceInfo {
   name: string;

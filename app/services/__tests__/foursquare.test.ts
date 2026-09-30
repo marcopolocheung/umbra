@@ -231,6 +231,26 @@ describe("foursquare service", () => {
     expect(fetchMock.mock.calls[1][0]).toMatch(/[?&]limit=4(&|$)/);
   });
 
+  it("logs no request/response dumps outside dev", async () => {
+    vi.stubEnv("DEV", false);
+    const group = vi.spyOn(console, "group").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ results: [] }) })
+    );
+    try {
+      const mod = await import("../foursquare");
+      await mod.suggestPlaces("cafe", [-74.0, 40.0], { apiKey: "test_key_123" });
+      expect(group).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      group.mockRestore();
+      log.mockRestore();
+    }
+  });
+
   it("suggestPlaces returns [] on auth failure without throwing", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
