@@ -1,4 +1,4 @@
-import { BLOB_HALF_LENGTH, blobOutline } from "../lib/lineBadges";
+import { COIN_RADIUS, coinOutline } from "../lib/lineBadges";
 import { lineBulletInk, lineCssColor } from "../lib/lineBulletInk";
 
 /**
@@ -47,26 +47,22 @@ export function mapPinElement(variant: MapPinVariant, label: string, text = ""):
 }
 
 /**
- * A transit line's identifier as a swelling of its own drawn ride (#149): an
- * irregular bulge (`blobOutline`, seeded by the line) in the line's published
- * colour with no outline, whose ends thin to the line's exact width so it reads
- * as the line thickening rather than a pin set on it. The letter stays upright
- * while the swelling turns with the track (`orientLineBlob`), and takes the ink
- * `lineBulletInk` measures readable on that colour; where neither reaches 4.5:1
- * it sits on a small casing disc instead.
+ * A transit line's identifier as a coin threaded on its drawn ride (#149): the
+ * line's published colour inside a hand-inked rim (`coinOutline`, seeded by the
+ * line), the letter in whichever ink `lineBulletInk` measures readable on that
+ * colour. Where neither reaches 4.5:1 (the 7's purple, the J/Z brown) the letter
+ * sits on a cream disc inside the coloured coin instead. The rim and letter inks
+ * are the theme-fixed line-bullet inks, so the coin reads the same on both maps.
  *
- * Only the 44px grip at its centre takes the pointer (it is draggable along the
- * ride); the map keeps its gestures everywhere else. A DOM marker, never a
- * canvas layer, so the shadow sampler's readback cannot see it (invariant #5).
+ * The host is the 44px grip — maplibre re-enables pointer events on its marker
+ * element after every press, so the host must be exactly the target. A DOM
+ * marker, never a canvas layer, so the shadow sampler cannot see it (#5).
  */
-export function lineBlobElement(line: string, color: string): HTMLDivElement {
+export function lineCoinElement(line: string, color: string): HTMLDivElement {
   const css = lineCssColor(color);
   const ink = lineBulletInk(css);
-  const size = BLOB_HALF_LENGTH * 2;
-  // The host is the 44px grip, the only part that takes the pointer; the
-  // swelling hangs outside it and never does. maplibre re-enables pointer
-  // events on its marker element after every press, so the host must be
-  // exactly the target — anything larger would start eating map gestures.
+  // A three-character route (a bus such as the M15) needs a wider coin at the 11px floor.
+  const radius = line.length > 2 ? COIN_RADIUS + 4 : COIN_RADIUS;
   const host = document.createElement("div");
   host.setAttribute("role", "img");
   host.setAttribute("aria-label", `Line ${line}`);
@@ -78,31 +74,35 @@ export function lineBlobElement(line: string, color: string): HTMLDivElement {
 
   const svgNs = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNs, "svg");
-  svg.setAttribute("viewBox", `${-BLOB_HALF_LENGTH} ${-BLOB_HALF_LENGTH} ${size} ${size}`);
-  svg.setAttribute("width", String(size));
-  svg.setAttribute("height", String(size));
+  svg.setAttribute("viewBox", "-22 -22 44 44");
+  svg.setAttribute("width", "44");
+  svg.setAttribute("height", "44");
   svg.setAttribute("aria-hidden", "true");
-  svg.style.cssText = `position:absolute;left:${22 - BLOB_HALF_LENGTH}px;top:${22 - BLOB_HALF_LENGTH}px;overflow:visible;pointer-events:none;`;
-  const blob = document.createElementNS(svgNs, "path");
-  blob.setAttribute("d", blobOutline(line));
-  blob.setAttribute("fill", css);
-  blob.setAttribute("data-part", "blob");
-  svg.appendChild(blob);
+  svg.style.cssText = "position:absolute;inset:0;overflow:visible;pointer-events:none;";
+  const coin = document.createElementNS(svgNs, "path");
+  coin.setAttribute("d", coinOutline(line, radius));
+  coin.setAttribute("fill", css);
+  coin.setAttribute("stroke", "var(--color-line-ink-dark)");
+  coin.setAttribute("stroke-width", "3");
+  coin.setAttribute("stroke-linejoin", "round");
+  coin.setAttribute("data-part", "coin");
+  svg.appendChild(coin);
+  if (!ink) {
+    const disc = document.createElementNS(svgNs, "circle");
+    disc.setAttribute("r", String(radius - 5));
+    disc.setAttribute("fill", "var(--color-line-ink-light)");
+    disc.setAttribute("data-part", "disc");
+    svg.appendChild(disc);
+  }
   host.appendChild(svg);
 
   const letter = document.createElement("span");
   letter.style.cssText = `
-    position:relative;font-family:var(--font-label);font-size:11px;font-weight:800;line-height:1;
-    font-variant-numeric:tabular-nums;color:${ink ? `var(--color-line-ink-${ink})` : "var(--color-map-route)"};
-    ${ink ? "" : "background:var(--color-map-casing);border-radius:var(--radius-full);padding:3px 5px;"}
+    position:relative;font-family:var(--font-label);font-size:${line.length > 2 ? 11 : 13}px;
+    font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    color:var(--color-line-ink-${ink ?? "dark"});
   `;
   letter.textContent = line;
   host.appendChild(letter);
   return host;
-}
-
-/** Turns the swelling to lie along the track; the letter stays upright. */
-export function orientLineBlob(host: HTMLElement, angleDeg: number): void {
-  const svg = host.querySelector("svg");
-  if (svg) svg.style.rotate = `${angleDeg}deg`;
 }

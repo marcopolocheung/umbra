@@ -1,39 +1,41 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { blobOutline } from "../../lib/lineBadges";
-import { lineBlobElement, orientLineBlob } from "../mapPins";
+import { COIN_RADIUS, coinOutline } from "../../lib/lineBadges";
+import { lineCoinElement } from "../mapPins";
 
-describe("lineBlobElement", () => {
-  it("swells in the line's own colour, seamless, with the line's identifier on it", () => {
-    const host = lineBlobElement("N", "#FCCC0A");
+const letterOf = (host: HTMLElement) => host.querySelector(":scope > span") as HTMLElement;
+
+describe("lineCoinElement", () => {
+  it("is a coin of the line's own colour inside an inked rim, with the line's letter", () => {
+    const host = lineCoinElement("N", "#FCCC0A");
     expect(host.getAttribute("role")).toBe("img");
     expect(host.getAttribute("aria-label")).toBe("Line N");
-    const blob = host.querySelector("[data-part='blob']") as SVGPathElement;
-    expect(blob.getAttribute("fill")).toBe("#FCCC0A");
-    // No outline: it is the line thickening, not a pin set on it.
-    expect(blob.getAttribute("stroke")).toBeNull();
-    expect(blob.getAttribute("d")).toBe(blobOutline("N"));
-    const letter = host.querySelector(":scope > span") as HTMLElement;
-    expect(letter.textContent).toBe("N");
-    expect(letter.style.color).toBe("var(--color-line-ink-dark)");
+    const coin = host.querySelector("[data-part='coin']") as SVGPathElement;
+    expect(coin.getAttribute("fill")).toBe("#FCCC0A");
+    expect(coin.getAttribute("stroke")).toBe("var(--color-line-ink-dark)");
+    expect(coin.getAttribute("d")).toBe(coinOutline("N"));
+    expect(letterOf(host).textContent).toBe("N");
+    expect(letterOf(host).style.color).toBe("var(--color-line-ink-dark)");
+    expect(host.querySelector("[data-part='disc']")).toBeNull();
   });
 
-  it("puts the letter on a casing disc where no ink reads on the line's colour", () => {
-    const letter = lineBlobElement("7", "B933AD").querySelector(":scope > span") as HTMLElement;
-    expect(letter.style.color).toBe("var(--color-map-route)");
-    expect(letter.style.background).toBe("var(--color-map-casing)");
+  it("sets the letter on a cream disc where no ink reads on the line's colour", () => {
+    const host = lineCoinElement("7", "B933AD");
+    // A bare-hex OSM colour is made valid CSS.
+    expect((host.querySelector("[data-part='coin']") as SVGPathElement).getAttribute("fill")).toBe("#B933AD");
+    expect((host.querySelector("[data-part='disc']") as SVGCircleElement).getAttribute("fill")).toBe("var(--color-line-ink-light)");
+    expect(letterOf(host).style.color).toBe("var(--color-line-ink-dark)");
   });
 
-  it("is itself the 44px grip, and the swelling around it never takes the pointer", () => {
-    const host = lineBlobElement("L", "#A7A9AC");
+  it("widens for a three-character route so it fits at the 11px floor", () => {
+    expect((lineCoinElement("M15", "#0039A6").querySelector("[data-part='coin']") as SVGPathElement).getAttribute("d"))
+      .toBe(coinOutline("M15", COIN_RADIUS + 4));
+    expect(letterOf(lineCoinElement("M15", "#0039A6")).style.fontSize).toBe("11px");
+  });
+
+  it("is itself the 44px grip, the only part that takes the pointer", () => {
+    const host = lineCoinElement("L", "#A7A9AC");
     expect([host.style.width, host.style.height]).toEqual(["44px", "44px"]);
     expect((host.querySelector("svg") as SVGSVGElement).style.pointerEvents).toBe("none");
-  });
-
-  it("turns the swelling with the track and leaves the letter upright", () => {
-    const host = lineBlobElement("A", "#0039A6");
-    orientLineBlob(host, 30);
-    expect((host.querySelector("svg") as SVGSVGElement).style.rotate).toBe("30deg");
-    expect((host.querySelector(":scope > span") as HTMLElement).style.rotate).toBe("");
   });
 });

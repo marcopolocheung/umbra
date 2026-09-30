@@ -15,7 +15,7 @@ import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
 import { mapPinElement } from "./mapPins";
-import { attachLineBlob } from "./lineBlobMarker";
+import { attachLineCoin } from "./lineCoinMarker";
 import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
@@ -304,9 +304,9 @@ export default function MapView({
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
-  const lineBlobRefs       = useRef<{ remove: () => void }[]>([]);
-  // Where each ride's swelling last rested (0–1 along it), so a recalculation keeps it put.
-  const lineBlobFractions  = useRef(new Map<string, number>());
+  const lineCoinRefs       = useRef<{ remove: () => void }[]>([]);
+  // Where each ride's coin last rested (0–1 along it), so a recalculation keeps it put.
+  const lineCoinFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
   const assistantPinRefs      = useRef<maplibregl.Marker[]>([]);
   const userLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -809,8 +809,8 @@ export default function MapView({
       markerBRef.current?.remove();     markerBRef.current = null;
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
-      for (const blob of lineBlobRefs.current) blob.remove();
-      lineBlobRefs.current = [];
+      for (const coin of lineCoinRefs.current) coin.remove();
+      lineCoinRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1282,8 +1282,8 @@ export default function MapView({
     ] as const;
 
     const apply = () => {
-      for (const blob of lineBlobRefs.current) blob.remove();
-      lineBlobRefs.current = [];
+      for (const coin of lineCoinRefs.current) coin.remove();
+      lineCoinRefs.current = [];
       if (!navTrainDrawData) {
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
@@ -1293,15 +1293,15 @@ export default function MapView({
 
       const { polylines, stops, transfers } = navTrainDrawData;
 
-      // Each ride's line identifier as a draggable swelling of its track (#149):
+      // Each ride's line identifier as a draggable coin threaded on its track (#149):
       // DOM markers, so the shadow sampler's canvas readback never sees them.
       // Remembered per ride — its line and end stations — so the same trip
       // recalculated at another time keeps its place, and a new trip starts fresh.
-      lineBlobRefs.current = lineBadgePlacements(polylines).map((placement) => {
+      lineCoinRefs.current = lineBadgePlacements(polylines).map((placement) => {
         const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
-        return attachLineBlob(map, placement, {
-          fraction: lineBlobFractions.current.get(key),
-          onRest: (fraction) => lineBlobFractions.current.set(key, fraction),
+        return attachLineCoin(map, placement, {
+          fraction: lineCoinFractions.current.get(key),
+          onRest: (fraction) => lineCoinFractions.current.set(key, fraction),
         });
       });
       const transferIds = new Set(transfers.map((t) => t.at.id));

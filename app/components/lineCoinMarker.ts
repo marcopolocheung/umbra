@@ -3,15 +3,14 @@ import {
   BLOB_FRICTION,
   coast,
   distanceAt,
-  foldAngle,
   type LineBadgePlacement,
   pointAtDistance,
   rideLength,
   snapToPath,
 } from "../lib/lineBadges";
-import { lineBlobElement, orientLineBlob } from "./mapPins";
+import { lineCoinElement } from "./mapPins";
 
-/** Released faster than this (px/ms, the time slider's floor), the swelling coasts. */
+/** Released faster than this (px/ms, the time slider's floor), the coin coasts. */
 const MIN_FLING_PX_MS = 0.08;
 /** A coast ends below this speed (px/ms), as the time slider's does. */
 const REST_PX_MS = 0.04;
@@ -27,7 +26,7 @@ function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
-export interface LineBlobOptions {
+export interface LineCoinOptions {
   /** Where along the ride (0–1) it last rested, so a recalculation keeps it put. */
   fraction?: number;
   /** Called with the resting fraction whenever it stops. */
@@ -35,20 +34,20 @@ export interface LineBlobOptions {
 }
 
 /**
- * A transit line's swelling on its drawn ride (#149): placed by distance along
- * the ride, dragged only along it (every drag frame snaps to the nearest point
- * of the track), and flung with the time slider's inertia when let go. On a
- * ride it has not been seen on before it glides from the middle to a random
- * resting place, so it shows it can move; reduced motion leaves it mid-ride.
+ * A transit line's coin on its drawn ride (#149): placed by distance along the
+ * ride, dragged only along it (every drag frame snaps to the nearest point of
+ * the track), and flung with the time slider's inertia when let go. On a ride
+ * it has not been seen on before it glides from the middle to a random resting
+ * place, so it shows it can move; reduced motion leaves it mid-ride.
  */
-export function attachLineBlob(
+export function attachLineCoin(
   map: maplibregl.Map,
   placement: LineBadgePlacement,
-  { fraction, onRest }: LineBlobOptions,
+  { fraction, onRest }: LineCoinOptions,
 ): { remove: () => void } {
   const { coords } = placement;
   const length = rideLength(coords);
-  const element = lineBlobElement(placement.line, placement.color);
+  const element = lineCoinElement(placement.line, placement.color);
   let s = (fraction ?? 0.5) * length;
   let frame: number | null = null;
   let intro: number | undefined;
@@ -57,16 +56,7 @@ export function attachLineBlob(
     .setLngLat(pointAtDistance(coords, s))
     .addTo(map);
 
-  const orient = () => {
-    const step = Math.min(10, length / 2);
-    const a = map.project(pointAtDistance(coords, s - step));
-    const b = map.project(pointAtDistance(coords, s + step));
-    orientLineBlob(element, foldAngle((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI));
-  };
-  const place = () => {
-    marker.setLngLat(pointAtDistance(coords, s));
-    orient();
-  };
+  const place = () => marker.setLngLat(pointAtDistance(coords, s));
   const stop = () => {
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
@@ -125,9 +115,6 @@ export function attachLineBlob(
     else onRest(length > 0 ? s / length : 0.5);
   });
 
-  map.on("move", orient);
-  orient();
-
   if (fraction === undefined && length > 0 && !prefersReducedMotion()) {
     // Somewhere in the middle half, but visibly away from the start point.
     const offset = (0.12 + Math.random() * 0.13) * (Math.random() < 0.5 ? -1 : 1);
@@ -139,7 +126,6 @@ export function attachLineBlob(
     remove: () => {
       window.clearTimeout(intro);
       stop();
-      map.off("move", orient);
       marker.remove();
     },
   };

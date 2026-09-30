@@ -24,20 +24,22 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** #149 — transit line identifiers on the map, awaiting owner review.
-  Owner's design: the line itself swells where its letter sits — seamless, in the line's
-  published colour, irregular (`lib/lineBadges.blobOutline`, seeded by the line so each line
-  keeps one shape, necks thinning to the drawn line's 5px), laid along the track with the
-  letter upright (`mapPins.lineBlobElement`/`orientLineBlob`). `components/lineBlobMarker.ts`
+- **Active checkpoint:** #149 — transit line coins on the map, awaiting owner review.
+  Owner picked the coin (study 2 of four, artifact "Umbra Line Shields") over an irregular
+  swelling and a shield: each ride's letter on a coin of the line's published colour inside a
+  hand-inked rim (`lib/lineBadges.coinOutline`, seeded per line; theme-fixed line-bullet
+  inks; a cream letter disc where no ink reaches 4.5:1; wider for three-character routes),
+  threaded on the drawn track (`mapPins.lineCoinElement`). `components/lineCoinMarker.ts`
   drags it only along its own ride (each frame snaps to the nearest track point,
   `snapToPath`), flings it with the time slider's inertia (friction 0.009/ms, same smoothing
-  and 80 ms cutoff, exact per-frame decay so a glide can be aimed), remembers where each line
-  rested (keyed by line and end stations, so the same trip at another time keeps its place
-  and a new trip starts fresh), and on a ride's first render glides it from mid-ride to a
-  random resting place (none under reduced motion; a grab cancels it). One per ride, not per
-  hop. DOM markers only — the shadow sampler never sees them (#5); the marker element *is*
-  the 44px grip, because maplibre re-enables pointer events on it after every press. The transit smoke test drags it ~56px off the line and asserts, by
-  canvas readback, that it slid and still sits on the magenta track.
+  and 80 ms cutoff, exact per-frame decay so a glide can be aimed), remembers where each ride
+  rested (keyed by line and end stations, so the same trip at another time keeps its place and
+  a new trip starts fresh), and on a ride's first render glides it from mid-ride to a random
+  resting place (none under reduced motion; a grab cancels it). One per ride, not per hop.
+  DOM markers only — the shadow sampler never sees them (#5); the marker element *is* the
+  44px grip, because maplibre re-enables pointer events on it after every press. The transit
+  smoke test drags it ~56px off the line and asserts, by canvas readback, that it slid and
+  still sits on the magenta track.
 - **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
   (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
   inset focus, disabled on the 75% role with a strike), used by Walk/Transit, Sun/Rain,
@@ -84,7 +86,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** #153 (fixes #149, transit line swellings on the map). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** #153 (fixes #149, transit line coins on the map). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -98,7 +100,7 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,775 unit tests,
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,769 unit tests,
   build, design:check and e2e 16/16 (the transit drag check 2/2 more on repeat).
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),

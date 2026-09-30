@@ -105,7 +105,7 @@ export async function countTransitLinePixels(page: Page): Promise<number> {
 /**
  * Whether the fixture's magenta transit line is drawn within `radius` CSS px of
  * a page point (default 10: a station dot on the ride can cover the line under
- * the exact centre). The line identifier swelling is a DOM marker, so the canvas
+ * the exact centre). The line's coin is a DOM marker, so the canvas
  * under it still shows the line: this is how a test proves it sits on the track.
  */
 export async function transitLineNear(page: Page, x: number, y: number, radius = 10): Promise<boolean> {

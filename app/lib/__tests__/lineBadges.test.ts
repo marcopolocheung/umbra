@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  BLOB_HALF_LENGTH,
-  LINE_HALF_WIDTH,
-  blobOutline,
+  COIN_RADIUS,
   coast,
+  coinOutline,
   distanceAt,
-  foldAngle,
   lineBadgePlacements,
   pointAtDistance,
   rideLength,
@@ -84,25 +82,15 @@ describe("coast", () => {
   });
 });
 
-describe("foldAngle", () => {
-  it.each([[0, 0], [90, 90], [135, -45], [-135, 45], [270, 90], [-90, 90]])("folds %s° to %s°", (deg, folded) => {
-    expect(foldAngle(deg)).toBe(folded);
-  });
-});
-
-describe("blobOutline", () => {
-  it("is the same irregular shape for one line and a different one for another", () => {
-    expect(blobOutline("L")).toBe(blobOutline("L"));
-    expect(blobOutline("L")).not.toBe(blobOutline("G"));
+describe("coinOutline", () => {
+  it("is the same hand-inked edge for one line and a different one for another", () => {
+    expect(coinOutline("L")).toBe(coinOutline("L"));
+    expect(coinOutline("L")).not.toBe(coinOutline("G"));
   });
 
-  it("tapers to exactly the drawn line's width at both ends, so it fuses with the line", () => {
-    const pts = blobOutline("A").slice(1, -1).split("L").map((p) => p.split(",").map(Number));
-    const ends = pts.filter(([x]) => Math.abs(x) === BLOB_HALF_LENGTH);
-    expect(ends).toHaveLength(4);
-    for (const [, y] of ends) expect(Math.abs(y)).toBeCloseTo(LINE_HALF_WIDTH, 1);
-    // …and swells well past the line in the middle, room for the letter.
-    const middle = pts.filter(([x]) => x === 0).map(([, y]) => Math.abs(y));
-    for (const y of middle) expect(y).toBeGreaterThan(9);
+  it("stays a coin: every point within a few percent of the radius", () => {
+    const radii = coinOutline("A").slice(1, -1).split("L").map((p) => Math.hypot(...(p.split(",").map(Number) as [number, number])));
+    expect(radii).toHaveLength(48);
+    for (const r of radii) expect(Math.abs(r - COIN_RADIUS) / COIN_RADIUS).toBeLessThan(0.08);
   });
 });

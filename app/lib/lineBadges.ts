@@ -51,16 +51,6 @@ export function snapToPath(path: [number, number][], p: [number, number]): { ind
   return { index: best.index, t: best.t };
 }
 
-/** Folds a direction into (−90°, 90°], so a shape laid along a line never reads upside down. */
-export function foldAngle(deg: number): number {
-  let a = deg % 360;
-  if (a > 180) a -= 360;
-  if (a <= -180) a += 360;
-  if (a > 90) return a - 180;
-  if (a <= -90) return a + 180;
-  return a;
-}
-
 /** Metres along a ride's track to vertex `index` plus `t` of the next hop. */
 export function distanceAt(coords: [number, number][], index: number, t: number): number {
   let d = 0;
@@ -119,36 +109,22 @@ function seeded(key: string): () => number {
   };
 }
 
-/** Half the drawn transit line's width (`train-route-lines-layer`, 5px). */
-export const LINE_HALF_WIDTH = 2.5;
-/** The swelling's half-length; its necks thin to the line's own width by here. */
-export const BLOB_HALF_LENGTH = 36;
+/** The coin's radius in CSS px, rim included: a 31px coin inside its 44px grip. */
+export const COIN_RADIUS = 14;
 
 /**
- * The outline of a line's swelling, as an SVG path laid along +x through the
- * origin: each side is the line's half-width plus an irregular rounded bulge,
- * so the ends taper to exactly the drawn line and the shape reads as the line
- * itself thickening. Seeded by the line's identifier: irregular, but the same
- * irregular shape for the same line every time.
+ * The outline of a line's coin as an SVG path around the origin: a circle whose
+ * radius wanders by a few percent, like a rim inked by hand. Seeded by the line's
+ * identifier, so each line keeps the same edge every time.
  */
-export function blobOutline(key: string): string {
+export function coinOutline(key: string, radius = COIN_RADIUS): string {
   const rand = seeded(key);
-  const side = () => ({
-    amp: 9 + rand() * 3,
-    centre: (rand() - 0.5) * 6,
-    sigma: 12 + rand() * 3,
-    k: 0.35 + rand() * 0.25,
-    phase: rand() * Math.PI * 2,
-  });
-  const [top, bottom] = [side(), side()];
-  // A cubed exponent flattens the top and shortens the shoulders: a rounded
-  // swelling rather than a Gaussian's pointed spindle.
-  const height = (x: number, p: ReturnType<typeof side>) =>
-    LINE_HALF_WIDTH +
-    p.amp * Math.exp(-(Math.abs((x - p.centre) / p.sigma) ** 3)) * (1 + 0.08 * Math.sin(p.k * x + p.phase));
-  const xs: number[] = [];
-  for (let x = -BLOB_HALF_LENGTH; x <= BLOB_HALF_LENGTH; x += 2) xs.push(x);
-  const upper = xs.map((x) => `${x},${(-height(x, top)).toFixed(1)}`);
-  const lower = [...xs].reverse().map((x) => `${x},${height(x, bottom).toFixed(1)}`);
-  return `M${upper.join("L")}L${lower.join("L")}Z`;
+  const waves = [3, 5, 7].map((k) => ({ k, amp: 0.012 + rand() * 0.02, phase: rand() * Math.PI * 2 }));
+  const points: string[] = [];
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    const r = radius * (1 + waves.reduce((sum, w) => sum + w.amp * Math.sin(w.k * a + w.phase), 0));
+    points.push(`${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`);
+  }
+  return `M${points.join("L")}Z`;
 }
