@@ -23,13 +23,20 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.goto(SHARE_URL);
     await expect(page).toHaveTitle(/Umbra/);
     await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+    if (viewport.width < 768) {
+      // A shared trip opens Directions on phones, which hides the search pill.
+      await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
+      await page.getByTitle("Back", { exact: true }).filter({ visible: true }).click();
+    }
     await page.getByRole("button", { name: "Open Umbra Assistant" }).click();
     await expect(page.getByText("Umbra Assistant", { exact: true })).toBeVisible();
     await expect(page.getByPlaceholder("Ask about shadow, routes, or a day trip…")).toBeVisible();
     // The icon button's accessible name is its Material ligature ("close"), so
     // target the tooltip the rebrand actually renames.
     await page.getByTitle("Close", { exact: true }).filter({ visible: true }).click();
-    // The saved-routes section renders expanded, so the migrated route is already listed.
+    if (viewport.width < 768) await page.goto(SHARE_URL);
+    // A saved route keeps this section collapsed at the first sheet snap point.
+    await page.getByRole("button", { name: /Saved Routes 1/ }).filter({ visible: true }).click();
     const legacyRoute = page.getByRole("button", { name: /My shaded walk/ }).filter({ visible: true });
     await expect(legacyRoute).toContainText("75% shadow");
     await legacyRoute.click();
@@ -56,9 +63,10 @@ test.describe("service-worker compatibility", () => {
       await navigator.serviceWorker.register("/sw.js");
       await navigator.serviceWorker.ready;
     });
-    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["umbra-shell-v1"]);
-    const shell = await page.evaluate(async () => (await (await caches.open("umbra-shell-v1")).match("/"))?.text());
+    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["umbra-shell-v3"]);
+    const shell = await page.evaluate(async () => (await (await caches.open("umbra-shell-v3")).match("/"))?.text());
     expect(shell).toContain("Umbra");
+    expect(await page.evaluate(async () => !!(await caches.match("/fonts/jost-variable.woff2")))).toBe(true);
     expect(await page.evaluate(async () => !!(await caches.match("/obsolete.js")))).toBe(false);
     await context.setOffline(true);
     await page.goto("/");

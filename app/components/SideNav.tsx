@@ -30,7 +30,7 @@ export default function SideNav({ activeTab, onTabChange, children }: SideNavPro
               className={`flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl text-[11px] tracking-tight flex-1 transition-all duration-150 active:scale-95 ${
                 active
                   ? "text-on-ink font-bold bg-ink"
-                  : "text-ink-muted font-medium hover:bg-canvas hover:text-ink"
+                  : "text-ink-muted font-medium hover:bg-ground hover:text-ink"
               }`}
             >
               <span

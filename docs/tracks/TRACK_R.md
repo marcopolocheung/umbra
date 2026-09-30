@@ -24,18 +24,18 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R1 — registry and enforcement, next after R0's merge.
+- **Active checkpoint:** R1 — registry and enforcement, awaiting owner review.
 - **Done:** R0 — decision record, canonical spec, contrast table, reference and day/night
-  vignettes; owner approved #120 for merge on 2026-09-29.
-- **Open PRs:** none; R0 merged as #120.
+  vignettes; owner approved #120 for merge on 2026-09-29. Navigation-hook baseline #91
+  was repaired in #121 before R1.
+- **Open PRs:** R1; R0 and the #91 baseline fix merged as #120 and #121.
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved. Sun = signal
   orange; shade = cool; route = neutral cased line; UI theme may be overridden, while the
   basemap follows solar altitude. `docs/design/language.md` becomes binding with #120's merge.
-- **Blocked on:** #91 — five pre-existing navigation-hook test failures also reproduced on
-  unchanged `umbra/main`; R1 needs a green four-gate run before its PR can be ready.
-- **Next action:** start R1 from merged `main` and coordinate #91 before opening its PR.
-- **Last verified:** 2026-09-29; lint, typecheck, build, design:check, browser renders and
-  mirror-guard pass; 1647 tests pass and 5 fail on the branch, with the same 5 on `main` (#91).
+- **Blocked on:** owner visual review of R1.
+- **Next action:** review the R1 day/night phone shots and PR, then merge on sign-off.
+- **Last verified:** 2026-09-30; lint, typecheck, build, design:check, 1,652 unit tests and
+  all nine browser checks pass. Day/night phone shots were refreshed.
 
 ---
 

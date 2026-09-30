@@ -26,8 +26,8 @@ export default function HourlyExposureStrip({
 
   return (
     <div
-      className="rounded-lg border px-3 py-2 shadow-level-2"
-      style={{ background: "var(--color-raised)", borderColor: "var(--color-hairline)" }}
+      className="rounded-lg border px-3 py-2 shadow-hard-2"
+      style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
     >
       <div className="flex items-baseline justify-between gap-2">
         <div
@@ -79,8 +79,8 @@ export default function HourlyExposureStrip({
                   height: ready ? `${Math.max(6, (rain ? sample.shadowCoverage : sample.sunExposure) * 100)}%` : "6%",
                   background: ready
                     ? isNow
-                      ? "var(--color-sun)"
-                      : rain ? "var(--color-route-mid)" : "var(--color-sun-mid)"
+                      ? rain ? "var(--color-rain)" : "var(--color-sun-signal)"
+                      : rain ? "var(--color-rain)" : "var(--color-sun-mid)"
                     : "color-mix(in srgb, var(--color-ink) 18%, transparent)",
                 }}
               />

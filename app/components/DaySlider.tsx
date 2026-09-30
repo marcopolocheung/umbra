@@ -8,8 +8,8 @@ const MONTH_NAMES = [
 ];
 
 const MONTH_TINTS = [
-  "color-mix(in srgb, var(--color-route) 8%, transparent)", // Jan — winter
-  "color-mix(in srgb, var(--color-route) 6%, transparent)", // Feb
+  "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Jan — winter
+  "color-mix(in srgb, var(--color-shade) 6%, transparent)", // Feb
   "color-mix(in srgb, var(--color-shade) 6%, transparent)", // Mar — spring
   "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Apr
   "color-mix(in srgb, var(--color-shade) 6%, transparent)", // May
@@ -19,7 +19,7 @@ const MONTH_TINTS = [
   "color-mix(in srgb, var(--color-sun) 6%, transparent)",  // Sep — fall
   "color-mix(in srgb, var(--color-sun) 8%, transparent)",  // Oct
   "color-mix(in srgb, var(--color-sun) 6%, transparent)",  // Nov
-  "color-mix(in srgb, var(--color-route) 8%, transparent)", // Dec — winter
+  "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Dec — winter
 ];
 
 interface Props {
@@ -178,7 +178,7 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
       {/* Fixed red center cursor */}
       <div
         className="absolute inset-y-0 w-px z-10 pointer-events-none"
-        style={{ left: "50%", backgroundColor: "var(--color-sun)" }}
+        style={{ left: "50%", backgroundColor: "var(--color-sun-signal)" }}
       />
 
       {/* Scrollable content */}

@@ -12,7 +12,7 @@ hooks that deny the edit.
 .claude/
 ├── settings.json      permissions + hook wiring + status line
 ├── agents/            seven specialists, tool- and model-scoped
-├── skills/            /track  /gates  /checkpoint
+├── skills/            /track  /gates  /checkpoint  /design-audit
 ├── rules/             path-scoped constraints; load only when you open a matching file
 ├── hooks/             the enforcement scripts
 └── state/             session-local markers (gitignored)
@@ -89,6 +89,8 @@ code. There is exactly one writer here (`builder`), and it is fenced.
   hook and status line read.
 - **`/checkpoint [id]`** — walk the eight-item definition of done, get the cold review, open
   the PR, update the brief's `Current state`, file findings.
+- **`/design-audit`** — read-only Umbra redesign 2.0 review of the registry, screenshots,
+  outdoor contrast, focus, and map safety.
 
 `/gates` is model-invocable; the other two have `disable-model-invocation: true` because they
 have side effects and you should decide when they run.

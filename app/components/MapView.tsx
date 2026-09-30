@@ -349,25 +349,25 @@ const SunCompass = memo(function SunCompass({ sunViz, showSunLines }: { sunViz: 
             x1={riseGx} y1={riseGy}
             x2={setGx}  y2={setGy}
           >
-            <stop offset="0%"   stopColor={token("color-sun")} stopOpacity="0.30" />
-            <stop offset="100%" stopColor={token("color-route")} stopOpacity="0.30" />
+            <stop offset="0%"   stopColor={token("color-map-sun-current")} stopOpacity="0.30" />
+            <stop offset="100%" stopColor={token("color-map-route-current")} stopOpacity="0.30" />
           </linearGradient>
         </defs>
         {nightPath
-          ? <path d={nightPath} fill={token("color-ink")} fillOpacity="0.22" />
-          : <circle cx={CX} cy={CY} r={R} fill={token("color-ink")} fillOpacity="0.22" />
+          ? <path d={nightPath} fill={token("color-map-ink-current")} fillOpacity="0.22" />
+          : <circle cx={CX} cy={CY} r={R} fill={token("color-map-ink-current")} fillOpacity="0.22" />
         }
         {dayPath && <path d={dayPath} fill="url(#sunDayGrad)" />}
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="color-mix(in srgb, var(--color-raised) 18%, transparent)" strokeWidth="1.5" />
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="color-mix(in srgb, var(--color-map-panel-current) 18%, transparent)" strokeWidth="1.5" />
         {riseScreen !== null && (
-          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} stroke={token("color-sun")} strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} stroke={token("color-map-sun-current")} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         {setScreen !== null && (
-          <line x1={CX} y1={CY} x2={setLx} y2={setLy} stroke={token("color-route")} strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={setLx} y2={setLy} stroke={token("color-map-route-current")} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         <polygon
           points={`${tipX.toFixed(2)},${tipY.toFixed(2)} ${b1x.toFixed(2)},${b1y.toFixed(2)} ${b2x.toFixed(2)},${b2y.toFixed(2)}`}
-          fill={token("color-sun")} fillOpacity="0.92"
+          fill={token("color-map-sun-current")} fillOpacity="0.92"
         />
         <text
           x={sunEmX.toFixed(2)} y={sunEmY.toFixed(2)}
@@ -750,7 +750,7 @@ export default function MapView({
         source: "sketch-line",
         layout: { visibility: "none" },
         paint: {
-          "line-color": token("color-route"),
+          "line-color": token("color-map-route-current"),
           "line-width": 2.5,
           "line-dasharray": [4, 3],
           "line-opacity": 0.85,
@@ -768,7 +768,7 @@ export default function MapView({
         source: "sketch-preview",
         layout: { visibility: "none" },
         paint: {
-          "line-color": token("color-route"),
+          "line-color": token("color-map-route-current"),
           "line-width": 1.5,
           "line-opacity": 0.45,
         },
@@ -785,7 +785,7 @@ export default function MapView({
         type: "line",
         source: "nav-route",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": token("color-route"), "line-width": 4, "line-opacity": 0.9 },
+        paint: { "line-color": token("color-map-route-current"), "line-width": 4, "line-opacity": 0.9 },
       });
       const navSrc = map.getSource("nav-route") as maplibregl.GeoJSONSource;
       const current = navRouteRef.current;
@@ -1008,7 +1008,7 @@ export default function MapView({
       if (markerARef.current) {
         markerARef.current.setLngLat(navWaypoints.a);
       } else {
-        const mA = new maplibregl.Marker({ color: token("color-ink"), draggable: true })
+        const mA = new maplibregl.Marker({ color: token("color-map-ink-current"), draggable: true })
           .setLngLat(navWaypoints.a)
           .addTo(map);
         mA.on('dragend', () => {
@@ -1026,7 +1026,7 @@ export default function MapView({
       if (markerBRef.current) {
         markerBRef.current.setLngLat(navWaypoints.b);
       } else {
-        const mB = new maplibregl.Marker({ color: token("color-route"), draggable: true })
+        const mB = new maplibregl.Marker({ color: token("color-map-route-current"), draggable: true })
           .setLngLat(navWaypoints.b)
           .addTo(map);
         mB.on('dragend', () => {
@@ -1051,10 +1051,10 @@ export default function MapView({
     (additionalWaypoints ?? []).forEach((wp, i) => {
       const el = document.createElement("div");
       el.style.cssText = `
-        width:22px;height:22px;border-radius:50%;
-        background:var(--color-raised);border:2px solid var(--color-ink);
+        width:22px;height:22px;border-radius:var(--radius-circle);
+        background:var(--color-map-panel-current);border:2px solid var(--color-map-ink-current);
         display:flex;align-items:center;justify-content:center;
-        font-size:10px;font-weight:700;color:var(--color-ink);cursor:pointer;
+        font-size:11px;font-weight:700;color:var(--color-map-ink-current);cursor:pointer;
       `;
       el.textContent = String(i + 1);
       const marker = new maplibregl.Marker({ element: el })
@@ -1075,14 +1075,14 @@ export default function MapView({
     (assistantPins ?? []).forEach((pin, i) => {
       const el = document.createElement("div");
       el.style.cssText = `
-        width:28px;height:28px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);
-        background:var(--color-route);border:2px solid var(--color-raised);
-        box-shadow:var(--shadow-level-1);
+        width:28px;height:28px;border-radius:var(--radius-pin);
+        transform:rotate(var(--angle-marker));
+        background:var(--color-map-route-current);border:2px solid var(--color-map-panel-current);
+        box-shadow:var(--shadow-map-marker);
         display:flex;align-items:center;justify-content:center;cursor:pointer;
       `;
       const inner = document.createElement("span");
-      inner.style.cssText = `transform:rotate(45deg);font-size:11px;font-weight:700;color:var(--color-on-route);font-family:var(--font-sans);`;
+      inner.style.cssText = `transform:rotate(var(--angle-marker-inner));font-size:11px;font-weight:700;color:var(--color-map-on-route-current);font-family:var(--font-sans);`;
       inner.textContent = String(i + 1);
       el.appendChild(inner);
 
@@ -1124,16 +1124,16 @@ export default function MapView({
     const pulse = document.createElement("div");
     pulse.style.cssText = `
       position: absolute;
-      width: 36px; height: 36px; border-radius: 50%;
-      background: color-mix(in srgb, var(--color-route) 25%, transparent);
+      width: 36px; height: 36px; border-radius: var(--radius-circle);
+      background: color-mix(in srgb, var(--color-map-route-current) 25%, transparent);
       animation: userLocationPulse 1.8s ease-out infinite;
     `;
 
     const dot = document.createElement("div");
     dot.style.cssText = `
-      width: 14px; height: 14px; border-radius: 50%;
-      background: var(--color-route); border: 2.5px solid var(--color-raised);
-      box-shadow: 0 0 6px color-mix(in srgb, var(--color-route) 70%, transparent);
+      width: 14px; height: 14px; border-radius: var(--radius-circle);
+      background: var(--color-map-route-current); border: 2.5px solid var(--color-map-panel-current);
+      box-shadow: var(--shadow-map-dot);
       position: relative; z-index: 1;
     `;
 
@@ -1235,7 +1235,7 @@ export default function MapView({
 
     // Create new markers only for newly added points
     for (let i = existing.length; i < newCount; i++) {
-      const marker = new maplibregl.Marker({ color: token("color-ink") })
+      const marker = new maplibregl.Marker({ color: token("color-map-ink-current") })
         .setLngLat(sketchPoints[i].coord)
         .addTo(map);
 
@@ -1309,7 +1309,7 @@ export default function MapView({
 
     for (const wp of simplifiedWaypoints) {
       const addr = getSketchAddressForCoord(wp);
-      const marker = new maplibregl.Marker({ color: token("color-ink") })
+      const marker = new maplibregl.Marker({ color: token("color-map-ink-current") })
         .setLngLat(wp)
         .addTo(map);
 
@@ -1433,9 +1433,9 @@ export default function MapView({
           source: "train-route-stops",
           paint: {
             "circle-radius": 6,
-            "circle-color": token("color-raised"),
+            "circle-color": token("color-map-panel-current"),
             "circle-stroke-width": 2,
-            "circle-stroke-color": token("color-ink-muted"),
+            "circle-stroke-color": token("color-map-muted-current"),
           },
         });
       }
@@ -1459,9 +1459,9 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 12,
-            "circle-color": token("color-raised"),
+            "circle-color": token("color-map-panel-current"),
             "circle-stroke-width": 3,
-            "circle-stroke-color": token("color-ink"),
+            "circle-stroke-color": token("color-map-ink-current"),
           },
         });
         map.addLayer({
@@ -1470,7 +1470,7 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 5,
-            "circle-color": token("color-ink"),
+            "circle-color": token("color-map-ink-current"),
           },
         });
       }
@@ -1508,11 +1508,11 @@ export default function MapView({
     const makeMEl = () => {
       const el = document.createElement("div");
       el.style.cssText = [
-        "width:26px", "height:26px", "border-radius:50%",
-        "background:var(--color-raised)", "border:3px solid var(--color-route)",
-        "box-shadow:0 0 0 5px color-mix(in srgb, var(--color-route) 25%, transparent)",
+        "width:26px", "height:26px", "border-radius:var(--radius-circle)",
+        "background:var(--color-map-panel-current)", "border:3px solid var(--color-map-route-current)",
+        "box-shadow:var(--shadow-map-station)",
         "display:flex", "align-items:center", "justify-content:center",
-        "font-size:11px", "font-weight:700", "color:var(--color-route)",
+        "font-size:11px", "font-weight:700", "color:var(--color-map-route-current)",
         "font-family:sans-serif", "cursor:default",
       ].join(";");
       el.textContent = "M";
@@ -1545,7 +1545,7 @@ export default function MapView({
         type: "line",
         source: "mrt-entrance-connector",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": token("color-route"), "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
+        paint: { "line-color": token("color-map-route-current"), "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
       });
 
       bringNavOverlaysToFront(map);

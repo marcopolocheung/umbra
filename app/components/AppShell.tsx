@@ -49,14 +49,14 @@ export default function AppShell({
     /* h-dvh (with an h-screen fallback) tracks the *visible* viewport, so
        mobile Chrome's bottom toolbar / new-tab bar no longer sits on top of
        the timeline and bottom sheet pinned to the container's bottom edge. */
-    <div className="relative flex h-screen supports-[height:100dvh]:h-dvh w-screen overflow-hidden" style={{ background: "var(--color-canvas)" }}>
+    <div className="relative flex h-screen supports-[height:100dvh]:h-dvh w-screen overflow-hidden" style={{ background: "var(--color-ground)" }}>
       {/* Collapsible sidebar — desktop only */}
       <aside
         className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40 w-sidebar"
         style={{
-          background: "var(--color-raised)",
-          borderRight: "1px solid var(--color-hairline)",
-          boxShadow: "var(--shadow-level-2)",
+          background: "var(--color-panel)",
+          borderRight: "1px solid var(--color-rule)",
+          boxShadow: "var(--shadow-hard-2)",
           transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
           transition: "transform 300ms ease-in-out",
         }}
@@ -71,8 +71,8 @@ export default function AppShell({
           onClick={onSidebarToggle}
           className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-full w-8 h-16 rounded-r-xl flex items-center justify-center hover:brightness-95 transition-[filter]"
           style={{
-            background: "var(--color-raised)",
-            boxShadow: "var(--shadow-level-1)",
+            background: "var(--color-panel)",
+            boxShadow: "var(--shadow-hard-1)",
           }}
           aria-label={sidebarOpen ? "Close panel" : "Open panel"}
         >

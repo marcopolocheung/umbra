@@ -26,12 +26,12 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
       onClick={onEdit}
       aria-label={`Edit trip: ${from} to ${to}`}
       title="Edit trip"
-      className="flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 py-2 transition-colors hover:bg-canvas"
-      style={{ background: "var(--color-canvas)", borderColor: "var(--color-hairline)" }}
+      className="flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 py-2 transition-colors hover:bg-ground"
+      style={{ background: "var(--color-ground)", borderColor: "var(--color-rule)" }}
     >
       <span className="material-symbols-outlined shrink-0 text-base text-ink-muted" aria-hidden="true">route</span>
       <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--color-ink)" }}>
-        {from} <span className="text-ink-faint">→</span> {to}
+        {from} <span className="text-ink-muted">→</span> {to}
       </span>
       <span className="material-symbols-outlined shrink-0 text-base text-route" aria-hidden="true">edit</span>
     </button>
@@ -40,13 +40,13 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
 
 /**
  * The partial/failed-route notice, as a pill riding inside the card stack.
- * Sun-strong ink on sun-soft: a caveat about the data, not chrome.
+ * Neutral ink on a quiet plate: a caveat about the data, not solar data.
  */
 function NoticePill({ text }: { text: string }) {
   return (
     <div
       className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium"
-      style={{ background: "var(--color-sun-soft)", color: "var(--color-sun-strong)" }}
+      style={{ background: "var(--color-route-soft)", color: "var(--color-ink)" }}
       role="status"
     >
       {text}
@@ -199,8 +199,8 @@ export default function DirectionsPanel({
       <div className="flex items-center justify-between">
         <button type="button"
           onClick={onBack}
-          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-canvas"
-          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-ground"
+          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
           title="Back"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
@@ -210,7 +210,7 @@ export default function DirectionsPanel({
             buttons may stay narrow, but their height is a thumb target. */}
         <div
           className="flex rounded-lg overflow-hidden border"
-          style={{ borderColor: "var(--color-hairline)" }}
+          style={{ borderColor: "var(--color-rule)" }}
         >
           {(['walk', 'transit'] as const).map((mode) => (
             <button type="button"
@@ -220,8 +220,8 @@ export default function DirectionsPanel({
               aria-pressed={routeMode === mode}
               className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
                 routeMode === mode
-                  ? 'text-ink bg-canvas'
-                  : 'hover:bg-canvas'
+                  ? 'text-ink bg-ground'
+                  : 'hover:bg-ground'
               } disabled:opacity-40 disabled:cursor-not-allowed`}
               style={routeMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
               title={mode === 'transit' && !canTransit ? 'Too close for transit' : undefined}
@@ -233,7 +233,7 @@ export default function DirectionsPanel({
       </div>
 
       {/* Saved routes — reachable without reopening the planning form. Its
-          divider (inside SavedRoutesSection) is hairline-strong: saved trips
+          divider (inside SavedRoutesSection) is rule-strong: saved trips
           and this trip's planning controls are different kinds of content, and
           spacing alone doesn't group them (law of proximity, U4). */}
       {savedRoutes && savedRoutes.length > 0 && savedFolders && onLoadRoute && onDeleteSavedRoute && onRenameSavedRoute && (
@@ -252,7 +252,7 @@ export default function DirectionsPanel({
       {onRainModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--color-hairline)" }}
+          style={{ borderColor: "var(--color-rule)" }}
           data-testid="rain-mode-selector"
         >
           {([false, true] as const).map((rain) => (
@@ -261,7 +261,7 @@ export default function DirectionsPanel({
               onClick={() => onRainModeChange(rain)}
               aria-pressed={rainMode === rain}
               className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
-                rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-canvas'
+                rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-ground'
               }`}
               style={rainMode !== rain ? { color: "var(--color-ink-muted)" } : undefined}
               title={rain ? 'Route using rain shelter' : 'Route by sun exposure'}
@@ -277,7 +277,7 @@ export default function DirectionsPanel({
       {showForm ? (
         <>
       {rainMode && onWindSourceChange && (
-        <div className="flex flex-col gap-2 self-start rounded-lg border p-2 text-[11px]" style={{ borderColor: "var(--color-hairline)" }}>
+        <div className="flex flex-col gap-2 self-start rounded-lg border p-2 text-[11px]" style={{ borderColor: "var(--color-rule)" }}>
           <div className="font-semibold" style={{ color: "var(--color-ink)" }}>Rain conditions</div>
           <div className="flex gap-1">
             {(["forecast", "manual"] as const).map((source) => (
@@ -332,7 +332,7 @@ export default function DirectionsPanel({
       {routeMode === 'walk' && onTravelModeChange && (
         <div
           className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--color-hairline)" }}
+          style={{ borderColor: "var(--color-rule)" }}
           data-testid="travel-mode-selector"
         >
           {(Object.keys(TRAVEL_MODE_POLICIES) as TravelModeId[]).map((mode) => (
@@ -343,8 +343,8 @@ export default function DirectionsPanel({
               aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
               className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
                 travelMode === mode
-                  ? 'text-ink bg-canvas'
-                  : 'hover:bg-canvas'
+                  ? 'text-ink bg-ground'
+                  : 'hover:bg-ground'
               }`}
               style={travelMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
               title={mode === 'walk' ? undefined : mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : 'Avoids steps and rough surfaces — for scooters and skateboards'}
@@ -358,7 +358,7 @@ export default function DirectionsPanel({
       {/* Waypoint inputs */}
       <div
         className="rounded-xl p-4 flex flex-col gap-2"
-        style={{ background: "var(--color-canvas)" }}
+        style={{ background: "var(--color-ground)" }}
       >
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
@@ -376,7 +376,7 @@ export default function DirectionsPanel({
             aria-pressed={pendingSlot === 'A'}
             onPointerDown={() => onPinDragStart?.('A')}
             onClick={() => activateWaypointSlot('A')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-canvas"
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-ground"
             style={{ color: pendingSlot === 'A' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place start waypoint on map"
           >
@@ -388,7 +388,7 @@ export default function DirectionsPanel({
         <div className="flex justify-center">
           <button type="button"
             onClick={onSwapWaypoints}
-            className="text-ink-faint hover:text-ink transition-colors p-1 hover:bg-canvas rounded-lg"
+            className="text-ink-muted hover:text-ink transition-colors p-1 hover:bg-ground rounded-lg"
             title="Swap waypoints"
           >
             <span className="material-symbols-outlined text-lg">swap_vert</span>
@@ -415,7 +415,7 @@ export default function DirectionsPanel({
             disabled={drawMode}
             onPointerDown={() => !drawMode && onPinDragStart?.('B')}
             onClick={() => activateWaypointSlot('B')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-canvas disabled:cursor-not-allowed"
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-ground disabled:cursor-not-allowed"
             style={{ color: pendingSlot === 'B' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place destination waypoint on map"
           >
@@ -445,14 +445,14 @@ export default function DirectionsPanel({
               <span className="flex-1 tabular-nums truncate" style={{ color: "var(--color-ink)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
               <button type="button"
                 onClick={() => onRemoveAdditionalWaypoint?.(i)}
-                className="text-ink-faint hover:text-danger transition-colors px-0.5"
+                className="text-ink-muted hover:text-danger transition-colors px-0.5"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
           ))}
           {addingStop && onAddAdditionalWaypoint && (
-            <div className="mt-1 rounded-lg border px-2 py-1" style={{ borderColor: "var(--color-hairline)" }}>
+            <div className="mt-1 rounded-lg border px-2 py-1" style={{ borderColor: "var(--color-rule)" }}>
               <WaypointInput
                 label={null}
                 placeholder="Stop — type an address or place"
@@ -478,17 +478,17 @@ export default function DirectionsPanel({
       ) : null}
 
       {/* Route input — Search / Draw segmented control */}
-      <div className="border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
+      <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
         <div className="flex items-center justify-between">
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Route input</span>
           <div
             className="flex rounded-lg overflow-hidden border"
-            style={{ borderColor: "var(--color-hairline)" }}
+            style={{ borderColor: "var(--color-rule)" }}
           >
             <button type="button"
               onClick={() => drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                !drawMode ? 'text-ink bg-canvas' : 'hover:bg-canvas'
+                !drawMode ? 'text-ink bg-ground' : 'hover:bg-ground'
               }`}
               style={drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
@@ -497,7 +497,7 @@ export default function DirectionsPanel({
             <button type="button"
               onClick={() => !drawMode && onDrawModeToggle?.()}
               className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                drawMode ? 'text-ink bg-canvas' : 'hover:bg-canvas'
+                drawMode ? 'text-ink bg-ground' : 'hover:bg-ground'
               }`}
               style={!drawMode ? { color: "var(--color-ink-muted)" } : undefined}
             >
@@ -530,7 +530,7 @@ export default function DirectionsPanel({
       </div>
 
       {/* Objective preference slider */}
-      <div className="border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
+      <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter preference" : "Shadow preference"}</span>
           <span className="text-[11px] font-medium" style={{ color: "var(--color-ink)" }}>{preferenceLabel}</span>
@@ -543,7 +543,7 @@ export default function DirectionsPanel({
           value={shadowPreference}
           onChange={(e) => onShadowPreferenceChange?.(parseFloat(e.target.value))}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-ink"
-          style={{ background: "var(--color-canvas)" }}
+          style={{ background: "var(--color-ground)" }}
         />
         <div className="flex justify-between mt-1">
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
@@ -576,8 +576,8 @@ export default function DirectionsPanel({
           aria-live="polite"
           className="rounded-lg border px-3 py-2 text-[11px]"
           style={{
-            background: "var(--color-canvas)",
-            borderColor: "var(--color-hairline)",
+            background: "var(--color-ground)",
+            borderColor: "var(--color-rule)",
             color: "var(--color-ink-muted)",
           }}
         >
@@ -610,7 +610,7 @@ export default function DirectionsPanel({
           stack passes three options (serial position): trailing the stack
           puts it at end-position, where memory favours the weakest option. */}
       {!hideRouteCards && routes.length > 0 && (
-        <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-hairline)" }}>
+        <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
           {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">
             {routes.map((r, i) => (
@@ -649,14 +649,14 @@ export default function DirectionsPanel({
       {/* Warning with no route stack to ride in (and errors) stays at the
           panel's foot — there is no weaker card to anchor it to. */}
       {warning && routes.length === 0 && (
-        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-sun-strong)", borderColor: "var(--color-hairline)" }}>
+        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-ink-muted)", borderColor: "var(--color-rule)" }}>
           {warning}
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-danger)", borderColor: "var(--color-hairline)" }}>
+        <div className="text-xs border-t pt-2 shrink-0" style={{ color: "var(--color-danger)", borderColor: "var(--color-rule)" }}>
           {error}
         </div>
       )}

@@ -69,7 +69,7 @@ function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelMod
           <li key={i} className="flex items-start gap-2">
             <span
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
               aria-hidden="true"
             >
               <span className="material-symbols-outlined text-base">directions_walk</span>
@@ -128,8 +128,8 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
-          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
+          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
           title="Back to route options"
           aria-label="Back to route options"
         >
@@ -139,8 +139,8 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onExit}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
-          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
+          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
           title="End navigation"
           aria-label="End navigation"
         >
@@ -179,19 +179,19 @@ export default function NavigationStatusPanel({
 
       {route ? (
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
             <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
             <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter" : "Shadow"}</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct == null ? "Unknown" : `${shadowPct}%`}</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
             <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
             <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{route.turnCount}</div>
           </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-canvas)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
             <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
               {duration ? "Time" : "Shadow breaks"}
             </div>
@@ -201,7 +201,7 @@ export default function NavigationStatusPanel({
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink-muted)" }}>
+        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>
           Pick a complete route before starting navigation.
         </div>
       )}
@@ -210,12 +210,12 @@ export default function NavigationStatusPanel({
           the pattern a rider already knows. Single-leg walk routes skip it:
           the stats grid already says everything there is to say. */}
       {route?.legs && route.legs.length > 1 && (
-        <div className="rounded-xl p-3" style={{ background: "var(--color-canvas)" }}>
+        <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
           <LegList legs={route.legs} travelMode={route.travelMode ?? "walk"} />
         </div>
       )}
 
-      <div className="rounded-xl p-3" style={{ background: "var(--color-canvas)" }}>
+      <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
         <div className="flex items-start gap-2">
           <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }}>trip_origin</span>
           <div className="min-w-0 flex-1">
@@ -225,9 +225,9 @@ export default function NavigationStatusPanel({
             </div>
           </div>
         </div>
-        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-hairline)" }} />
+        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-rule)" }} />
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-danger)" }}>location_on</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-route)" }}>location_on</span>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>

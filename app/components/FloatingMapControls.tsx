@@ -34,7 +34,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomIn()}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="w-12 h-12 rounded-2xl bg-panel shadow-hard-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom in"
         title="Zoom in"
       >
@@ -45,14 +45,14 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomOut()}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="w-12 h-12 rounded-2xl bg-panel shadow-hard-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom out"
         title="Zoom out"
       >
         <span className="material-symbols-outlined">remove</span>
       </button>
 
-      <div className="h-px w-8 bg-hairline-strong self-center my-1" />
+      <div className="h-px w-8 bg-rule-strong self-center my-1" />
 
       {/* Objective toggle and share live in the sheet on mobile (the directions
           panel owns the sun/rain switch; share rides the route card) — the phone
@@ -68,7 +68,7 @@ export default function FloatingMapControls({
               aria-pressed={!rainMode}
               title="Route by sun exposure"
               className={`w-14 h-10 flex items-center justify-center transition-colors ${
-                !rainMode ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
+                !rainMode ? "bg-ink text-on-ink" : "bg-panel text-ink-muted hover:text-ink"
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">light_mode</span>
@@ -79,7 +79,7 @@ export default function FloatingMapControls({
               aria-pressed={rainMode}
               title="Route away from rain (experimental)"
               className={`w-14 h-10 flex items-center justify-center transition-colors ${
-                rainMode ? "bg-route text-on-route" : "bg-raised text-ink-muted hover:text-route"
+                rainMode ? "bg-rain text-on-rain" : "bg-panel text-ink-muted hover:text-route"
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">rainy</span>
@@ -91,7 +91,7 @@ export default function FloatingMapControls({
         <button
           type="button"
           onClick={onShare}
-          className="hidden md:flex w-12 h-12 rounded-2xl bg-raised shadow-level-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+          className="hidden md:flex w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
           aria-label={shareStatus === "copied" ? "Share link copied" : "Copy share link"}
           title={shareStatus === "copied" ? "Copied" : shareStatus === "error" ? "Copy failed" : "Copy share link"}
         >
@@ -108,7 +108,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={onLocateMe}
-        className="w-12 h-12 rounded-2xl bg-raised shadow-level-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="w-12 h-12 rounded-2xl bg-panel shadow-hard-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="My location"
         title="My location"
         disabled={isLocating}
@@ -152,7 +152,7 @@ export function Tilt3DButton({
         else map.easeTo({ ...camera, duration: 400 });
       }}
       className={`w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center transition-colors ${
-        is3D ? "bg-ink text-on-ink" : "bg-raised text-ink-muted hover:text-ink"
+        is3D ? "bg-ink text-on-ink" : "bg-panel text-ink-muted hover:text-ink"
       }`}
       aria-pressed={is3D}
       aria-label={is3D ? "Return to 2D map" : "Tilt to 3D map"}

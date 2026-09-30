@@ -7,7 +7,7 @@ import { SHARE_URL, stubNetwork, type Basemap } from "../helpers/scenario";
 /**
  * Captures the app's key mobile UI states for design review. This is a shot run,
  * not a test: the assertions only herd the app into each state, the product is
- * the PNGs in out/shots/ (gitignored — throwaway iteration; curated shots are
+ * the PNGs in out/shots/{day,night}/ (gitignored — throwaway iteration; curated shots are
  * committed under docs/design/shots/u<n>/ by the session).
  *
  * Basemap: real MapTiler tiles when a key is present (the design must be judged
@@ -22,7 +22,8 @@ function basemap(): Basemap {
 
 const OUT = process.env.SHOTS_OUT ?? path.join(process.cwd(), "out", "shots");
 
-test("Umbra mobile design states", async ({ page }) => {
+for (const theme of ["day", "night"] as const) {
+test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
   await stubNetwork(page, { basemap: basemap() });
   // U6: the Foursquare typeahead is the one autocomplete path — a stubbed
   // places-search answer so the suggestion rows render in the shot.
@@ -54,10 +55,19 @@ test("Umbra mobile design states", async ({ page }) => {
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(SHARE_URL);
+  // R1 preview seam. R2 will choose UI theme from selected solar time;
+  // the basemap remains on its current day style until R4.
+  await page.evaluate((value) => {
+    document.documentElement.dataset.theme = value;
+  }, theme);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-ground").trim()))
+    .toBe(theme === "day" ? "#efe4d2" : "#0e0c0b");
+  await page.evaluate(async () => { await document.fonts.ready; });
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
 
   const shot = (name: string) => async () => {
-    const file = path.join(OUT, name);
+    const file = path.join(OUT, theme, name);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     await page.screenshot({ path: file });
     console.log(`SHOT ${file}`);
@@ -94,11 +104,12 @@ test("Umbra mobile design states", async ({ page }) => {
   // (the split shade bar + duration verdict) lives on the card's verdict row,
   // so the committed shot starts from the top of the stack.
   await page.evaluate(() => {
-    const sheet = document.querySelector("div.fixed.bottom-0");
+    const sheet = document.querySelector("[data-testid='bottom-sheet']");
     const scroller = sheet?.querySelector("[class*='overflow']") ?? sheet;
     if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
   });
   await page.waitForTimeout(300);
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
   await shot("02-directions-cards.png")();
 
   // 2b. U7 — the arrival card: the peak-end shade story in the display voice
@@ -116,6 +127,7 @@ test("Umbra mobile design states", async ({ page }) => {
     .first()
     .click();
   await page.waitForTimeout(800);
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
   await shot("07-arrival.png")();
   await page
     .getByRole("button", { name: "Plan another" })
@@ -160,15 +172,16 @@ test("Umbra mobile design states", async ({ page }) => {
 
   // 6. Timeline dragging — collapse the sheet, grab the slider mid-drag with
   // the sun-arc dot live.
-  const sheet = page.locator("div.fixed.bottom-0");
+  const sheet = page.getByTestId("bottom-sheet");
   const sbox = await sheet.boundingBox().catch(() => null);
   if (sbox && sbox.height > 120) {
     await page.mouse.move(sbox.x + sbox.width / 2, sbox.y + 20);
     await page.mouse.down();
-    await page.mouse.move(sbox.x + sbox.width / 2, 830, { steps: 8 });
+    await page.mouse.move(sbox.x + sbox.width / 2, 830, { steps: 2 });
     await page.mouse.up();
     await page.waitForTimeout(800);
   }
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeVisible();
   const slider = page.getByTestId("timeline-slider").filter({ visible: true });
   const box = await slider.boundingBox();
   if (!box) throw new Error("timeline slider has no layout box");
@@ -176,9 +189,10 @@ test("Umbra mobile design states", async ({ page }) => {
   const sy = Math.min(box.y + box.height / 2, 843);
   await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(sx - 120, sy, { steps: 8 });
+  await page.mouse.move(sx - 120, sy, { steps: 2 });
   await shot("06-timeline-dragging.png")();
   await page.mouse.up();
 
-  console.log(`SHOTS_DONE ${OUT}`);
+  console.log(`SHOTS_DONE ${path.join(OUT, theme)}`);
 });
+}

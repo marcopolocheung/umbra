@@ -422,8 +422,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     <div ref={containerRef} className="relative">
       {/* Canopy search — the one 999 pill, >=70% white, the only blurred surface */}
       <div
-        className="w-full flex items-center rounded-full bg-raised/90 backdrop-blur-md h-14 px-4 gap-3 border border-hairline"
-        style={isActive ? { boxShadow: "var(--shadow-level-2)" } : undefined}
+        className="w-full flex items-center rounded-full bg-panel/90 backdrop-blur-md h-14 px-4 gap-3 border border-rule"
+        style={isActive ? { boxShadow: "var(--shadow-hard-2)" } : undefined}
       >
         {/* Hamburger — toggles desktop sidebar */}
         {onMenuToggle && (
@@ -450,7 +450,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           aria-controls={isOpen || suggestionsOpen ? listId : undefined}
           aria-activedescendant={highlightIndex >= 0 ? `${listId}-opt-${highlightIndex}` : undefined}
           aria-autocomplete="list"
-          className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-ink-faint"
+          className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-ink-muted"
           style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
 
@@ -458,7 +458,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         {query.length > 0 && (
           <button type="button"
             onClick={handleClear}
-            className="shrink-0 text-ink-faint hover:text-ink-muted transition-colors"
+            className="shrink-0 text-ink-muted hover:text-ink-muted transition-colors"
             aria-label="Clear search"
           >
             <svg width="16" height="16" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -485,7 +485,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         {onDirections && (
           <button type="button"
             onClick={onDirections}
-            className="shrink-0 text-ink-faint hover:opacity-80 transition-opacity"
+            className="shrink-0 text-ink-muted hover:opacity-80 transition-opacity"
             aria-label="Directions"
           >
             <span className="material-symbols-outlined">directions</span>
@@ -520,8 +520,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       {/* Recent/Saved sections */}
       {showSections && (
         <div
-          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20"
-          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
+          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20"
+          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
         >
           {recent.length > 0 && (
             <div className="py-1">
@@ -534,9 +534,9 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-ground"
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">location_on</span>
                     </div>
                     <div className="min-w-0 flex-1">
@@ -550,7 +550,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           )}
 
           {saved.length > 0 && (
-            <div className="border-t py-1" style={{ borderColor: "var(--color-hairline)" }}>
+            <div className="border-t py-1" style={{ borderColor: "var(--color-rule)" }}>
               <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-ink-muted)" }}>
                 SAVED
               </div>
@@ -560,9 +560,9 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <button type="button"
                     key={`${it.label}-${i}`}
                     onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-canvas"
+                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-ground"
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
                       <span className="material-symbols-outlined text-base">bookmark</span>
                     </div>
                     <div className="min-w-0 flex-1">
@@ -582,8 +582,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <div
           id={listId}
           role="listbox"
-          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
-          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
+          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
+          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
         >
           {suggestions.map((s, i) => (
             <button
@@ -594,7 +594,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
               aria-selected={i === highlightIndex}
               onClick={() => handleSelectSuggestion(s)}
               className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+                i === highlightIndex ? "bg-ground" : "hover:bg-ground"
               }`}
             >
               {s.photo ? (
@@ -604,12 +604,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   loading="lazy"
                   decoding="async"
                   className="w-10 h-10 rounded-lg object-cover shrink-0"
-                  style={{ border: "1px solid var(--color-hairline)" }}
+                  style={{ border: "1px solid var(--color-rule)" }}
                 />
               ) : (
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+                  style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
                 >
                   <span className="material-symbols-outlined text-base">location_on</span>
                 </div>
@@ -652,8 +652,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <div
           id={listId}
           role="listbox"
-          className="absolute top-full mt-2 w-full bg-raised rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
-          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
+          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
+          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
         >
           {results.map((row, i) =>
             row.kind === "fsq" ? (
@@ -665,12 +665,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                 aria-selected={i === highlightIndex}
                 onClick={() => handleSelect(row)}
                 className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                  i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+                  i === highlightIndex ? "bg-ground" : "hover:bg-ground"
                 }`}
               >
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+                  style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
                 >
                   <span className="material-symbols-outlined text-base">location_on</span>
                 </div>
@@ -699,10 +699,10 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                 aria-selected={i === highlightIndex}
                 onClick={() => handleSelect(row)}
                 className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                  i === highlightIndex ? "bg-canvas" : "hover:bg-canvas"
+                  i === highlightIndex ? "bg-ground" : "hover:bg-ground"
                 }`}
               >
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
                   <span className="material-symbols-outlined text-base">location_on</span>
                 </div>
 

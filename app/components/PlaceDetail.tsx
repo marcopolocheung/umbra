@@ -43,13 +43,13 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
             <>
               <div className="flex items-center gap-1">
                 <span className="font-semibold">{place.rating.toFixed(1)}</span>
-                <span style={{ color: "var(--color-sun)" }}>★</span>
+                <span style={{ color: "var(--color-ink)" }}>★</span>
               </div>
-              <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+              <span style={{ color: "var(--color-ink-muted)" }}>·</span>
               {reviewCount > 0 && (
                 <>
                   <span style={{ color: "var(--color-ink-muted)" }}>{reviewCount} reviews</span>
-                  <span style={{ color: "var(--color-ink-faint)" }}>·</span>
+                  <span style={{ color: "var(--color-ink-muted)" }}>·</span>
                 </>
               )}
             </>
@@ -76,7 +76,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
               src={src}
               alt={place.name}
               className="h-20 w-28 object-cover rounded-xl border"
-              style={{ borderColor: "var(--color-hairline)" }}
+              style={{ borderColor: "var(--color-rule)" }}
             />
           ))
         ) : (
@@ -84,7 +84,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
             <div
               key={i}
               className="h-20 w-28 rounded-xl border flex items-center justify-center text-[11px]"
-              style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink-faint)", background: "var(--color-canvas)" }}
+              style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)", background: "var(--color-ground)" }}
             >
               Photo
             </div>
@@ -93,7 +93,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
       </div>
 
       {/* Info rows */}
-      <div className="flex flex-col border rounded-2xl overflow-hidden" style={{ borderColor: "var(--color-hairline)" }}>
+      <div className="flex flex-col border rounded-2xl overflow-hidden" style={{ borderColor: "var(--color-rule)" }}>
         <InfoRow
           icon="pin"
           label={place.address ?? "Address unavailable"}
@@ -103,7 +103,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
                 try { await navigator.clipboard.writeText(place.address ?? ""); } catch { /* ignore */ }
               }}
               className="text-[12px] px-2 py-1 rounded-lg"
-              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
             >
               Copy
             </button>
@@ -124,7 +124,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
           invented reviews as data — the honesty guardrail bans both (U5). */}
       <section>
         <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>Reviews</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)", background: "var(--color-raised)" }}>
+        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-rule)", background: "var(--color-panel)" }}>
           <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>
             No reviews from the current data source.
           </div>
@@ -134,7 +134,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
       {/* About / From the owner */}
       <section>
         <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>About</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-hairline)" }}>
+        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-rule)" }}>
           <div className="text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
             {place.description ?? "No description from the current data source."}
           </div>
@@ -149,7 +149,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
             <button type="button"
               key={t}
               className="px-3 py-2 rounded-full text-[12px] whitespace-nowrap"
-              style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
             >
               {t}
             </button>
@@ -161,7 +161,7 @@ export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetail
 }
 
 function Divider() {
-  return <div className="h-px" style={{ background: "var(--color-hairline)" }} />;
+  return <div className="h-px" style={{ background: "var(--color-rule)" }} />;
 }
 
 function ActionPill({
@@ -221,7 +221,7 @@ function ActionPill({
     <button type="button"
       onClick={onClick}
       className="flex flex-col items-center justify-center shrink-0 px-3 py-2 rounded-2xl"
-      style={{ background: "var(--color-canvas)", color: "var(--color-ink)", minWidth: 74 }}
+      style={{ background: "var(--color-ground)", color: "var(--color-ink)", minWidth: 74 }}
     >
       <Icon />
       <div className="mt-1 text-[11px]">{label}</div>
@@ -295,7 +295,7 @@ function InfoRow({
       ) : rightText ? (
         <div className="shrink-0 text-[12px]" style={{ color: "var(--color-route)" }}>{rightText}</div>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       )}

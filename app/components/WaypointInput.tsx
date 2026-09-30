@@ -106,15 +106,15 @@ const WaypointInput = memo(function WaypointInput({
     <div className="relative flex flex-col gap-0.5">
       <div className="flex items-center gap-3 relative z-10">
         {dotColor === "green" ? (
-          <span className="material-symbols-outlined text-ink bg-canvas rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink bg-ground rounded-full p-0.5 text-sm shrink-0">
             radio_button_checked
           </span>
         ) : dotColor === "red" ? (
-          <span className="material-symbols-outlined text-route bg-canvas rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-route bg-ground rounded-full p-0.5 text-sm shrink-0">
             location_on
           </span>
         ) : (
-          <span className="material-symbols-outlined text-ink-muted bg-canvas rounded-full p-0.5 text-sm shrink-0">
+          <span className="material-symbols-outlined text-ink-muted bg-ground rounded-full p-0.5 text-sm shrink-0">
             add_location
           </span>
         )}
@@ -133,14 +133,14 @@ const WaypointInput = memo(function WaypointInput({
             setQuery(labelRef.current ?? "");
             closeDropdown();
           }}
-          className="flex-1 min-w-0 rounded px-2 py-1 text-xs placeholder-ink-faint border-none focus:outline-none transition-colors bg-transparent"
+          className="flex-1 min-w-0 rounded px-2 py-1 text-xs placeholder-ink-muted border-none focus:outline-none transition-colors bg-transparent"
           style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
         {label && (
           <button type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => { onClear(); setQuery(""); closeDropdown(); }}
-            className="shrink-0 text-ink-faint hover:text-ink transition-colors leading-none px-0.5"
+            className="shrink-0 text-ink-muted hover:text-ink transition-colors leading-none px-0.5"
             title="Clear waypoint"
           >
             <span className="material-symbols-outlined text-sm">close</span>
@@ -156,8 +156,8 @@ const WaypointInput = memo(function WaypointInput({
       ) : null}
       {results.length > 0 && (
         <div
-          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-raised border rounded-xl overflow-hidden"
-          style={{ borderColor: "var(--color-hairline)", boxShadow: "var(--shadow-level-2)" }}
+          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-panel border rounded-xl overflow-hidden"
+          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
         >
           {results.map((r, i) => {
             const comma = r.display_name.indexOf(",");
@@ -170,7 +170,7 @@ const WaypointInput = memo(function WaypointInput({
                 onClick={() => handleSelect(r)}
                 onMouseEnter={() => setHighlight(i)}
                 className={`w-full text-left px-3 py-2 transition-colors ${
-                  i === highlight ? "bg-canvas" : "hover:bg-canvas"
+                  i === highlight ? "bg-ground" : "hover:bg-ground"
                 }`}
               >
                 <div className="text-xs truncate" style={{ color: i === highlight ? "var(--color-route)" : "var(--color-ink)" }}>

@@ -67,7 +67,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             onBlur={() => commitRename(r.id)}
             className="flex-1 border rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
             style={{
-              background: "var(--color-canvas)",
+              background: "var(--color-ground)",
               color: "var(--color-ink)",
               borderColor: "var(--color-route-soft)",
             }}
@@ -75,7 +75,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
         ) : (
           <button type="button"
             onClick={() => onLoad(r)}
-            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-canvas transition-colors min-w-0"
+            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-ground transition-colors min-w-0"
           >
             <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
             <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</div>
@@ -85,14 +85,14 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
           <button type="button"
             onClick={() => { setRenamingId(r.id); setRenameValue(r.name); }}
             title="Rename"
-            className="p-0.5 text-ink-faint hover:text-ink-muted transition-colors"
+            className="p-0.5 text-ink-muted hover:text-ink-muted transition-colors"
           >
             <span className="material-symbols-outlined text-sm">edit</span>
           </button>
           <button type="button"
             onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
             title="Delete"
-            className="p-0.5 text-ink-faint hover:text-danger transition-colors"
+            className="p-0.5 text-ink-muted hover:text-danger transition-colors"
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
@@ -104,14 +104,14 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   return (
     // The strong hairline separates saved trips from the planning form below —
     // different kinds of content need more than spacing between them (U4).
-    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-hairline-strong)" }}>
+    <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-rule-strong)" }}>
       <button type="button"
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 w-full text-left text-[11px] hover:text-ink transition-colors py-0.5"
         style={{ color: "var(--color-ink-muted)" }}
       >
         <span
-          className={`material-symbols-outlined text-xs transition-transform ${open ? 'rotate-90' : ''}`}
+          className={`material-symbols-outlined text-xs transition-transform ${open ? 'umbra-disclosure-open' : ''}`}
           style={{ fontSize: 12 }}
         >
           chevron_right

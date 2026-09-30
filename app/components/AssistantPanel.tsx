@@ -54,15 +54,15 @@ export default function AssistantPanel({
         right: "1rem",
         width: "min(380px, calc(100vw - 2rem))",
         height: "min(560px, calc(100vh - 2rem))",
-        background: "var(--color-raised)",
-        borderColor: "var(--color-hairline)",
+        background: "var(--color-panel)",
+        borderColor: "var(--color-rule)",
         fontFamily: "var(--font-sans)",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-3 border-b"
-        style={{ borderColor: "var(--color-hairline)" }}
+        style={{ borderColor: "var(--color-rule)" }}
       >
         <span
           className="material-symbols-outlined text-ink"
@@ -81,7 +81,7 @@ export default function AssistantPanel({
         <button
           type="button"
           onClick={onReset}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
           title="New conversation"
           style={{ color: "var(--color-ink-muted)" }}
         >
@@ -90,7 +90,7 @@ export default function AssistantPanel({
         <button
           type="button"
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-canvas transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
           title="Close"
           style={{ color: "var(--color-ink-muted)" }}
         >
@@ -111,8 +111,8 @@ export default function AssistantPanel({
                 type="button"
                 key={s}
                 onClick={() => onSend(s)}
-                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-canvas transition-colors"
-                style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-ground transition-colors"
+                style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
               >
                 {s}
               </button>
@@ -148,7 +148,7 @@ export default function AssistantPanel({
                 alignSelf: isUser ? "flex-end" : "flex-start",
                 background: isUser
                   ? "var(--color-ink)"
-                  : "var(--color-canvas)",
+                  : "var(--color-ground)",
                 color: isUser ? "var(--color-on-ink)" : "var(--color-ink)",
                 borderBottomRightRadius: isUser ? 4 : undefined,
                 borderBottomLeftRadius: isUser ? undefined : 4,
@@ -174,7 +174,7 @@ export default function AssistantPanel({
                       <div
                         key={receipt.claimId}
                         className="rounded-lg border px-2 py-1.5"
-                        style={{ borderColor: "var(--color-hairline)" }}
+                        style={{ borderColor: "var(--color-rule)" }}
                       >
                         <button
                           type="button"
@@ -224,7 +224,7 @@ export default function AssistantPanel({
       </div>
 
       {/* Input */}
-      <div className="p-2 border-t" style={{ borderColor: "var(--color-hairline)" }}>
+      <div className="p-2 border-t" style={{ borderColor: "var(--color-rule)" }}>
         <div className="flex items-end gap-2">
           <textarea
             value={input}
@@ -239,7 +239,7 @@ export default function AssistantPanel({
             placeholder="Ask about shadow, routes, or a day trip…"
             className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm focus:outline-none"
             style={{
-              borderColor: "var(--color-hairline)",
+              borderColor: "var(--color-rule)",
               color: "var(--color-ink)",
               maxHeight: 96,
             }}

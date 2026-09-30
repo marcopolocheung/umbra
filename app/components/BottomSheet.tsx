@@ -170,6 +170,7 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
 
   return (
     <div
+      data-testid="bottom-sheet"
       ref={sheetRef}
       /* absolute (not fixed) inside the map overlay container, which is sized
          by h-dvh in AppShell — so the sheet clears mobile Chrome's bottom
@@ -181,9 +182,9 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         bottom: "env(safe-area-inset-bottom)",
         touchAction: "none",
         willChange: "height",
-        background: "var(--color-raised)",
-        borderTop: isHidden ? "none" : "1px solid var(--color-hairline)",
-        borderRadius: "20px 20px 0 0",
+        background: "var(--color-panel)",
+        borderTop: isHidden ? "none" : "1px solid var(--color-rule)",
+        borderRadius: "var(--radius-2xl) var(--radius-2xl) 0 0",
         pointerEvents: isHidden ? "none" : undefined,
       }}
       onPointerDown={onPointerDown}
@@ -196,7 +197,7 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
         className="flex items-center justify-center cursor-grab active:cursor-grabbing shrink-0 transition-[height]"
         style={{ height: handleBandPx }}
       >
-        <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-hairline)" }} />
+        <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-rule)" }} />
       </div>
 
       {/* Content — the bottom padding yields to the collapsed band (U4): at

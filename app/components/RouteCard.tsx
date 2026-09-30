@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { token } from "../lib/css-tokens";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import type { WeatherHour } from "../lib/heat/types";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
@@ -148,8 +147,8 @@ export default function RouteCard({
 
   return (
     <div
-      className={`flex flex-col rounded-xl text-xs transition-all bg-raised border-l-4 ${
-        selected ? "p-3.5 shadow-level-2" : "p-3 border-hairline hover:bg-canvas"
+      className={`flex flex-col rounded-xl text-xs transition-all bg-panel border-l-4 ${
+        selected ? "p-3.5 shadow-hard-2" : "p-3 border-rule hover:bg-ground"
       }`}
       style={selected ? { borderColor: "var(--color-route)" } : undefined}
     >
@@ -164,7 +163,7 @@ export default function RouteCard({
             a rain route's shelter figures are still updating. */}
         {recommended && !exposureUpdating && (
           <div
-            className="text-[11px] font-bold uppercase tracking-widest"
+            className="font-label text-[11px] font-extrabold uppercase tracking-widest"
             style={{ color: "var(--color-route)" }}
           >
             Recommended
@@ -183,17 +182,15 @@ export default function RouteCard({
             {isPartial && (
               <span
                 className="text-[11px] font-medium px-1.5 py-0.5 rounded-full"
-                style={{ background: "var(--color-sun-soft)", color: "var(--color-sun)" }}
+                style={{ background: "var(--color-route-soft)", color: "var(--color-ink)" }}
               >
                 Partial
               </span>
             )}
           </span>
-          {/* The decision number earns the display voice (U7): Inter Tight at
-              the verdict step — one family, intentional weight, no second
-              typeface. */}
+          {/* Outdoor verdicts use the tabular numeric face, never the display face. */}
           <span
-            className="font-display text-verdict shrink-0 font-bold leading-none tabular-nums tracking-[-0.02em]"
+            className="font-numeric text-verdict shrink-0 font-bold leading-none tabular-nums tracking-[-0.02em]"
             style={{ color: "var(--color-ink)" }}
           >
             {duration}
@@ -201,7 +198,7 @@ export default function RouteCard({
         </div>
 
         {r.partial && (
-          <div className="mt-1 text-[11px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
+          <div className="mt-1 text-[11px] font-medium" style={{ color: "var(--color-ink-muted)" }}>
             {partialRouteNotice(r.partial)}
           </div>
         )}
@@ -224,7 +221,7 @@ export default function RouteCard({
                 className="h-full rounded-full transition-all duration-300"
                 style={{
                   width: `${shadowPct ?? 0}%`,
-                  background: rainCard ? "var(--color-route-mid)" : "var(--color-shade)",
+                  background: rainCard ? "var(--color-rain)" : "var(--color-shade)",
                 }}
               />
             </div>
@@ -273,21 +270,21 @@ export default function RouteCard({
       {selected && (
         <div
           className="mt-3 flex flex-col gap-3 border-t pt-3"
-          style={{ borderColor: "var(--color-hairline)" }}
+          style={{ borderColor: "var(--color-rule)" }}
         >
           <div className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
             {rainCard ? rainExposureLine(r, rainIntensity) : routeExposureLine(r)}
           </div>
 
           {roughLine && (
-            <div className="text-[11px] font-medium" style={{ color: "var(--color-sun-strong)" }}>
+            <div className="text-[11px] font-medium" style={{ color: "var(--color-ink-muted)" }}>
               {roughLine}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-2">
             {streak && (
-              <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="rounded-lg p-2" style={{ background: "var(--color-ground)" }}>
                 <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
                   {rainCard ? "Continuous shelter" : "Continuous Shadow"}
                 </div>
@@ -295,25 +292,25 @@ export default function RouteCard({
               </div>
             )}
             {detour && (
-              <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+              <div className="rounded-lg p-2" style={{ background: "var(--color-ground)" }}>
                 <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Detour Ratio</div>
                 <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{detour}</div>
               </div>
             )}
-            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-ground)" }}>
               <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
                 {rainCard ? "Shelter breaks" : "Shadow Breaks"}
               </div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{transitions}</div>
             </div>
-            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-ground)" }}>
               <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--color-ink)" }}>{r.turnCount}</div>
             </div>
           </div>
 
           {r.legs && r.legs.length > 1 && (
-            <div className="rounded-lg p-2" style={{ background: "var(--color-canvas)" }}>
+            <div className="rounded-lg p-2" style={{ background: "var(--color-ground)" }}>
               <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Journey Legs</div>
               <div className="mt-1 flex flex-col gap-1">
                 {r.legs.map((leg, index) => {
@@ -337,7 +334,7 @@ export default function RouteCard({
           {/* Transit info */}
           {r.legs?.find((l: RouteLeg) => l.type === 'transit') && (() => {
             const tLeg = r.legs!.find((l: RouteLeg) => l.type === 'transit')!;
-            const lineColor = tLeg.lineColor ?? token("color-route");
+            const lineColor = tLeg.lineColor ?? "var(--color-route)";
             const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
             const stopCount = (tLeg.stops?.length ?? 2) - 1;
             const sunExposure = tLeg.sunExposure ?? 0;
@@ -348,9 +345,9 @@ export default function RouteCard({
             const notes = riderFacingNotes(r.transitProvenance);
             const expired = isTimetableExpired(r.transitProvenance);
             const sunColor = {
-              enclosed: token("color-route"),
-              shaded: token("color-shade"),
-              sunny: token("color-sun"),
+              enclosed: "var(--color-route)",
+              shaded: "var(--color-shade)",
+              sunny: "var(--color-sun)",
               unknown: "var(--color-ink-muted)",
             }[transitSunTone(sunExposure, sunCoverage, aboveGround)];
             const rainTransit = rainCard && r.objective === "rain";
@@ -367,7 +364,7 @@ export default function RouteCard({
                 </div>
                 <div className="flex gap-x-2 flex-wrap">
                   {rainTransit ? (
-                    <span style={{ color: "var(--color-route)" }}>
+                    <span style={{ color: "var(--color-rain)" }}>
                       {rainLabel} · {tLeg.vehicleSheltered ? "ride sheltered by enclosed-vehicle assumption" : "ride shelter unknown"}
                     </span>
                   ) : (
@@ -389,7 +386,7 @@ export default function RouteCard({
                     >
                       info
                     </span>
-                    <span style={expired ? { color: "var(--color-sun)" } : undefined}>
+                    <span style={expired ? { color: "var(--color-danger)" } : undefined}>
                       {expired ? `${scheduleLine} — this timetable has expired` : scheduleLine}
                     </span>
                   </div>
@@ -419,8 +416,8 @@ export default function RouteCard({
                   type="button"
                   onClick={onSave}
                   title="Save this route"
-                  className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
-                  style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+                  className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-ground"
+                  style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
                 >
                   <span className="material-symbols-outlined text-base" aria-hidden="true">bookmark</span>
                   Save
@@ -432,8 +429,8 @@ export default function RouteCard({
                     type="button"
                     onClick={() => onExport("gpx")}
                     title="Export route as GPX"
-                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
-                    style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-ground"
+                    style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
                   >
                     <span className="material-symbols-outlined text-base" aria-hidden="true">download</span>
                     GPX
@@ -442,8 +439,8 @@ export default function RouteCard({
                     type="button"
                     onClick={() => onExport("geojson")}
                     title="Export route as GeoJSON"
-                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-canvas"
-                    style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border text-[11px] font-medium transition-colors hover:bg-ground"
+                    style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
                   >
                     <span className="material-symbols-outlined text-base" aria-hidden="true">download</span>
                     GeoJSON

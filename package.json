@@ -23,7 +23,7 @@
     "eval:agent": "vitest run --config vitest.live.config.ts",
     "e2e": "playwright test",
     "shots": "playwright test --config=playwright.shots.config.ts",
-    "design:check": "node scripts/verify/design-tokens.mjs --all",
+    "design:check": "node --test scripts/verify/design-tokens.test.mjs && node scripts/verify/design-tokens.mjs --all",
     "e2e:shadow-v2-debug": "playwright test --config=playwright.shadow-v2-debug.config.ts",
     "bench:route": "playwright test --config=playwright.bench.config.ts",
     "bench:canopy": "playwright test --config=playwright.canopy.config.ts"

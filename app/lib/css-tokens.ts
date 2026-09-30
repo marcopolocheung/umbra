@@ -1,12 +1,14 @@
 /**
- * Canopy token values for JavaScript-side consumers (MapLibre paint properties,
+ * Registry token values for JavaScript-side consumers (MapLibre paint properties,
  * markers, canvas/SVG elements and tests) that cannot reference `var(--…)`.
  *
  * The registry is `app/globals.css` and nothing here re-declares a value: this
  * module parses the CSS source at bundle time (`?raw`) so a colour exists exactly
  * once, in the token registry. Changing a token in globals.css changes it here.
  *
- * `token(name)` throws when a name is missing — a token reference only survives
+ * `token(name)` reads the day declaration. UI components should use CSS vars so
+ * night overrides apply; use this for static renderer paints and test fixtures.
+ * A missing name throws — a token reference only survives
  * in code if it is declared in the registry.
  */
 
@@ -25,7 +27,7 @@ for (const match of registryCss.matchAll(TOKEN_RE)) {
 export function token(name: string): string {
   const value = registry.get(name);
   if (value === undefined) {
-    throw new Error(`Canopy token --${name} is not declared in app/globals.css`);
+    throw new Error(`Umbra token --${name} is not declared in app/globals.css`);
   }
   return value;
 }
