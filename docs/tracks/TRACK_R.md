@@ -24,17 +24,16 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R0 — draft PR #120 open for owner visual review.
-- **Done:** no checkpoint merged yet; R0's reference, decision, spec and vignettes are in #120.
-- **Open PRs:** #120 (R0, draft).
-- **Decisions made:** D1–D5 are recorded in `docs/design/decision.md`, pending owner sign-off
-  on merge. Sun = signal orange; shade = cool; route = neutral cased line; UI theme may be
-  overridden, while the basemap follows solar altitude. Canopy on `main` stays binding until
-  #120 merges.
+- **Active checkpoint:** R1 — registry and enforcement, next after R0's merge.
+- **Done:** R0 — decision record, canonical spec, contrast table, reference and day/night
+  vignettes; owner approved #120 for merge on 2026-09-29.
+- **Open PRs:** none; R0 merged as #120.
+- **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved. Sun = signal
+  orange; shade = cool; route = neutral cased line; UI theme may be overridden, while the
+  basemap follows solar altitude. `docs/design/language.md` becomes binding with #120's merge.
 - **Blocked on:** #91 — five pre-existing navigation-hook test failures also reproduced on
-  unchanged `umbra/main`; the R0 PR remains draft until the four-gate requirement is green.
-- **Next action:** owner reviews the R0 day/night vignettes; after #91 is fixed and #120 merges,
-  start R1 from updated `main`.
+  unchanged `umbra/main`; R1 needs a green four-gate run before its PR can be ready.
+- **Next action:** start R1 from merged `main` and coordinate #91 before opening its PR.
 - **Last verified:** 2026-09-29; lint, typecheck, build, design:check, browser renders and
   mirror-guard pass; 1647 tests pass and 5 fail on the branch, with the same 5 on `main` (#91).
 
