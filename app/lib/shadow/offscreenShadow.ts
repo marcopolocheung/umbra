@@ -23,6 +23,41 @@ export async function queryOffscreenBuildingShadow(
   };
 }
 
+/** Largest square half-side, in metres, that one multi-point prefetch may ask for. */
+const PREFETCH_MAX_RADIUS_M = 400;
+
+/**
+ * Fetch footprints once for a set of points, so that each point's own
+ * `queryOffscreenBuildingShadow` then answers from the footprint cache instead of
+ * a round-trip each. The square covers every point's 180 m box; it is skipped when
+ * it would exceed `PREFETCH_MAX_RADIUS_M`, and a failure leaves the per-point path
+ * to fetch as before.
+ */
+export async function prefetchBuildingFootprints(
+  points: Array<{ lng: number; lat: number }>,
+  signal?: AbortSignal
+): Promise<void> {
+  if (points.length < 2) return;
+  let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity;
+  for (const p of points) {
+    const { mPerLng } = metersPerDegree(p.lat);
+    south = Math.min(south, p.lat - 180 / 111320);
+    north = Math.max(north, p.lat + 180 / 111320);
+    west = Math.min(west, p.lng - 180 / mPerLng);
+    east = Math.max(east, p.lng + 180 / mPerLng);
+  }
+  const lat = (south + north) / 2;
+  const lng = (west + east) / 2;
+  const radiusM =
+    Math.max(((north - south) / 2) * 111320, ((east - west) / 2) * metersPerDegree(lat).mPerLng) + 1;
+  if (radiusM > PREFETCH_MAX_RADIUS_M) return;
+  try {
+    await fetchBuildingFootprintsAround(lng, lat, radiusM, signal);
+  } catch {
+    // The per-point fetches that follow retry and report their own errors.
+  }
+}
+
 export function computeBuildingShadowFraction(
   lng: number,
   lat: number,

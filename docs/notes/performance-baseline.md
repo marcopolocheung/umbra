@@ -467,6 +467,32 @@ tick reached the worker up to three times with the same timestamp and center: th
 leaves posts equal to dirty replies. In day mode a few ticks still fall under the gate. SwiftShader holds React to about 1.6 ticks/s here. A real GPU runs up to
 20 ticks/s, so the saving there is up to 40 structured-clone round-trips per second of play.
 
+## Multi-point `check_shadow` off the viewport (#99)
+
+Measured 2026-09-29, before on `main` at `7c10926` and after on the fix branch. Five spots about
+400 m apart around Bryant Park, so no spot's 180 m footprint box contains another's. Each run is
+one `executeTool("check_shadow", { points })` with no map (every spot is off-viewport) under
+vitest on Node 24. The harness was temporary and is not committed. Its `fetch` stub counted
+requests and either slept 5 s per request (hermetic) or forwarded the body to
+`overpass-api.de` (live). Live runs alternated sides, 60 s apart.
+
+| 5-point call | before | after |
+|---|---:|---:|
+| Overpass requests (hermetic) | 5 | **1** |
+| wall-clock, 5 s per request (hermetic) | 25.1 s | 5.0 s |
+| live: wall-clock (spots answered) | 47.9 s (1/5), 24.6 s (4/5), 27.3 s (3/5) | 10.0 s (5/5), 45.9 s (3/5), 2.0 s (5/5) |
+
+The fix fetches one square covering every off-viewport spot's box, capped at a 400 m half-side,
+and the per-spot calls then answer from the footprint cache. The live runs used a 750 m cap, but
+this scenario's square is 381 m, so the cap didn't bind. In the slow after-run the combined
+fetch 504'd and the per-spot path took over (6 requests), which is the designed fallback. Where
+both sides answered a spot, the shadow fractions agree. Live Overpass variance (504s, 429s)
+dominates wall-clock on both sides. The number the fix controls is the request count. Spots more
+than about 440 m apart overflow the cap and keep one request each. The cap is small on purpose:
+a 750 m square over Midtown (1,847 buildings, 2 MB) took 14 s in one live try, past the client's
+12 s abort. A failed union fetch costs its wait on top of the old per-spot requests.
+`buildingCount` now reports the union square's buildings, not the spot's own 180 m box.
+
 ## Missing Measurements
 
 The backlog (#37) asks for throttled-4G time-to-interactive **and** representative

@@ -15,7 +15,7 @@ import type { IShadowLayer } from "../shadow/IShadowLayer";
 import { geocodeForward, geocodeNear, type NominatimResult } from "../nominatim";
 import { haversineMeters } from "../routing";
 import { computeSolarIntensity } from "../shadowSampling";
-import { queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
+import { prefetchBuildingFootprints, queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
 import { buildTrip, tripToRoutePlan } from "../trip/trip";
 import { parseTime } from "../../hooks/useShadowTime";
@@ -457,6 +457,12 @@ export async function executeTool(
       if (Array.isArray(args.points)) {
         const pins = parsePins(args.points);
         if (pins.length === 0) return { error: "points needs at least one lat/lng." };
+        // Spots off the viewport each fall through to an Overpass footprint fetch.
+        // One fetch covering all of them fills the cache the per-spot calls read.
+        const bounds = ctx.mapRef.current?.getBounds();
+        await prefetchBuildingFootprints(
+          pins.filter((p) => !bounds?.contains([p.lng, p.lat])),
+        );
         const results = [];
         for (const p of pins) {
           const r = await executeTool(
