@@ -14,15 +14,17 @@ export interface LineBulletProps extends HTMLAttributes<HTMLSpanElement> {
 
 /** A transit line bullet: the identifier in a circle inside a pill of the line's color. */
 export default function LineBullet({ line = "blue", accent, code, label, className, style, ...rest }: LineBulletProps) {
-  const ink = accent ? lineBulletInk(accent) : null;
+  // OSM `colour` may arrive as bare hex, which CSS would reject outright.
+  const color = accent && /^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(accent) ? `#${accent}` : accent;
+  const ink = color ? lineBulletInk(color) : null;
   const classes = [
     "umbra-line-bullet",
-    accent ? "umbra-line-bullet--data" : `umbra-line-bullet--${line}`,
-    accent && !ink && "umbra-line-bullet--ringed",
+    color ? "umbra-line-bullet--data" : `umbra-line-bullet--${line}`,
+    color && !ink && "umbra-line-bullet--ringed",
     className,
   ].filter(Boolean).join(" ");
-  const accentStyle = accent
-    ? ({ "--line-accent": accent, "--line-on": `var(--color-line-ink-${ink ?? "dark"})` } as CSSProperties)
+  const accentStyle = color
+    ? ({ "--line-accent": color, "--line-on": `var(--color-line-ink-${ink ?? "dark"})` } as CSSProperties)
     : undefined;
   return (
     <span className={classes} style={accentStyle ? { ...accentStyle, ...style } : style} {...rest}>

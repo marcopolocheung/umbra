@@ -471,6 +471,9 @@ body {
   .umbra-plate--ink { --plate-fill: var(--color-ink); color: var(--color-on-ink); }
   .umbra-plate--ink > .umbra-plate__ground { filter: none; }
   .umbra-plate--ink { --plate-stroke: var(--plate-fill); }
+  /* An ink plate's cream focus band matches the page around it, so a focused
+     ink plate also takes the small-host ring: page ink outside its square box. */
+  .umbra-plate--ink:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
   /* The trip's one primary action: a full-width ink plate, square 44px+ hit area. */
   .umbra-start-plate {

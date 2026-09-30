@@ -7,6 +7,7 @@ import {
   routeExposureMinutes,
   routeExposureScope,
   routeShadowLabel,
+  routeShadowShare,
   routeSplitBasis,
   routeTradeoffLine,
   shortestRoute,
@@ -319,5 +320,22 @@ describe("routeSplitBasis", () => {
     expect(routeSplitBasis(walk)).toBe("distance");
     expect(routeSplitBasis(transit)).toBe("time outdoors");
     expect(routeSplitBasis({ ...transit, objective: "rain" })).toBe("distance");
+  });
+});
+
+describe("routeShadowShare", () => {
+  it("re-derives a transit trip's share from its legs, not the calculation-time field", () => {
+    const walk = route("Via Subway", 280, 0.73);
+    const legs: RouteLeg[] = [
+      // 140 m at 1.4 m/s = 100 s each, half shaded; a sampled 200 s stop wait in full sun.
+      { type: "walk", geojson: walk.geojson, distanceM: 140, shadowCoverage: 0.5 },
+      { type: "transit", geojson: walk.geojson, travelTimeSec: 600, waitSec: 200, waitExposure: { coverage: 1, boardings: 1, shadow: 0 } },
+      { type: "walk", geojson: walk.geojson, distanceM: 140, shadowCoverage: 0.5 },
+    ];
+    const transit: RouteOption = { ...walk, legs };
+    // (100·0.5 + 200·0 + 100·0.5) / 400 s = 25%, whatever the stale 0.73 says.
+    expect(routeShadowShare(transit)).toBeCloseTo(0.25);
+    expect(routeShadowLabel(transit)).toBe("25% shadow on foot");
+    expect(routeShadowShare(walk)).toBe(0.73);
   });
 });

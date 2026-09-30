@@ -180,4 +180,12 @@ describe("RouteCard as a transit strip (R5)", () => {
     expect(id.parentElement?.textContent).toBe("Line Q");
     expect(screen.getByText("time outdoors share")).toBeTruthy();
   });
+
+  it("claims no shadow continuity on a transit card, whose shade was never sampled edge by edge", () => {
+    render(<RouteCard route={busRoute(840, 1, 1)} selected onSelect={() => {}} />);
+
+    expect(screen.queryByText("Shadow breaks")).toBeNull();
+    expect(screen.queryByText("continuous")).toBeNull();
+    expect(screen.getByText("Turns")).toBeTruthy();
+  });
 });

@@ -22,6 +22,7 @@ import {
   routeExposureMinutes,
   routeExposureScope,
   routeShadowLabel,
+  routeShadowShare,
   routeSplitBasis,
   routeTradeoffLine,
 } from "../lib/routeTradeoff";
@@ -89,7 +90,7 @@ export default function RouteCard({
       : `${r.shadowTransitions} break${r.shadowTransitions === 1 ? "" : "s"}`;
   const detour = r.detourRatio > 1.05 ? `${r.detourRatio.toFixed(1)}×` : null;
   const shelterPct = r.exposure?.shelteredDistancePct ?? (r.dryCoverage ?? null);
-  const shadowPct = rainCard ? (shelterPct == null ? null : Math.round(shelterPct * 100)) : Math.round(r.shadowCoverage * 100);
+  const shadowPct = rainCard ? (shelterPct == null ? null : Math.round(shelterPct * 100)) : Math.round(routeShadowShare(r) * 100);
   const exposureUnknown = rainCard
     ? (r.exposure?.unknownDistanceM ?? 0) > 0 || (r.exposure?.unknownDurationSec ?? 0) > 0
     : false;
@@ -235,7 +236,7 @@ export default function RouteCard({
           <>
             <div className="mt-2 flex h-3 border border-ink" aria-hidden="true">
               <div
-                className="h-full transition-[width] duration-300"
+                className="h-full transition-[width] duration-300 motion-reduce:transition-none"
                 style={{ width: `${shadowPct ?? 0}%`, background: rainCard ? "var(--color-rain)" : "var(--color-shade)" }}
               />
               {(shadowPct ?? 0) < 100 && (
@@ -249,7 +250,8 @@ export default function RouteCard({
                 />
               )}
             </div>
-            <div className="mt-1 flex items-center gap-3 font-mono text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+            {/* The key, for sighted readers; the verdict text above carries the figure. */}
+            <div className="mt-1 flex items-center gap-3 font-mono text-[11px]" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2" style={{ background: rainCard ? "var(--color-rain)" : "var(--color-shade)" }} aria-hidden="true" />
                 {rainCard ? "sheltered" : "shade"}
@@ -306,13 +308,14 @@ export default function RouteCard({
           )}
 
           {/* The strip's fare table: square ruled cells, key over value.
-              Continuity and breaks are daylight shade figures, so they drop
-              out after sunset with the percentage. */}
+              Continuity and breaks are per-edge shade figures: they drop out
+              after sunset with the percentage, and on transit, whose shade
+              was never sampled edge by edge (their zeros are placeholders). */}
           <dl className="grid grid-cols-2 border-t" style={{ borderColor: "var(--color-rule)" }}>
             {[
-              ...(streak && !afterSunset ? [[rainCard ? "Continuous shelter" : "Continuous shadow", streak]] : []),
+              ...(streak && !afterSunset && !isTransit ? [[rainCard ? "Continuous shelter" : "Continuous shadow", streak]] : []),
               ...(detour ? [["Detour ratio", detour]] : []),
-              ...(afterSunset ? [] : [[rainCard ? "Shelter breaks" : "Shadow breaks", transitions]]),
+              ...(afterSunset || isTransit ? [] : [[rainCard ? "Shelter breaks" : "Shadow breaks", transitions]]),
               ["Turns", String(r.turnCount)],
             ].map(([key, value], i) => (
               <div

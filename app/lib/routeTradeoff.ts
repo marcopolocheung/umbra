@@ -370,13 +370,26 @@ export function shortestRoute(routes: RouteOption[]): RouteOption | null {
  * claim about the ride, so it says it is about the time on foot — or that it
  * is unknown, rather than quoting a sliver of it.
  */
+/**
+ * The headline shade share, 0–1. A transit trip's is re-derived from its legs:
+ * a conditions refresh re-samples those legs but leaves the route-level
+ * `shadowCoverage` at its calculation-time value, so reading that field put a
+ * stale figure beside the fresh sun minutes.
+ */
+export function routeShadowShare(route: RouteOption): number {
+  if (route.objective !== "rain" && route.legs && transitLegOf(route)) {
+    return transitOutdoorExposure(route.legs).shadow;
+  }
+  return route.shadowCoverage;
+}
+
 export function routeShadowLabel(route: RouteOption): string {
   if (route.objective === "rain") {
     const protection = route.exposure?.shelteredDistancePct ?? route.dryCoverage;
     return protection == null ? "shelter unknown" : `${Math.round(protection * 100)}% sheltered`;
   }
   if (routeAfterSunset(route)) return "after sunset";
-  const pct = Math.round(route.shadowCoverage * 100);
+  const pct = Math.round(routeShadowShare(route) * 100);
   if (!transitLegOf(route)) return `${pct}% shadow`;
   if (!routeExposureMinutes(route)) return "shadow unknown";
   return `${pct}% shadow on foot`;

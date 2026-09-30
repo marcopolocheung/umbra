@@ -24,10 +24,24 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R4b (#134) — map overlays, awaiting owner review.
-- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132) and R4a (#139) merged. R3's `app/components/ui/`
-  primitives (`Plate`, `Kicker`, `Tag`, `LineBullet`, `StampBadge`, `GrainSurface`,
-  `motion.ts`) have no consumer yet; R5 is the first. R4a adds `app/lib/basemapTheme.ts`:
+- **Active checkpoint:** R5a (#142) — route cards as transit strips, awaiting owner review.
+  R5 is split: R5a is the cards (`RouteCard`, `FloatingRouteCards`, the stack in
+  `DirectionsPanel`); R5b (#143) is `DirectionsPanel`'s planning chrome (with #126) and
+  `NavigationStatusPanel`.
+- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139) and R4b (#141) merged.
+  R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
+  Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
+  the start action as `Plate as="button" tone="ink"` (`Plate` now takes `button`/`a`, #128;
+  a focused ink plate also takes the page-ink outline, since its cream band matches the page).
+  `LineBullet accent` fills with the line's published colour; `lib/lineBulletInk.ts` picks the
+  identifier ink by WCAG contrast (`--color-line-ink-{dark,light}`), or rings the identifier
+  when neither reaches 4.5:1 (the 7's purple, the J/Z brown). The split bar is square and
+  ink-ruled, shade against solid `--color-sun-signal`, with its basis stated under it
+  (`routeSplitBasis`: distance for a walk, time outdoors for transit). After sunset at the
+  route's own `evaluatedContext` time and place (`routeAfterSunset`, the theme's 0° rule),
+  the card says "after sunset", draws no bar and drops the continuity/breaks cells; it used
+  to read "100% shadow". A transit card's figure comes from its legs (`routeShadowShare`),
+  because the route-level field goes stale after a refresh (#144). R4a adds `app/lib/basemapTheme.ts`:
   day (warm paper) and night (warm black) palettes, tokens `--color-basemap-{day,night}-*`,
   recoloured in place on the loaded outdoor-v2 style at `style.load` (never `setStyle`),
   classified by layer type/source-layer, and switched by `useUiTheme`'s `solar` through
@@ -47,18 +61,23 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R4b — #141 (fixes #134). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
-  #128, #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge).
+- **Open PRs:** R5a — see #142. Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+  #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
+  SolarPill, leg rows, route labels); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. The route casing is paper by day, not dark
   (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
   panels the UI theme. R4a maps all trail and bike-route lines to the neutral path role (their
   magenta had no 2.0 meaning), and keeps outdoor-v2's residential wash translucent (`tint`).
-- **Blocked on:** owner visual review of R4b (`docs/design/shots/r4b/`). Open owner calls
-  from its review: hollow A/filled B swap light and dark at night (letters stay the
-  primary cue), and the opaque night route covers the labels it crosses.
-- **Next action:** R5 — route cards and directions as transit strips (needs #128,
-  `Plate as="button"`).
+- **Blocked on:** owner visual review of R5a (`docs/design/shots/r5/`). Open owner calls:
+  the ink start plate is clipped like the decorative plates (hit area stays square), and
+  transit bullets use the line's published colour rather than the three reference quartets.
+  Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
+- **Next action:** R5b (#143) — directions chrome and navigation status, with #126.
+- **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,741 unit
+  tests, build, design:check and e2e 16/16 (smoke, smoke-live, nav-smoke). At 390×844 the
+  selected card's verdict, bar and key sit inside the mid snap (bar ends ~y777 of 844 in the
+  headless shot, ~31px lower than R4b); a real-phone check with browser chrome is outstanding.
 - **Last verified (R4b):** 2026-09-30; lint (0 errors), typecheck, 1,711 unit tests
   (single run; #140 load flakes also on `main`), build, design:check and live-tile e2e
   16/16 pass, with the route-line pixel check now counting the day ink.
