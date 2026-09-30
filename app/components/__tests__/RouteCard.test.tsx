@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import RouteCard from "../RouteCard";
+import type { ResolvedExposureContext } from "../../lib/exposure";
 import type { RouteLeg, RouteOption } from "../../lib/routing";
 
 afterEach(cleanup);
@@ -129,5 +130,62 @@ describe("RouteCard ranking story (U3)", () => {
 
     expect(screen.getByText("Turns")).toBeTruthy();
     expect(screen.getByText(/^1 min in sun/)).toBeTruthy();
+  });
+});
+
+/** Evaluated in Midtown: 14:00Z is 10:00 EDT, 03:00Z is 23:00 EDT. */
+function at(r: RouteOption, iso: string): RouteOption {
+  const evaluatedContext = {
+    objective: "sun",
+    time: new Date(iso),
+    referenceLocation: { lat: 40.754, lng: -73.984 },
+  } as ResolvedExposureContext;
+  return { ...r, objective: "sun", evaluatedContext };
+}
+
+describe("RouteCard as a transit strip (R5)", () => {
+  it("sets the option on a kicker plate and states what the split bar is a share of", () => {
+    const { container } = render(
+      <RouteCard route={at(walkRoute("Balanced", 700, 0.74), "2026-06-21T14:00:00Z")} selected={false} onSelect={() => {}} />,
+    );
+
+    expect(screen.getByText("Balanced").className).toContain("umbra-kicker");
+    expect(screen.getByText("74% shadow")).toBeTruthy();
+    // The bar's basis is written under it: a walk's share is by distance.
+    expect(screen.getByText("distance share")).toBeTruthy();
+    expect(container.querySelector("[aria-hidden='true'].border-ink")).not.toBeNull();
+  });
+
+  it("drops the daylight percentage and split bar after sunset, and says why", () => {
+    render(
+      <RouteCard route={at(walkRoute("Shortest", 600, 1), "2026-06-21T03:00:00Z")} selected onSelect={() => {}} />,
+    );
+
+    expect(screen.getByText("after sunset")).toBeTruthy();
+    expect(screen.queryByText(/% shadow/)).toBeNull();
+    expect(screen.queryByText("distance share")).toBeNull();
+    // Continuity and breaks are daylight figures too; the time-cost rows stay.
+    expect(screen.queryByText("Shadow breaks")).toBeNull();
+    expect(screen.getByText("Turns")).toBeTruthy();
+    expect(screen.getAllByText("no sun at the selected time").length).toBeGreaterThan(0);
+  });
+
+  it("puts a bullet with the line's identifier on a transit card, and says its bar is time outdoors", () => {
+    const route = busRoute(840, 1, 1);
+    route.legs![1] = { ...route.legs![1], line: "Q", lineName: "Broadway Express", lineColor: "#ffe14d" };
+    render(<RouteCard route={route} selected={false} onSelect={() => {}} />);
+
+    const id = screen.getByText("Q");
+    expect(id.className).toBe("umbra-line-bullet__id");
+    expect(id.parentElement?.textContent).toBe("Line Q");
+    expect(screen.getByText("time outdoors share")).toBeTruthy();
+  });
+
+  it("claims no shadow continuity on a transit card, whose shade was never sampled edge by edge", () => {
+    render(<RouteCard route={busRoute(840, 1, 1)} selected onSelect={() => {}} />);
+
+    expect(screen.queryByText("Shadow breaks")).toBeNull();
+    expect(screen.queryByText("continuous")).toBeNull();
+    expect(screen.getByText("Turns")).toBeTruthy();
   });
 });

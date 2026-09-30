@@ -65,6 +65,12 @@ describe("primitive registry rules", () => {
     expect(REGISTRY.find((r) => r.selector === ".umbra-plate__ground::after")?.body).toMatch(/inset:\s*[1-9]px;\s*background:\s*var\(--plate-fill\)/);
   });
 
+  it("rings a focused ink plate in page ink, since its cream band matches the page", () => {
+    const ink = REGISTRY.find((r) => r.selector === ".umbra-plate--ink:focus-visible");
+    expect(ink?.body).toMatch(/outline:\s*2px solid var\(--color-ink\)/);
+    expect(ink?.body).toMatch(/outline-offset:\s*2px/);
+  });
+
   it("rotates only inner layers, never a host box", () => {
     const rotated = REGISTRY.filter((r) => PRIMITIVE.test(r.selector) && /(^|[\s;])(rotate:|transform:[^;]*rotate)/.test(r.body)).map(
       (r) => r.selector,
@@ -139,6 +145,30 @@ describe("Plate", () => {
     plate.focus();
     expect(document.activeElement).toBe(plate);
   });
+
+  it("is itself the control as a button, so its own focus stroke draws", () => {
+    let pressed = 0;
+    render(
+      <Plate as="button" tone="ink" onClick={() => pressed++}>
+        Start
+      </Plate>,
+    );
+    const plate = screen.getByRole("button", { name: "Start" });
+    expect(plate.className).toBe("umbra-plate umbra-plate--ink");
+    // Never a stray form submit.
+    expect(plate.getAttribute("type")).toBe("button");
+    plate.focus();
+    expect(document.activeElement).toBe(plate);
+    plate.click();
+    expect(pressed).toBe(1);
+  });
+
+  it("is a link with its href as an anchor", () => {
+    render(<Plate as="a" href="#stops">Stops</Plate>);
+    const link = screen.getByRole("link", { name: "Stops" });
+    expect(link.getAttribute("href")).toBe("#stops");
+    expect(link.lastElementChild?.className).toBe("umbra-plate__ground");
+  });
 });
 
 describe("Kicker", () => {
@@ -178,6 +208,25 @@ describe("LineBullet", () => {
     expect(bullet.className).toBe("umbra-line-bullet umbra-line-bullet--yellow");
     expect(bullet.textContent).toBe("Line Q Uptown");
     expect(screen.getByText("Q").className).toBe("umbra-line-bullet__id");
+  });
+
+  it("fills with a line's published colour and inks the identifier to read on it", () => {
+    render(<LineBullet accent="#ffe14d" code="Q" data-testid="q" />);
+    const bullet = screen.getByTestId("q");
+    expect(bullet.className).toBe("umbra-line-bullet umbra-line-bullet--data");
+    expect(bullet.style.getPropertyValue("--line-accent")).toBe("#ffe14d");
+    expect(bullet.style.getPropertyValue("--line-on")).toBe("var(--color-line-ink-dark)");
+  });
+
+  it("rings the identifier when no ink reads on the line's colour", () => {
+    render(<LineBullet accent="#4d75c3" code="7" data-testid="seven" />);
+    expect(screen.getByTestId("seven").className).toBe("umbra-line-bullet umbra-line-bullet--data umbra-line-bullet--ringed");
+    expect(screen.getByText("7").className).toBe("umbra-line-bullet__id");
+  });
+
+  it("reads a bare-hex line colour as hex rather than dropping it", () => {
+    render(<LineBullet accent="ffe14d" code="N" data-testid="n" />);
+    expect(screen.getByTestId("n").style.getPropertyValue("--line-accent")).toBe("#ffe14d");
   });
 
   it("omits the label slot when there is no label", () => {

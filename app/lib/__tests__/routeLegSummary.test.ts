@@ -232,3 +232,26 @@ describe("the wait at a bus stop", () => {
     expect(detail).not.toContain("stop 0%");
   });
 });
+
+describe("routeLegSummary after sunset", () => {
+  it("quotes no daylight shadow share on a walk leg or a bus stop wait", () => {
+    const walk: RouteLeg = { type: "walk", geojson: line, distanceM: 93, shadowCoverage: 1 };
+    expect(routeLegSummary(walk, 0, "walk", true).detail).toBe("93 m");
+    expect(routeLegSummary(walk, 0).detail).toBe("93 m - 100% shadow");
+
+    const bus: RouteLeg = {
+      type: "transit",
+      geojson: line,
+      travelTimeSec: 480,
+      waitSec: 300,
+      waitExposure: { coverage: 1, boardings: 1, shadow: 1 },
+    };
+    expect(routeLegSummary(bus, 1, "walk", true).detail).toContain("incl. ~5 min wait");
+    expect(routeLegSummary(bus, 1, "walk", true).detail).not.toContain("shadowed");
+  });
+
+  it("keeps shelter figures, which do not depend on the sun", () => {
+    const wet: RouteLeg = { type: "walk", geojson: line, distanceM: 93, shelterCoverage: 0.4 };
+    expect(routeLegSummary(wet, 0, "walk", true).detail).toBe("93 m - 40% sheltered");
+  });
+});

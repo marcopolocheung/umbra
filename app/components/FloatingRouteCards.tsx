@@ -92,12 +92,7 @@ export default function FloatingRouteCards({
 
         {/* Start navigating */}
         {onStartNavigation && !selectedRoute?.partial && (
-          <button
-            type="button"
-            onClick={onStartNavigation}
-            className="w-full min-h-11 px-4 py-3 rounded-lg text-sm font-bold transition-colors"
-            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-          >
+          <button type="button" onClick={onStartNavigation} className="umbra-start-button">
             START NAVIGATING
           </button>
         )}

@@ -39,14 +39,14 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
 }
 
 /**
- * The partial/failed-route notice, as a pill riding inside the card stack.
- * Neutral ink on a quiet plate: a caveat about the data, not solar data.
+ * The partial/failed-route notice, riding inside the card stack as a strip
+ * note: ink-ruled on the ground, a caveat about the data, not solar data.
  */
 function NoticePill({ text }: { text: string }) {
   return (
     <div
-      className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium"
-      style={{ background: "var(--color-route-soft)", color: "var(--color-ink)" }}
+      className="border-l-4 px-2.5 py-1.5 text-[11px] font-medium"
+      style={{ background: "var(--color-ground)", borderColor: "var(--color-ink)", color: "var(--color-ink)" }}
       role="status"
     >
       {text}
@@ -635,11 +635,7 @@ export default function DirectionsPanel({
           </div>
 
           {onStartNavigation && routes.length > 0 && !selectedRoute?.partial && (
-            <button type="button"
-              onClick={onStartNavigation}
-              className="mt-2 w-full min-h-11 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors"
-              style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-            >
+            <button type="button" onClick={onStartNavigation} className="umbra-start-button mt-2">
               START NAVIGATING
             </button>
           )}

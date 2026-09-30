@@ -2,6 +2,7 @@ import type { RouteLeg, RouteOption } from "./routing";
 import { computeExposureMetrics, type ExposureMetrics } from "./exposureMetrics";
 import { getTravelModePolicy } from "./travelMode";
 import { rainTradeoffLine } from "./routeRain";
+import { solarTheme } from "./uiTheme";
 
 /** Speed a route's durations are reported at — its own mode, else walking. */
 function speedOf(route: RouteOption): number {
@@ -276,6 +277,30 @@ function longWalkBetweenStops(route: RouteOption, baseline: RouteOption): boolea
   return routeWalkM - baselineWalkM >= 250 && routeWalkM >= baselineWalkM * 1.5;
 }
 
+/**
+ * Whether the sun was at or below the horizon where and when this route was
+ * evaluated — the same 0° rule as the theme (`solarTheme`). Its shadow share
+ * is then every metre by definition, not a daylight estimate, so a sun card
+ * says it is after sunset instead of quoting it. Rain figures are unaffected.
+ */
+export function routeAfterSunset(route: RouteOption): boolean {
+  const context = route.evaluatedContext;
+  if (!context || route.objective === "rain") return false;
+  const { lat, lng } = context.referenceLocation;
+  return solarTheme(new Date(context.time), [lat, lng]) === "night";
+}
+
+const NO_SUN = "no sun at the selected time";
+
+/**
+ * What the card's shade/sun split bar is a share of. A walk's shadow share is
+ * distance-weighted; a transit trip's is its time outdoors, walks plus any
+ * sampled stop wait (`transitOutdoorExposure`), so the bar says which.
+ */
+export function routeSplitBasis(route: RouteOption): "distance" | "time outdoors" {
+  return route.objective !== "rain" && transitLegOf(route) ? "time outdoors" : "distance";
+}
+
 export function routeTradeoffLine(route: RouteOption, baseline: RouteOption): string {
   if (route.objective === "rain" || baseline.objective === "rain") {
     return rainTradeoffLine(route, baseline);
@@ -285,6 +310,10 @@ export function routeTradeoffLine(route: RouteOption, baseline: RouteOption): st
   }
 
   const timeDeltaSec = Math.max(0, travelSeconds(route) - travelSeconds(baseline));
+  if (routeAfterSunset(route)) {
+    const walk = longWalkBetweenStops(route, baseline) ? "long walk between stops, " : "";
+    return `${walk}${formatDeltaMinutes(timeDeltaSec)}, ${NO_SUN}`;
+  }
   if (longWalkBetweenStops(route, baseline)) {
     // A transit trip's time delta is mostly walk-leg distance, so the named
     // condition replaces the bare number as the line's lead clause.
@@ -335,6 +364,19 @@ export function shortestRoute(routes: RouteOption[]): RouteOption | null {
 }
 
 /**
+ * The headline shade share, 0–1. A transit trip's is re-derived from its legs:
+ * a conditions refresh re-samples those legs but leaves the route-level
+ * `shadowCoverage` at its calculation-time value, so reading that field put a
+ * stale figure beside the fresh sun minutes.
+ */
+export function routeShadowShare(route: RouteOption): number {
+  if (route.objective !== "rain" && route.legs && transitLegOf(route)) {
+    return transitOutdoorExposure(route.legs).shadow;
+  }
+  return route.shadowCoverage;
+}
+
+/**
  * The headline shadow figure, worded for what it covers.
  *
  * On a transit card a bare "N% shadow" beside a twenty-minute ride reads as a
@@ -346,7 +388,8 @@ export function routeShadowLabel(route: RouteOption): string {
     const protection = route.exposure?.shelteredDistancePct ?? route.dryCoverage;
     return protection == null ? "shelter unknown" : `${Math.round(protection * 100)}% sheltered`;
   }
-  const pct = Math.round(route.shadowCoverage * 100);
+  if (routeAfterSunset(route)) return "after sunset";
+  const pct = Math.round(routeShadowShare(route) * 100);
   if (!transitLegOf(route)) return `${pct}% shadow`;
   if (!routeExposureMinutes(route)) return "shadow unknown";
   return `${pct}% shadow on foot`;
@@ -384,6 +427,7 @@ function formatSunMinutes(minutes: number): string {
  * per edge and whose `longestContinuousSunM` is a placeholder rather than a zero.
  */
 export function routeExposureLine(route: RouteOption): string {
+  if (routeAfterSunset(route)) return NO_SUN;
   const exposure = routeExposureMinutes(route);
   if (!exposure) return route.objective === "rain" ? "rain exposure unknown" : "time in sun unknown";
   if (route.objective === "rain") {

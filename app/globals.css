@@ -115,6 +115,10 @@
   --color-line-yellow-on: #0b0b0b;
   --color-line-yellow-ground: #1f1c0c;
   --color-line-yellow-plate: #3c361a;
+  /* A line's own published colour fills its bullet; its identifier takes the ink
+     `lineBulletInk` measures higher. Theme-fixed: the fill does not flip. */
+  --color-line-ink-dark: #0b0b0b;
+  --color-line-ink-light: #f8efdf;
 
   /* Renderer-facing values stay fixed through R4. */
   /* Map overlays (R4b) — route, casing, pins, stops, sun diagram — follow the basemap
@@ -467,6 +471,29 @@ body {
   .umbra-plate--ink { --plate-fill: var(--color-ink); color: var(--color-on-ink); }
   .umbra-plate--ink > .umbra-plate__ground { filter: none; }
   .umbra-plate--ink { --plate-stroke: var(--plate-fill); }
+  /* An ink plate's cream focus band matches the page around it, so a focused
+     ink plate also takes the small-host ring: page ink outside its square box. */
+  .umbra-plate--ink:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+
+  /* The trip's one primary action: a control, so square and untilted (D4) — an
+     ink block with the hard offset shadow, ≥44px tall, focus ringed outside it. */
+  .umbra-start-button {
+    display: flex;
+    width: 100%;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-ink);
+    color: var(--color-on-ink);
+    box-shadow: var(--shadow-hard-2);
+    font-family: var(--font-label);
+    font-weight: 800;
+    font-size: var(--text-small);
+    letter-spacing: 0.08em;
+  }
+  .umbra-start-button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
   .umbra-kicker {
     display: inline-block;
@@ -543,6 +570,15 @@ body {
     --line-accent: var(--color-line-yellow-accent);
     --line-on: var(--color-line-yellow-on);
     --line-ground: var(--color-line-yellow-ground);
+  }
+  /* A published line colour (inline --line-accent/--line-on) on the page's own
+     panel: the label reads in ink, since the colour is data, not a text step. */
+  .umbra-line-bullet--data { --line-ground: var(--color-panel); color: var(--color-ink); }
+  /* No ink reaches 4.5:1 on the fill: ring the identifier in the colour instead. */
+  .umbra-line-bullet--ringed > .umbra-line-bullet__id {
+    border: 3px solid var(--line-accent);
+    background: var(--color-panel);
+    color: var(--color-ink);
   }
 
   .umbra-stamp-badge { display: inline-block; border-radius: var(--radius-circle); }
