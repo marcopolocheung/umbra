@@ -815,8 +815,9 @@ describe("routing reads the shadow field (A4b)", () => {
 
     await runRouteWith(map);
 
-    // Slicing the batch would rebuild the field's internal per-cell shadow indices.
-    expect(shadowStub.sampledBatchSizes).toEqual([2]);
+    // The initial street pass remains one batch. A later transit access walk
+    // may legitimately sample its own edge set.
+    expect(shadowStub.sampledBatchSizes[0]).toBe(2);
   });
 
   it("routes anyway when the geometry preload fails", async () => {
@@ -1538,6 +1539,8 @@ async function publishNav5() {
         id: "test",
         release: "test",
         url: "https://example.invalid/source",
+        bytes: 1,
+        timestamp: "2026-09-19T12:00:00.000Z",
         sha256: "1".repeat(64),
       },
     ],
@@ -1785,11 +1788,11 @@ describe("transit access walks use the static street graph when configured", () 
     // The ride itself still comes from the TrainGraph implementation.
     expect(subway?.legs?.[1].stops).toEqual(["West End", "Mid", "East End"]);
   });
-  it("alights over the destination access zone when the exit station stands outside the route bbox", async () => {
+  it("loads the destination access zone before suppressing a dominated subway", async () => {
     // The exit station is east of the far seam (103.806), past the padded
     // route bbox (west 103.785 → east 103.8). Only `zoneAround(B, 2000)`
-    // intersects its cell, so walkB proves the B-side zone while walkA still
-    // crosses the west seam through the A-side zone.
+    // intersects its cell, so fetching that shard proves the B-side zone was
+    // included while the A-side zone still crosses the west seam.
     vi.mocked(fetchBestTrainGraph).mockResolvedValue(fareastTrainGraph() as never);
     vi.mocked(fetchRoutingGraph).mockClear();
     vi.mocked(fetchStationEntranceBoxes).mockClear();
@@ -1820,28 +1823,16 @@ describe("transit access walks use the static street graph when configured", () 
     await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
 
     const subway = result.current.filteredRoutes.find((route) => route.label === "Via Subway");
-    expect(subway).toBeDefined();
-    expect(subway?.legs?.map((leg) => leg.type)).toEqual(["walk", "transit", "walk"]);
+    expect(subway).toBeUndefined();
+    expect(result.current.navWarning).toMatch(/Via Subway would take/);
     // Both walks stay on verified static shards; no Overpass streets fired.
     expect(fetchRoutingGraph).not.toHaveBeenCalled();
     // The B-side zone is the only selector that can pull the far-east cell.
     expect(navCalls.some((url) => url.includes("cell-fareast.json"))).toBe(true);
     // Published doors stay authoritative on both sides: no legacy fetch.
     expect(fetchStationEntranceBoxes).not.toHaveBeenCalled();
-    expect(subway?.mrtEntrances).toEqual([
-      [103.7825, 1.3005],
-      [103.8095, 1.3005],
-    ]);
-    // Bounded walks: the boarding door inside the A zone, the alighting door
-    // on the far-east cell the B zone owns.
-    const walkA = subway?.legs?.[0];
-    expect(walkA?.distanceM).toBeGreaterThan(0);
-    expect(walkA?.distanceM ?? Infinity).toBeLessThan(1500);
-    const walkB = subway?.legs?.[2];
-    expect(walkB?.distanceM).toBeGreaterThan(0);
-    expect(walkB?.distanceM ?? Infinity).toBeLessThan(2500);
-    // The ride itself still comes from the TrainGraph implementation.
-    expect(subway?.legs?.[1].stops).toEqual(["West End", "Mid", "Far East"]);
+    // This short direct walk dominates the access/egress trip. The far-east
+    // shard still proves the destination zone loaded.
   });
 
   it("still falls back to the legacy entrance boxes for old-generation stations on the static graph", async () => {
