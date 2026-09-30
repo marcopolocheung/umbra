@@ -1,5 +1,7 @@
+import type { CSSProperties } from "react";
+import { lineCssColor } from "../lib/lineBulletInk";
 import type { RouteLeg, RouteOption } from "../lib/routing";
-import { routeAfterSunset, routeDurationLabel, routeShadowShare } from "../lib/routeTradeoff";
+import { routeAfterSunset, routeDurationLabel, routeExposureMinutes, routeShadowShare } from "../lib/routeTradeoff";
 import { getTravelModePolicy, type TravelModeId } from "../lib/travelMode";
 import Kicker from "./ui/Kicker";
 import LineBullet from "./ui/LineBullet";
@@ -26,26 +28,37 @@ function coordLabel(coord: [number, number] | null): string {
  * step with its own time and distance, and for transit the station to board at
  * and the station to exit at. Data comes from `route.legs` — the same records
  * the route cards summarize — so nothing here is a new claim to ground.
+ *
+ * Each step's icon sits on an itinerary rail that runs the length of the step:
+ * dotted for a leg on foot, solid in the line's own colour for a ride, so the
+ * change of mode reads down the list the way a transit app draws it.
  */
 function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelModeId }) {
   const paceMps = getTravelModePolicy(travelMode).speedMps;
   return (
-    <ol className="flex flex-col gap-2" aria-label="Route steps">
+    <ol className="flex flex-col" aria-label="Route steps">
       {legs.map((leg, i) => {
         if (leg.type === "transit") {
           const board = leg.stops?.[0];
           const exit = leg.stops?.[leg.stops.length - 1];
           const line = leg.lineName || leg.line || "Transit";
-          const rideSec = leg.travelTimeSec != null && leg.waitSec != null
-            ? leg.travelTimeSec - leg.waitSec
-            : leg.travelTimeSec;
+          const railStyle = leg.lineColor ? ({ "--leg-color": lineCssColor(leg.lineColor) } as CSSProperties) : undefined;
           return (
-            <li key={i} className="flex items-start gap-2">
-              <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} className="shrink-0" />
-              <div className="min-w-0 flex-1">
+            <li key={i} className="flex gap-2">
+              <div className="umbra-leg-rail-column">
+                <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />
+                <span className="umbra-leg-rail umbra-leg-rail--ride" style={railStyle} aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1 pb-3">
                 <div className="text-xs font-medium" style={{ color: "var(--color-ink)" }}>
                   Ride {line}
-                  {rideSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(rideSec)}</span>}
+                  {leg.travelTimeSec != null && (
+                    <span style={{ color: "var(--color-ink-muted)" }}>
+                      {/* The whole leg, wait included, so the steps add up to Time. */}
+                      {" "}· {formatDuration(leg.travelTimeSec)}
+                      {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
+                    </span>
+                  )}
                 </div>
                 {board && (
                   <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
@@ -63,11 +76,14 @@ function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelMod
         }
         const walkSec = leg.distanceM != null ? leg.distanceM / paceMps : null;
         return (
-          <li key={i} className="flex items-start gap-2">
-            <span className="material-symbols-outlined shrink-0 text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
-              directions_walk
-            </span>
-            <div className="min-w-0 flex-1 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
+          <li key={i} className="flex gap-2">
+            <div className="umbra-leg-rail-column">
+              <span className="material-symbols-outlined text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
+                directions_walk
+              </span>
+              <span className="umbra-leg-rail umbra-leg-rail--foot" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1 pb-3 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
               {getTravelModePolicy(travelMode).label}
               {leg.distanceM != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDistance(leg.distanceM)}</span>}
               {walkSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(walkSec)}</span>}
@@ -102,19 +118,26 @@ export default function NavigationStatusPanel({
   onExit,
   rainMode = false,
 }: NavigationStatusPanelProps) {
+  // The same figures, by the same rules, as the route card it came from: a
+  // rain card only for a rain-priced route, a transit share from its legs
+  // (#144) and none where its time outdoors is unmeasured (#393), and no
+  // shade share after sunset.
+  const rainCard = !!route && rainMode && (route.objective === "rain" || route.dryCoverage !== undefined);
   const protectedPct = route?.exposure?.shelteredDistancePct ?? route?.dryCoverage ?? null;
-  const exposureUnknown = !!route && rainMode && (
+  const exposureUnknown = !!route && rainCard && (
     (route.exposure?.unknownDistanceM ?? 0) > 0 ||
     (route.exposure?.unknownDurationSec ?? 0) > 0
   );
-  // The same figures, and the same rules, as the route card it came from:
-  // a transit share from its legs (#144), none quoted after sunset.
-  const afterSunset = !!route && !rainMode && routeAfterSunset(route);
-  const shadowPct = route
-    ? (rainMode
-      ? (protectedPct == null || exposureUnknown ? null : Math.round(protectedPct * 100))
-      : Math.round(routeShadowShare(route) * 100))
-    : null;
+  const afterSunset = !!route && !rainCard && routeAfterSunset(route);
+  const shadeValue = !route
+    ? null
+    : rainCard
+      ? route.exposureUpdating
+        ? "Updating…"
+        : protectedPct == null || exposureUnknown ? "Unknown" : `${Math.round(protectedPct * 100)}%`
+      : afterSunset
+        ? "After sunset"
+        : routeExposureMinutes(route) === null ? "Unknown" : `${Math.round(routeShadowShare(route) * 100)}%`;
   const duration = route ? routeDurationLabel(route) : null;
   const destination = waypointBLabel ?? coordLabel(waypointB);
 
@@ -122,7 +145,7 @@ export default function NavigationStatusPanel({
     ? [
         ["Time", duration ?? ""],
         ["Distance", formatDistance(route.distanceM)],
-        [rainMode ? "Shelter" : route.legs?.some((l) => l.type === "transit") ? "Shadow on foot" : "Shadow", afterSunset ? "After sunset" : shadowPct == null ? "Unknown" : `${shadowPct}%`],
+        [rainCard ? "Shelter" : route.legs?.some((l) => l.type === "transit") ? "Shadow on foot" : "Shadow", shadeValue ?? ""],
         ["Turns", String(route.turnCount)],
       ]
     : [];
@@ -170,7 +193,13 @@ export default function NavigationStatusPanel({
               style={{ borderColor: "var(--color-rule)" }}
             >
               <dt className="umbra-kicker">{key}</dt>
-              <dd className="mt-0.5 font-numeric text-sm font-bold tabular-nums" style={{ color: "var(--color-ink)" }}>{value}</dd>
+              {/* Figures in the numeric face; a word in place of one reads as a word. */}
+              <dd
+                className={`mt-0.5 text-sm ${/\d/.test(value) ? "font-numeric font-bold tabular-nums" : "font-semibold italic"}`}
+                style={{ color: /\d/.test(value) ? "var(--color-ink)" : "var(--color-ink-muted)" }}
+              >
+                {value}
+              </dd>
             </div>
           ))}
         </dl>

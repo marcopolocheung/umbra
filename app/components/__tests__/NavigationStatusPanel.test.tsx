@@ -76,4 +76,37 @@ describe("NavigationStatusPanel (R5b)", () => {
       expect(screen.getByRole("button", { name }).className).toContain("h-11 w-11");
     }
   });
+
+  it("quotes no transit shade share where its time outdoors was not measured, as the card", () => {
+    const legs: RouteLeg[] = [
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+      // A bus stop the field could not answer for: the trip's outdoor time is part unknown.
+      { type: "transit", geojson: LINE, line: "M15", lineColor: "#ffe14d", travelTimeSec: 900, waitSec: 600, waitExposure: { coverage: 0.2, boardings: 1 } },
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+    ];
+    panel(walk({ label: "Via Bus", legs, totalTimeSec: 1100 }));
+    expect(screen.getByText("Shadow on foot")).toBeTruthy();
+    expect(screen.getByText("Unknown")).toBeTruthy();
+    expect(screen.queryByText(/^\d+%$/)).toBeNull();
+    // The ride's step names its wait, so the steps add up to the Time cell.
+    expect(screen.getByText(/15 min incl\. ~10 min wait/)).toBeTruthy();
+  });
+
+  it("draws the itinerary rail: dotted on foot, solid in the line's colour for the ride", () => {
+    const legs: RouteLeg[] = [
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+      { type: "transit", geojson: LINE, line: "N", lineColor: "ffe14d", travelTimeSec: 480 },
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+    ];
+    panel(walk({ label: "Via Subway", legs, totalTimeSec: 600 }));
+    const steps = screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li");
+    const rails = [...steps].map((li) => li.querySelector(".umbra-leg-rail") as HTMLElement);
+    expect(rails.map((r) => r.className)).toEqual([
+      "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--ride",
+      "umbra-leg-rail umbra-leg-rail--foot",
+    ]);
+    // Bare-hex OSM colours are made valid CSS, as the bullet does.
+    expect(rails[1].style.getPropertyValue("--leg-color")).toBe("#ffe14d");
+  });
 });

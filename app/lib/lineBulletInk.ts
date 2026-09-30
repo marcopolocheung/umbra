@@ -26,6 +26,11 @@ function luminance(hex: string): number | null {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/** A line colour CSS will accept: OSM `colour` may arrive as bare hex. */
+export function lineCssColor(color: string): string {
+  return /^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? `#${color}` : color;
+}
+
 export function contrastRatio(a: string, b: string): number | null {
   const la = luminance(a);
   const lb = luminance(b);

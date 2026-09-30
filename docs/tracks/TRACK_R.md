@@ -24,10 +24,19 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R5a (#142) — route cards as transit strips, awaiting owner review.
-  R5 is split: R5a is the cards (`RouteCard`, `FloatingRouteCards`, the stack in
-  `DirectionsPanel`); R5b (#143) is `DirectionsPanel`'s planning chrome (with #126) and
-  `NavigationStatusPanel`.
+- **Active checkpoint:** R5b (#143) — directions chrome and navigation status, stacked on
+  R5a (#148); both await owner review. R5a is the cards (`RouteCard`, `FloatingRouteCards`,
+  the stack in `DirectionsPanel`); R5b is `DirectionsPanel`'s planning chrome and
+  `NavigationStatusPanel`. R5b adds `app/components/ui/Segmented.tsx` (`.umbra-segmented*`:
+  square, 2px ink rule, selected = full ink inversion, ≥44px rows, inset focus, disabled on
+  the 75% role with a strike), used by Walk/Transit, Sun/Rain, travel mode, wind source and
+  Search/Draw; the Transit-off reason is a visible caption (#126's directions half). Every
+  directions control is ≥44px; Find and ARRIVED share `.umbra-start-button` (uppercase).
+  `NavigationStatusPanel` is a ticket: the route on a kicker plate, ruled cells that follow
+  the card's rules exactly (`routeDurationLabel`; shade from `routeShadowShare`, "Unknown"
+  where the card withholds it, "After sunset", a rain card only for a rain-priced route),
+  `LineBullet` legs whose ride step names its wait so the steps sum to Time, on an
+  itinerary rail (owner request): dotted on foot, solid in the line's colour for a ride.
 - **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139) and R4b (#141) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
@@ -63,9 +72,9 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R5a — #148 (fixes #142, #128). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R5a — #148 (fixes #142, #128); R5b — stacked on #148 (fixes #143). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
-  SolarPill, leg rows, route labels); filed elsewhere from R5a: #144, #145 (E), #146 (A).
+  SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. The route casing is paper by day, not dark
   (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
@@ -76,7 +85,11 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** R5b (#143) — directions chrome and navigation status, with #126.
+- **Next action:** #149 (transit line badges on the map) after R5a/R5b review, then R6 —
+  timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,752 unit
+  tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
+  build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.
 - **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,742 unit
   tests, build, design:check and e2e 16/16 (smoke, smoke-live, nav-smoke). At 390×844 the
   selected card's verdict, bar and key sit inside the mid snap (bar ends ~y777 of 844 in the

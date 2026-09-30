@@ -525,6 +525,20 @@ body {
   .umbra-segmented__option:disabled { color: var(--color-ink-muted); cursor: not-allowed; text-decoration: line-through; }
   .umbra-segmented__option:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
 
+  /* Itinerary rail (NavigationStatusPanel): a step's icon above a rail running
+     the step's length — dotted on foot, solid in the line's colour for a ride. */
+  .umbra-leg-rail-column {
+    display: flex;
+    width: 2.75rem;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .umbra-leg-rail { flex: 1; min-height: 0.75rem; width: 0; }
+  .umbra-leg-rail--foot { border-left: 3px dotted var(--color-ink-muted); }
+  .umbra-leg-rail--ride { border-left: 4px solid var(--leg-color, var(--color-ink)); }
+
   .umbra-kicker {
     display: inline-block;
     font-family: var(--font-label);

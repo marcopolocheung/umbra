@@ -179,6 +179,12 @@ export default function DirectionsPanel({
   const progressPercent = routeProgress ? routeProgressPercent(routeProgress) : null;
   const progressCount = routeProgress ? routeProgressCount(routeProgress) : null;
 
+  // Mirrors `canTransit` (useNavigation): both ends set, more than the
+  // threshold apart as the crow flies — not by walking distance.
+  const transitOffReason = waypointA && waypointB
+    ? `Transit needs ends over ${MIN_TRANSIT_DISTANCE_M} m apart in a straight line`
+    : "Transit needs a start and a destination";
+
   function activateWaypointSlot(slot: 'A' | 'B') {
     if (slot === 'B' && drawMode) return;
     onSetPendingSlot(pendingSlot === slot ? null : slot);
@@ -217,15 +223,13 @@ export default function DirectionsPanel({
           onChange={(mode) => onRouteModeChange?.(mode)}
           options={[
             { value: "walk", label: "Walk" },
-            { value: "transit", label: "Transit", disabled: !canTransit, title: canTransit ? undefined : `Transit needs a start and destination over ${MIN_TRANSIT_DISTANCE_M} m apart` },
+            { value: "transit", label: "Transit", disabled: !canTransit, title: canTransit ? undefined : transitOffReason },
           ]}
         />
       </div>
       {!canTransit && (
         <p className="-mt-1 text-right text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-          {waypointA && waypointB
-            ? `Transit needs ends over ${MIN_TRANSIT_DISTANCE_M} m apart`
-            : "Transit needs a start and a destination"}
+          {transitOffReason}
         </p>
       )}
 
