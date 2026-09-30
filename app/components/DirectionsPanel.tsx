@@ -8,11 +8,13 @@ import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { routeProgressCount, routeProgressPercent } from "../lib/routeProgress";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
 import { shortestRoute } from "../lib/routeTradeoff";
+import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";
 import WaypointInput from "./WaypointInput";
 import RouteCard from "./RouteCard";
 import SolarPill from "./SolarPill";
 import type { ReactNode } from "react";
 import SavedRoutesSection from "./SavedRoutesSection";
+import Segmented from "./ui/Segmented";
 
 /**
  * The collapsed trip bar: once options exist, the planning form folds into one
@@ -26,8 +28,8 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
       onClick={onEdit}
       aria-label={`Edit trip: ${from} to ${to}`}
       title="Edit trip"
-      className="flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 py-2 transition-colors hover:bg-ground"
-      style={{ background: "var(--color-ground)", borderColor: "var(--color-rule)" }}
+      className="flex min-h-11 w-full items-center gap-2 rounded-sm border-2 px-3 py-2 transition-colors hover:bg-ground"
+      style={{ background: "var(--color-ground)", borderColor: "var(--color-ink)" }}
     >
       <span className="material-symbols-outlined shrink-0 text-base text-ink-muted" aria-hidden="true">route</span>
       <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--color-ink)" }}>
@@ -195,42 +197,37 @@ export default function DirectionsPanel({
           onEdit={() => setEditing(true)}
         />
       )}
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header: back, the panel's stamped label, and Walk / Transit. Every
+          control is a ≥44px target; Transit's disabled reason is on screen,
+          not only in a tooltip touch never shows (issue 126). */}
+      <div className="flex items-center justify-between gap-2">
         <button type="button"
           onClick={onBack}
-          className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border-2 transition-colors hover:bg-ground"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
           title="Back"
+          aria-label="Back"
         >
-          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
         </button>
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Directions</h2>
-        {/* Walk / Transit tabs — segmented controls carry 44px rows (U4): the
-            buttons may stay narrow, but their height is a thumb target. */}
-        <div
-          className="flex rounded-lg overflow-hidden border"
-          style={{ borderColor: "var(--color-rule)" }}
-        >
-          {(['walk', 'transit'] as const).map((mode) => (
-            <button type="button"
-              key={mode}
-              onClick={() => onRouteModeChange?.(mode)}
-              disabled={mode === 'transit' && !canTransit}
-              aria-pressed={routeMode === mode}
-              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
-                routeMode === mode
-                  ? 'text-ink bg-ground'
-                  : 'hover:bg-ground'
-              } disabled:opacity-40 disabled:cursor-not-allowed`}
-              style={routeMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
-              title={mode === 'transit' && !canTransit ? 'Too close for transit' : undefined}
-            >
-              {mode === 'walk' ? 'Walk' : 'Transit'}
-            </button>
-          ))}
-        </div>
+        <h2 className="umbra-kicker" style={{ color: "var(--color-ink)" }}>Directions</h2>
+        <Segmented
+          label="Route mode"
+          value={routeMode}
+          onChange={(mode) => onRouteModeChange?.(mode)}
+          options={[
+            { value: "walk", label: "Walk" },
+            { value: "transit", label: "Transit", disabled: !canTransit, title: canTransit ? undefined : `Transit needs a start and destination over ${MIN_TRANSIT_DISTANCE_M} m apart` },
+          ]}
+        />
       </div>
+      {!canTransit && (
+        <p className="-mt-1 text-right text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+          {waypointA && waypointB
+            ? `Transit needs ends over ${MIN_TRANSIT_DISTANCE_M} m apart`
+            : "Transit needs a start and a destination"}
+        </p>
+      )}
 
       {/* Saved routes — reachable without reopening the planning form. Its
           divider (inside SavedRoutesSection) is rule-strong: saved trips
@@ -250,26 +247,17 @@ export default function DirectionsPanel({
           Lives outside the planning form so the objective stays flippable after
           the form collapses to the trip bar (the map-column toggle is desktop-only). */}
       {onRainModeChange && (
-        <div
-          className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--color-rule)" }}
+        <Segmented
+          label="Route objective"
           data-testid="rain-mode-selector"
-        >
-          {([false, true] as const).map((rain) => (
-            <button type="button"
-              key={rain ? "rain" : "sun"}
-              onClick={() => onRainModeChange(rain)}
-              aria-pressed={rainMode === rain}
-              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium transition-colors ${
-                rainMode === rain ? 'text-route bg-route-soft' : 'hover:bg-ground'
-              }`}
-              style={rainMode !== rain ? { color: "var(--color-ink-muted)" } : undefined}
-              title={rain ? 'Route using rain shelter' : 'Route by sun exposure'}
-            >
-              {rain ? 'Rain' : 'Sun'}
-            </button>
-          ))}
-        </div>
+          className="self-start"
+          value={rainMode ? "rain" : "sun"}
+          onChange={(objective) => onRainModeChange(objective === "rain")}
+          options={[
+            { value: "sun", label: "Sun", title: "Route by sun exposure" },
+            { value: "rain", label: "Rain", title: "Route using rain shelter" },
+          ]}
+        />
       )}
 
       {/* Planning form — collapses to the trip bar once options exist, so the
@@ -277,25 +265,17 @@ export default function DirectionsPanel({
       {showForm ? (
         <>
       {rainMode && onWindSourceChange && (
-        <div className="flex flex-col gap-2 self-start rounded-lg border p-2 text-[11px]" style={{ borderColor: "var(--color-rule)" }}>
+        <div className="flex flex-col gap-2 self-start rounded-sm border-2 p-2 text-[11px]" style={{ borderColor: "var(--color-rule)" }}>
           <div className="font-semibold" style={{ color: "var(--color-ink)" }}>Rain conditions</div>
-          <div className="flex gap-1">
-            {(["forecast", "manual"] as const).map((source) => (
-              <button
-                type="button"
-                key={source}
-                onClick={() => onWindSourceChange(source)}
-                aria-pressed={windSource === source}
-                className="rounded px-2 py-1"
-                style={{
-                  color: windSource === source ? "var(--color-route)" : "var(--color-ink-muted)",
-                  background: windSource === source ? "var(--color-route-soft)" : "transparent",
-                }}
-              >
-                {source === "forecast" ? "Forecast wind" : "Manual wind"}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Wind source"
+            value={windSource}
+            onChange={(source) => onWindSourceChange(source)}
+            options={[
+              { value: "forecast", label: "Forecast wind" },
+              { value: "manual", label: "Manual wind" },
+            ]}
+          />
           {windSource === "manual" && onManualWindChange && (
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1">
@@ -307,7 +287,7 @@ export default function DirectionsPanel({
                   step={1}
                   value={manualWind.directionDeg}
                   onChange={(event) => onManualWindChange({ directionDeg: Number(event.target.value) })}
-                  className="w-16 rounded border px-1 py-1"
+                  className="min-h-11 w-16 rounded-sm border-2 px-1"
                   aria-label="Wind from bearing in degrees"
                 />
               </label>
@@ -319,7 +299,7 @@ export default function DirectionsPanel({
                   step={0.1}
                   value={manualWind.speedMps}
                   onChange={(event) => onManualWindChange({ speedMps: Number(event.target.value) })}
-                  className="w-16 rounded border px-1 py-1"
+                  className="min-h-11 w-16 rounded-sm border-2 px-1"
                   aria-label="Wind speed in metres per second"
                 />
               </label>
@@ -330,35 +310,25 @@ export default function DirectionsPanel({
 
       {/* Active-travel selector (E1/E4) — only for walk routing; transit legs stay pedestrian */}
       {routeMode === 'walk' && onTravelModeChange && (
-        <div
-          className="flex rounded-lg overflow-hidden border self-start"
-          style={{ borderColor: "var(--color-rule)" }}
+        <Segmented
+          label="Travel mode"
           data-testid="travel-mode-selector"
-        >
-          {(Object.keys(TRAVEL_MODE_POLICIES) as TravelModeId[]).map((mode) => (
-            <button type="button"
-              key={mode}
-              onClick={() => onTravelModeChange(mode)}
-              aria-pressed={travelMode === mode}
-              aria-label={mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined}
-              className={`flex min-h-11 items-center px-2.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                travelMode === mode
-                  ? 'text-ink bg-ground'
-                  : 'hover:bg-ground'
-              }`}
-              style={travelMode !== mode ? { color: "var(--color-ink-muted)" } : undefined}
-              title={mode === 'walk' ? undefined : mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : 'Avoids steps and rough surfaces — for scooters and skateboards'}
-            >
-              {TRAVEL_MODE_POLICIES[mode].label}
-            </button>
-          ))}
-        </div>
+          className="self-start"
+          value={travelMode}
+          onChange={(mode) => onTravelModeChange(mode)}
+          options={(Object.keys(TRAVEL_MODE_POLICIES) as TravelModeId[]).map((mode) => ({
+            value: mode,
+            label: TRAVEL_MODE_POLICIES[mode].label,
+            ariaLabel: mode === 'scoot' ? 'Scoot: kick scooter or skateboard, not electric' : undefined,
+            title: mode === 'walk' ? undefined : mode === 'bike' ? 'Avoids stairs and rough surfaces, prefers cycleways' : 'Avoids steps and rough surfaces — for scooters and skateboards',
+          }))}
+        />
       )}
 
       {/* Waypoint inputs */}
       <div
-        className="rounded-xl p-4 flex flex-col gap-2"
-        style={{ background: "var(--color-ground)" }}
+        className="rounded-sm border-2 p-3 flex flex-col gap-1"
+        style={{ background: "var(--color-ground)", borderColor: "var(--color-rule)" }}
       >
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
@@ -376,7 +346,7 @@ export default function DirectionsPanel({
             aria-pressed={pendingSlot === 'A'}
             onPointerDown={() => onPinDragStart?.('A')}
             onClick={() => activateWaypointSlot('A')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-ground"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-panel"
             style={{ color: pendingSlot === 'A' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place start waypoint on map"
           >
@@ -388,10 +358,11 @@ export default function DirectionsPanel({
         <div className="flex justify-center">
           <button type="button"
             onClick={onSwapWaypoints}
-            className="text-ink-muted hover:text-ink transition-colors p-1 hover:bg-ground rounded-lg"
+            className="flex h-11 w-11 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-panel hover:text-ink"
             title="Swap waypoints"
+            aria-label="Swap start and destination"
           >
-            <span className="material-symbols-outlined text-lg">swap_vert</span>
+            <span className="material-symbols-outlined text-lg" aria-hidden="true">swap_vert</span>
           </button>
         </div>
 
@@ -415,7 +386,7 @@ export default function DirectionsPanel({
             disabled={drawMode}
             onPointerDown={() => !drawMode && onPinDragStart?.('B')}
             onClick={() => activateWaypointSlot('B')}
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-ground disabled:cursor-not-allowed"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-panel disabled:cursor-not-allowed"
             style={{ color: pendingSlot === 'B' ? "var(--color-route)" : "var(--color-ink-muted)" }}
             title="Place destination waypoint on map"
           >
@@ -432,7 +403,7 @@ export default function DirectionsPanel({
             {!addingStop && onAddAdditionalWaypoint && (
               <button type="button"
                 onClick={() => setAddingStop(true)}
-                className="text-[11px] font-medium hover:text-ink transition-colors"
+                className="min-h-11 px-2 text-[11px] font-medium hover:text-ink transition-colors"
                 style={{ color: "var(--color-ink-muted)" }}
               >
                 Add stop
@@ -445,14 +416,15 @@ export default function DirectionsPanel({
               <span className="flex-1 tabular-nums truncate" style={{ color: "var(--color-ink)" }}>{wp[1].toFixed(5)}, {wp[0].toFixed(5)}</span>
               <button type="button"
                 onClick={() => onRemoveAdditionalWaypoint?.(i)}
-                className="text-ink-muted hover:text-danger transition-colors px-0.5"
+                className="flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-danger transition-colors"
+                aria-label={`Remove stop ${i + 1}`}
               >
-                <span className="material-symbols-outlined text-sm">close</span>
+                <span className="material-symbols-outlined text-sm" aria-hidden="true">close</span>
               </button>
             </div>
           ))}
           {addingStop && onAddAdditionalWaypoint && (
-            <div className="mt-1 rounded-lg border px-2 py-1" style={{ borderColor: "var(--color-rule)" }}>
+            <div className="mt-1 rounded-sm border-2 px-2 py-1" style={{ borderColor: "var(--color-rule)" }}>
               <WaypointInput
                 label={null}
                 placeholder="Stop — type an address or place"
@@ -469,10 +441,10 @@ export default function DirectionsPanel({
       ) : onAddAdditionalWaypoint ? (
         <button type="button"
           onClick={() => setAddingStop(true)}
-          className="ml-4 self-start flex items-center gap-1 text-[11px] font-medium hover:text-ink transition-colors"
+          className="ml-2 min-h-11 self-start flex items-center gap-1 px-2 text-[11px] font-medium hover:text-ink transition-colors"
           style={{ color: "var(--color-ink-muted)" }}
         >
-          <span className="material-symbols-outlined text-sm">add_location</span>
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">add_location</span>
           Add stop
         </button>
       ) : null}
@@ -481,29 +453,15 @@ export default function DirectionsPanel({
       <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
         <div className="flex items-center justify-between">
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Route input</span>
-          <div
-            className="flex rounded-lg overflow-hidden border"
-            style={{ borderColor: "var(--color-rule)" }}
-          >
-            <button type="button"
-              onClick={() => drawMode && onDrawModeToggle?.()}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                !drawMode ? 'text-ink bg-ground' : 'hover:bg-ground'
-              }`}
-              style={drawMode ? { color: "var(--color-ink-muted)" } : undefined}
-            >
-              Search
-            </button>
-            <button type="button"
-              onClick={() => !drawMode && onDrawModeToggle?.()}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                drawMode ? 'text-ink bg-ground' : 'hover:bg-ground'
-              }`}
-              style={!drawMode ? { color: "var(--color-ink-muted)" } : undefined}
-            >
-              Draw
-            </button>
-          </div>
+          <Segmented
+            label="Route input"
+            value={drawMode ? "draw" : "search"}
+            onChange={(input) => { if ((input === "draw") !== drawMode) onDrawModeToggle?.(); }}
+            options={[
+              { value: "search", label: "Search" },
+              { value: "draw", label: "Draw" },
+            ]}
+          />
         </div>
         {drawMode && (
           <div className="mt-2 flex items-center justify-between">
@@ -519,7 +477,7 @@ export default function DirectionsPanel({
             {sketchPointCount > 0 && onClearSketch && (
               <button type="button"
                 onClick={onClearSketch}
-                className="text-[11px] transition-colors hover:text-ink"
+                className="min-h-11 px-2 text-[11px] transition-colors hover:text-ink"
                 style={{ color: "var(--color-ink-muted)" }}
               >
                 Clear sketch
@@ -542,10 +500,11 @@ export default function DirectionsPanel({
           step="0.01"
           value={shadowPreference}
           onChange={(e) => onShadowPreferenceChange?.(parseFloat(e.target.value))}
-          className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-ink"
-          style={{ background: "var(--color-ground)" }}
+          aria-label={rainMode ? "Shelter preference" : "Shadow preference"}
+          aria-valuetext={preferenceLabel}
+          className="h-11 w-full cursor-pointer accent-ink"
         />
-        <div className="flex justify-between mt-1">
+        <div className="flex justify-between">
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>Fastest</span>
           <span className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Most sheltered" : "Most shadowed"}</span>
         </div>
@@ -556,8 +515,7 @@ export default function DirectionsPanel({
         <button type="button"
           onClick={() => { setEditing(false); onCalculate(); }}
           disabled={drawMode ? sketchPointCount < 2 || isCalculating : !waypointA || !waypointB || isCalculating}
-          className="flex-1 px-2 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
-          style={{ background: "var(--color-route)", color: "var(--color-on-route)" }}
+          className="umbra-start-button gap-1 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isCalculating && (
             <svg aria-hidden="true" focusable="false" className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -574,7 +532,7 @@ export default function DirectionsPanel({
         <div
           role="status"
           aria-live="polite"
-          className="rounded-lg border px-3 py-2 text-[11px]"
+          className="rounded-sm border-2 px-3 py-2 text-[11px]"
           style={{
             background: "var(--color-ground)",
             borderColor: "var(--color-rule)",

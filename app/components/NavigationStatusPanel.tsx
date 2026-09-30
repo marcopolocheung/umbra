@@ -1,5 +1,8 @@
 import type { RouteLeg, RouteOption } from "../lib/routing";
+import { routeAfterSunset, routeDurationLabel, routeShadowShare } from "../lib/routeTradeoff";
 import { getTravelModePolicy, type TravelModeId } from "../lib/travelMode";
+import Kicker from "./ui/Kicker";
+import LineBullet from "./ui/LineBullet";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -38,13 +41,7 @@ function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelMod
             : leg.travelTimeSec;
           return (
             <li key={i} className="flex items-start gap-2">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                style={{ background: leg.lineColor ?? "var(--color-route-soft)", color: "var(--color-on-route)" }}
-                aria-hidden="true"
-              >
-                <span className="material-symbols-outlined text-base">directions_transit</span>
-              </span>
+              <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} className="shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-medium" style={{ color: "var(--color-ink)" }}>
                   Ride {line}
@@ -67,12 +64,8 @@ function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelMod
         const walkSec = leg.distanceM != null ? leg.distanceM / paceMps : null;
         return (
           <li key={i} className="flex items-start gap-2">
-            <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-              aria-hidden="true"
-            >
-              <span className="material-symbols-outlined text-base">directions_walk</span>
+            <span className="material-symbols-outlined shrink-0 text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
+              directions_walk
             </span>
             <div className="min-w-0 flex-1 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
               {getTravelModePolicy(travelMode).label}
@@ -114,13 +107,25 @@ export default function NavigationStatusPanel({
     (route.exposure?.unknownDistanceM ?? 0) > 0 ||
     (route.exposure?.unknownDurationSec ?? 0) > 0
   );
+  // The same figures, and the same rules, as the route card it came from:
+  // a transit share from its legs (#144), none quoted after sunset.
+  const afterSunset = !!route && !rainMode && routeAfterSunset(route);
   const shadowPct = route
     ? (rainMode
       ? (protectedPct == null || exposureUnknown ? null : Math.round(protectedPct * 100))
-      : Math.round(route.shadowCoverage * 100))
+      : Math.round(routeShadowShare(route) * 100))
     : null;
-  const duration = route?.totalTimeSec ? formatDuration(route.totalTimeSec) : null;
+  const duration = route ? routeDurationLabel(route) : null;
   const destination = waypointBLabel ?? coordLabel(waypointB);
+
+  const cells: [string, string][] = route
+    ? [
+        ["Time", duration ?? ""],
+        ["Distance", formatDistance(route.distanceM)],
+        [rainMode ? "Shelter" : route.legs?.some((l) => l.type === "transit") ? "Shadow on foot" : "Shadow", afterSunset ? "After sunset" : shadowPct == null ? "Unknown" : `${shadowPct}%`],
+        ["Turns", String(route.turnCount)],
+      ]
+    : [];
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -128,80 +133,49 @@ export default function NavigationStatusPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 items-center justify-center rounded-sm border-2 transition-colors hover:bg-ground"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
           title="Back to route options"
           aria-label="Back to route options"
         >
-          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
         </button>
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Navigating</h2>
+        <h2 className="umbra-kicker" style={{ color: "var(--color-ink)" }}>Navigating</h2>
         <button
           type="button"
           onClick={onExit}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 items-center justify-center rounded-sm border-2 transition-colors hover:bg-ground"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
           title="End navigation"
           aria-label="End navigation"
         >
-          <span className="material-symbols-outlined text-base">close</span>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">close</span>
         </button>
       </div>
 
-      <div
-        className="rounded-xl border p-4"
-        style={{
-          background: "var(--color-shade-soft)",
-          borderColor: "var(--color-shade-mid)",
-          color: "var(--color-ink)",
-        }}
-      >
-        <div className="flex items-start gap-3">
-          <span
-            className="material-symbols-outlined mt-0.5 rounded-full p-2 text-[20px]"
-            style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
-          >
-            navigation
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--color-shade)" }}>
-              Navigation active
-            </div>
-            <div className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
-              {route?.label ?? "No route selected"}
-            </div>
-            <div className="mt-1 truncate text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-              To {destination}
-            </div>
-          </div>
+      {/* The ticket: the ridden option on its kicker plate and where it goes. */}
+      <div className="border-2 p-3" style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", color: "var(--color-ink)" }}>
+        <Kicker plated>{route?.label ?? "No route selected"}</Kicker>
+        <div className="mt-2 truncate text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+          To {destination}
         </div>
       </div>
 
       {route ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Distance</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{formatDistance(route.distanceM)}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>{rainMode ? "Shelter" : "Shadow"}</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{shadowPct == null ? "Unknown" : `${shadowPct}%`}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Turns</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>{route.turnCount}</div>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "var(--color-ground)" }}>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>
-              {duration ? "Time" : "Shadow breaks"}
+        <dl className="grid grid-cols-2 border-t" style={{ borderColor: "var(--color-rule)" }}>
+          {cells.map(([key, value], i) => (
+            <div
+              key={key}
+              className={`border-b py-1.5 ${i % 2 === 0 ? "pr-2" : "border-l pl-2"}`}
+              style={{ borderColor: "var(--color-rule)" }}
+            >
+              <dt className="umbra-kicker">{key}</dt>
+              <dd className="mt-0.5 font-numeric text-sm font-bold tabular-nums" style={{ color: "var(--color-ink)" }}>{value}</dd>
             </div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
-              {duration ?? route.shadowTransitions}
-            </div>
-          </div>
-        </div>
+          ))}
+        </dl>
       ) : (
-        <div className="rounded-lg border p-3 text-xs" style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>
+        <div className="rounded-sm border-2 p-3 text-xs" style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>
           Pick a complete route before starting navigation.
         </div>
       )}
@@ -210,16 +184,16 @@ export default function NavigationStatusPanel({
           the pattern a rider already knows. Single-leg walk routes skip it:
           the stats grid already says everything there is to say. */}
       {route?.legs && route.legs.length > 1 && (
-        <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
+        <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
           <LegList legs={route.legs} travelMode={route.travelMode ?? "walk"} />
         </div>
       )}
 
-      <div className="rounded-xl p-3" style={{ background: "var(--color-ground)" }}>
+      <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }}>trip_origin</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }} aria-hidden="true">trip_origin</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Start</div>
+            <div className="umbra-kicker">Start</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>
               {waypointALabel ?? coordLabel(waypointA)}
             </div>
@@ -227,9 +201,9 @@ export default function NavigationStatusPanel({
         </div>
         <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-rule)" }} />
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-route)" }}>location_on</span>
+          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }} aria-hidden="true">location_on</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--color-ink-muted)" }}>Destination</div>
+            <div className="umbra-kicker">Destination</div>
             <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>
           </div>
         </div>
@@ -239,10 +213,9 @@ export default function NavigationStatusPanel({
         type="button"
         onClick={onArrive}
         disabled={!route}
-        className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ background: "var(--color-shade)", color: "var(--color-on-shade)" }}
+        className="umbra-start-button gap-1 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <span className="material-symbols-outlined text-base">flag</span>
+        <span className="material-symbols-outlined text-base" aria-hidden="true">flag</span>
         ARRIVED
       </button>
     </div>
