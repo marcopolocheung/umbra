@@ -37,7 +37,7 @@ inspiration; the public mirror publishes everything here.
   blue-dominant, dawn shadow is detected, and a shadow's rim needs no more coverage than
   the harness grey (+0.05). The palette also fixes two `main` faults: outdoor-v2's sunlit
   water was a false shadow, and its wood lost the dawn shadow.
-- **Open PRs:** R4a (fixes #133). Follow-ups: #124, #125, #126 (R2); #128, #130 (R3); #135
+- **Open PRs:** R4a — #139 (fixes #133). Follow-ups: #124, #125, #126 (R2); #128, #130 (R3); #135
   (Track A: the below-horizon veil covers one quadrant), #136 (night basemap under that
   veil — owner decision), #137 (labels in shade ~2:1), #138 (R6 sheet edge).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
