@@ -14,7 +14,8 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { lineBadgeElement, mapPinElement } from "./mapPins";
+import { mapPinElement } from "./mapPins";
+import { attachLineBlob } from "./lineBlobMarker";
 import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
@@ -303,7 +304,9 @@ export default function MapView({
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
-  const lineBadgeRefs      = useRef<maplibregl.Marker[]>([]);
+  const lineBlobRefs       = useRef<{ remove: () => void }[]>([]);
+  // Where each line's swelling last rested (0–1 along its ride), so a recalculation keeps it put.
+  const lineBlobFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
   const assistantPinRefs      = useRef<maplibregl.Marker[]>([]);
   const userLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -806,7 +809,8 @@ export default function MapView({
       markerBRef.current?.remove();     markerBRef.current = null;
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
-      lineBadgeRefs.current.forEach((m) => m.remove()); lineBadgeRefs.current = [];
+      for (const blob of lineBlobRefs.current) blob.remove();
+      lineBlobRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1278,8 +1282,8 @@ export default function MapView({
     ] as const;
 
     const apply = () => {
-      lineBadgeRefs.current.forEach((m) => m.remove());
-      lineBadgeRefs.current = [];
+      for (const blob of lineBlobRefs.current) blob.remove();
+      lineBlobRefs.current = [];
       if (!navTrainDrawData) {
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
@@ -1289,10 +1293,13 @@ export default function MapView({
 
       const { polylines, stops, transfers } = navTrainDrawData;
 
-      // Each ride's line bullet pinned onto its track (#149): DOM markers, so the
-      // shadow sampler's canvas readback never sees them.
-      lineBadgeRefs.current = lineBadgePlacements(polylines).map(({ line, color, at }) =>
-        new maplibregl.Marker({ element: lineBadgeElement(line, color), anchor: "bottom" }).setLngLat(at).addTo(map),
+      // Each ride's line identifier as a draggable swelling of its track (#149):
+      // DOM markers, so the shadow sampler's canvas readback never sees them.
+      lineBlobRefs.current = lineBadgePlacements(polylines).map((placement) =>
+        attachLineBlob(map, placement, {
+          fraction: lineBlobFractions.current.get(placement.line),
+          onRest: (fraction) => lineBlobFractions.current.set(placement.line, fraction),
+        }),
       );
       const transferIds = new Set(transfers.map((t) => t.at.id));
 

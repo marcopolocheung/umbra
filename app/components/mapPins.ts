@@ -1,3 +1,4 @@
+import { BLOB_HALF_LENGTH, blobOutline } from "../lib/lineBadges";
 import { lineBulletInk, lineCssColor } from "../lib/lineBulletInk";
 
 /**
@@ -46,45 +47,63 @@ export function mapPinElement(variant: MapPinVariant, label: string, text = ""):
 }
 
 /**
- * A transit line's bullet pinned onto its drawn ride (#149): the same teardrop,
- * filled with the line's published colour, its tip on the track. The identifier
- * takes the ink `lineBulletInk` measures readable on that colour; where neither
- * ink reaches 4.5:1 the pin fills with the casing and rings in the line colour.
+ * A transit line's identifier as a swelling of its own drawn ride (#149): an
+ * irregular bulge (`blobOutline`, seeded by the line) in the line's published
+ * colour with no outline, whose ends thin to the line's exact width so it reads
+ * as the line thickening rather than a pin set on it. The letter stays upright
+ * while the swelling turns with the track (`orientLineBlob`), and takes the ink
+ * `lineBulletInk` measures readable on that colour; where neither reaches 4.5:1
+ * it sits on a small casing disc instead.
  *
- * Unlike A/B it is not a control, so the host is the visual size and lets
- * pointer events through to the map. A DOM marker, never a canvas layer, so the
- * shadow sampler's readback cannot see it (CLAUDE.md invariant #5).
+ * Only a 44px disc at the centre catches the pointer (it is draggable along the
+ * ride); the rest of the host lets the map keep its gestures. A DOM marker, never
+ * a canvas layer, so the shadow sampler's readback cannot see it (invariant #5).
  */
-export function lineBadgeElement(line: string, color: string): HTMLDivElement {
+export function lineBlobElement(line: string, color: string): HTMLDivElement {
   const css = lineCssColor(color);
   const ink = lineBulletInk(css);
-  const size = line.length > 2 ? 34 : 28;
-  // The rotated square's tip overhangs its box by (√2 − 1)/2 of a side; this
-  // lifts the box so the tip lands on the host's bottom edge, the anchor.
-  const lift = Math.round(size * 0.207);
+  const size = BLOB_HALF_LENGTH * 2;
   const host = document.createElement("div");
   host.setAttribute("role", "img");
   host.setAttribute("aria-label", `Line ${line}`);
   host.dataset.line = line;
-  host.style.cssText = `width:${size}px;height:${size + lift}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;`;
+  host.style.cssText = `width:${size}px;height:${size}px;position:relative;pointer-events:none;`;
 
-  const [fill, border, text] = ink
-    ? [css, "2px solid var(--color-map-casing)", `var(--color-line-ink-${ink})`]
-    : ["var(--color-map-casing)", `3px solid ${css}`, "var(--color-map-route)"];
-  const pin = document.createElement("div");
-  pin.style.cssText = `
-    width:${size}px;height:${size}px;margin-bottom:${lift}px;border-radius:var(--radius-pin);
-    transform:rotate(var(--angle-marker));
-    background:${fill};border:${border};box-shadow:var(--shadow-map-marker);
+  const svgNs = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("viewBox", `${-BLOB_HALF_LENGTH} ${-BLOB_HALF_LENGTH} ${size} ${size}`);
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:absolute;inset:0;overflow:visible;pointer-events:none;";
+  const blob = document.createElementNS(svgNs, "path");
+  blob.setAttribute("d", blobOutline(line));
+  blob.setAttribute("fill", css);
+  blob.setAttribute("data-part", "blob");
+  svg.appendChild(blob);
+  host.appendChild(svg);
+
+  const grip = document.createElement("div");
+  grip.dataset.part = "grip";
+  grip.style.cssText = `
+    position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
+    border-radius:var(--radius-circle);pointer-events:auto;cursor:grab;touch-action:none;
     display:flex;align-items:center;justify-content:center;
   `;
-  const inner = document.createElement("span");
-  inner.style.cssText = `
-    transform:rotate(var(--angle-marker-inner));font-family:var(--font-label);
-    font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;color:${text};
+  const letter = document.createElement("span");
+  letter.style.cssText = `
+    font-family:var(--font-label);font-size:11px;font-weight:800;line-height:1;
+    font-variant-numeric:tabular-nums;color:${ink ? `var(--color-line-ink-${ink})` : "var(--color-map-route)"};
+    ${ink ? "" : "background:var(--color-map-casing);border-radius:var(--radius-full);padding:3px 5px;"}
   `;
-  inner.textContent = line;
-  pin.appendChild(inner);
-  host.appendChild(pin);
+  letter.textContent = line;
+  grip.appendChild(letter);
+  host.appendChild(grip);
   return host;
+}
+
+/** Turns the swelling to lie along the track; the letter stays upright. */
+export function orientLineBlob(host: HTMLElement, angleDeg: number): void {
+  const svg = host.querySelector("svg");
+  if (svg) svg.style.rotate = `${angleDeg}deg`;
 }

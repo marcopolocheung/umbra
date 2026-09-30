@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   countRouteLinePixels,
-  countTransitLinePixels,
+  countTransitLinePixels, transitLineNear,
   maskDiff,
   sampleMapCanvas,
   shadowMask,
@@ -253,10 +253,35 @@ test("routes on the published transit data and draws the line", async ({ page },
     })
     .toBeGreaterThan(0);
 
-  // The ride's line bullet is pinned onto the drawn track (#149), one per ride.
-  const badge = page.locator(".maplibregl-marker[role='img'][aria-label='Line E']");
-  await expect(badge).toHaveCount(1);
-  await expect(badge).toBeVisible();
+  // The ride's identifier is a swelling of its drawn track (#149), one per ride,
+  // that a drag slides along the line and never off it.
+  const blob = page.locator(".maplibregl-marker[role='img'][aria-label='Line E']");
+  await expect(blob).toHaveCount(1);
+  const grip = blob.locator("[data-part='grip']");
+  await expect(grip).toBeVisible();
+  const centre = async () => {
+    const box = await grip.boundingBox();
+    if (!box) throw new Error("line swelling has no layout box");
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  // Let the first-render glide settle, then confirm it rests on the line.
+  await expect
+    .poll(async () => { const c = await centre(); return transitLineNear(page, c.x, c.y); }, {
+      timeout: 30_000,
+      message: "the line swelling does not sit on its line",
+    })
+    .toBe(true);
+  const before = await centre();
+  await page.mouse.move(before.x, before.y);
+  await page.mouse.down();
+  // The fixture ride runs up and to the right on screen. This pull is ~113 px along
+  // it and ~56 px off it: the swelling must slide, and must stay on the track.
+  await page.mouse.move(before.x + 120, before.y - 40, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(1_200); // any coast settles
+  const after = await centre();
+  expect(Math.hypot(after.x - before.x, after.y - before.y), "the swelling did not move when dragged").toBeGreaterThan(5);
+  expect(await transitLineNear(page, after.x, after.y), "the dragged swelling left its line").toBe(true);
 
   // Half the published headway, on the day type the clock is actually set to.
   // The fixture ships 600 s for Sunday hour 9 and 300 s for the weekday, and

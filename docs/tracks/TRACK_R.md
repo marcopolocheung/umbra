@@ -24,14 +24,19 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** #149 — transit line bullets on the map, awaiting owner review.
-  `lib/lineBadges.ts` groups the per-hop `TrainDrawData` polylines into rides (consecutive
-  hops on one line) and places one badge halfway along each ride's drawn track;
-  `mapPins.lineBadgeElement` draws it as the R4b teardrop filled with the line's published
-  colour, tip on the track, letter inked by `lineBulletInk` (ringed in the colour when no ink
-  reaches 4.5:1), 28px (34px for three-character routes), non-interactive. DOM markers in
-  `MapView`'s transit effect, so the shadow sampler's readback never sees them (#5); the
-  transit smoke test asserts exactly one badge on the fixture ride.
+- **Active checkpoint:** #149 — transit line identifiers on the map, awaiting owner review.
+  Owner's design: the line itself swells where its letter sits — seamless, in the line's
+  published colour, irregular (`lib/lineBadges.blobOutline`, seeded by the line so each line
+  keeps one shape, necks thinning to the drawn line's 5px), laid along the track with the
+  letter upright (`mapPins.lineBlobElement`/`orientLineBlob`). `components/lineBlobMarker.ts`
+  drags it only along its own ride (each frame snaps to the nearest track point,
+  `snapToPath`), flings it with the time slider's inertia (friction 0.009/ms, same smoothing
+  and 80 ms cutoff, exact per-frame decay so a glide can be aimed), remembers where each line
+  rested so a recalculation keeps it put, and on a line's first render glides it from mid-ride
+  to a random resting place (none under reduced motion). One per ride, not per hop. DOM
+  markers only — the shadow sampler never sees them (#5); a 44px grip is the only part that
+  takes the pointer. The transit smoke test drags it ~56px off the line and asserts, by
+  canvas readback, that it slid and still sits on the magenta track.
 - **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
   (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
   inset focus, disabled on the 75% role with a strike), used by Walk/Transit, Sun/Rain,
@@ -92,6 +97,8 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,777 unit tests,
+  build, design:check and e2e 16/16 (the transit drag check 3/3 on repeat).
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.

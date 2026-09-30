@@ -1,29 +1,41 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { lineBadgeElement } from "../mapPins";
+import { blobOutline } from "../../lib/lineBadges";
+import { lineBlobElement, orientLineBlob } from "../mapPins";
 
-describe("lineBadgeElement", () => {
-  it("fills a teardrop with the line's colour and inks the letter to read on it", () => {
-    const badge = lineBadgeElement("N", "#FCCC0A");
-    expect(badge.getAttribute("role")).toBe("img");
-    expect(badge.getAttribute("aria-label")).toBe("Line N");
-    // Not a control: it lets the map keep its gestures.
-    expect(badge.style.pointerEvents).toBe("none");
-    const pin = badge.firstElementChild as HTMLElement;
-    expect(pin.style.background).toContain("rgb(252, 204, 10)");
-    expect((pin.firstElementChild as HTMLElement).style.color).toBe("var(--color-line-ink-dark)");
-    expect(pin.textContent).toBe("N");
+describe("lineBlobElement", () => {
+  it("swells in the line's own colour, seamless, with the line's identifier on it", () => {
+    const host = lineBlobElement("N", "#FCCC0A");
+    expect(host.getAttribute("role")).toBe("img");
+    expect(host.getAttribute("aria-label")).toBe("Line N");
+    const blob = host.querySelector("[data-part='blob']") as SVGPathElement;
+    expect(blob.getAttribute("fill")).toBe("#FCCC0A");
+    // No outline: it is the line thickening, not a pin set on it.
+    expect(blob.getAttribute("stroke")).toBeNull();
+    expect(blob.getAttribute("d")).toBe(blobOutline("N"));
+    const letter = host.querySelector("[data-part='grip'] span") as HTMLElement;
+    expect(letter.textContent).toBe("N");
+    expect(letter.style.color).toBe("var(--color-line-ink-dark)");
   });
 
-  it("rings the letter in the line's colour when no ink reads on the fill", () => {
-    const pin = lineBadgeElement("7", "B933AD").firstElementChild as HTMLElement;
-    expect(pin.style.background).toBe("var(--color-map-casing)");
-    expect(pin.style.border).toContain("rgb(185, 51, 173)");
-    expect((pin.firstElementChild as HTMLElement).style.color).toBe("var(--color-map-route)");
+  it("puts the letter on a casing disc where no ink reads on the line's colour", () => {
+    const letter = lineBlobElement("7", "B933AD").querySelector("[data-part='grip'] span") as HTMLElement;
+    expect(letter.style.color).toBe("var(--color-map-route)");
+    expect(letter.style.background).toBe("var(--color-map-casing)");
   });
 
-  it("widens for a three-character route so the identifier fits", () => {
-    expect(lineBadgeElement("M15", "#0039A6").style.width).toBe("34px");
-    expect(lineBadgeElement("L", "#A7A9AC").style.width).toBe("28px");
+  it("catches the pointer only on a 44px grip, leaving the map its gestures", () => {
+    const host = lineBlobElement("L", "#A7A9AC");
+    expect(host.style.pointerEvents).toBe("none");
+    const grip = host.querySelector("[data-part='grip']") as HTMLElement;
+    expect(grip.style.pointerEvents).toBe("auto");
+    expect([grip.style.width, grip.style.height]).toEqual(["44px", "44px"]);
+  });
+
+  it("turns the swelling with the track and leaves the letter upright", () => {
+    const host = lineBlobElement("A", "#0039A6");
+    orientLineBlob(host, 30);
+    expect((host.querySelector("svg") as SVGSVGElement).style.rotate).toBe("30deg");
+    expect((host.querySelector("[data-part='grip']") as HTMLElement).style.rotate).toBe("");
   });
 });

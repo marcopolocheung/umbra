@@ -101,3 +101,37 @@ export async function countTransitLinePixels(page: Page): Promise<number> {
     return count;
   });
 }
+
+/**
+ * Whether the fixture's magenta transit line is drawn within `radius` CSS px of
+ * a page point (default 10: a station dot on the ride can cover the line under
+ * the exact centre). The line identifier swelling is a DOM marker, so the canvas
+ * under it still shows the line: this is how a test proves it sits on the track.
+ */
+export async function transitLineNear(page: Page, x: number, y: number, radius = 10): Promise<boolean> {
+  return page.evaluate(
+    ({ x, y, radius }) => {
+      const canvas = document.querySelector<HTMLCanvasElement>("canvas.maplibregl-canvas");
+      if (!canvas) throw new Error("MapLibre canvas not found");
+      const box = canvas.getBoundingClientRect();
+      const scale = canvas.width / box.width;
+      const r = Math.ceil(radius * scale);
+      const side = 2 * r + 1;
+      // Copy only the window around the point: a full-canvas readback is slow on a busy page.
+      const scratch = document.createElement("canvas");
+      scratch.width = side;
+      scratch.height = side;
+      const ctx = scratch.getContext("2d");
+      if (!ctx) throw new Error("2d context unavailable");
+      const cx = Math.round((x - box.left) * scale);
+      const cy = Math.round((y - box.top) * scale);
+      ctx.drawImage(canvas, cx - r, cy - r, side, side, 0, 0, side, side);
+      const { data } = ctx.getImageData(0, 0, side, side);
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 190 && data[i + 1] < 90 && data[i + 2] > 190) return true;
+      }
+      return false;
+    },
+    { x, y, radius },
+  );
+}
