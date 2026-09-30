@@ -34,7 +34,7 @@ inspiration; the public mirror publishes everything here.
   block sets `color-scheme: dark`. `main.tsx` applies a saved override before React mounts,
   so it also reaches `/about`; on Auto the UI is day until the map place is known. The shot harness forces a theme through the persisted
   override and adds `08-settings-theme.png`.
-- **Open PRs:** R2.
+- **Open PRs:** R2 — #127 (fixes #123). Follow-ups filed: #124 (Auto paints day until the map place is known), #125 (design:check misses named colours), #126 (segmented-control and Settings touch/contrast debt for R3/R5).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. R2's Settings copy says the override changes "the
   panels only, not the map" — true before and after R4.
