@@ -14,7 +14,6 @@ import {
 } from "../lib/trip/trip";
 import type { StopEntry, Trip } from "../lib/trip/types";
 import type { TravelModeId } from "../lib/travelMode";
-import { token } from "../lib/css-tokens";
 import { zoneAt } from "../lib/tzLookup";
 import type { NavSeam } from "./useRouting";
 
@@ -567,9 +566,10 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
       dragActiveRef.current = false;
       dragStartPos.current = null;
 
-      // Canopy: the origin pin is ink and the destination pin is route blue —
-      // wayfinding chrome stays in the blue-green-ink family.
-      const color = token(slot === "A" ? "color-map-ink-current" : "color-map-route-current");
+      // The map's pins (R4b): origin hollow (paper, ink ring), destination filled.
+      const [fill, stroke] = slot === "A"
+        ? ["var(--color-map-casing)", "var(--color-map-route)"]
+        : ["var(--color-map-route)", "var(--color-map-casing)"];
 
       function onMove(e: PointerEvent) {
         const { clientX: x, clientY: y } = e;
@@ -595,7 +595,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
             "transform:translate(-50%, -100%)",
             "transition:none",
           ].join(";");
-          ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="filter:var(--filter-map-pin)"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
+          ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" xmlns="http://www.w3.org/2000/svg" style="fill:${fill};stroke:${stroke};stroke-width:1;filter:var(--filter-map-pin)"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
           ghost.style.left = x + "px";
           ghost.style.top = y + "px";
           document.body.appendChild(ghost);

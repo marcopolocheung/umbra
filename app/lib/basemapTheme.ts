@@ -195,3 +195,45 @@ export function applyBasemapTheme(
     }
   }
 }
+
+/** R4b: the colour roles Umbra's own map overlays draw with. */
+export type MapRole = "route" | "casing" | "muted" | "sun";
+
+/** A map-overlay colour for the basemap theme (`--color-map-{theme}-{role}`). */
+export function mapColor(theme: UiTheme, role: MapRole): string {
+  return token(`color-map-${theme}-${role}`);
+}
+
+/**
+ * Umbra's own GL layers and the role each colour property takes. Transit lines keep
+ * their feature colour — it is the line's identity — so they are not listed.
+ */
+const OVERLAY_ROLES: ReadonlyArray<[layerId: string, property: string, role: MapRole]> = [
+  ["nav-route-casing", "line-color", "casing"],
+  ["nav-route-line", "line-color", "route"],
+  ["sketch-line-layer", "line-color", "route"],
+  ["sketch-preview-layer", "line-color", "route"],
+  ["mrt-entrance-connector-line", "line-color", "route"],
+  ["train-route-stops-layer", "circle-color", "casing"],
+  ["train-route-stops-layer", "circle-stroke-color", "muted"],
+  ["train-route-transfers-outer", "circle-color", "casing"],
+  ["train-route-transfers-outer", "circle-stroke-color", "route"],
+  ["train-route-transfers-inner", "circle-color", "route"],
+];
+
+export function overlayPaint(theme: UiTheme): Array<[layerId: string, property: string, color: string]> {
+  return OVERLAY_ROLES.map(([id, property, role]) => [id, property, mapColor(theme, role)]);
+}
+
+/**
+ * Recolour Umbra's overlay layers that exist now. A layer added later reads
+ * `mapColor` for the current theme when it is created.
+ */
+export function applyOverlayTheme(
+  map: { getLayer(id: string): unknown; setPaintProperty(id: string, property: string, value: unknown): void },
+  theme: UiTheme
+): void {
+  for (const [id, property, color] of overlayPaint(theme)) {
+    if (map.getLayer(id)) map.setPaintProperty(id, property, color);
+  }
+}
