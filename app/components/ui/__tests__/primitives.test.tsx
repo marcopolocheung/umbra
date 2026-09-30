@@ -1,0 +1,174 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import registryCss from "../../../globals.css?raw";
+import GrainSurface from "../GrainSurface";
+import Kicker from "../Kicker";
+import LineBullet from "../LineBullet";
+import { INK_REVEAL, STAMP } from "../motion";
+import Plate from "../Plate";
+import StampBadge from "../StampBadge";
+import Tag from "../Tag";
+
+afterEach(cleanup);
+
+interface Rule {
+  selector: string;
+  body: string;
+  /** Enclosing at-rule preludes, outermost first. */
+  within: string[];
+}
+
+/** Innermost style rules of the registry, with the at-rules that enclose them. */
+function rules(css: string): Rule[] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const out: Rule[] = [];
+  const stack: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") {
+      stack.push(text.slice(start, i).trim());
+      start = i + 1;
+    } else if (text[i] === "}") {
+      const selector = stack.pop() ?? "";
+      const body = text.slice(start, i);
+      if (!selector.startsWith("@") && !body.includes("{")) out.push({ selector, body, within: stack.filter((s) => s.startsWith("@")) });
+      start = i + 1;
+    } else if (text[i] === ";" && stack.length === 0) {
+      start = i + 1;
+    }
+  }
+  return out;
+}
+
+const REGISTRY = rules(registryCss);
+const ROOT_CLASSES = ["umbra-plate", "umbra-kicker", "umbra-tag", "umbra-line-bullet", "umbra-stamp-badge", "umbra-grain"];
+
+describe("primitive registry rules", () => {
+  it.each(ROOT_CLASSES)("gives .%s a visible inner focus stroke", (cls) => {
+    const focus = REGISTRY.find((r) => r.selector.includes(`.${cls}`) && r.selector.includes(":focus-visible"));
+    expect(focus?.body).toMatch(/outline:\s*2px solid currentColor/);
+    expect(focus?.body).toMatch(/outline-offset:\s*-\d+px/);
+  });
+
+  it("rotates only the painted plate and non-interactive stamps, never a host box", () => {
+    const rotated = REGISTRY.filter((r) => /(^|[\s;])rotate:/.test(r.body) && r.selector.includes("umbra-")).map((r) => r.selector);
+    expect(rotated.sort()).toEqual([".umbra-plate--tilt > .umbra-plate__ground", ".umbra-stamp-badge"]);
+  });
+
+  it("clips the plate's ground layer, not the element that carries content and focus", () => {
+    const clipped = REGISTRY.filter((r) => r.body.includes("clip-path: var(--plate-clip)")).map((r) => r.selector);
+    expect(clipped).toEqual([".umbra-plate__ground::before"]);
+  });
+
+  it("animates stamp and ink reveal only when motion is welcome", () => {
+    for (const cls of [STAMP, INK_REVEAL]) {
+      const animated = REGISTRY.filter((r) => r.selector === `.${cls}`);
+      expect(animated).toHaveLength(1);
+      expect(animated[0].body).toMatch(/animation:/);
+      expect(animated[0].within).toEqual(["@media (prefers-reduced-motion: no-preference)"]);
+    }
+  });
+
+  it("drops the grain under reduced transparency and keeps it beneath content", () => {
+    const grain = REGISTRY.filter((r) => r.selector === ".umbra-grain::before");
+    expect(grain.find((r) => r.within.length === 1)?.body).toMatch(/z-index:\s*-1/);
+    expect(grain.find((r) => r.within.includes("@media (prefers-reduced-transparency: reduce)"))?.body).toMatch(/display:\s*none/);
+  });
+});
+
+describe("Plate", () => {
+  it("paints an aria-hidden ground behind content on a square host", () => {
+    render(
+      <Plate as="section" tone="shade" tilt aria-label="Shade walk">
+        <p>18 min</p>
+      </Plate>,
+    );
+    const plate = screen.getByRole("region", { name: "Shade walk" });
+    expect(plate.className).toBe("umbra-plate umbra-plate--shade umbra-plate--tilt");
+    const ground = plate.firstElementChild as HTMLElement;
+    expect(ground.className).toBe("umbra-plate__ground");
+    expect(ground.getAttribute("aria-hidden")).toBe("true");
+    expect(ground.textContent).toBe("");
+    expect(screen.getByText("18 min").parentElement).toBe(plate);
+  });
+
+  it("is a flat panel by default and passes focusability through", () => {
+    render(<Plate tabIndex={0}>Stop</Plate>);
+    const plate = screen.getByText("Stop");
+    expect(plate.tagName).toBe("DIV");
+    expect(plate.className).toBe("umbra-plate umbra-plate--panel");
+    plate.focus();
+    expect(document.activeElement).toBe(plate);
+  });
+});
+
+describe("Kicker", () => {
+  it("renders a bare stamped label", () => {
+    render(<Kicker className="mb-1">Keep cool on</Kicker>);
+    const kicker = screen.getByText("Keep cool on");
+    expect(kicker.tagName).toBe("SPAN");
+    expect(kicker.className).toBe("umbra-kicker mb-1");
+  });
+
+  it("sets a plated kicker on a tilted ink plate", () => {
+    render(<Kicker plated>Shade walk</Kicker>);
+    const kicker = screen.getByText("Shade walk");
+    expect(kicker.tagName).toBe("SPAN");
+    expect(kicker.className).toBe("umbra-plate umbra-plate--ink umbra-plate--tilt umbra-kicker");
+    expect(kicker.querySelector(".umbra-plate__ground")).not.toBeNull();
+  });
+});
+
+describe("Tag", () => {
+  it("defaults to neutral ink and takes a meaning tone", () => {
+    render(
+      <>
+        <Tag>Open</Tag>
+        <Tag tone="rain">Covered</Tag>
+      </>,
+    );
+    expect(screen.getByText("Open").className).toBe("umbra-tag umbra-tag--neutral");
+    expect(screen.getByText("Covered").className).toBe("umbra-tag umbra-tag--rain");
+  });
+});
+
+describe("LineBullet", () => {
+  it("always shows the identifier and reads as a line to assistive tech", () => {
+    render(<LineBullet line="yellow" id="Q" label="Uptown" data-testid="bullet" />);
+    const bullet = screen.getByTestId("bullet");
+    expect(bullet.className).toBe("umbra-line-bullet umbra-line-bullet--yellow");
+    expect(bullet.textContent).toBe("Line QUptown");
+    expect(screen.getByText("Q").className).toBe("umbra-line-bullet__id");
+  });
+
+  it("omits the label slot when there is no label", () => {
+    render(<LineBullet line="green" id="4" data-testid="bullet" />);
+    expect(screen.getByTestId("bullet").querySelector(".umbra-line-bullet__label")).toBeNull();
+  });
+});
+
+describe("StampBadge", () => {
+  it("stamps in on mount in its tone's ink", () => {
+    render(<StampBadge tone="sun">Arrived</StampBadge>);
+    expect(screen.getByText("Arrived").className).toBe(`umbra-stamp-badge umbra-stamp-badge--sun ${STAMP}`);
+  });
+
+  it("uses plain ink by default", () => {
+    render(<StampBadge>Shaded</StampBadge>);
+    expect(screen.getByText("Shaded").className).toBe(`umbra-stamp-badge ${STAMP}`);
+  });
+});
+
+describe("GrainSurface", () => {
+  it("wraps content in a grained paper surface", () => {
+    render(
+      <GrainSurface className="bg-panel" data-testid="paper">
+        <p>Postcard</p>
+      </GrainSurface>,
+    );
+    const paper = screen.getByTestId("paper");
+    expect(paper.className).toBe("umbra-grain bg-panel");
+    expect(screen.getByText("Postcard").parentElement).toBe(paper);
+  });
+});
