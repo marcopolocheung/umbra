@@ -9,6 +9,7 @@ const check = (line, scanColors) => scanLine(line, allowed, scanColors);
 test("registry colours and named geometry pass", () => {
   assert.deepEqual(check('style={{ color: "#1b1512", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-hard-1)", rotate: "var(--angle-label)" }}'), []);
   assert.deepEqual(check('map.rotate(45);'), []);
+  assert.deepEqual(check('className="shadow-hard-2"'), []);
   assert.deepEqual(check(' * an example colour (`#ff00ff`) in a block comment'), []);
 });
 
@@ -21,6 +22,8 @@ test("off-registry colours, radii, rotations, and shadows fail", () => {
   assert.match(check('transform:rotate(45deg)')[0], /rotation/);
   assert.match(check('className="rotate-90"')[0], /rotation/);
   assert.match(check('boxShadow: "0 0 6px blue"')[0], /shadow/);
+  assert.match(check('className="shadow-[0_4px_8px_black]"')[0], /arbitrary shadow/);
+  assert.match(check('className="drop-shadow-[0_2px_4px_black]"')[0], /arbitrary shadow/);
   assert.match(check('filter:drop-shadow(0 2px 4px black)')[0], /drop-shadow/);
 });
 

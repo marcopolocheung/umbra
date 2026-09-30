@@ -9,6 +9,7 @@ const COLOR_RE = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3
 const ARBITRARY_RE = /(?:rounded|text|leading|w-|h-|min-w-|max-w-|min-h-|max-h-|p[xtbyrl]?-|m[xtbyrl]?-|gap-|top-|bottom-|left-|right-|size-|space-)\[[0-9]+(?:\.[0-9]+)?(?:px|rem|em|vh|vw)\]|rounded-\[[^\]]*\]/g;
 const RADIUS_RE = /\b(?:border-radius|borderRadius)\s*:\s*([^{;\n}"'`]+|["'`][^"'`]+["'`])/g;
 const SHADOW_RE = /\b(?:box-shadow|boxShadow)\s*:\s*([^{;\n}"'`]+|["'`][^"'`]+["'`])/g;
+const ARBITRARY_SHADOW_RE = /(?:drop-)?shadow-\[[^\]\n]+\]/g;
 const ROTATE_VALUE_RE = /\brotate\s*:\s*["'`]?\s*-?\d+(?:\.\d+)?(?:deg|rad|turn)\b/g;
 const ROTATE_FUNCTION_RE = /(?<![.\w])rotate\(\s*-?\d+(?:\.\d+)?(?:deg|rad|turn)\s*\)/g;
 const ROTATE_CLASS_RE = /(?<![\w-])-?rotate-(?:\d+|\[[^\]]+\])(?![\w-])/g;
@@ -46,6 +47,7 @@ export function scanLine(source, allowed, scanColors = true) {
   for (const match of line.matchAll(SHADOW_RE)) {
     if (!validRegistryValue(match[1])) findings.push(`literal shadow ${match[1].trim()}`);
   }
+  for (const match of line.matchAll(ARBITRARY_SHADOW_RE)) findings.push(`arbitrary shadow ${match[0]} outside the token scale`);
   if (/drop-shadow\s*\(/.test(line)) findings.push("literal drop-shadow outside the registry");
   for (const match of line.matchAll(ROTATE_VALUE_RE)) findings.push(`literal rotation ${match[0]}`);
   for (const match of line.matchAll(ROTATE_FUNCTION_RE)) findings.push(`literal rotation ${match[0]}`);

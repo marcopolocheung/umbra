@@ -1240,13 +1240,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* Focus mode toggle — the one control that survives focus mode: hide
-          every overlay except this button and the timeline. Sits bottom-left,
-          symmetric with the right controls column's foot. */}
+      {/* Keep the focus toggle off an open phone sheet. It remains available
+          when the sheet is collapsed or hidden, and always restores focus mode. */}
       <button
         type="button"
         onClick={() => setUiHidden((v) => !v)}
-        className="absolute left-3 md:left-6 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 flex items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className={`absolute left-3 md:left-6 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
         style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
         aria-pressed={uiHidden}
         aria-label={uiHidden ? "Show interface" : "Hide interface"}

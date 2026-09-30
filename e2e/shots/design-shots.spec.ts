@@ -109,6 +109,7 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
     if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
   });
   await page.waitForTimeout(300);
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
   await shot("02-directions-cards.png")();
 
   // 2b. U7 — the arrival card: the peak-end shade story in the display voice
@@ -126,6 +127,7 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
     .first()
     .click();
   await page.waitForTimeout(800);
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
   await shot("07-arrival.png")();
   await page
     .getByRole("button", { name: "Plan another" })
@@ -179,6 +181,7 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
     await page.mouse.up();
     await page.waitForTimeout(800);
   }
+  await expect(page.getByRole("button", { name: "Hide interface" })).toBeVisible();
   const slider = page.getByTestId("timeline-slider").filter({ visible: true });
   const box = await slider.boundingBox();
   if (!box) throw new Error("timeline slider has no layout box");
