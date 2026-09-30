@@ -552,8 +552,9 @@ body {
   .umbra-grain::before { display: none; }
 }
 
-/* Stamp: lands with a small overshoot. Ink reveal: wipes on like a print
-   pass, not a fade. Both exist only when motion is welcome. */
+/* Stamp lands with a small overshoot. The ink mask is opaque through 82% of
+   its width, with a rough, speckled leading edge. The animation uses backwards
+   fill only: its mask disappears at completion so hard shadows remain intact. */
 @media (prefers-reduced-motion: no-preference) {
   @keyframes umbra-stamp {
     from { scale: 1.6; opacity: 0; }
@@ -561,9 +562,9 @@ body {
     to { scale: 1; opacity: 1; }
   }
   @keyframes umbra-ink-reveal {
-    from { clip-path: inset(0 100% 0 0); }
-    to { clip-path: inset(0 0 0 0); }
+    from { mask-image: url("/ink-reveal-mask.svg"); mask-size: 0% 100%; mask-repeat: no-repeat; }
+    to { mask-image: url("/ink-reveal-mask.svg"); mask-size: 130% 100%; mask-repeat: no-repeat; }
   }
   .umbra-stamp { animation: umbra-stamp var(--duration-stamp) var(--ease-stamp) backwards; }
-  .umbra-ink-reveal { animation: umbra-ink-reveal var(--duration-stamp-slow) var(--ease-stamp) backwards; }
+  .umbra-ink-reveal { animation: umbra-ink-reveal var(--duration-stamp-slow) linear backwards; }
 }

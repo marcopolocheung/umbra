@@ -36,22 +36,24 @@ inspiration; the public mirror publishes everything here.
   (`--filter-plate`, `--grain-opacity`, day and night). Every host box stays square: the
   quad, tilt and grain live on inner layers, the plate's 10% inner stroke is the band between
   two nested clipped quads and turns full ink on focus, and the small primitives get a
-  page-ink ring outside the box. Nothing consumes the primitives yet; R5 is the first user.
-- **Open PRs:** R3 — #132 (fixes #131). Follow-ups filed: #124, #125, #126 (R2); #128 (Plate cannot
-  be a control — R5 needs `as="button"`), #129 (R9: ink reveal is a straight wipe, not an
-  ink-threshold mask), #130 (grain vs Safari/Firefox reduce-transparency; danger tag 6.39:1
-  by day).
+  page-ink ring outside the box. `INK_REVEAL` now uses a rough SVG alpha mask that moves
+  left to right and clears at completion. Nothing consumes the primitives yet; R5 is the first user.
+- **Open PRs:** R3 — #132 (fixes #131, closes #129). Follow-ups filed: #124, #125, #126 (R2);
+  #128 (Plate cannot be a control — R5 needs `as="button"`), #130 (grain vs Safari/Firefox
+  reduce-transparency; danger tag 6.39:1 by day).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. R3 reads the brief's "Plate (inner stroke)" as the
   reference's 10%-ink inner stroke; plate focus reuses that band at full ink.
 - **Blocked on:** owner visual review of R3.
-- **Next action:** review `docs/design/shots/r3/` (specimen and focus strips, both themes),
+- **Next action:** review `docs/design/shots/r3/` (R2/R3 app pairs plus primitive, focus and
+  paused-reveal specimens in both themes),
   merge on sign-off, then R4 (the map — main session only, invariant #5).
-- **Last verified:** 2026-09-30; lint (0 errors), typecheck, build, design:check and 1,684
-  unit tests pass (Node 24). The R3 shots come from a throwaway specimen page, not the app;
-  app screens are unchanged. Phone cost of clip-path + drop-shadow plates: 60 tilted plates
-  scrolled at 4× CPU throttle held 16.7 ms frames, same as plain divs — headless SwiftShader
-  only, so a real-phone check is still outstanding.
+- **Last verified:** 2026-09-30; Node 24 lint (0 errors), typecheck, build, design:check and
+  1,685 unit tests pass. The 390×844 fixture-basemap app shots from R2 and R3 are pixel
+  identical in both themes, and all 10 committed shots are 780×1688 physical pixels.
+  Browser checks cover the rough edge at 150 ms, full visibility and an unclipped hard
+  shadow at completion, and immediate visibility under reduced motion. A real-phone cost
+  check of the new mask is still outstanding.
 ---
 
 ## Decisions R0 must settle (owner's call)

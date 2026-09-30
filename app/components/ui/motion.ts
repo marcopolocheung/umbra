@@ -7,5 +7,5 @@
 /** Lands with a small overshoot (--duration-stamp). */
 export const STAMP = "umbra-stamp";
 
-/** Wipes on left to right like a print pass (--duration-stamp-slow). */
+/** Reveals through a rough ink edge from left to right (--duration-stamp-slow). */
 export const INK_REVEAL = "umbra-ink-reveal";

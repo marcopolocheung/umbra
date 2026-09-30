@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import registryCss from "../../../globals.css?raw";
 import GrainSurface from "../GrainSurface";
@@ -86,10 +88,24 @@ describe("primitive registry rules", () => {
     for (const cls of [STAMP, INK_REVEAL]) {
       const animated = REGISTRY.filter((r) => r.selector === `.${cls}`);
       expect(animated).toHaveLength(1);
-      // `backwards`, not `both`: a held final clip-path would cut off hard shadows.
+      // Backwards fill leaves no mask on the element after completion.
       expect(animated[0].body).toMatch(/animation:[^;]*\bbackwards;/);
       expect(animated[0].within).toEqual(["@media (prefers-reduced-motion: no-preference)"]);
     }
+  });
+
+  it("reveals through the original speckled SVG mask, then removes the mask", () => {
+    const svg = readFileSync(resolve(process.cwd(), "public/ink-reveal-mask.svg"), "utf8");
+    expect(svg).toContain('width="82"');
+    expect(svg).toContain('<path d="M82');
+    expect(svg.match(/<circle /g)?.length).toBeGreaterThan(10);
+    const frames = REGISTRY.filter((r) => r.within.includes("@keyframes umbra-ink-reveal"));
+    expect(frames.map((r) => r.selector)).toEqual(["from", "to"]);
+    expect(frames[0].body).toMatch(/mask-image:\s*url\("\/ink-reveal-mask.svg"\)/);
+    expect(frames[0].body).toMatch(/mask-size:\s*0% 100%/);
+    expect(frames[1].body).toMatch(/mask-size:\s*130% 100%/);
+    expect(frames.every((r) => !r.body.includes("clip-path") && !r.body.includes("opacity"))).toBe(true);
+    expect(REGISTRY.filter((r) => r.selector === `.${INK_REVEAL}` && r.body.includes("mask-image"))).toHaveLength(0);
   });
 
   it("drops the grain under reduced transparency and keeps it beneath content", () => {
