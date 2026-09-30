@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { lineCssColor } from "../lib/lineBulletInk";
 import type { RouteLeg, RouteOption } from "../lib/routing";
 import { routeAfterSunset, routeDurationLabel, routeExposureMinutes, routeShadowShare } from "../lib/routeTradeoff";
@@ -23,74 +23,131 @@ function coordLabel(coord: [number, number] | null): string {
   return `${coord[1].toFixed(5)}, ${coord[0].toFixed(5)}`;
 }
 
+type RailKind = "foot" | "ride";
+
+interface ItineraryRow {
+  id: string;
+  node: ReactNode;
+  /** The segment that leaves this node, drawn down to the next one; none after the last. */
+  rail: RailKind | null;
+  color?: string;
+  body: ReactNode;
+}
+
 /**
- * The leg list, in the pattern a rider already knows: walk / ride / walk, each
- * step with its own time and distance, and for transit the station to board at
- * and the station to exit at. Data comes from `route.legs` — the same records
- * the route cards summarize — so nothing here is a new claim to ground.
- *
- * Each step's icon sits on an itinerary rail that runs the length of the step:
- * dotted for a leg on foot, solid in the line's own colour for a ride, so the
- * change of mode reads down the list the way a transit app draws it.
+ * The trip as one itinerary, in the pattern a rider already knows: the start
+ * pin, dots on foot to the walk step, dots on to the boarding stop, where the
+ * line's bullet heads a solid bar in its colour that ends in a ring at the exit
+ * stop, then dots again past the walk step to the destination pin. Data comes
+ * from `route.legs` (a plain walk is one leg) — the same records the route
+ * cards summarize — so nothing here is a new claim to ground.
  */
-function LegList({ legs, travelMode }: { legs: RouteLeg[]; travelMode: TravelModeId }) {
-  const paceMps = getTravelModePolicy(travelMode).speedMps;
+function Itinerary({
+  legs,
+  travelMode,
+  startLabel,
+  destinationLabel,
+}: {
+  legs: RouteLeg[];
+  travelMode: TravelModeId;
+  startLabel: string;
+  destinationLabel: string;
+}) {
+  const policy = getTravelModePolicy(travelMode);
+  const muted = { color: "var(--color-ink-muted)" };
+  const ink = { color: "var(--color-ink)" };
+  const rows: ItineraryRow[] = [
+    {
+      id: "start",
+      node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">trip_origin</span>,
+      rail: legs[0]?.type === "transit" ? "ride" : "foot",
+      color: legs[0]?.type === "transit" && legs[0].lineColor ? lineCssColor(legs[0].lineColor) : undefined,
+      body: (
+        <>
+          <div className="umbra-kicker">Start</div>
+          <div className="truncate text-xs font-medium" style={ink}>{startLabel}</div>
+        </>
+      ),
+    },
+  ];
+  legs.forEach((leg, n) => {
+    if (leg.type === "transit") {
+      const board = leg.stops?.[0];
+      const exit = leg.stops?.[leg.stops.length - 1];
+      const color = leg.lineColor ? lineCssColor(leg.lineColor) : undefined;
+      rows.push({
+        id: `board-${n}`,
+        node: <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />,
+        rail: "ride",
+        color,
+        body: (
+          <>
+            {board && <div className="text-xs font-semibold" style={ink}>{board}</div>}
+            <div className="text-xs font-medium" style={ink}>
+              Ride {leg.lineName || leg.line || "Transit"}
+              {leg.travelTimeSec != null && (
+                <span style={muted}>
+                  {/* The whole leg, wait included, so the steps add up to Time. */}
+                  {" "}· {formatDuration(leg.travelTimeSec)}
+                  {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
+                </span>
+              )}
+            </div>
+          </>
+        ),
+      });
+      rows.push({
+        id: `exit-${n}`,
+        node: <span className="umbra-leg-stop" style={color ? ({ "--leg-color": color } as CSSProperties) : undefined} aria-hidden="true" />,
+        // Off the train, the rider is on foot again until the next boarding or the end.
+        rail: "foot",
+        body: <div className="text-xs font-semibold" style={ink}>{exit && exit !== board ? `Exit at ${exit}` : "Exit"}</div>,
+      });
+      return;
+    }
+    const walkSec = leg.distanceM != null ? leg.distanceM / policy.speedMps : null;
+    rows.push({
+      id: `walk-${n}`,
+      node: <span className="material-symbols-outlined text-base" style={muted} aria-hidden="true">directions_walk</span>,
+      rail: "foot",
+      body: (
+        <div className="text-xs font-medium" style={ink}>
+          {policy.label}
+          {leg.distanceM != null && <span style={muted}> · {formatDistance(leg.distanceM)}</span>}
+          {walkSec != null && <span style={muted}> · {formatDuration(walkSec)}</span>}
+        </div>
+      ),
+    });
+  });
+  rows.push({
+    id: "end",
+    node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">location_on</span>,
+    rail: null,
+    body: (
+      <>
+        <div className="umbra-kicker">Destination</div>
+        <div className="truncate text-xs font-medium" style={ink}>{destinationLabel}</div>
+      </>
+    ),
+  });
+
   return (
     <ol className="flex flex-col" aria-label="Route steps">
-      {legs.map((leg, i) => {
-        if (leg.type === "transit") {
-          const board = leg.stops?.[0];
-          const exit = leg.stops?.[leg.stops.length - 1];
-          const line = leg.lineName || leg.line || "Transit";
-          const railStyle = leg.lineColor ? ({ "--leg-color": lineCssColor(leg.lineColor) } as CSSProperties) : undefined;
-          return (
-            <li key={i} className="flex gap-2">
-              <div className="umbra-leg-rail-column">
-                <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />
-                <span className="umbra-leg-rail umbra-leg-rail--ride" style={railStyle} aria-hidden="true" />
-              </div>
-              <div className="min-w-0 flex-1 pb-3">
-                <div className="text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-                  Ride {line}
-                  {leg.travelTimeSec != null && (
-                    <span style={{ color: "var(--color-ink-muted)" }}>
-                      {/* The whole leg, wait included, so the steps add up to Time. */}
-                      {" "}· {formatDuration(leg.travelTimeSec)}
-                      {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
-                    </span>
-                  )}
-                </div>
-                {board && (
-                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-                    Enter at {board}
-                  </div>
-                )}
-                {exit && exit !== board && (
-                  <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-                    Exit at {exit}
-                  </div>
-                )}
-              </div>
-            </li>
-          );
-        }
-        const walkSec = leg.distanceM != null ? leg.distanceM / paceMps : null;
-        return (
-          <li key={i} className="flex gap-2">
-            <div className="umbra-leg-rail-column">
-              <span className="material-symbols-outlined text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
-                directions_walk
-              </span>
-              <span className="umbra-leg-rail umbra-leg-rail--foot" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 flex-1 pb-3 text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-              {getTravelModePolicy(travelMode).label}
-              {leg.distanceM != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDistance(leg.distanceM)}</span>}
-              {walkSec != null && <span style={{ color: "var(--color-ink-muted)" }}> · {formatDuration(walkSec)}</span>}
-            </div>
-          </li>
-        );
-      })}
+      {rows.map((row) => (
+        <li key={row.id} className="flex gap-2">
+          <div className="umbra-leg-rail-column">
+            {row.node}
+            {row.rail && (
+              <span
+                className={`umbra-leg-rail umbra-leg-rail--${row.rail}`}
+                style={row.color ? ({ "--leg-color": row.color } as CSSProperties) : undefined}
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          <div className="min-w-0 flex-1 pb-4">{row.body}</div>
+        </li>
+      ))}
     </ol>
   );
 }
@@ -209,33 +266,14 @@ export default function NavigationStatusPanel({
         </div>
       )}
 
-      {/* Leg list — walk / ride / walk with times and board/exit stations,
-          the pattern a rider already knows. Single-leg walk routes skip it:
-          the stats grid already says everything there is to say. */}
-      {route?.legs && route.legs.length > 1 && (
-        <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
-          <LegList legs={route.legs} travelMode={route.travelMode ?? "walk"} />
-        </div>
-      )}
-
-      <div className="border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
-        <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }} aria-hidden="true">trip_origin</span>
-          <div className="min-w-0 flex-1">
-            <div className="umbra-kicker">Start</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>
-              {waypointALabel ?? coordLabel(waypointA)}
-            </div>
-          </div>
-        </div>
-        <div className="my-2 ml-2 h-5 border-l" style={{ borderColor: "var(--color-rule)" }} />
-        <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "var(--color-ink)" }} aria-hidden="true">location_on</span>
-          <div className="min-w-0 flex-1">
-            <div className="umbra-kicker">Destination</div>
-            <div className="truncate text-xs font-medium" style={{ color: "var(--color-ink)" }}>{destination}</div>
-          </div>
-        </div>
+      {/* The itinerary: start to destination on one rail, every leg between. */}
+      <div className="border-t pt-3" style={{ borderColor: "var(--color-rule)" }}>
+        <Itinerary
+          legs={route?.legs && route.legs.length > 0 ? route.legs : route ? [{ type: "walk", geojson: route.geojson, distanceM: route.distanceM }] : []}
+          travelMode={route?.travelMode ?? "walk"}
+          startLabel={waypointALabel ?? coordLabel(waypointA)}
+          destinationLabel={destination}
+        />
       </div>
 
       <button

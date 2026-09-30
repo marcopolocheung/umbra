@@ -92,21 +92,35 @@ describe("NavigationStatusPanel (R5b)", () => {
     expect(screen.getByText(/15 min incl\. ~10 min wait/)).toBeTruthy();
   });
 
-  it("draws the itinerary rail: dotted on foot, solid in the line's colour for the ride", () => {
+  it("draws one itinerary: dots on foot, the line's bar from its bullet to a ring at the exit", () => {
     const legs: RouteLeg[] = [
       { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
-      { type: "transit", geojson: LINE, line: "N", lineColor: "ffe14d", travelTimeSec: 480 },
+      { type: "transit", geojson: LINE, line: "N", lineColor: "ffe14d", travelTimeSec: 480, stops: ["34 St", "Canal St"] },
       { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
     ];
     panel(walk({ label: "Via Subway", legs, totalTimeSec: 600 }));
-    const steps = screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li");
-    const rails = [...steps].map((li) => li.querySelector(".umbra-leg-rail") as HTMLElement);
-    expect(rails.map((r) => r.className)).toEqual([
+    const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];
+    // start → walk → board → exit → walk → destination; the rail leaving each node.
+    expect(steps.map((li) => li.querySelector(".umbra-leg-rail")?.className ?? null)).toEqual([
+      "umbra-leg-rail umbra-leg-rail--foot",
       "umbra-leg-rail umbra-leg-rail--foot",
       "umbra-leg-rail umbra-leg-rail--ride",
       "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--foot",
+      null,
     ]);
-    // Bare-hex OSM colours are made valid CSS, as the bullet does.
-    expect(rails[1].style.getPropertyValue("--leg-color")).toBe("#ffe14d");
+    // The bar and its exit ring take the line's colour; bare-hex OSM colours become valid CSS.
+    expect((steps[2].querySelector(".umbra-leg-rail") as HTMLElement).style.getPropertyValue("--leg-color")).toBe("#ffe14d");
+    expect((steps[3].querySelector(".umbra-leg-stop") as HTMLElement).style.getPropertyValue("--leg-color")).toBe("#ffe14d");
+    expect(steps[2].textContent).toContain("34 St");
+    expect(steps[3].textContent).toBe("Exit at Canal St");
+    expect(steps[5].textContent).toContain("Bryant Park");
+  });
+
+  it("gives a plain walk the same rail, start pin to destination pin", () => {
+    panel(walk());
+    const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];
+    expect(steps).toHaveLength(3);
+    expect(steps[1].textContent).toContain("Walk · 700 m · 8 min");
   });
 });

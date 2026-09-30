@@ -525,19 +525,27 @@ body {
   .umbra-segmented__option:disabled { color: var(--color-ink-muted); cursor: not-allowed; text-decoration: line-through; }
   .umbra-segmented__option:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
 
-  /* Itinerary rail (NavigationStatusPanel): a step's icon above a rail running
-     the step's length — dotted on foot, solid in the line's colour for a ride. */
+  /* Itinerary rail (NavigationStatusPanel): each node above the segment that
+     leaves it — round dots on foot, a solid bar in the line's colour for a ride,
+     ending in a ring at the exit stop. */
   .umbra-leg-rail-column {
     display: flex;
     width: 2.75rem;
     flex-shrink: 0;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
   }
-  .umbra-leg-rail { flex: 1; min-height: 0.75rem; width: 0; }
-  .umbra-leg-rail--foot { border-left: 3px dotted var(--color-ink-muted); }
-  .umbra-leg-rail--ride { border-left: 4px solid var(--leg-color, var(--color-ink)); }
+  .umbra-leg-rail { flex: 1; min-height: 1rem; width: 0; }
+  .umbra-leg-rail--foot { margin-block: 0.25rem; border-left: 4px dotted var(--color-ink-muted); }
+  .umbra-leg-rail--ride { border-left: 6px solid var(--leg-color, var(--color-ink)); }
+  .umbra-leg-stop {
+    display: block;
+    width: 1rem;
+    height: 1rem;
+    border: 4px solid var(--leg-color, var(--color-ink));
+    border-radius: var(--radius-circle);
+    background: var(--color-panel);
+  }
 
   .umbra-kicker {
     display: inline-block;

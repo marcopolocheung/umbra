@@ -35,8 +35,10 @@ inspiration; the public mirror publishes everything here.
   `NavigationStatusPanel` is a ticket: the route on a kicker plate, ruled cells that follow
   the card's rules exactly (`routeDurationLabel`; shade from `routeShadowShare`, "Unknown"
   where the card withholds it, "After sunset", a rain card only for a rain-priced route),
-  `LineBullet` legs whose ride step names its wait so the steps sum to Time, on an
-  itinerary rail (owner request): dotted on foot, solid in the line's colour for a ride.
+  and one itinerary replacing the leg list and the start/destination block (owner request,
+  modelled on a transit app's trip view): start pin, round dots on foot through each walk
+  step, the line's bullet heading a solid bar in its colour that ends in a ring at the exit
+  stop, dots on to the destination pin; the ride step names its wait so steps sum to Time.
 - **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139) and R4b (#141) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
@@ -87,7 +89,7 @@ inspiration; the public mirror publishes everything here.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** #149 (transit line badges on the map) after R5a/R5b review, then R6 —
   timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,752 unit
+- **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.
 - **Last verified (R5a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,742 unit
