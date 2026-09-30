@@ -99,8 +99,8 @@ export default function ArrivalPanel({
         <button
           type="button"
           onClick={onDone}
-          className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-canvas"
-          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-ground"
+          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
           title="Close"
           aria-label="Close"
         >
@@ -133,7 +133,7 @@ export default function ArrivalPanel({
         {shadeStory ? (
           <>
             <div
-              className="font-display text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]"
+              className="font-numeric text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]"
               style={{ color: "var(--color-ink)" }}
             >
               {shadeStory.headline}
@@ -153,7 +153,7 @@ export default function ArrivalPanel({
                 className="h-full rounded-full"
                 style={{
                   width: `${shadeStory.pct}%`,
-                  background: rainMode ? "var(--color-route-mid)" : "var(--color-shade)",
+                  background: rainMode ? "var(--color-rain)" : "var(--color-shade)",
                 }}
               />
             </div>
@@ -170,7 +170,7 @@ export default function ArrivalPanel({
         <button
           type="button"
           onClick={onPlanAnother}
-          className="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
+          className="flex-1 min-h-11 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
           style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
         >
           Plan another
@@ -178,8 +178,8 @@ export default function ArrivalPanel({
         <button
           type="button"
           onClick={onDone}
-          className="rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--color-canvas)", color: "var(--color-ink-muted)" }}
+          className="min-h-11 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
+          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
         >
           Done
         </button>

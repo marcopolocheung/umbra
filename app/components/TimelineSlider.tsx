@@ -107,7 +107,7 @@ const Ruler = memo(function Ruler() {
                 left: 0,
                 transform: "translateX(-50%)",
                 whiteSpace: "nowrap",
-                fontSize: 9,
+                fontSize: 11,
                 lineHeight: 1,
                 color: "var(--color-ink-muted)",
                 fontFamily: "var(--font-sans)",
@@ -358,7 +358,7 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
               left: sunriseMin! * PX_PER_MIN,
               width: (sunsetMin! - sunriseMin!) * PX_PER_MIN,
               top: 0, bottom: 0,
-              background: "linear-gradient(to right, var(--color-sun-soft), color-mix(in srgb, var(--color-sun) 6%, transparent) 50%, var(--color-route-soft))",
+              background: "linear-gradient(to right, var(--color-sun-soft), color-mix(in srgb, var(--color-sun) 6%, transparent) 50%, var(--color-shade-soft))",
             }}
           />
         )}
@@ -391,8 +391,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 0, bottom: 0,
                 left: 0, width: 2,
-                backgroundColor: "var(--color-sun)",
-                boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-sun) 55%, transparent)",
+                backgroundColor: "var(--color-sun-signal)",
+                boxShadow: "var(--shadow-hard-1)",
               }}
             />
             <span
@@ -400,14 +400,14 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 3,
                 left: 5,
-                fontSize: 10,
+                fontSize: 11,
                 lineHeight: 1.2,
                 color: "var(--color-sun)",
                 whiteSpace: "nowrap",
                 userSelect: "none",
                 pointerEvents: "none",
-                backgroundColor: "var(--color-raised)",
-                borderRadius: 8,
+                backgroundColor: "var(--color-panel)",
+                borderRadius: "var(--radius-lg)",
                 padding: "1px 4px",
               }}
             >
@@ -431,8 +431,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 0, bottom: 0,
                 left: 0, width: 2,
-                backgroundColor: "var(--color-route)",
-                boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-route) 55%, transparent)",
+                backgroundColor: "var(--color-sun-signal)",
+                boxShadow: "var(--shadow-hard-1)",
               }}
             />
             <span
@@ -440,14 +440,14 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 position: "absolute",
                 top: 3,
                 left: 5,
-                fontSize: 10,
+                fontSize: 11,
                 lineHeight: 1.2,
-                color: "var(--color-route)",
+                color: "var(--color-sun)",
                 whiteSpace: "nowrap",
                 userSelect: "none",
                 pointerEvents: "none",
-                backgroundColor: "var(--color-raised)",
-                borderRadius: 8,
+                backgroundColor: "var(--color-panel)",
+                borderRadius: "var(--radius-lg)",
                 padding: "1px 4px",
               }}
             >
@@ -495,8 +495,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
                 cx={sunDot.x}
                 cy={sunDot.y}
                 r={4}
-                fill="var(--color-sun)"
-                stroke="var(--color-raised)"
+                fill="var(--color-sun-signal)"
+                stroke="var(--color-panel)"
                 strokeWidth={1.5}
               />
             )}
@@ -516,9 +516,9 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           transform: "translateX(-4px)",
           width: 8,
           height: 8,
-          backgroundColor: "var(--color-sun)",
-          rotate: "45deg",
-          boxShadow: "0 0 6px 2px color-mix(in srgb, var(--color-sun) 50%, transparent)",
+          backgroundColor: "var(--color-sun-signal)",
+          rotate: "var(--angle-sun-pointer)",
+          boxShadow: "var(--shadow-hard-1)",
         }}
       />
       <div
@@ -529,8 +529,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           bottom: 0,
           width: 2,
           transform: "translateX(-1px)",
-          background: "linear-gradient(to bottom, var(--color-sun), color-mix(in srgb, var(--color-sun) 30%, transparent))",
-          boxShadow: "0 0 4px 1px color-mix(in srgb, var(--color-sun) 35%, transparent)",
+          background: "linear-gradient(to bottom, var(--color-sun-signal), color-mix(in srgb, var(--color-sun-signal) 30%, transparent))",
+          boxShadow: "var(--shadow-hard-1)",
         }}
       />
     </div>

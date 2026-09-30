@@ -1,8 +1,12 @@
 // Bump on every deploy that changes the app shell (index.html, bundled assets,
 // or this file): an old name keeps serving yesterday's shell to tabs and
 // phones that outlived the deploy.
-const CACHE_NAME = "umbra-shell-v2";
-const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest", "/favicon.ico", "/pwa-icon.svg"];
+const CACHE_NAME = "umbra-shell-v3";
+const APP_SHELL = [
+  "/", "/index.html", "/manifest.webmanifest", "/favicon.ico", "/pwa-icon.svg",
+  "/fonts/jost-variable.woff2", "/fonts/archivo-expanded-800.woff2",
+  "/fonts/grenze-600.woff2", "/fonts/ibm-plex-mono-400.woff2",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

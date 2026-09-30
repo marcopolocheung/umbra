@@ -32,7 +32,7 @@ const SolarPill = memo(function SolarPill({ intensity }: { intensity: number }) 
   return (
     <div
       className="text-xs px-2.5 py-1 rounded-full self-start"
-      style={{ background: "var(--color-sun)", color: "var(--color-on-sun)" }}
+      style={{ background: "var(--color-sun-signal)", color: "var(--color-on-sun-signal)" }}
     >
       High solar load — shadow matters
     </div>

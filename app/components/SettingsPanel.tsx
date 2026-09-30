@@ -20,9 +20,9 @@ export default function SettingsPanel({
       <button type="button"
         onClick={() => setOpen((o) => !o)}
         className={`text-xs px-3 py-1.5 rounded-lg transition-colors border ${
-          open ? "bg-canvas" : "bg-raised hover:bg-canvas"
+          open ? "bg-ground" : "bg-panel hover:bg-ground"
         }`}
-        style={{ borderColor: "var(--color-hairline)", color: "var(--color-ink)" }}
+        style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
         title="Settings"
       >
         <span className="material-symbols-outlined text-sm align-middle mr-1">settings</span>
@@ -33,10 +33,10 @@ export default function SettingsPanel({
         <div
           className="rounded-lg p-3 flex flex-col gap-3 text-xs min-w-panel-min border"
           style={{
-            background: "var(--color-raised)",
+            background: "var(--color-panel)",
             color: "var(--color-ink)",
-            borderColor: "var(--color-hairline)",
-            boxShadow: "var(--shadow-level-1)",
+            borderColor: "var(--color-rule)",
+            boxShadow: "var(--shadow-hard-1)",
           }}
         >
           <div className="uppercase tracking-widest text-[11px] font-bold" style={{ color: "var(--color-ink-muted)" }}>
@@ -54,17 +54,17 @@ export default function SettingsPanel({
           </label>
 
           {showSunLines && (
-            <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--color-hairline)" }}>
+            <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--color-rule)" }}>
               <div className="flex items-center gap-2">
                 <span className="text-sun text-sm leading-none">☀</span>
                 <span style={{ color: "var(--color-ink-muted)" }}>Current sun (overlay)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-sun)" }} />
+                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-sun-signal)" }} />
                 <span style={{ color: "var(--color-ink-muted)" }}>Sunrise</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-route)" }} />
+                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: "var(--color-sun-signal)" }} />
                 <span style={{ color: "var(--color-ink-muted)" }}>Sunset</span>
               </div>
             </div>
@@ -81,13 +81,13 @@ export default function SettingsPanel({
           </label>
 
           {showSheds && (
-            <div className="flex items-start gap-2 pl-1 border-l" style={{ borderColor: "var(--color-hairline)" }}>
+            <div className="flex items-start gap-2 pl-1 border-l" style={{ borderColor: "var(--color-rule)" }}>
               {/* The map fill: --color-shed-map at 30% (shedLayer.ts). */}
               <span
                 className="inline-block w-3 h-3 rounded-sm shrink-0 mt-0.5 border"
                 style={{
                   backgroundColor: "color-mix(in srgb, var(--color-shed-map) 30%, transparent)",
-                  borderColor: "var(--color-hairline-strong)",
+                  borderColor: "var(--color-rule-strong)",
                 }}
               />
               <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>

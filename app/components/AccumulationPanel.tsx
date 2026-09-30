@@ -162,7 +162,7 @@ export default function AccumulationPanel({
         className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
           accumulation.enabled
             ? "bg-ink text-on-ink font-medium"
-             : "bg-raised border border-hairline hover:bg-canvas"
+             : "bg-panel border border-rule hover:bg-ground"
         }`}
         style={!accumulation.enabled ? { color: "var(--color-ink)" } : undefined}
       >
@@ -174,10 +174,10 @@ export default function AccumulationPanel({
         <div
           className="border rounded-lg p-3 flex flex-col gap-2 text-xs min-w-panel-min"
           style={{
-            background: "var(--color-raised)",
-            borderColor: "var(--color-hairline)",
+            background: "var(--color-panel)",
+            borderColor: "var(--color-rule)",
             color: "var(--color-ink)",
-            boxShadow: "var(--shadow-level-1)",
+            boxShadow: "var(--shadow-hard-1)",
           }}
         >
           <div className="flex items-center gap-2">
@@ -226,13 +226,13 @@ export default function AccumulationPanel({
               style={{
                 background: [
                   "linear-gradient(to right,",
-                  " var(--color-route),",
-                  " color-mix(in srgb, var(--color-route) 50%, var(--color-shade)),",
-                  " var(--color-shade),",
-                  " color-mix(in srgb, var(--color-shade) 50%, var(--color-sun)),",
-                  " var(--color-sun),",
-                  " color-mix(in srgb, var(--color-sun) 50%, var(--color-danger)),",
-                  " var(--color-danger))",
+                  " var(--color-shade-light),",
+                  " var(--color-shade-base),",
+                  " var(--color-shade-dark),",
+                  " var(--color-sun-base),",
+                  " var(--color-sun-dark),",
+                  " var(--color-danger-base),",
+                  " var(--color-danger-dark))",
                 ].join(" "),
               }}
             />

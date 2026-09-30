@@ -40,7 +40,7 @@ For actual transit line bullets, the reference quartets are blue `#60CDE3 / #101
 | Numbers | Archivo Expanded 800 with `font-variant-numeric: tabular-nums` | Duration, percent, time, distance and other aligned verdicts. Never tilt. |
 | Compact numeric keys | IBM Plex Mono 400 | Timetable ticks and provenance when ≥11px and contrast passes. |
 
-All four families use openly licensed, self-hosted font files. [The specimen source and licenses](candidates/redesign-2.0/preview.html) are committed with R0; R1 installs and preloads the production subset, removing the current Inter Google Fonts links. The preview is a design specimen, not a shipped component library.
+All four families use openly licensed, self-hosted font files. [The specimen source and licenses](candidates/redesign-2.0/preview.html) are committed with R0; R1 ships the production subset in `public/fonts/`, preloads it, and removes the Inter Google Fonts links. The preview is a design specimen, not a shipped component library.
 
 Surfaces borrow recognizable printed formats: a route card is a transit strip, the timeline a timetable ruler, the hourly strip a departures board, the search list a directory, a place a guidebook entry, an itinerary a numbered leaflet, arrival a postcard, and saved routes ticket stubs. The format helps scanning; it does not add a second number or decorative metric. At 390×844 the selected route card still fits the sheet's first snap point after R5.
 

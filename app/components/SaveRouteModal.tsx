@@ -43,7 +43,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
         className="rounded-2xl shadow-2xl w-80 p-5 flex flex-col gap-4 border"
         style={{
           background: "white",
-          borderColor: "var(--color-hairline)",
+          borderColor: "var(--color-rule)",
           fontFamily: "var(--font-sans)",
         }}
       >
@@ -59,9 +59,9 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             onChange={e => setName(e.target.value)}
             className="border rounded px-2 py-1.5 text-xs focus:outline-none"
             style={{
-              background: "var(--color-canvas)",
+              background: "var(--color-ground)",
               color: "var(--color-ink)",
-              borderColor: "var(--color-hairline)",
+              borderColor: "var(--color-rule)",
               fontFamily: "var(--font-sans)",
             }}
             placeholder="Route name"
@@ -79,7 +79,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             style={{
               background: "white",
               color: "var(--color-ink)",
-              borderColor: "var(--color-hairline)",
+              borderColor: "var(--color-rule)",
               fontFamily: "var(--font-sans)",
             }}
           >
@@ -100,9 +100,9 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
               onKeyDown={e => { if (e.key === "Enter") handleAddFolder(); if (e.key === "Escape") setShowNewFolder(false); }}
               className="flex-1 border rounded px-2 py-1 text-xs focus:outline-none"
               style={{
-                background: "var(--color-canvas)",
+                background: "var(--color-ground)",
                 color: "var(--color-ink)",
-                borderColor: "var(--color-hairline)",
+                borderColor: "var(--color-rule)",
               }}
               placeholder="Folder name"
             />
@@ -113,7 +113,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
             >
               Add
             </button>
-            <button type="button" onClick={() => setShowNewFolder(false)} className="text-xs px-2 py-1 text-ink-faint hover:text-ink-muted transition-colors">
+            <button type="button" onClick={() => setShowNewFolder(false)} className="text-xs px-2 py-1 text-ink-muted hover:text-ink-muted transition-colors">
               <span className="material-symbols-outlined text-sm">close</span>
             </button>
           </div>
@@ -140,7 +140,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
           <button type="button"
             onClick={onCancel}
             className="px-3 py-1.5 rounded text-xs text-ink-muted hover:text-ink border transition-colors"
-            style={{ borderColor: "var(--color-hairline)" }}
+            style={{ borderColor: "var(--color-rule)" }}
           >
             Cancel
           </button>

@@ -6,16 +6,16 @@ interface QuickActionsProps {
 
 export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: QuickActionsProps) {
   return (
-    <div className="p-4 rounded-xl" style={{ background: "var(--color-raised)", border: "1px solid var(--color-hairline)" }}>
+    <div className="p-4 rounded-xl" style={{ background: "var(--color-panel)", border: "1px solid var(--color-rule)" }}>
       <div className="flex items-center gap-2 mb-3">
-        <span className="w-2 h-2 rounded-full bg-ink-faint animate-pulse" />
-        <span className="text-[11px] uppercase tracking-widest font-bold text-ink-faint">Device Idle</span>
+        <span className="w-2 h-2 rounded-full bg-ink-muted animate-pulse" />
+        <span className="text-[11px] uppercase tracking-widest font-bold text-ink-muted">Device Idle</span>
       </div>
       <h3 className="text-sm font-bold mb-2" style={{ color: "var(--color-ink)" }}>Quick Entry</h3>
       <div className="grid grid-cols-2 gap-2">
         <button type="button"
           onClick={onNavigate}
-          className="flex flex-col items-center justify-center p-3 bg-raised shadow-level-1 rounded-xl hover:bg-canvas transition-colors"
+          className="flex flex-col items-center justify-center p-3 bg-panel shadow-hard-1 rounded-xl hover:bg-ground transition-colors"
         >
           <span className="material-symbols-outlined text-ink mb-1">route</span>
           <span className="text-[11px] font-bold" style={{ color: "var(--color-ink)" }}>Directions</span>
@@ -23,7 +23,7 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: Quic
         <button type="button"
           onClick={onDrawRoute}
           className={`flex flex-col items-center justify-center p-3 shadow-sm rounded-xl transition-colors ${
-            drawMode ? "bg-canvas ring-1 ring-hairline-strong" : "bg-raised hover:bg-canvas"
+            drawMode ? "bg-ground ring-1 ring-rule-strong" : "bg-panel hover:bg-ground"
           }`}
         >
           <span className="material-symbols-outlined text-ink mb-1">draw</span>

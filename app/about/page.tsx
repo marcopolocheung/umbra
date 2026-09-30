@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export default function About() {
   return (
-    <div className="min-h-screen bg-canvas text-ink p-8 font-sans">
+    <div className="min-h-screen bg-ground text-ink p-8 font-sans">
       <div className="max-w-2xl mx-auto">
         <Link
           to="/"
@@ -34,21 +34,21 @@ export default function About() {
             Built With
           </h2>
           <div className="space-y-3">
-            <div className="bg-raised border border-hairline rounded-xl p-4">
+            <div className="bg-panel border border-rule rounded-xl p-4">
               <h3 className="font-medium mb-1 text-ink">MapLibre GL</h3>
               <p className="text-sm text-ink-muted">
                 Browser map rendering, camera controls, and vector tile display.
               </p>
             </div>
 
-            <div className="bg-raised border border-hairline rounded-xl p-4">
+            <div className="bg-panel border border-rule rounded-xl p-4">
               <h3 className="font-medium mb-1 text-ink">mapbox-gl-shadow-simulator</h3>
               <p className="text-sm text-ink-muted">
                 Local WebGL building-shadow simulation used by the app.
               </p>
             </div>
 
-            <div className="bg-raised border border-hairline rounded-xl p-4">
+            <div className="bg-panel border border-rule rounded-xl p-4">
               <h3 className="font-medium mb-1 text-ink">OpenStreetMap and Open-Meteo</h3>
               <p className="text-sm text-ink-muted">
                 Routing/search context and cloud-cover data for route planning.

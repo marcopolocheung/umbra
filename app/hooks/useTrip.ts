@@ -569,7 +569,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
 
       // Canopy: the origin pin is ink and the destination pin is route blue —
       // wayfinding chrome stays in the blue-green-ink family.
-      const color = token(slot === "A" ? "color-ink" : "color-route");
+      const color = token(slot === "A" ? "color-map-ink-current" : "color-map-route-current");
 
       function onMove(e: PointerEvent) {
         const { clientX: x, clientY: y } = e;
@@ -595,7 +595,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
             "transform:translate(-50%, -100%)",
             "transition:none",
           ].join(";");
-          ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
+          ghost.innerHTML = `<svg width="24" height="28" viewBox="0 0 12 14" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="filter:var(--filter-map-pin)"><path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`;
           ghost.style.left = x + "px";
           ghost.style.top = y + "px";
           document.body.appendChild(ghost);

@@ -54,10 +54,10 @@ export default function FloatingRouteCards({
   return (
     <div className="hidden md:flex absolute right-6 top-20 bottom-24 w-80 z-30 pointer-events-none">
       <div
-        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-level-2"
+        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-hard-2"
         style={{
-          background: "var(--color-raised)",
-          borderColor: "var(--color-hairline)",
+          background: "var(--color-panel)",
+          borderColor: "var(--color-rule)",
         }}
       >
         {/* Solar pill — sun semantics, so it yields to a rain objective. The

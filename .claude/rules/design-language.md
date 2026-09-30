@@ -4,53 +4,44 @@ paths:
   - "index.html"
 ---
 
-# Design language
+# Umbra redesign 2.0 design language
 
-The canonical spec is `docs/design/language.md`; this file states how it is enforced.
-Editing `app/**` means editing inside the Canopy language — the binding rules below are
-the law, not a style preference.
+`docs/design/language.md` and its R0 decision record are binding. `app/globals.css`
+registers the implemented roles. R1 applies the day palette and self-hosted type; the
+`data-theme="night"` palette is available for preview, while R2 owns automatic switching.
 
-## Binding rules (same words as language.md §Binding)
+## Meaning and reading
 
-- **The one warm colour is sun data** — `--color-sun` `#A15C00` appears only where the
-  sentence is about sun/exposure/heat (now-marker, solar pills, UV columns). Never chrome
-  decoration.
-- **Data states stay** route `#1D6EE0`, sun `#A15C00`, shade `#2A6A4E`, danger `#B3261E`;
-  chrome (eyebrows, rank chips, selection, pins, CTAs) is ink/route/shade — no red, no
-  decorative amber.
-- **Surface rules:** paper canvas + raised white, hairlines preferred over shadows, L1/L2
-  elevation only, radius 12/16/20 (+999 for the search pill and small status chips).
-  Backdrop blur only on the over-map search pill at ≥70 % white.
+- Sun is signal orange and means actual sun, heat, or exposure. Shade is cool blue,
+  canopy is green, rain/shelter is purple, and danger is red. A walking route is
+  neutral ink/cream. Transit color always accompanies a line identifier.
+- Day ground/panel/ink are `#EFE4D2` / `#F8EFDF` / `#1B1512`; night ground/panel/ink
+  are `#0E0C0B` / `#171412` / `#F4E6D1`. Readable secondary text uses the 75% ink
+  role, not the 50/30/20% decorative tiers.
+- Text reaches 4.5:1, primary reading targets 7:1, and essential boundaries
+  reach 3:1 on the actual solid surface. Captions are at least 11px. Touch targets
+  are at least 44px. No grain or translucent veil covers the map canvas.
+- Grenze 600 is for display words; Archivo Expanded 800 is for stamped labels and
+  tabular numbers; Jost is body/controls; IBM Plex Mono is for compact keys at 11px
+  or larger. Numeric verdicts are never set in Grenze or tilted.
 
-## Enforcement path (U2 is landed — this is now mechanical)
+## Geometry and motion
 
-1. **Registry.** Colours, radii, shadows, spacing and type live in `app/globals.css` `@theme`.
-   No literal hex/rgba and no numeric arbitrary values (`rounded-[…]`, `w-[…px]`) outside it.
-   Adding a token is fine: declare it in the registry **and** note the role in
-   `docs/design/language.md` in the same PR.
-2. **Gate.** `npm run design:check` (`node scripts/verify/design-tokens.mjs --all`) scans
-   every `.tsx`/`.css` under `app/` and must exit 0 before a PR opens.
-3. **Hook.** `.claude/hooks/lint-changed.sh` runs the same linter on the lines an edit just
-   added (`--files <changed>`), so a new literal surfaces in-session; it reports, never blocks.
-4. **Review.** `interface-reviewer` diffs UI changes against `docs/design/language.md` plus
-   the outdoor standard. `/design-audit` is the read-only health pass.
+- Small tilts, clipped plates, and stamps belong on decorative labels, headings,
+  and story cards. Numbers, inputs, map controls, route geometry, and aligned rows
+  stay square, untextured, and unrotated. A clipped focus target needs an inner
+  stroke; its hit area stays rectangular and at least 44px.
+- Shadows have an offset and zero blur. Named radius, rotation, plate, shadow, and
+  motion values live in `app/globals.css`; no literal geometry is added elsewhere.
+  Reduced motion removes stamps and reveals; reduced transparency removes grain.
+- The map renderer's current paints are pinned until R4. Any palette or basemap
+  change reruns canvas tests for `isBlueDominantShadowPixel` after compositing.
 
-## Mobile is the product
+## Enforcement and review
 
-- Review at 390×844 first (`npm run shots`). Wide layouts must not break, but wave effort
-  is phone-first. `interface-reviewer` constrains regardless of viewport.
-
-## The look must not betray the claims
-
-- Palette work respects CLAUDE.md invariant #5 (shadow colours stay blue-dominant under
-  `isBlueDominantShadowPixel` after compositing). Test the canvas after palette changes.
-- Text is part of the design: verdict-first, numbers traceable with uncertainty stated,
-  no marketing fluff. When a UI number exists only in the language doc's inventory of
-  prettiness, it's a regression.
-
-## Process
-
-- Any UI diff → `interface-reviewer` + before/after phone shots in the PR. Any changed
-  user-facing number → `grounding-auditor`.
-- Visual sign-off belongs to the owner for every PR in this track. Merging is the sign-off;
-  do not self-merge.
+- `npm run design:check` tests and scans the registry. It rejects off-registry
+  UI colors, numeric arbitrary Tailwind values, and literal radii, rotations,
+  blurred shadows, or drop-shadows outside the registry.
+- `interface-reviewer` checks UI diffs at 390×844 in day and night. `/design-audit`
+  is a read-only inventory. Preserve verdict-first copy, sourced numbers, and
+  uncertainty wording. Track R's owner reviews each checkpoint PR before merge.

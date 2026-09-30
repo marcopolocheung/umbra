@@ -1,108 +1,224 @@
 @import "tailwindcss";
 
-/*
- * Umbra — Canopy design language (owner's pick, changed from Strata/Carmine at the
- * U2 review, 2026-09-20 — see docs/design/decision.md §0 and §4).
- *
- * This file is the token registry. The canonical spec is `docs/design/language.md`;
- * every colour, radius, shadow, spacing and type token used anywhere under app/
- * is declared here, and `npm run design:check` enforces that no new literal is
- * introduced outside it (see `.claude/rules/design-language.md` for the enforcement
- * path).
- *
- * Binding rules (mirrored in the doc — do not change one without the other):
- *
- *   1. There is no decorative accent. The one warm colour is sun data:
- *      `--color-sun` #A15C00 appears only where the sentence is about
- *      sun/exposure/heat (the now-marker, solar loads, UV columns) — never as
- *      chrome decoration.
- *   2. Data states keep their fixed colours: route `--color-route` #1D6EE0,
- *      shade `--color-shade` #2A6A4E, danger `--color-danger` #B3261E; chrome
- *      (eyebrows, rank chips, selection, pins, primary actions) stays in
- *      ink/route/shade — blue-green-ink, never warm.
- *   3. Surfaces are paper `--color-canvas` #F7F8F4 under raised white; backdrop
- *      blur is allowed on exactly one element — the over-map search pill, ≥70 %
- *      white — everything else is solid. Radius steps are 12/16/20 plus the
- *      999-radius pill (search + small status chips).
- *
- * Map-renderer constants (the shadow layer's blue, canopyPaint's sea-green) are
- * data-plane colours pinned by canvas tests under CLAUDE.md invariant #5 — they
- * belong to the renderers in app/lib, are out of the chrome palette, and are not
- * re-tinted here.
- */
+/* Umbra redesign 2.0. The adopted roles live in docs/design/language.md.
+ * Day is the runtime default. R2 owns automatic UI theme selection; R4 owns
+ * basemap and map-paint changes. Map-only compatibility values below stay
+ * pinned until R4 so the palette cannot silently change shadow sampling. */
+
+@font-face {
+  font-family: "Jost";
+  src: url("/fonts/jost-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Archivo Expanded";
+  src: url("/fonts/archivo-expanded-800.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Grenze";
+  src: url("/fonts/grenze-600.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/ibm-plex-mono-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 
 @theme {
-  /* ── Surfaces & ink ────────────────────────────────────────────── */
-  --color-canvas: #f7f8f4; /* paper canvas */
-  --color-raised: #ffffff;
-  --color-on-ink: #f7f8f4; /* light text on ink fills */
-  --color-ink: #1c2321;
-  --color-ink-muted: #525e58;
-  --color-ink-faint: #6c756d;
-  --color-hairline: #e2e7df;
-  --color-hairline-strong: #bfc8bc;
+  /* Paper, ink, and readable secondary copy. */
+  --color-ground: #efe4d2;
+  --color-panel: #f8efdf;
+  --color-ink: #1b1512;
+  --color-ink-muted: #504942;
+  --color-on-ink: #f8efdf;
+  --color-rule: #786d61;
+  --color-rule-strong: #504942;
+  --color-cream-100: #f4e6d1;
+  --color-cream-75: rgba(244, 230, 209, 0.75);
+  --color-cream-50: rgba(244, 230, 209, 0.50);
+  --color-cream-30: rgba(244, 230, 209, 0.30);
+  --color-cream-20: rgba(244, 230, 209, 0.20);
 
-  /* ── Data semantics (no decorative accents) ────────────────────── */
-  --color-route: #1d6ee0;
-  --color-route-strong: #1758b2;
-  --color-route-soft: rgba(29, 110, 224, 0.10);
-  --color-route-mid: rgba(29, 110, 224, 0.55);
-  --color-sun: #a15c00; /* sun/exposure/heat ONLY — the one warm allowance */
-  --color-sun-strong: #7a4600;
-  --color-sun-soft: rgba(161, 92, 0, 0.10);
-  --color-sun-mid: rgba(161, 92, 0, 0.55);
-  --color-shade: #2a6a4e;
-  --color-shade-strong: #20523c;
-  --color-shade-soft: rgba(42, 106, 78, 0.10);
-  --color-shade-mid: rgba(42, 106, 78, 0.55);
-  --color-danger: #b3261e;
-  --color-danger-soft: rgba(179, 38, 30, 0.10);
-  --color-on-route: #ffffff;
-  --color-on-sun: #ffffff;
-  --color-on-shade: #ffffff;
-  --color-on-danger: #ffffff;
+  /* Five steps per meaning: light, bright, base, dark, darker. */
+  --color-sun-light: #ffd18d;
+  --color-sun-bright: #f08a5d;
+  --color-sun-base: #dd6638;
+  --color-sun-dark: #a8411a;
+  --color-sun-darker: #6f3806;
+  --color-shade-light: #bdcbff;
+  --color-shade-bright: #7a9edd;
+  --color-shade-base: #4d75c3;
+  --color-shade-dark: #4156a0;
+  --color-shade-darker: #243265;
+  --color-canopy-light: #d3fc96;
+  --color-canopy-bright: #97da79;
+  --color-canopy-base: #649717;
+  --color-canopy-dark: #4c7113;
+  --color-canopy-darker: #1f3400;
+  --color-rain-light: #e7c8ff;
+  --color-rain-bright: #ce90ff;
+  --color-rain-base: #8a55b3;
+  --color-rain-dark: #613484;
+  --color-rain-darker: #362147;
+  --color-danger-light: #ffb4a8;
+  --color-danger-bright: #ed4a4b;
+  --color-danger-base: #d73232;
+  --color-danger-dark: #a91c25;
+  --color-danger-darker: #5f0c17;
 
-  /* ── Map-facing legend mirrors (pinned by canvas tests) ───────── */
-  --color-basemap-street: #f1f3f1; /* outdoor-v2 street zoom background */
-  --color-canopy-map: #2e8b57; /* canopyPaint fill, invariant #5 warmth budget */
-  --color-shed-map: #1c2321; /* shedLayer fill (ink, drawn at 30%) — invariant #5 pinned */
-  --color-shadow-noon: #22467f; /* LocalShadowAdapter NOON_RGB — legend swatch mirror */
+  /* Existing semantic utilities now resolve to 2.0 text/fill steps. */
+  --color-route: #1b1512;
+  --color-route-strong: #1b1512;
+  --color-route-soft: rgba(27, 21, 18, 0.10);
+  --color-route-mid: rgba(27, 21, 18, 0.55);
+  --color-sun: #6f3806;
+  --color-sun-signal: #dd6638;
+  --color-on-sun-signal: #1b1512;
+  --color-sun-strong: #6f3806;
+  --color-sun-soft: rgba(221, 102, 56, 0.12);
+  --color-sun-mid: rgba(168, 65, 26, 0.55);
+  --color-shade: #243265;
+  --color-shade-strong: #243265;
+  --color-shade-soft: rgba(77, 117, 195, 0.12);
+  --color-shade-mid: rgba(65, 86, 160, 0.55);
+  --color-canopy: #1f3400;
+  --color-rain: #613484;
+  --color-danger: #a91c25;
+  --color-danger-soft: rgba(215, 50, 50, 0.10);
+  --color-on-route: #f8efdf;
+  --color-on-sun: #f8efdf;
+  --color-on-shade: #f8efdf;
+  --color-on-canopy: #f8efdf;
+  --color-on-rain: #f8efdf;
+  --color-on-danger: #f8efdf;
 
-  /* ── Elevation: two levels, hairlines preferred ────────────────── */
-  --shadow-level-1: 0 1px 2px rgba(28, 35, 33, 0.10);
-  --shadow-level-2: 0 12px 28px rgba(28, 35, 33, 0.16);
-  /* Legacy utility names all resolve onto the same two levels. */
-  --shadow-sm: 0 1px 2px rgba(28, 35, 33, 0.10);
-  --shadow-md: 0 1px 2px rgba(28, 35, 33, 0.10);
-  --shadow-lg: 0 12px 28px rgba(28, 35, 33, 0.16);
-  --shadow-xl: 0 12px 28px rgba(28, 35, 33, 0.16);
-  --shadow-2xl: 0 12px 28px rgba(28, 35, 33, 0.16);
+  /* Line identity is always paired with a station/line identifier. */
+  --color-line-blue-accent: #60cde3;
+  --color-line-blue-on: #10130d;
+  --color-line-blue-ground: #0c1b1d;
+  --color-line-blue-plate: #1a3237;
+  --color-line-green-accent: #97da79;
+  --color-line-green-on: #0e1a08;
+  --color-line-green-ground: #101b0a;
+  --color-line-green-plate: #2c3d24;
+  --color-line-yellow-accent: #ffe14d;
+  --color-line-yellow-on: #0b0b0b;
+  --color-line-yellow-ground: #1f1c0c;
+  --color-line-yellow-plate: #3c361a;
 
-  /* ── Radius: 12 (controls/cards) / 16 / 20 (sheet) + 999 pill ──── */
-  /* Overriding the default names pins the existing rounded-* utilities onto
-     the scale, so a component cannot invent its own radius. The search pill
-     and small status chips use rounded-full. */
-  --radius: 12px;
-  --radius-sm: 12px;
-  --radius-md: 12px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
-  --radius-3xl: 20px;
+  /* Renderer-facing values stay fixed through R4. */
+  --color-map-route-current: #1d6ee0;
+  --color-map-ink-current: #1c2321;
+  --color-map-panel-current: #ffffff;
+  --color-map-muted-current: #525e58;
+  --color-map-sun-current: #a15c00;
+  --color-map-on-route-current: #ffffff;
+  --color-basemap-street: #f1f3f1;
+  --color-canopy-map: #2e8b57;
+  --color-shed-map: #1c2321;
+  --color-shadow-noon: #22467f;
 
-  /* ── Type ──────────────────────────────────────────────────────── */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Inter Tight', 'Inter', system-ui, sans-serif; /* verdict voice */
-  --text-eyebrow: 11px; /* 600, uppercase, tracked — section labels */
-  --text-verdict: 22px; /* Inter Tight, 700, -2% — the one display voice */
-  --text-body: 15px; /* body text, line-height 22 */
-  --text-small: 13px; /* dense reading inside cards */
-  --text-caption: 10px; /* map-adjacent metadata only */
+  /* Print geometry. Shadows have an offset and no blur. */
+  --shadow-hard-1: 2px 2px 0 #1b1512;
+  --shadow-hard-2: 4px 4px 0 #1b1512;
+  --shadow-sm: 2px 2px 0 #1b1512;
+  --shadow-md: 2px 2px 0 #1b1512;
+  --shadow-lg: 4px 4px 0 #1b1512;
+  --shadow-xl: 4px 4px 0 #1b1512;
+  --shadow-2xl: 4px 4px 0 #1b1512;
+  --shadow-map-marker: 2px 2px 0 #1c2321;
+  --shadow-map-dot: 0 0 0 3px rgba(29, 110, 224, 0.45);
+  --shadow-map-station: 0 0 0 5px rgba(29, 110, 224, 0.25);
+  --filter-map-pin: drop-shadow(2px 2px 0 #1c2321);
+  --radius: 4px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 12px;
+  --radius-full: 9999px;
+  --radius-circle: 50%;
+  --radius-pin: 50% 50% 50% 0;
+  --angle-label: -1deg;
+  --angle-stamp: 1deg;
+  --angle-marker: -45deg;
+  --angle-marker-inner: 45deg;
+  --angle-disclosure: 90deg;
+  --angle-sun-pointer: 45deg;
+  --plate-clip: polygon(0 4%, 97% 0, 100% 96%, 3% 100%);
+  --duration-stamp-fast: 100ms;
+  --duration-stamp: 200ms;
+  --duration-stamp-slow: 300ms;
+  --ease-stamp: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  /* ── Spacing: 4px grid, plus the named layout widths ───────────── */
-  --spacing-sidebar: 408px; /* desktop shell — AppShell/canopy offsets */
-  --spacing-legend: 15rem; /* canopy legend max width */
-  --spacing-panel-min: 15rem; /* popover minimums */
+  /* Type: display words, stamped labels/numbers, body, compact keys. */
+  --font-sans: "Jost", system-ui, sans-serif;
+  --font-body: "Jost", system-ui, sans-serif;
+  --font-display: "Grenze", Georgia, serif;
+  --font-label: "Archivo Expanded", system-ui, sans-serif;
+  --font-numeric: "Archivo Expanded", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --text-eyebrow: 11px;
+  --text-verdict: 22px;
+  --text-body: 15px;
+  --text-small: 13px;
+  --text-caption: 11px;
+
+  --spacing-sidebar: 408px;
+  --spacing-legend: 15rem;
+  --spacing-panel-min: 15rem;
+}
+
+html[data-theme="night"] {
+  --color-ground: #0e0c0b;
+  --color-panel: #171412;
+  --color-ink: #f4e6d1;
+  --color-ink-muted: #bab0a0;
+  --color-on-ink: #0e0c0b;
+  --color-rule: #786d61;
+  --color-rule-strong: #9e907e;
+  --color-route: #f4e6d1;
+  --color-route-strong: #f4e6d1;
+  --color-route-soft: rgba(244, 230, 209, 0.10);
+  --color-route-mid: rgba(244, 230, 209, 0.55);
+  --color-sun: #f08a5d;
+  --color-sun-signal: #f08a5d;
+  --color-on-sun-signal: #0e0c0b;
+  --color-sun-strong: #ffd18d;
+  --color-sun-soft: rgba(240, 138, 93, 0.15);
+  --color-sun-mid: rgba(240, 138, 93, 0.55);
+  --color-shade: #bdcbff;
+  --color-shade-strong: #bdcbff;
+  --color-shade-soft: rgba(189, 203, 255, 0.14);
+  --color-shade-mid: rgba(189, 203, 255, 0.55);
+  --color-canopy: #97da79;
+  --color-rain: #ce90ff;
+  --color-danger: #ffb4a8;
+  --color-danger-soft: rgba(255, 180, 168, 0.14);
+  --color-on-route: #0e0c0b;
+  --color-on-sun: #0e0c0b;
+  --color-on-shade: #0e0c0b;
+  --color-on-canopy: #0e0c0b;
+  --color-on-rain: #0e0c0b;
+  --color-on-danger: #0e0c0b;
+  --shadow-hard-1: 2px 2px 0 #f4e6d1;
+  --shadow-hard-2: 4px 4px 0 #f4e6d1;
+  --shadow-sm: 2px 2px 0 #f4e6d1;
+  --shadow-md: 2px 2px 0 #f4e6d1;
+  --shadow-lg: 4px 4px 0 #f4e6d1;
+  --shadow-xl: 4px 4px 0 #f4e6d1;
+  --shadow-2xl: 4px 4px 0 #f4e6d1;
 }
 
 /* ---------------------------------------------------------------------
@@ -119,7 +235,7 @@
 
 .umbra-scrollbar::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--color-ink) 15%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 3px solid transparent;
   background-clip: content-box;
 }
@@ -147,6 +263,7 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0;
+  font-family: var(--font-body);
   /* A vertical drag anywhere (the timeline slider, an empty spot) must not
      chain up to the browser: without this, mobile Chrome lets that drag
      scroll its own UI and pull-to-reload the page. */
@@ -154,22 +271,22 @@ body {
 }
 
 /* ---------------------------------------------------------------------
-   MapLibre popups — Canopy solid surfaces (no blur), ink on raised
+   MapLibre popups — solid 2.0 surfaces, ink on panel
    --------------------------------------------------------------------- */
 
 /* Draw-mode address hover */
 .maplibregl-popup.sketch-point-popup .maplibregl-popup-content {
-  background: var(--color-raised);
+  background: var(--color-panel);
   color: var(--color-ink);
-  border: 1px solid var(--color-hairline-strong);
+  border: 1px solid var(--color-rule-strong);
   border-radius: var(--radius);
   padding: 6px 8px;
-  box-shadow: var(--shadow-level-2);
+  box-shadow: var(--shadow-hard-2);
 }
 
 .maplibregl-popup.sketch-point-popup .maplibregl-popup-tip {
-  border-top-color: var(--color-raised);
-  border-bottom-color: var(--color-raised);
+  border-top-color: var(--color-panel);
+  border-bottom-color: var(--color-panel);
 }
 
 /*
@@ -190,18 +307,18 @@ body {
 
 /* Navigation waypoint place info (Foursquare) */
 .maplibregl-popup.nav-place-popup .maplibregl-popup-content {
-  background: var(--color-raised);
+  background: var(--color-panel);
   color: var(--color-ink);
-  border: 1px solid var(--color-hairline-strong);
+  border: 1px solid var(--color-rule-strong);
   border-radius: var(--radius);
   padding: 8px 10px;
-  box-shadow: var(--shadow-level-2);
+  box-shadow: var(--shadow-hard-2);
   max-width: 260px;
 }
 
 .maplibregl-popup.nav-place-popup .maplibregl-popup-tip {
-  border-top-color: var(--color-raised);
-  border-bottom-color: var(--color-raised);
+  border-top-color: var(--color-panel);
+  border-bottom-color: var(--color-panel);
 }
 
 .maplibregl-popup.nav-place-popup--pinned {
@@ -233,7 +350,7 @@ body {
 }
 
 .nav-place-popup__label {
-  color: var(--color-ink-faint);
+  color: var(--color-ink-muted);
   margin-right: 6px;
 }
 
@@ -258,5 +375,7 @@ body {
   width: 100%;
   height: auto;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-hairline);
+  border: 1px solid var(--color-rule);
 }
+
+.umbra-disclosure-open { transform: rotate(var(--angle-disclosure)); }
