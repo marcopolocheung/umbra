@@ -10,22 +10,24 @@ import type { UiTheme } from "./uiTheme";
  * top. Layers are classified by type and source-layer, not by id, so the rules also
  * cover the e2e fixture style and survive MapTiler renaming a layer.
  *
- * The theme is `solarTheme`, never the UI override (decision D2): the night palette is
- * only ever drawn under the renderer's full-screen below-horizon shadow.
+ * The theme is `solarTheme`, never the UI override (decision D2), so the night palette
+ * only ever carries the renderer's below-horizon shadow, never a daylight one.
  *
  * ## Invariant #5
  *
  * Every basemap layer sits under the shadow layer while the camera is flat, labels
  * included, so every colour here is a surface a shadow lands on. Each keeps warmth
  * `(r + g) / 2 − b` inside `WARMTH_RANGE`. Blends are linear, so anything the map
- * draws from these colours (anti-aliasing, fill opacity, a paint transition between
- * the two themes) stays inside it too. That one bound gives both directions:
- * above −18 no sunlit pixel is blue-dominant, and below ~28 the renderer's dawn blue
- * still reads as shadow over it. `basemapTheme.test.ts` checks both against the real
- * predicate and every shadow colour from dawn to noon.
+ * draws from these colours (anti-aliasing, fill opacity, the translucent `tint`, a
+ * paint transition between the two themes) stays inside it too. That one bound gives
+ * both directions: above −18 no sunlit pixel is blue-dominant, and below ~28 the
+ * renderer's dawn blue still reads as shadow over it. The top is held at 14, not 28,
+ * for a shadow's anti-aliased rim: a warmer surface makes a part-covered pixel need
+ * more coverage before it counts. `basemapTheme.test.ts` checks all three against the
+ * real predicate and every shadow colour from dawn to noon.
  */
 
-export const WARMTH_RANGE = { min: -17, max: 20 } as const;
+export const WARMTH_RANGE = { min: -17, max: 14 } as const;
 
 type Role =
   | "land"
@@ -33,6 +35,7 @@ type Role =
   | "field"
   | "wood"
   | "water"
+  | "tint"
   | "road"
   | "path"
   | "rail"
@@ -48,6 +51,7 @@ const ROLES: readonly Role[] = [
   "field",
   "wood",
   "water",
+  "tint",
   "road",
   "path",
   "rail",
@@ -85,6 +89,8 @@ function mainRole(layer: LayerSpecification): Role | null {
     if (sourceLayer === "building" || id === "building") return "building";
     if (sourceLayer === "park") return "field";
     if (sourceLayer === "transportation") return "road";
+    // outdoor-v2 draws residential as a 30% wash over the landcover beneath it.
+    if (/residential/i.test(id)) return "tint";
     if (WOOD_RE.test(id)) return "wood";
     if (FIELD_RE.test(id)) return "field";
     return "landuse";

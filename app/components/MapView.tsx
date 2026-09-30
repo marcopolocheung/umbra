@@ -467,8 +467,8 @@ export default function MapView({
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
-  // Read at map load, like `accumulationOnRef`. The layers are the style as loaded,
-  // before any of ours, so a theme change recolours only the basemap.
+  // Read when the style loads, like `accumulationOnRef`. The layers are the style as
+  // loaded, before any of ours, so a theme change recolours only the basemap.
   const basemapThemeRef = useRef(basemapTheme);
   const basemapLayersRef = useRef<maplibregl.LayerSpecification[]>([]);
   /** Unwires the canopy atlas reader's map listeners on unmount. */
@@ -619,6 +619,13 @@ export default function MapView({
     mapRef.current = map;
     onMapReady?.(map);
 
+    // The basemap palette goes on as soon as the style parses, before any tile has
+    // painted in MapTiler's own colours, and before any of our layers exist.
+    map.once("style.load", () => {
+      basemapLayersRef.current = map.getStyle().layers;
+      applyBasemapTheme(map, basemapLayersRef.current, basemapThemeRef.current);
+    });
+
     // Close pinned point popups when clicking anywhere else.
     // Use a document-level capture handler so it works even when the map is draggable.
     const onDocPointerDown = (ev: PointerEvent) => {
@@ -715,8 +722,6 @@ export default function MapView({
       // Captured first, while the style still holds nothing but the basemap — see
       // `PlaceLabelSlot`.
       const placeLabelSlots = findPlaceLabelSlots(map);
-      basemapLayersRef.current = map.getStyle().layers;
-      applyBasemapTheme(map, basemapLayersRef.current, basemapThemeRef.current);
 
       if (SHADOW_V2_DEBUG && SHADOW_DEBUG_BASE) {
         debugLayer = new DebugFieldLayer();

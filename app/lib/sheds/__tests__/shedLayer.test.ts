@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BASEMAP_PALETTES } from "../../basemapTheme";
 import { isBlueDominantShadowPixel } from "../../shadowSampling";
 import { shadowPixelAt } from "../../shadowField/__tests__/agreement/harness";
 import {
@@ -16,19 +17,17 @@ const SHED_FILL_RGB = [1, 3, 5].map((i) => Number.parseInt(SHED_FILL_COLOR.slice
 // ─── Invariant #5 ─────────────────────────────────────────────────────────────
 
 /**
- * What the fill can land on at street zoom, as composited outdoor-v2 RGB. It goes in
- * beneath the buildings and above everything else, so roads and water mix with it too.
+ * What the fill can land on: every solid colour of R4's day and night basemaps. It
+ * goes in beneath the buildings and above everything else, so roads and water mix
+ * with it too.
  */
-const SURFACES: Record<string, Rgb> = {
-  background: [242, 243, 242],
-  road: [255, 255, 255],
-  roadCasing: [222, 222, 222],
-  residential: [237, 238, 237],
-  park: [236, 244, 236],
-  wood: [204, 224, 184],
-  industrial: [244, 239, 233],
-  water: [149, 201, 242], // already reads as shadow on its own — see canopyLayer.ts
-};
+const SURFACES: Record<string, Rgb> = Object.fromEntries(
+  Object.entries(BASEMAP_PALETTES).flatMap(([theme, colors]) =>
+    Object.entries(colors)
+      .filter(([, color]) => color.startsWith("#"))
+      .map(([role, hex]) => [`${theme} ${role}`, [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))])
+  )
+) as unknown as Record<string, Rgb>;
 
 const SUN_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 const OPACITIES = [0.15, SHED_FILL_OPACITY, 0.6];

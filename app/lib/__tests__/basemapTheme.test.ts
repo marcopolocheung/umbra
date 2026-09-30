@@ -2,7 +2,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 import { fixtureBasemapStyle } from "../../../e2e/fixtures/basemapStyle";
 import { applyBasemapTheme, BASEMAP_PALETTES, basemapPaint, WARMTH_RANGE } from "../basemapTheme";
-import { shadowPixelAt } from "../shadowField/__tests__/agreement/harness";
+import { BASEMAP_RGB, shadowPixelAt } from "../shadowField/__tests__/agreement/harness";
 import { isBlueDominantShadowPixel } from "../shadowSampling";
 import type { UiTheme } from "../uiTheme";
 import { OUTDOOR_V2_LAYERS } from "./outdoorV2Layers.fixture";
@@ -10,7 +10,11 @@ import { OUTDOOR_V2_LAYERS } from "./outdoorV2Layers.fixture";
 type Rgb = readonly [number, number, number];
 
 const THEMES: UiTheme[] = ["day", "night"];
-const rgb = (hex: string): Rgb => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as unknown as Rgb;
+/** `#rrggbb`, or `rgba(r, g, b, a)` read as its colour: alpha only blends it with others in range. */
+const rgb = (color: string): Rgb =>
+  (color.startsWith("#")
+    ? [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16))
+    : color.slice(color.indexOf("(") + 1).split(",").slice(0, 3).map(Number)) as unknown as Rgb;
 const warmth = ([r, g, b]: Rgb) => (r + g) / 2 - b;
 const detected = (c: Rgb) => isBlueDominantShadowPixel(c[0], c[1], c[2]);
 /** The renderer's shadow colour runs from dawn (0) to the day's highest sun (1); rain uses the midpoint. */
@@ -39,6 +43,25 @@ describe("the basemap palettes and the shadow predicate (invariant #5)", () => {
       for (const t of SUN_FRACTIONS) {
         expect({ name, t, detected: detected(shadowPixelAt(t, color)) }).toEqual({ name, t, detected: true });
       }
+    }
+  });
+
+  it("moves a dawn shadow's anti-aliased edge by no more than the reference grey does", () => {
+    // Full coverage is not the whole story: on a shadow's rim the supersampled edge
+    // leaves a pixel part-covered, and a warmer surface needs more coverage before the
+    // pixel counts. Hold every colour within 0.05 of the harness's reference grey.
+    const firstCounted = (surface: Rgb) => {
+      for (let step = 0; step <= 200; step++) {
+        if (detected(shadowPixelAt(0, surface, step / 200))) return step / 200;
+      }
+      return 1;
+    };
+    const reference = firstCounted(BASEMAP_RGB);
+    for (const { name, color } of surfaces) {
+      expect({ name, withinReference: firstCounted(color) <= reference + 0.05 }).toEqual({
+        name,
+        withinReference: true,
+      });
     }
   });
 
@@ -105,6 +128,7 @@ describe("basemapPaint", () => {
     expect(paintOf("Water", "fill-color")).toBe(day.water);
     expect(paintOf("Park", "fill-color")).toBe(day.field);
     expect(paintOf("Wood", "fill-color")).toBe(day.wood);
+    expect(paintOf("Residential", "fill-color")).toBe(day.tint);
     expect(paintOf("Building", "fill-color")).toBe(day.building);
     expect(paintOf("Building", "fill-outline-color")).toBe(day.edge);
     expect(paintOf("Road labels", "text-halo-color")).toBe(day.land);
