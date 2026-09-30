@@ -509,7 +509,7 @@ export async function suggestPlaces(
 
   const limit = opts?.limit ?? 6;
   const radiusM = opts?.radiusM ?? 3000;
-  const cacheKey = `${q.toLowerCase()}|${ll[0].toFixed(3)},${ll[1].toFixed(3)}|${radiusM}`;
+  const cacheKey = `${q.toLowerCase()}|${ll[0].toFixed(3)},${ll[1].toFixed(3)}|${radiusM}|${limit}`;
   const cached = suggestCache.get(cacheKey);
   if (cached) {
     if (Date.now() - cached.timestamp < SUGGEST_TTL_MS) return cached.data;

@@ -207,6 +207,30 @@ describe("foursquare service", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("suggestPlaces keys its cache on limit, so typeahead and submit don't share counts", async () => {
+    // The stub ignores `limit` and always returns 6 rows, like a cache entry
+    // filled by the typeahead's default limit.
+    const results = Array.from({ length: 6 }, (_, i) => ({
+      fsq_id: `p${i}`,
+      name: `Place ${i}`,
+      geocodes: { main: { latitude: 40 + i * 0.001, longitude: -74.0 } },
+    }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ results }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../foursquare");
+
+    await mod.suggestPlaces("cafe", [-74.0, 40.0], { apiKey: "test_key_123" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await mod.suggestPlaces("cafe", [-74.0, 40.0], { apiKey: "test_key_123", limit: 4 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toMatch(/[?&]limit=4(&|$)/);
+  });
+
   it("suggestPlaces returns [] on auth failure without throwing", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
