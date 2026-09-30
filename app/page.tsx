@@ -367,6 +367,12 @@ export default function Home() {
     return mapCenter;
   }, [rainMode, waypointA, waypointB, mapCenter]);
   const rainWeather = useWeatherHour(rainWeatherCenter, date);
+  // Stable identity: MapView's marker effect keys on this object, and playback
+  // re-renders the page on every tick.
+  const navWaypoints = useMemo(
+    () => ({ a: waypointA ?? undefined, b: waypointB ?? undefined }),
+    [waypointA, waypointB],
+  );
   const [shadowLayerReady, setShadowLayerReady] = useState(false);
 
   // The Sun/Rain toggle changes only the incident ray. Both objectives are
@@ -1502,7 +1508,7 @@ export default function Home() {
                 setShadowLayerReady(layer !== null);
               }}
               onMapClick={handleMapClick}
-              navWaypoints={{ a: waypointA ?? undefined, b: waypointB ?? undefined }}
+              navWaypoints={navWaypoints}
               navRoute={selectedNavRoute}
               showSunLines={showSunLines}
               mapClickActive={pendingSlot !== null}
