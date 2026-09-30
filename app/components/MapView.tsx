@@ -13,6 +13,7 @@ import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/c
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
+import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
 import { mapPinElement } from "./mapPins";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
@@ -64,124 +65,6 @@ const SHADOW_V2_DEBUG = isShadowV2DebugEnabled();
 // directly, preserving its existing CORS policy.
 const SHADOW_DEBUG_BASE = import.meta.env.DEV ? "/__shadow" : (import.meta.env.VITE_SHADOW_API_BASE ?? "").replace(/\/$/, "");
 const EMPTY_DEBUG_ACCOUNTING: DebugAccounting = { cacheBytes: 0, compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
-
-/**
- * Ensure nav overlays stay visible.
- *
- * The shadow layer draws the tilted buildings itself, and it writes depth doing
- * so, so a building between the camera and the route would occlude the line.
- * Route, transit and sketch overlays belong on top of it.
- *
- * We defensively move key overlay layers to the top whenever we (re)apply them.
- * Note this list deliberately omits `local-shadow-layer`: it has to stay below
- * the overlays, and this runs on every shadow recompute.
- */
-/**
- * Vector-tile source layers whose symbols are *places* — what a person is looking
- * for on the map, not what the map is made of.
- *
- * These are lifted above the shadow layer so a building never hides them. The
- * layers left behind (`transportation_name`, `water_name`, contours) are the ones
- * whose whole job is to label the ground, and seeing a street name printed across
- * the tower standing on it is a large part of what reads as "transparent
- * buildings".
- */
-const PLACE_LABEL_SOURCE_LAYERS = new Set([
-  "poi",
-  "outdoor_poi",
-  "place",
-  "park",
-  "aerodrome_label",
-  "mountain_peak",
-]);
-
-/**
- * A place-label layer and the layer it originally sat immediately below.
- *
- * Capture this before *any* of our own layers are added, so no successor is one of
- * them. `bringNavOverlaysToFront` reshuffles ours on every shadow recompute, and a
- * slot anchored to one would restore its label above the buildings rather than
- * below — which, since the style's last layers are a solid run of place labels,
- * strands the whole run. A label that was last in the basemap has no successor and
- * restores to just under the shadow layer, the top of the basemap now.
- */
-type PlaceLabelSlot = { id: string; beforeId: string | undefined };
-
-/** The place-label layers of the current style, each with the slot it came from. */
-function findPlaceLabelSlots(map: maplibregl.Map): PlaceLabelSlot[] {
-  const order = map.getLayersOrder();
-  const slots: PlaceLabelSlot[] = [];
-  for (let i = 0; i < order.length; i++) {
-    const layer = map.getLayer(order[i]);
-    if (layer?.type !== "symbol") continue;
-    if (!PLACE_LABEL_SOURCE_LAYERS.has(layer.sourceLayer ?? "")) continue;
-    slots.push({ id: order[i], beforeId: order[i + 1] });
-  }
-  return slots;
-}
-
-/**
- * Float the basemap's place labels over the buildings, or put them back.
- *
- * Only while the camera is tilted. Everything above the first 3D layer is drawn
- * by MapLibre with depth testing off, so a layer lifted up here is unconditionally
- * visible over the extrusions — but flat-on there are no extrusions to hide behind,
- * and the flat view is the one the shadow sampler reads back off the canvas
- * (invariant #5), where an untinted label over a shadowed sidewalk would score as
- * open sun. Restoring walks the slots backwards so each layer's recorded successor
- * is already home by the time it is used.
- */
-function setPlaceLabelsAboveBuildings(
-  map: maplibregl.Map,
-  slots: PlaceLabelSlot[],
-  shadowLayerId: string,
-  above: boolean
-) {
-  const move = (id: string, beforeId?: string) => {
-    if (!map.getLayer(id)) return;
-    if (beforeId && !map.getLayer(beforeId)) return;
-    map.moveLayer(id, beforeId);
-  };
-  if (above) {
-    for (const slot of slots) move(slot.id);
-  } else {
-    for (let i = slots.length - 1; i >= 0; i--) {
-      move(slots[i].id, slots[i].beforeId ?? shadowLayerId);
-    }
-  }
-  bringNavOverlaysToFront(map);
-}
-
-function bringNavOverlaysToFront(map: maplibregl.Map) {
-  const layerIds = [
-    // Main walking route, over its casing
-    "nav-route-casing",
-    "nav-route-line",
-    // Train routing overlays
-    "train-route-lines-layer",
-    "train-route-stops-layer",
-    "train-route-transfers-outer",
-    "train-route-transfers-inner",
-    // MRT connector
-    "mrt-entrance-connector-casing",
-    "mrt-entrance-connector-line",
-    // Sketch overlays (when active)
-    "sketch-line-casing",
-    "sketch-line-layer",
-    "sketch-preview-layer",
-  ];
-
-  for (const id of layerIds) {
-    if (map.getLayer(id)) {
-      try {
-        // No `beforeId` moves it to the top of the layer stack.
-        map.moveLayer(id);
-      } catch {
-        // moveLayer can throw transiently while the style is updating; ignore.
-      }
-    }
-  }
-}
 
 function waitForMapLoad(map: maplibregl.Map): Promise<void> {
   return new Promise((resolve) => {
@@ -463,6 +346,8 @@ export default function MapView({
   // loaded, before any of ours, so a theme change recolours only the basemap.
   const basemapThemeRef = useRef(basemapTheme);
   const basemapLayersRef = useRef<maplibregl.LayerSpecification[]>([]);
+  const basemapSymbolIdsRef = useRef<string[]>([]);
+  const shadowLayerIdRef = useRef<string | undefined>(undefined);
   /** Unwires the canopy atlas reader's map listeners on unmount. */
   const canopyAtlasCleanupRef = useRef<(() => void) | null>(null);
 
@@ -615,6 +500,11 @@ export default function MapView({
     // painted in MapTiler's own colours, and before any of our layers exist.
     map.once("style.load", () => {
       basemapLayersRef.current = map.getStyle().layers;
+      basemapSymbolIdsRef.current = basemapLayersRef.current
+        // Keep icons in mixed text/icon layers with their labels. Icon-only
+        // symbols can retain their original basemap depth.
+        .filter((layer) => layer.type === "symbol" && layer.layout?.["text-field"] !== undefined)
+        .map((layer) => layer.id);
       applyBasemapTheme(map, basemapLayersRef.current, basemapThemeRef.current);
     });
 
@@ -700,6 +590,8 @@ export default function MapView({
       });
     };
     map.on("rotate", rotateHandler);
+    const pitchHandler = () => reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
+    map.on("pitch", pitchHandler);
 
     map.on("moveend", refreshSunViz);
 
@@ -711,10 +603,6 @@ export default function MapView({
     };
 
     map.on("load", async () => {
-      // Captured first, while the style still holds nothing but the basemap — see
-      // `PlaceLabelSlot`.
-      const placeLabelSlots = findPlaceLabelSlots(map);
-
       if (SHADOW_V2_DEBUG && SHADOW_DEBUG_BASE) {
         debugLayer = new DebugFieldLayer();
         debugLayer.onGpuBytes = (bytes) => debugService?.setGpuBytes(bytes);
@@ -816,7 +704,7 @@ export default function MapView({
       navSrc.setData(
         current ? (current as GeoJSON.GeoJSON) : { type: "FeatureCollection", features: [] }
       );
-      if (current) bringNavOverlaysToFront(map);
+      if (current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
 
       // There is deliberately no terrain here. Terrain replaces the ground with a
       // displaced mesh while the shadow layer's triangles stay at z = 0, so shadows
@@ -835,30 +723,11 @@ export default function MapView({
       // If local renderer (CustomLayer), register it as a map layer
       const maybeCustom = shadowLayer as unknown as maplibregl.CustomLayerInterface;
       if (maybeCustom?.type === 'custom' && typeof maybeCustom?.render === 'function') {
+        shadowLayerIdRef.current = maybeCustom.id;
         if (!map.getLayer(maybeCustom.id)) {
-          // Topmost, because this one layer draws both the ground shadow and the
-          // tilted buildings, in that order and in one pass — so the buildings cover
-          // the ground shadow without needing a separate style layer above it.
-          // `bringNavOverlaysToFront` then lifts the route back over both.
+          // This layer draws ground shade and tilted buildings in one pass. The
+          // navigation lines clear its depth; basemap labels clear the lines.
           map.addLayer(maybeCustom);
-
-          // Place labels ride above the extrusions, but only while tilted.
-          //
-          // On `pitch`, not `pitchend`: the 3D toggle is a 400 ms ease, and Pass E
-          // starts drawing buildings the moment pitch leaves 0, so waiting for the
-          // ease to settle buries the labels for the whole tilt. The remembered
-          // state makes every frame of that ease free — the layer moves happen once,
-          // as pitch crosses 0, rather than on each of the ~24 events it fires.
-          let labelsLifted: boolean | null = null;
-          const updateLabelDepth = () => {
-            const lift = map.getPitch() > 0;
-            if (lift === labelsLifted) return;
-            labelsLifted = lift;
-            setPlaceLabelsAboveBuildings(map, placeLabelSlots, maybeCustom.id, lift);
-          };
-          map.on("pitch", updateLabelDepth);
-          map.on("pitchend", updateLabelDepth);
-          updateLabelDepth();
         }
 
         // Estimated canopy from the raster the route card already quotes (#275).
@@ -900,11 +769,11 @@ export default function MapView({
         void reader(map);
       }
 
-      shadowLayer.on('idle', () => bringNavOverlaysToFront(map));
+      shadowLayer.on('idle', () => reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current));
       const resizeHandler = () => { shadowRef.current?.setDate(dateRef.current); };
       map.on("resize", resizeHandler);
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
 
       if (accumulation.enabled) {
         shadowLayer.setSunExposure(true, {
@@ -936,6 +805,7 @@ export default function MapView({
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
       map.off("rotate", rotateHandler);
+      map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
       map.off("moveend", updateDebugViewport);
       debugService?.shutdown();
@@ -1382,7 +1252,7 @@ export default function MapView({
       ? (navRoute as GeoJSON.GeoJSON)
       : { type: "FeatureCollection", features: [] };
     source.setData(data);
-    if (navRoute) bringNavOverlaysToFront(map);
+    if (navRoute) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
   }, [navRoute]);
 
   // -------------------------------------------------------------------------
@@ -1502,18 +1372,17 @@ export default function MapView({
         });
       }
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
     };
 
-    if (map.isStyleLoaded()) {
+    // The route source is created in the map's load handler. Once it exists,
+    // layers may be added even while tiles are still loading; waiting for a
+    // later styledata event can strand transit when reconciliation is a no-op.
+    if (map.getSource("nav-route")) {
       apply();
     } else {
-      // `load` fires once, when the map first comes up — long before any route
-      // exists. Waiting on it here means waiting for an event that has already
-      // happened, so the train layers were never added at all. `styledata`
-      // recurs, which is why the MRT connector below has always worked.
-      map.once("styledata", apply);
-      return () => { map.off("styledata", apply); };
+      map.once("load", apply);
+      return () => { map.off("load", apply); };
     }
   }, [navTrainDrawData]);
 
@@ -1585,13 +1454,14 @@ export default function MapView({
         paint: { "line-color": mapColor(basemapThemeRef.current, "route"), "line-width": 2.5, "line-dasharray": [0, 3] },
       });
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
     };
 
-    if (map.isStyleLoaded()) {
+    if (map.getSource("nav-route")) {
       addConnector();
     } else {
-      map.once("styledata", addConnector);
+      map.once("load", addConnector);
+      return () => { map.off("load", addConnector); };
     }
   }, [navMrtEntrances, navTrainDrawData]);
 
