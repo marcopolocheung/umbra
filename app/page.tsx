@@ -243,7 +243,7 @@ export default function Home() {
     mapRef,
     dateRef,
   } = shadow;
-  const { preference: themePreference, setPreference: setThemePreference } = useUiTheme(date, mapCenter);
+  const { solar, preference: themePreference, setPreference: setThemePreference } = useUiTheme(date, mapCenter);
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
   const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date });
@@ -1531,6 +1531,7 @@ export default function Home() {
               simplifiedWaypoints={simplifiedWaypoints}
               shedRings={shedRings}
               showSheds={showSheds}
+              basemapTheme={solar}
             />
           </Suspense>
         }

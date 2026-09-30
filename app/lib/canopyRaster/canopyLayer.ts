@@ -41,12 +41,11 @@ export interface CanopyLegendState {
  * The layer the fill goes directly beneath: the basemap's first water layer.
  *
  * Everything drawn after it — water, roads, bridges, buildings — covers the fill, and
- * that is deliberate. Water is the one basemap surface blue enough to sit at or past
- * the shadow predicate on its own: outdoor-v2's street-zoom water, ~(149, 201, 242),
- * already passes it, sunlit, on `main`. A fill mixed into it would be measured against
- * a surface that is already a false shadow, and no colour choice fixes that. Under the
- * water, the fill only composites with the landcover and landuse greens and greys the
- * colour was checked against (`canopyPaint.test.ts`). Covering by buildings is also
+ * that is deliberate. Water is the one basemap surface blue enough to sit near the
+ * shadow predicate on its own: outdoor-v2's own street-zoom water, ~(149, 201, 242),
+ * passed it sunlit, and R4's muted water (`basemapTheme.ts`) is still the coolest
+ * colour in either palette. Under the water, the fill only composites with the land,
+ * landuse, field and wood colours it was checked against (`canopyPaint.test.ts`). Covering by buildings is also
  * what `ShadowField` does: it subtracts the footprints from the raster before marching
  * it.
  *

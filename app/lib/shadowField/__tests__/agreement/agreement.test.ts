@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { BASEMAP_PALETTES } from "../../../basemapTheme";
 import { CANOPY_FILL_OPACITY, CANOPY_FILL_RGB } from "../../../canopyRaster/canopyPaint";
 import { agreementFixtures, sunFor } from "./fixtures";
 import { BASEMAP_RGB, disagreementsFor, formatReport, referenceFor, reportFor } from "./harness";
@@ -116,4 +117,32 @@ describe("shadow field vs pixel sampler, under the canopy fill", () => {
   it("reports the same agreement where the fill is solid", { timeout: 10_000 }, () => {
     expect(reportOver(underFill(1))).toEqual(baseline);
   });
+});
+
+/**
+ * A3 re-measured over the redesign 2.0 day basemap (R4).
+ *
+ * The sampler reads a sidewalk off whatever the basemap paints there. If each day
+ * surface reports exactly what the reference grey reports, recolouring the map moved
+ * no routing decision.
+ */
+describe("shadow field vs pixel sampler, over the day basemap", () => {
+  const fixtures = agreementFixtures();
+  const reportOver = (basemap: readonly [number, number, number]) =>
+    reportFor(
+      disagreementsFor(fixtures, (fixture) => {
+        const sun = sunFor(fixture);
+        return referenceFor(fixture, sun, sun.altitudeFraction, basemap);
+      })
+    );
+  const baseline = reportOver(BASEMAP_RGB);
+  const day = BASEMAP_PALETTES.day;
+
+  for (const role of ["land", "road", "landuse", "building", "field", "path"] as const) {
+    it(`reports the same agreement over ${role}`, { timeout: 10_000 }, () => {
+      const hex = day[role];
+      const rgb = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
+      expect(reportOver(rgb)).toEqual(baseline);
+    });
+  }
 });
