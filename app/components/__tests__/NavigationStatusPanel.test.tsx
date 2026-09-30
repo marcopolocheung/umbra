@@ -117,6 +117,36 @@ describe("NavigationStatusPanel (R5b)", () => {
     expect(steps[5].textContent).toContain("Bryant Park");
   });
 
+  it("starts at the line's bullet when the trip starts at the station door, with no zero-metre walk", () => {
+    const legs: RouteLeg[] = [
+      { type: "walk", geojson: LINE, distanceM: 0, shadowCoverage: 0 },
+      { type: "transit", geojson: LINE, line: "N", lineColor: "#ffe14d", travelTimeSec: 480, stops: ["34 St", "Canal St"] },
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+    ];
+    panel(walk({ label: "Via Subway", legs, totalTimeSec: 540 }));
+    const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];
+    // board → exit → walk → destination: no start pin, no "Walk · 0 m · 1 min".
+    expect(steps).toHaveLength(4);
+    expect(steps[0].querySelector(".umbra-line-bullet")).toBeTruthy();
+    expect(steps[0].textContent).toContain("Start34 St");
+    expect(screen.queryByText(/\b0 m\b/)).toBeNull();
+  });
+
+  it("ends at the exit ring when the trip ends at the station door", () => {
+    const legs: RouteLeg[] = [
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+      { type: "transit", geojson: LINE, line: "N", lineColor: "#ffe14d", travelTimeSec: 480, stops: ["34 St", "Canal St"] },
+      { type: "walk", geojson: LINE, distanceM: 0.2, shadowCoverage: 0 },
+    ];
+    panel(walk({ label: "Via Subway", legs, totalTimeSec: 540 }));
+    const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];
+    // start → walk → board → exit, and the exit is the destination: nothing leaves it.
+    expect(steps).toHaveLength(4);
+    expect(steps[3].querySelector(".umbra-leg-stop")).toBeTruthy();
+    expect(steps[3].querySelector(".umbra-leg-rail")).toBeNull();
+    expect(steps[3].textContent).toBe("DestinationExit at Canal St");
+  });
+
   it("gives a plain walk the same rail, start pin to destination pin", () => {
     panel(walk());
     const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];

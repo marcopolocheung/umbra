@@ -38,9 +38,11 @@ interface ItineraryRow {
  * The trip as one itinerary, in the pattern a rider already knows: the start
  * pin, dots on foot to the walk step, dots on to the boarding stop, where the
  * line's bullet heads a solid bar in its colour that ends in a ring at the exit
- * stop, then dots again past the walk step to the destination pin. Data comes
- * from `route.legs` (a plain walk is one leg) — the same records the route
- * cards summarize — so nothing here is a new claim to ground.
+ * stop, then dots again past the walk step to the destination pin. A trip that
+ * starts or ends at the station door has no walk there: the bullet is the
+ * start, or the exit ring the destination. Data comes from `route.legs` (a
+ * plain walk is one leg) — the same records the route cards summarize — so
+ * nothing here is a new claim to ground.
  */
 function Itinerary({
   legs,
@@ -56,12 +58,16 @@ function Itinerary({
   const policy = getTravelModePolicy(travelMode);
   const muted = { color: "var(--color-ink-muted)" };
   const ink = { color: "var(--color-ink)" };
-  const rows: ItineraryRow[] = [
+  // The transit pipeline always emits a walk on each side of the ride; one of
+  // no length is no step, and its "1 min" floor would break the sum to Time.
+  const steps = legs.length > 1
+    ? legs.filter((leg) => !(leg.type === "walk" && leg.distanceM != null && Math.round(leg.distanceM) === 0))
+    : legs;
+  const rows: ItineraryRow[] = steps[0]?.type === "transit" ? [] : [
     {
       id: "start",
       node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">trip_origin</span>,
-      rail: legs[0]?.type === "transit" ? "ride" : "foot",
-      color: legs[0]?.type === "transit" && legs[0].lineColor ? lineCssColor(legs[0].lineColor) : undefined,
+      rail: "foot",
       body: (
         <>
           <div className="umbra-kicker">Start</div>
@@ -70,11 +76,14 @@ function Itinerary({
       ),
     },
   ];
-  legs.forEach((leg, n) => {
+  steps.forEach((leg, n) => {
     if (leg.type === "transit") {
       const board = leg.stops?.[0];
       const exit = leg.stops?.[leg.stops.length - 1];
       const color = leg.lineColor ? lineCssColor(leg.lineColor) : undefined;
+      const first = n === 0;
+      const last = n === steps.length - 1;
+      const boardName = board ?? (first ? startLabel : undefined);
       rows.push({
         id: `board-${n}`,
         node: <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />,
@@ -82,7 +91,8 @@ function Itinerary({
         color,
         body: (
           <>
-            {board && <div className="text-xs font-semibold" style={ink}>{board}</div>}
+            {first && <div className="umbra-kicker">Start</div>}
+            {boardName && <div className="text-xs font-semibold" style={ink}>{boardName}</div>}
             <div className="text-xs font-medium" style={ink}>
               Ride {leg.lineName || leg.line || "Transit"}
               {leg.travelTimeSec != null && (
@@ -99,9 +109,17 @@ function Itinerary({
       rows.push({
         id: `exit-${n}`,
         node: <span className="umbra-leg-stop" style={color ? ({ "--leg-color": color } as CSSProperties) : undefined} aria-hidden="true" />,
-        // Off the train, the rider is on foot again until the next boarding or the end.
-        rail: "foot",
-        body: <div className="text-xs font-semibold" style={ink}>{exit && exit !== board ? `Exit at ${exit}` : "Exit"}</div>,
+        // Off the train, the rider is on foot again until the next boarding or
+        // the end — unless the exit is the end.
+        rail: last ? null : "foot",
+        body: (
+          <>
+            {last && <div className="umbra-kicker">Destination</div>}
+            <div className="text-xs font-semibold" style={ink}>
+              {exit && exit !== board ? `Exit at ${exit}` : last ? destinationLabel : "Exit"}
+            </div>
+          </>
+        ),
       });
       return;
     }
@@ -119,7 +137,7 @@ function Itinerary({
       ),
     });
   });
-  rows.push({
+  if (steps[steps.length - 1]?.type !== "transit") rows.push({
     id: "end",
     node: <span className="material-symbols-outlined text-[18px]" style={ink} aria-hidden="true">location_on</span>,
     rail: null,
