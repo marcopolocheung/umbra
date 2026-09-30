@@ -95,6 +95,21 @@ describe("shedPrismsFromPermits", () => {
     expect(set.maxHeightM).toBe(prism.heightM);
   });
 
+  it("draws each shed on the same side, out on the sidewalk rather than the roadway", () => {
+    const { set, drawn } = shedPrismsFromPermits(
+      [{ lng: at(0, 1)[0], lat: at(0, 1)[1] }, { lng: at(20, -1)[0], lat: at(20, -1)[1] }],
+      [EAST_WEST],
+    );
+    expect(drawn).toHaveLength(set.prisms.length);
+    // North permit: drawn 7–10 m north; not over the model's 4 m line or the far side.
+    expect(pointInRing(at(0, 8.5), drawn[0].ring)).toBe(true);
+    expect(pointInRing(sidewalkPoint(EAST_WEST, "left", 0.5), drawn[0].ring)).toBe(false);
+    expect(pointInRing(at(0, -8.5), drawn[0].ring)).toBe(false);
+    // South permit, mirrored.
+    expect(pointInRing(at(20, -8.5), drawn[1].ring)).toBe(true);
+    expect(pointInRing(at(20, 8.5), drawn[1].ring)).toBe(false);
+  });
+
   it("returns an empty set, not nothing, when there are no permits", () => {
     const result = shedPrismsFromPermits([], [EAST_WEST]);
     expect(result.set.prisms).toEqual([]);

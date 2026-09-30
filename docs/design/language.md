@@ -28,6 +28,8 @@ sun exposure — and zero decorative accents anywhere else.
 5. **The renderer constants stay put.** The shadow layer's blue and canopyPaint's
    sea-green `#2E8B57` are data-plane colours pinned by canvas tests under CLAUDE.md
    invariant #5; `--color-canopy-map` exists only so the legend mirrors what the map paints.
+   `--color-shed-map` is the sidewalk-shed fill (ink, drawn at 30%), pinned the same way by
+   `shedLayer.test.ts`; it is a data plane, not chrome, even though it shares ink's value.
 
 ## Colour roles (registry: `app/globals.css` `@theme`)
 

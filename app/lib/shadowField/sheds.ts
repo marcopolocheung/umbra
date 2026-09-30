@@ -22,6 +22,13 @@
  * centimetres up rather than on the ground because a grounded caster leaves its own
  * footprint lit (`shadowIndex.isShadowed`), which is exactly the pavement it covers.
  *
+ * Each placement also yields a second ring for the map: the same frontage drawn where
+ * the shed physically stands, 7–10 m from the centerline against the ~10 m building
+ * line. Both come from one snap and one side, so the map and the model never disagree
+ * about which permit, which edge or which side — only about how far out. The drawn
+ * strip is approximate: about right on cross streets, short of the building line on
+ * wide avenues.
+ *
  * Pure: no map, no network.
  */
 
@@ -41,6 +48,10 @@ const SHED_LENGTH_M = 15;
 const SHED_INNER_M = 2;
 const SHED_OUTER_M = 6;
 
+/** Across-street span of the strip drawn on the map, from the centerline. */
+const SHED_DRAWN_INNER_M = 7;
+const SHED_DRAWN_OUTER_M = 10;
+
 /** Underside and top of the sheet — off the ground, and thin enough to cast in place. */
 const SHED_BASE_M = 0.05;
 const SHED_HEIGHT_M = 0.1;
@@ -51,18 +62,23 @@ const GRID_M = 50;
 export interface ShedPoint {
   lng: number;
   lat: number;
+  /** Identifies the permit, so the same shed seen twice is drawn once. Default: its position. */
+  key?: string;
 }
 
 export interface ShedPlacement {
   set: PrismSet;
+  /** Map rings, index-aligned with `set.prisms`: the same sheds drawn on the sidewalk. */
+  drawn: Array<{ key: string; ring: [number, number][] }>;
   placed: number;
   dropped: number;
 }
 
 export function shedPrismsFromPermits(permits: ShedPoint[], edges: EdgeRef[]): ShedPlacement {
   const prisms: BuildingPrism[] = [];
+  const drawn: ShedPlacement["drawn"] = [];
   if (permits.length === 0 || edges.length === 0) {
-    return { set: { prisms, maxHeightM: 0 }, placed: 0, dropped: permits.length };
+    return { set: { prisms, maxHeightM: 0 }, drawn, placed: 0, dropped: permits.length };
   }
 
   const refLat = (edges[0].from[1] + edges[0].to[1]) / 2;
@@ -139,23 +155,25 @@ export function shedPrismsFromPermits(permits: ShedPoint[], edges: EdgeRef[]): S
       permit.lng + (px + along * ux + side * across * nx) / mPerLng,
       permit.lat + (py + along * uy + side * across * ny) / mPerLat,
     ];
-    const first = corner(-half, SHED_INNER_M);
+    const strip = (inner: number, outer: number): [number, number][] => {
+      const first = corner(-half, inner);
+      return [first, corner(half, inner), corner(half, outer), corner(-half, outer), first];
+    };
     prisms.push({
-      ring: [
-        first,
-        corner(half, SHED_INNER_M),
-        corner(half, SHED_OUTER_M),
-        corner(-half, SHED_OUTER_M),
-        first,
-      ],
+      ring: strip(SHED_INNER_M, SHED_OUTER_M),
       heightM: SHED_HEIGHT_M,
       baseM: SHED_BASE_M,
       opacity: 1,
+    });
+    drawn.push({
+      key: permit.key ?? `${permit.lng},${permit.lat}`,
+      ring: strip(SHED_DRAWN_INNER_M, SHED_DRAWN_OUTER_M),
     });
   }
 
   return {
     set: { prisms, maxHeightM: prisms.length > 0 ? SHED_HEIGHT_M : 0 },
+    drawn,
     placed: prisms.length,
     dropped,
   };

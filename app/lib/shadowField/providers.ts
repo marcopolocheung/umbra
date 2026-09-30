@@ -670,12 +670,19 @@ export function createRasterCanopyProvider(opts?: {
 export interface NycShedProvider extends ShedProvider {
   /** The routing edges permits are snapped to. Until bound, `prismsFor` declines. */
   bindEdges(edges: EdgeRef[]): void;
+  /**
+   * The map rings of every shed placed against the bound edges — what the field used
+   * for this calculation — one per permit even where cached areas overlap, since a
+   * translucent fill drawn twice reads as a different colour. Empty before a
+   * calculation has sampled anything.
+   */
+  drawnRings(): [number, number][][];
 }
 
 interface ShedEntry {
   coverage: BBox;
   permits: ShedPermit[];
-  placed: { edges: EdgeRef[]; set: PrismSet } | null;
+  placed: { edges: EdgeRef[]; set: PrismSet; drawn: Map<string, [number, number][]> } | null;
 }
 
 function intersects(a: BBox, b: BBox): boolean {
@@ -734,9 +741,23 @@ export function createShedProvider(opts?: {
       const entry = lookup(bbox);
       if (!entry) return null;
       if (entry.placed?.edges !== edges) {
-        entry.placed = { edges, set: shedPrismsFromPermits(entry.permits, edges).set };
+        const { set, drawn } = shedPrismsFromPermits(
+          entry.permits.map(({ lng, lat, jobFilingNumber }) => ({ lng, lat, key: jobFilingNumber })),
+          edges,
+        );
+        entry.placed = { edges, set, drawn: new Map(drawn.map(({ key, ring }) => [key, ring])) };
       }
       return entry.placed.set;
+    },
+
+    drawnRings() {
+      if (!edges) return [];
+      const byPermit = new Map<string, [number, number][]>();
+      for (const entry of cache) {
+        if (entry.placed?.edges !== edges) continue;
+        for (const [key, ring] of entry.placed.drawn) byPermit.set(key, ring);
+      }
+      return [...byPermit.values()];
     },
 
     async load(bbox, signal) {
