@@ -32,10 +32,11 @@ inspiration; the public mirror publishes everything here.
   drags it only along its own ride (each frame snaps to the nearest track point,
   `snapToPath`), flings it with the time slider's inertia (friction 0.009/ms, same smoothing
   and 80 ms cutoff, exact per-frame decay so a glide can be aimed), remembers where each line
-  rested so a recalculation keeps it put, and on a line's first render glides it from mid-ride
-  to a random resting place (none under reduced motion). One per ride, not per hop. DOM
-  markers only — the shadow sampler never sees them (#5); a 44px grip is the only part that
-  takes the pointer. The transit smoke test drags it ~56px off the line and asserts, by
+  rested (keyed by line and end stations, so the same trip at another time keeps its place
+  and a new trip starts fresh), and on a ride's first render glides it from mid-ride to a
+  random resting place (none under reduced motion; a grab cancels it). One per ride, not per
+  hop. DOM markers only — the shadow sampler never sees them (#5); the marker element *is*
+  the 44px grip, because maplibre re-enables pointer events on it after every press. The transit smoke test drags it ~56px off the line and asserts, by
   canvas readback, that it slid and still sits on the magenta track.
 - **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
   (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
@@ -97,8 +98,8 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,777 unit tests,
-  build, design:check and e2e 16/16 (the transit drag check 3/3 on repeat).
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,775 unit tests,
+  build, design:check and e2e 16/16 (the transit drag check 2/2 more on repeat).
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.

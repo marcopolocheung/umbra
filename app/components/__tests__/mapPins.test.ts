@@ -13,29 +13,27 @@ describe("lineBlobElement", () => {
     // No outline: it is the line thickening, not a pin set on it.
     expect(blob.getAttribute("stroke")).toBeNull();
     expect(blob.getAttribute("d")).toBe(blobOutline("N"));
-    const letter = host.querySelector("[data-part='grip'] span") as HTMLElement;
+    const letter = host.querySelector(":scope > span") as HTMLElement;
     expect(letter.textContent).toBe("N");
     expect(letter.style.color).toBe("var(--color-line-ink-dark)");
   });
 
   it("puts the letter on a casing disc where no ink reads on the line's colour", () => {
-    const letter = lineBlobElement("7", "B933AD").querySelector("[data-part='grip'] span") as HTMLElement;
+    const letter = lineBlobElement("7", "B933AD").querySelector(":scope > span") as HTMLElement;
     expect(letter.style.color).toBe("var(--color-map-route)");
     expect(letter.style.background).toBe("var(--color-map-casing)");
   });
 
-  it("catches the pointer only on a 44px grip, leaving the map its gestures", () => {
+  it("is itself the 44px grip, and the swelling around it never takes the pointer", () => {
     const host = lineBlobElement("L", "#A7A9AC");
-    expect(host.style.pointerEvents).toBe("none");
-    const grip = host.querySelector("[data-part='grip']") as HTMLElement;
-    expect(grip.style.pointerEvents).toBe("auto");
-    expect([grip.style.width, grip.style.height]).toEqual(["44px", "44px"]);
+    expect([host.style.width, host.style.height]).toEqual(["44px", "44px"]);
+    expect((host.querySelector("svg") as SVGSVGElement).style.pointerEvents).toBe("none");
   });
 
   it("turns the swelling with the track and leaves the letter upright", () => {
     const host = lineBlobElement("A", "#0039A6");
     orientLineBlob(host, 30);
     expect((host.querySelector("svg") as SVGSVGElement).style.rotate).toBe("30deg");
-    expect((host.querySelector("[data-part='grip']") as HTMLElement).style.rotate).toBe("");
+    expect((host.querySelector(":scope > span") as HTMLElement).style.rotate).toBe("");
   });
 });

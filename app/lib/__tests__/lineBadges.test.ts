@@ -23,48 +23,34 @@ describe("lineBadgePlacements", () => {
     expect(badges[0].color).toBe("#A7A9AC");
   });
 
-  it("sits halfway along the drawn track, on the line", () => {
-    // An L-shaped ride: 1 km east, then 3 km north. Halfway (2 km) is 1 km up the second arm.
-    const east = 1000 / (111_195 * Math.cos((40.73 * Math.PI) / 180));
-    const north = 1000 / 111_195;
-    const [badge] = lineBadgePlacements([
-      { line: "A", color: "#0039A6", coords: [[-74, 40.73], [-74 + east, 40.73], [-74 + east, 40.73 + 3 * north]] },
-    ]);
-    expect(badge.at[0]).toBeCloseTo(-74 + east, 6);
-    expect(badge.at[1]).toBeCloseTo(40.73 + north, 3);
-  });
-
   it("starts a new badge when the same line is ridden again after a change", () => {
     const hop = (line: string, x: number) => ({ line, color: "#000000", coords: [[x, 40.7], [x + 0.01, 40.7]] as [number, number][] });
     expect(lineBadgePlacements([hop("A", 0), hop("C", 0.01), hop("A", 0.02)]).map((b) => b.line)).toEqual(["A", "C", "A"]);
   });
 
-  it("skips empty geometry and places a single-point ride on its point", () => {
+  it("skips empty geometry and joins a ride's hops into one track", () => {
     expect(lineBadgePlacements([{ line: "S", color: "#808183", coords: [] }])).toEqual([]);
-    expect(lineBadgePlacements([{ line: "S", color: "#808183", coords: [[-73.98, 40.75]] }])[0].at).toEqual([-73.98, 40.75]);
+    const [ride] = lineBadgePlacements([
+      { line: "L", color: "#A7A9AC", coords: [[0, 0], [1, 0]] },
+      { line: "L", color: "#A7A9AC", coords: [[1, 0], [2, 0]] },
+    ]);
+    expect(ride.coords).toEqual([[0, 0], [1, 0], [1, 0], [2, 0]]);
   });
 });
 
 describe("snapToPath", () => {
   const path: [number, number][] = [[0, 0], [100, 0], [100, 100]];
 
-  it("pulls a dragged point onto the nearest stretch of the line", () => {
-    expect(snapToPath(path, [40, 30])?.at).toEqual([40, 0]);
-    expect(snapToPath(path, [130, 60])?.at).toEqual([100, 60]);
-    // Past the end, it stops at the end: the badge never leaves its ride.
-    expect(snapToPath(path, [-50, -10])?.at).toEqual([0, 0]);
-  });
-
-  it("gives the line's direction there, never upside down", () => {
-    expect(snapToPath(path, [40, 30])?.angleDeg).toBe(0);
-    expect(snapToPath(path, [130, 60])?.angleDeg).toBe(90);
-    // Drawn right-to-left, the same line folds back to 0°, not 180°.
-    expect(snapToPath([[100, 0], [0, 0]], [40, 5])?.angleDeg).toBe(0);
+  it("finds the hop, and the point along it, nearest a dragged point", () => {
+    expect(snapToPath(path, [40, 30])).toEqual({ index: 0, t: 0.4 });
+    expect(snapToPath(path, [130, 60])).toEqual({ index: 1, t: 0.6 });
+    // Past the end, it stops at the end: the swelling never leaves its ride.
+    expect(snapToPath(path, [-50, -10])).toEqual({ index: 0, t: 0 });
   });
 
   it("copes with a degenerate path", () => {
     expect(snapToPath([], [1, 1])).toBeNull();
-    expect(snapToPath([[5, 5]], [9, 9])).toEqual({ at: [5, 5], angleDeg: 0, index: 0, t: 0 });
+    expect(snapToPath([[5, 5]], [9, 9])).toEqual({ index: 0, t: 0 });
   });
 });
 

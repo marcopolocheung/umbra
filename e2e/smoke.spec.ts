@@ -257,7 +257,7 @@ test("routes on the published transit data and draws the line", async ({ page },
   // that a drag slides along the line and never off it.
   const blob = page.locator(".maplibregl-marker[role='img'][aria-label='Line E']");
   await expect(blob).toHaveCount(1);
-  const grip = blob.locator("[data-part='grip']");
+  const grip = blob;
   await expect(grip).toBeVisible();
   const centre = async () => {
     const box = await grip.boundingBox();

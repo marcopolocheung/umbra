@@ -305,7 +305,7 @@ export default function MapView({
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
   const lineBlobRefs       = useRef<{ remove: () => void }[]>([]);
-  // Where each line's swelling last rested (0–1 along its ride), so a recalculation keeps it put.
+  // Where each ride's swelling last rested (0–1 along it), so a recalculation keeps it put.
   const lineBlobFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
   const assistantPinRefs      = useRef<maplibregl.Marker[]>([]);
@@ -1295,12 +1295,15 @@ export default function MapView({
 
       // Each ride's line identifier as a draggable swelling of its track (#149):
       // DOM markers, so the shadow sampler's canvas readback never sees them.
-      lineBlobRefs.current = lineBadgePlacements(polylines).map((placement) =>
-        attachLineBlob(map, placement, {
-          fraction: lineBlobFractions.current.get(placement.line),
-          onRest: (fraction) => lineBlobFractions.current.set(placement.line, fraction),
-        }),
-      );
+      // Remembered per ride — its line and end stations — so the same trip
+      // recalculated at another time keeps its place, and a new trip starts fresh.
+      lineBlobRefs.current = lineBadgePlacements(polylines).map((placement) => {
+        const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
+        return attachLineBlob(map, placement, {
+          fraction: lineBlobFractions.current.get(key),
+          onRest: (fraction) => lineBlobFractions.current.set(key, fraction),
+        });
+      });
       const transferIds = new Set(transfers.map((t) => t.at.id));
 
       // Line polylines — one color per train line segment

@@ -3,9 +3,7 @@ import type { TrainDrawData } from "./trainGraph";
 export interface LineBadgePlacement {
   line: string;
   color: string;
-  /** [lng, lat] halfway along the ride, measured along the drawn track. */
-  at: [number, number];
-  /** The ride's whole drawn track, which a dragged badge stays on. */
+  /** The ride's whole drawn track, which its swelling sits and slides on. */
   coords: [number, number][];
 }
 
@@ -17,25 +15,10 @@ function metres(a: [number, number], b: [number, number]): number {
   return Math.hypot(x, y) * 6_371_000;
 }
 
-function midpoint(coords: [number, number][]): [number, number] {
-  const lengths = coords.slice(1).map((c, i) => metres(coords[i], c));
-  let remaining = lengths.reduce((sum, l) => sum + l, 0) / 2;
-  for (let i = 0; i < lengths.length; i++) {
-    if (remaining <= lengths[i] && lengths[i] > 0) {
-      const t = remaining / lengths[i];
-      const [a, b] = [coords[i], coords[i + 1]];
-      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-    }
-    remaining -= lengths[i];
-  }
-  return coords[0];
-}
-
 /**
- * Where the map pins a line's bullet: one per ride, not per hop. `polylines`
- * arrive one per station-to-station hop, so consecutive hops on the same line
- * are one ride; a change of line starts the next. Each badge sits halfway
- * along its ride's drawn track, so it lands on the line, never off it.
+ * The rides a map marks with their line's identifier: one per ride, not per
+ * hop. `polylines` arrive one per station-to-station hop, so consecutive hops
+ * on the same line are one ride; a change of line starts the next.
  */
 export function lineBadgePlacements(polylines: TrainDrawData["polylines"]): LineBadgePlacement[] {
   const rides: { line: string; color: string; coords: [number, number][] }[] = [];
@@ -45,34 +28,27 @@ export function lineBadgePlacements(polylines: TrainDrawData["polylines"]): Line
     if (last && last.line === pl.line) last.coords.push(...pl.coords);
     else rides.push({ line: pl.line, color: pl.color, coords: [...pl.coords] });
   }
-  return rides.map((ride) => ({ line: ride.line, color: ride.color, at: midpoint(ride.coords), coords: ride.coords }));
+  return rides;
 }
 
 /**
- * The point of a screen-space path nearest `p`, and the path's direction there
- * in degrees, folded into (−90°, 90°] so a badge laid along it never reads
- * upside down. `null` for an empty path. Screen space, because the badge is
- * dragged in pixels and must follow the line as drawn, pitch and all.
+ * Where on a screen-space path the point nearest `p` lies: the hop it falls on
+ * and how far along that hop (0–1). `null` for an empty path. Screen space,
+ * because the swelling is dragged in pixels and must follow the line as drawn,
+ * pitch and all.
  */
-export function snapToPath(
-  path: [number, number][],
-  p: [number, number],
-): { at: [number, number]; angleDeg: number; index: number; t: number } | null {
+export function snapToPath(path: [number, number][], p: [number, number]): { index: number; t: number } | null {
   if (path.length === 0) return null;
-  if (path.length === 1) return { at: path[0], angleDeg: 0, index: 0, t: 0 };
-  let best: { at: [number, number]; d2: number; i: number; t: number } | null = null;
+  let best = { index: 0, t: 0, d2: Number.POSITIVE_INFINITY };
   for (let i = 0; i < path.length - 1; i++) {
     const [a, b] = [path[i], path[i + 1]];
     const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
     const len2 = dx * dx + dy * dy;
     const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
-    const at: [number, number] = [a[0] + dx * t, a[1] + dy * t];
-    const d2 = (p[0] - at[0]) ** 2 + (p[1] - at[1]) ** 2;
-    if (!best || d2 < best.d2) best = { at, d2, i, t };
+    const d2 = (p[0] - (a[0] + dx * t)) ** 2 + (p[1] - (a[1] + dy * t)) ** 2;
+    if (d2 < best.d2) best = { index: i, t, d2 };
   }
-  const { at, i, t } = best!;
-  const angleDeg = (Math.atan2(path[i + 1][1] - path[i][1], path[i + 1][0] - path[i][0]) * 180) / Math.PI;
-  return { at, angleDeg: foldAngle(angleDeg), index: i, t };
+  return { index: best.index, t: best.t };
 }
 
 /** Folds a direction into (−90°, 90°], so a shape laid along a line never reads upside down. */

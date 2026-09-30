@@ -51,13 +51,11 @@ export function attachLineBlob(
   const element = lineBlobElement(placement.line, placement.color);
   let s = (fraction ?? 0.5) * length;
   let frame: number | null = null;
+  let intro: number | undefined;
 
   const marker = new maplibregl.Marker({ element, anchor: "center", draggable: true })
     .setLngLat(pointAtDistance(coords, s))
     .addTo(map);
-  // Only the grip catches the pointer; maplibre sets the host to `auto` after each drag.
-  const release = () => { element.style.pointerEvents = "none"; };
-  release();
 
   const orient = () => {
     const step = Math.min(10, length / 2);
@@ -78,7 +76,8 @@ export function attachLineBlob(
     let v = v0;
     let last = performance.now();
     const tick = (now: number) => {
-      const next = coast(s, v, now - last, length);
+      // A rAF timestamp can precede the performance.now() taken when it was requested.
+      const next = coast(s, v, Math.max(0, now - last), length);
       last = now;
       s = next.s;
       v = next.v;
@@ -98,6 +97,8 @@ export function attachLineBlob(
   let velocity = 0;
   let lastMove = 0;
   marker.on("dragstart", () => {
+    // A grab ends any coast, and the first-render glide if it has not begun.
+    window.clearTimeout(intro);
     stop();
     velocity = 0;
     lastMove = performance.now();
@@ -119,7 +120,6 @@ export function attachLineBlob(
     place();
   });
   marker.on("dragend", () => {
-    release();
     const mpp = metresPerPixel(map, marker.getLngLat().lat);
     if (performance.now() - lastMove < STALE_MS && Math.abs(velocity) / mpp > MIN_FLING_PX_MS) glide(velocity);
     else onRest(length > 0 ? s / length : 0.5);
@@ -128,7 +128,6 @@ export function attachLineBlob(
   map.on("move", orient);
   orient();
 
-  let intro: number | undefined;
   if (fraction === undefined && length > 0 && !prefersReducedMotion()) {
     // Somewhere in the middle half, but visibly away from the start point.
     const offset = (0.12 + Math.random() * 0.13) * (Math.random() < 0.5 ? -1 : 1);

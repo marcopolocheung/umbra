@@ -55,19 +55,26 @@ export function mapPinElement(variant: MapPinVariant, label: string, text = ""):
  * `lineBulletInk` measures readable on that colour; where neither reaches 4.5:1
  * it sits on a small casing disc instead.
  *
- * Only a 44px disc at the centre catches the pointer (it is draggable along the
- * ride); the rest of the host lets the map keep its gestures. A DOM marker, never
- * a canvas layer, so the shadow sampler's readback cannot see it (invariant #5).
+ * Only the 44px grip at its centre takes the pointer (it is draggable along the
+ * ride); the map keeps its gestures everywhere else. A DOM marker, never a
+ * canvas layer, so the shadow sampler's readback cannot see it (invariant #5).
  */
 export function lineBlobElement(line: string, color: string): HTMLDivElement {
   const css = lineCssColor(color);
   const ink = lineBulletInk(css);
   const size = BLOB_HALF_LENGTH * 2;
+  // The host is the 44px grip, the only part that takes the pointer; the
+  // swelling hangs outside it and never does. maplibre re-enables pointer
+  // events on its marker element after every press, so the host must be
+  // exactly the target — anything larger would start eating map gestures.
   const host = document.createElement("div");
   host.setAttribute("role", "img");
   host.setAttribute("aria-label", `Line ${line}`);
   host.dataset.line = line;
-  host.style.cssText = `width:${size}px;height:${size}px;position:relative;pointer-events:none;`;
+  host.style.cssText = `
+    width:44px;height:44px;position:relative;cursor:grab;touch-action:none;
+    display:flex;align-items:center;justify-content:center;
+  `;
 
   const svgNs = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNs, "svg");
@@ -75,7 +82,7 @@ export function lineBlobElement(line: string, color: string): HTMLDivElement {
   svg.setAttribute("width", String(size));
   svg.setAttribute("height", String(size));
   svg.setAttribute("aria-hidden", "true");
-  svg.style.cssText = "position:absolute;inset:0;overflow:visible;pointer-events:none;";
+  svg.style.cssText = `position:absolute;left:${22 - BLOB_HALF_LENGTH}px;top:${22 - BLOB_HALF_LENGTH}px;overflow:visible;pointer-events:none;`;
   const blob = document.createElementNS(svgNs, "path");
   blob.setAttribute("d", blobOutline(line));
   blob.setAttribute("fill", css);
@@ -83,22 +90,14 @@ export function lineBlobElement(line: string, color: string): HTMLDivElement {
   svg.appendChild(blob);
   host.appendChild(svg);
 
-  const grip = document.createElement("div");
-  grip.dataset.part = "grip";
-  grip.style.cssText = `
-    position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
-    border-radius:var(--radius-circle);pointer-events:auto;cursor:grab;touch-action:none;
-    display:flex;align-items:center;justify-content:center;
-  `;
   const letter = document.createElement("span");
   letter.style.cssText = `
-    font-family:var(--font-label);font-size:11px;font-weight:800;line-height:1;
+    position:relative;font-family:var(--font-label);font-size:11px;font-weight:800;line-height:1;
     font-variant-numeric:tabular-nums;color:${ink ? `var(--color-line-ink-${ink})` : "var(--color-map-route)"};
     ${ink ? "" : "background:var(--color-map-casing);border-radius:var(--radius-full);padding:3px 5px;"}
   `;
   letter.textContent = line;
-  grip.appendChild(letter);
-  host.appendChild(grip);
+  host.appendChild(letter);
   return host;
 }
 
