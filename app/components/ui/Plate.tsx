@@ -20,7 +20,8 @@ export default function Plate({ as = "div", tone = "panel", tilt = false, classN
   return createElement(
     as,
     { ...rest, className: classes },
-    <span className="umbra-plate__ground" aria-hidden="true" />,
     children,
+    // Last, so `space-y`/`divide-y` and `:first-child` on the content ignore it.
+    <span className="umbra-plate__ground" aria-hidden="true" />,
   );
 }

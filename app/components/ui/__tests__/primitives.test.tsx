@@ -27,6 +27,8 @@ function rules(css: string): Rule[] {
   let start = 0;
   for (let i = 0; i < text.length; i++) {
     if (text[i] === "{") {
+      // Nested style rules would fold a parent's declarations into a child selector.
+      if (stack.length && !stack[stack.length - 1].startsWith("@")) throw new Error("nested CSS rule in the registry");
       stack.push(text.slice(start, i).trim());
       start = i + 1;
     } else if (text[i] === "}") {
@@ -42,43 +44,63 @@ function rules(css: string): Rule[] {
 }
 
 const REGISTRY = rules(registryCss);
-const ROOT_CLASSES = ["umbra-plate", "umbra-kicker", "umbra-tag", "umbra-line-bullet", "umbra-stamp-badge", "umbra-grain"];
+const SMALL_HOSTS = ["umbra-kicker", "umbra-tag", "umbra-line-bullet", "umbra-stamp-badge", "umbra-grain"];
+const PRIMITIVE = /\.umbra-(plate|kicker|tag|line-bullet|stamp-badge|grain)/;
 
 describe("primitive registry rules", () => {
-  it.each(ROOT_CLASSES)("gives .%s a visible inner focus stroke", (cls) => {
+  it.each(SMALL_HOSTS)("rings a focused .%s in page ink outside its square box", (cls) => {
     const focus = REGISTRY.find((r) => r.selector.includes(`.${cls}`) && r.selector.includes(":focus-visible"));
-    expect(focus?.body).toMatch(/outline:\s*2px solid currentColor/);
-    expect(focus?.body).toMatch(/outline-offset:\s*-\d+px/);
+    expect(focus?.body).toMatch(/outline:\s*2px solid var\(--color-ink\)/);
+    expect(focus?.body).toMatch(/outline-offset:\s*2px/);
   });
 
-  it("rotates only the painted plate and non-interactive stamps, never a host box", () => {
-    const rotated = REGISTRY.filter((r) => /(^|[\s;])rotate:/.test(r.body) && r.selector.includes("umbra-")).map((r) => r.selector);
-    expect(rotated.sort()).toEqual([".umbra-plate--tilt > .umbra-plate__ground", ".umbra-stamp-badge"]);
+  it("strokes a focused plate in full ink between two nested clipped quads", () => {
+    const focus = REGISTRY.find((r) => r.selector === ".umbra-plate:focus-visible");
+    expect(focus?.body).toMatch(/--plate-stroke:\s*currentColor/);
+    const both = REGISTRY.find((r) => r.selector.includes(".umbra-plate__ground::before") && r.selector.includes(".umbra-plate__ground::after"));
+    expect(both?.body).toMatch(/clip-path:\s*var\(--plate-clip\)/);
+    expect(REGISTRY.find((r) => r.selector === ".umbra-plate__ground::before")?.body).toMatch(/background:\s*var\(--plate-stroke\)/);
+    expect(REGISTRY.find((r) => r.selector === ".umbra-plate__ground::after")?.body).toMatch(/inset:\s*[1-9]px;\s*background:\s*var\(--plate-fill\)/);
+  });
+
+  it("rotates only inner layers, never a host box", () => {
+    const rotated = REGISTRY.filter((r) => PRIMITIVE.test(r.selector) && /(^|[\s;])(rotate:|transform:[^;]*rotate)/.test(r.body)).map(
+      (r) => r.selector,
+    );
+    expect(rotated.sort()).toEqual([".umbra-plate--tilt > .umbra-plate__ground", ".umbra-stamp-badge__ink"]);
+  });
+
+  it("hands a coloured plate's ink to bare labels and stamps set on it", () => {
+    const inherit = REGISTRY.find((r) => r.selector.startsWith(":is(.umbra-plate--shade, .umbra-plate--ink)"));
+    expect(inherit?.selector).toContain(".umbra-kicker");
+    expect(inherit?.selector).toContain(".umbra-stamp-badge__ink");
+    expect(inherit?.body).toMatch(/color:\s*inherit/);
   });
 
   it("clips the plate's ground layer, not the element that carries content and focus", () => {
     const clipped = REGISTRY.filter((r) => r.body.includes("clip-path: var(--plate-clip)")).map((r) => r.selector);
-    expect(clipped).toEqual([".umbra-plate__ground::before"]);
+    expect(clipped).toEqual([".umbra-plate__ground::before,\n  .umbra-plate__ground::after"]);
   });
 
   it("animates stamp and ink reveal only when motion is welcome", () => {
     for (const cls of [STAMP, INK_REVEAL]) {
       const animated = REGISTRY.filter((r) => r.selector === `.${cls}`);
       expect(animated).toHaveLength(1);
-      expect(animated[0].body).toMatch(/animation:/);
+      // `backwards`, not `both`: a held final clip-path would cut off hard shadows.
+      expect(animated[0].body).toMatch(/animation:[^;]*\bbackwards;/);
       expect(animated[0].within).toEqual(["@media (prefers-reduced-motion: no-preference)"]);
     }
   });
 
   it("drops the grain under reduced transparency and keeps it beneath content", () => {
     const grain = REGISTRY.filter((r) => r.selector === ".umbra-grain::before");
-    expect(grain.find((r) => r.within.length === 1)?.body).toMatch(/z-index:\s*-1/);
-    expect(grain.find((r) => r.within.includes("@media (prefers-reduced-transparency: reduce)"))?.body).toMatch(/display:\s*none/);
+    expect(grain.find((r) => r.within[0] === "@layer components")?.body).toMatch(/z-index:\s*-1/);
+    expect(grain.find((r) => r.within[0]?.includes("(prefers-reduced-transparency: reduce)"))?.body).toMatch(/display:\s*none/);
   });
 });
 
 describe("Plate", () => {
-  it("paints an aria-hidden ground behind content on a square host", () => {
+  it("paints an aria-hidden ground after the content on a square host", () => {
     render(
       <Plate as="section" tone="shade" tilt aria-label="Shade walk">
         <p>18 min</p>
@@ -86,11 +108,11 @@ describe("Plate", () => {
     );
     const plate = screen.getByRole("region", { name: "Shade walk" });
     expect(plate.className).toBe("umbra-plate umbra-plate--shade umbra-plate--tilt");
-    const ground = plate.firstElementChild as HTMLElement;
+    const ground = plate.lastElementChild as HTMLElement;
     expect(ground.className).toBe("umbra-plate__ground");
     expect(ground.getAttribute("aria-hidden")).toBe("true");
     expect(ground.textContent).toBe("");
-    expect(screen.getByText("18 min").parentElement).toBe(plate);
+    expect(screen.getByText("18 min")).toBe(plate.firstElementChild);
   });
 
   it("is a flat panel by default and passes focusability through", () => {
@@ -135,28 +157,30 @@ describe("Tag", () => {
 
 describe("LineBullet", () => {
   it("always shows the identifier and reads as a line to assistive tech", () => {
-    render(<LineBullet line="yellow" id="Q" label="Uptown" data-testid="bullet" />);
-    const bullet = screen.getByTestId("bullet");
+    render(<LineBullet line="yellow" code="Q" label="Uptown" id="q-line" />);
+    const bullet = document.getElementById("q-line") as HTMLElement;
     expect(bullet.className).toBe("umbra-line-bullet umbra-line-bullet--yellow");
-    expect(bullet.textContent).toBe("Line QUptown");
+    expect(bullet.textContent).toBe("Line Q Uptown");
     expect(screen.getByText("Q").className).toBe("umbra-line-bullet__id");
   });
 
   it("omits the label slot when there is no label", () => {
-    render(<LineBullet line="green" id="4" data-testid="bullet" />);
+    render(<LineBullet line="green" code="4" data-testid="bullet" />);
     expect(screen.getByTestId("bullet").querySelector(".umbra-line-bullet__label")).toBeNull();
   });
 });
 
 describe("StampBadge", () => {
-  it("stamps in on mount in its tone's ink", () => {
+  it("stamps in an inked ring inside a square host", () => {
     render(<StampBadge tone="sun">Arrived</StampBadge>);
-    expect(screen.getByText("Arrived").className).toBe(`umbra-stamp-badge umbra-stamp-badge--sun ${STAMP}`);
+    const ink = screen.getByText("Arrived");
+    expect(ink.className).toBe(`umbra-stamp-badge__ink ${STAMP}`);
+    expect(ink.parentElement?.className).toBe("umbra-stamp-badge umbra-stamp-badge--sun");
   });
 
   it("uses plain ink by default", () => {
     render(<StampBadge>Shaded</StampBadge>);
-    expect(screen.getByText("Shaded").className).toBe(`umbra-stamp-badge ${STAMP}`);
+    expect(screen.getByText("Shaded").parentElement?.className).toBe("umbra-stamp-badge");
   });
 });
 
