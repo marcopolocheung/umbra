@@ -1,172 +1,63 @@
-# Umbra Design Language — canonical spec (Track U)
+# Umbra redesign 2.0 — design language
 
-**Chosen: Canopy** (owner's decision during the U2 review, 2026-09-20 — the sign-off recorded
-for Strata/Carmine is superseded by this sentence; see `docs/design/decision.md` §0 and §4).
-This file is the single source of truth for Umbra's UI, and `app/globals.css` is its token
-registry — the two carry the same binding rules; change them only together, in the same PR.
+**Adopted on merge of the R0 PR.** Until that merge, the Canopy version on `main` is binding. This file becomes Umbra's canonical visual spec at merge; [the R0 decision record](decision.md#umbra-redesign-20--r0-decision-2026-09-29) settles the choices and contrast calculations, and the [in-repo reference](redesign-2.0/reference.html) supplies the broader print vocabulary. R1–R9 move the app to this spec in order. During that migration, existing runtime values stay valid until their checkpoint replaces them; no docs-only change is a claim that the UI already changed.
 
-Canopy is the restrained-structure / warm-truth synthesis: an evidence-first blue-green
-foundation for the data, one warm allowance spent exactly where the product's metric is —
-sun exposure — and zero decorative accents anywhere else.
+## Meaning, surfaces, and theme
 
-## Binding rules (make these explicit, then follow them)
+- **Sun/exposure/heat:** one signal-orange ramp. Orange means the sun, including the now-marker, sun share of a split bar, UV and heat data, and the arrival sun-time stamp. Orange is never a generic recommended badge, CTA or decorative line.
+- **Shade:** cool blue ramp, visually aligned with the painted blue shadow. The map shadow renderer stays blue-dominant after compositing as required by `CLAUDE.md` invariant #5; R4 verifies every basemap and paint change. **Walking route:** neutral ink line by day, cream by night, with a dark casing and separate start/end marks, so it does not borrow the shade hue.
+- **Trees/canopy:** green ramp. The existing map paint is a renderer constant until R4 calibrates it; app chips, cards and legend use the matching semantic role. **Rain/shelter:** purple ramp. **Danger/errors:** red ramp. Transit lines may use blue, green and yellow accents only to identify actual lines; each line also has a letter/number bullet.
+- **Grounds:** day paper `#EFE4D2` with panel `#F8EFDF` and ink `#1B1512`; night warm black `#0E0C0B` with panel `#171412` and cream ink `#F4E6D1`. Neither theme relies on transparent cards over the map for reading.
+- **Automatic theme:** day when the app's solar altitude for the selected map place/time is above 0°, night at or below 0°. Settings may force either **UI** theme and persist it. The **basemap always follows solar altitude**, so forcing dark UI during the day retains the daylight basemap and its tested shadow pixels. The Settings copy must explain this scope. R2 implements the state and tests; R4 implements basemap switching.
 
-1. **The one warm colour is sun data.** `--color-sun` `#A15C00` appears only where the
-   sentence is about sun/exposure/heat: the now-marker, solar-load pills, UV columns and
-   sun figures. It is never chrome decoration — no amber eyebrows, tabs, badges or CTAs.
-2. **Data states have fixed colours.** Route `--color-route` `#1D6EE0`, sun
-   `--color-sun` `#A15C00`, shade `--color-shade` `#2A6A4E`, danger `--color-danger`
-   `#B3261E`; chrome (eyebrows, rank chips, selection, pins, primary actions) stays in
-   ink/route/shade — blue-green-ink, never warm, no red.
-3. **Surfaces are paper + raised white.** Canvas `--color-canvas` `#F7F8F4`, cards and
-   popups `--color-raised` `#FFFFFF`, ink `--color-ink` `#1C2321`. Backdrop blur is allowed
-   on exactly one element — the over-map search pill at ≥70 % white — everything else is
-   solid (research note (c): glare eats translucent text).
-4. **Radius is 12 / 16 / 20, plus one 999 pill.** Controls/cards 12, larger cards 16, the
-   sheet 20; the search pill (and small status chips) may be `rounded-full` and nothing
-   else may. The registry pins the `rounded-*` utilities onto this scale.
-5. **The renderer constants stay put.** The shadow layer's blue and canopyPaint's
-   sea-green `#2E8B57` are data-plane colours pinned by canvas tests under CLAUDE.md
-   invariant #5; `--color-canopy-map` exists only so the legend mirrors what the map paints.
-   `--color-shed-map` is the sidewalk-shed fill (ink, drawn at 30%), pinned the same way by
-   `shedLayer.test.ts`; it is a data plane, not chrome, even though it shares ink's value.
+### Five-step ramps and line quartets
 
-## Colour roles (registry: `app/globals.css` `@theme`)
+These are source values; R1 registers role names, not generic color utilities. Steps are light / bright / base / dark / darker. Choose text steps by theme and test them on the actual surface: the contrast table in `decision.md` records every step on both grounds.
 
-| Token | Value | Role |
+| Meaning | Light | Bright | Base | Dark | Darker | Text role |
+|---|---|---|---|---|---|---|
+| Sun | `#FFD18D` | `#F08A5D` | `#DD6638` | `#A8411A` | `#6F3806` | Night bright; day darker |
+| Shade | `#BDCBFF` | `#7A9EDD` | `#4D75C3` | `#4156A0` | `#243265` | Night light on panels; day darker |
+| Canopy | `#D3FC96` | `#97DA79` | `#649717` | `#4C7113` | `#1F3400` | Night bright; day darker |
+| Rain | `#E7C8FF` | `#CE90FF` | `#8A55B3` | `#613484` | `#362147` | Night bright; day dark |
+| Danger | `#FFB4A8` | `#ED4A4B` | `#D73232` | `#A91C25` | `#5F0C17` | Night light; day darker |
+
+For actual transit line bullets, the reference quartets are blue `#60CDE3 / #10130D / #0C1B1D / #1A3237`, green `#97DA79 / #0E1A08 / #101B0A / #2C3D24`, and yellow `#FFE14D / #0B0B0B / #1F1C0C / #3C361A` (accent / badge ink / ground / plate). R1 may adapt the ground and plate to the day theme while preserving the line's identity and contrast. A colored line alone must never be the only distinction; show its identifier.
+
+### Contrast and outdoor reading
+
+- Small text must reach **4.5:1**, essential graphical boundaries **3:1**; primary reading targets **7:1**. Captions are **at least 11px**, including map metadata. Primary ink is 15.88:1 on night ground and 14.36:1 on day ground.
+- Use full ink for primary numbers and copy. The reference's 50% cream is only 4.55:1 on night ground and 3.26:1 on day ground; its 30% and 20% tiers fail text contrast on both. The adopted body tier is at least 75% ink on a solid ground (9.11:1 night, 7.04:1 day), and it is retested on panels. The 30%/20% tiers are decorative only, never captions, placeholders or disabled labels needed to operate the app.
+- For map overlays, use a solid ground and contrast against that ground. No grain or translucent veil covers the map canvas or obscures the path. If a data hue is too faint as text on one ground, use the theme's text step or ink-on-fill pair; do not rely on font weight to excuse a failing ratio.
+
+## Type and composition
+
+| Role | Face | Use |
 |---|---|---|
-| `--color-canvas` | `#F7F8F4` | Paper app background, chip fills on raised cards |
-| `--color-raised` | `#FFFFFF` | Cards, sheets, popups |
-| `--color-ink` | `#1C2321` | Primary text (16.0:1 on raised) |
-| `--color-ink-muted` | `#525E58` | Secondary text (6.8:1) |
-| `--color-ink-faint` | `#6C756D` | Placeholders, disabled glyphs (4.8:1) |
-| `--color-hairline` | `#E2E7DF` | Borders; preferred over shadows |
-| `--color-hairline-strong` | `#BFC8BC` | Focused/stronger dividers |
-| `--color-route` | `#1D6EE0` | Route data, selection of route cards, links (4.8:1) |
-| `--color-sun` | `#A15C00` | **Sun/exposure/heat only** (5.2:1) |
-| `--color-shade` | `#2A6A4E` | Shade/tree/arrival data, the "go" CTA (6.4:1) |
-| `--color-danger` | `#B3261E` | Errors — a state, not chrome |
-| `--color-route/sun/shade-strong, -soft, -mid` | — | Hover, soft-fill and over-map variants of the three data hues |
-| `--color-on-ink/route/sun/shade/danger` | light | Text on solid fills |
+| Display | Grenze 600 | Place names, postcard titles, guidebook headings. No outdoor numeric verdicts. |
+| Stamped labels | Archivo Expanded 800 | Uppercase kickers, station/line bullets, short badges. Keep 11px floor. |
+| Reading | Jost 400/500/600 | Body, controls, source and uncertainty lines. |
+| Numbers | Archivo Expanded 800 with `font-variant-numeric: tabular-nums` | Duration, percent, time, distance and other aligned verdicts. Never tilt. |
+| Compact numeric keys | IBM Plex Mono 400 | Timetable ticks and provenance when ≥11px and contrast passes. |
 
-Soft fills and alpha washes are `color-mix(in srgb, var(--color-X) N%, transparent)` or the
-`--color-X-soft` tokens — never new literal `rgba()` values in components.
+All four families use openly licensed, self-hosted font files. [The specimen source and licenses](candidates/redesign-2.0/preview.html) are committed with R0; R1 installs and preloads the production subset, removing the current Inter Google Fonts links. The preview is a design specimen, not a shipped component library.
 
-## Type scale
+Surfaces borrow recognizable printed formats: a route card is a transit strip, the timeline a timetable ruler, the hourly strip a departures board, the search list a directory, a place a guidebook entry, an itinerary a numbered leaflet, arrival a postcard, and saved routes ticket stubs. The format helps scanning; it does not add a second number or decorative metric. At 390×844 the selected route card still fits the sheet's first snap point after R5.
 
-| Step | Token | Sizing | Use |
-|---|---|---|---|
-| Verdict | `--text-verdict` | 22 / 700, Inter Tight, `-2%` tracking | The one display voice: the headline number |
-| Body | `--text-body` | 15 / 22, Inter | Paragraph text |
-| Small | `--text-small` | 13 / 18, Inter | Dense card reading |
-| Eyebrow | `--text-eyebrow` | 11 / 600, Inter, uppercase, tracked | Section labels |
-| Caption | `--text-caption` | 10, Inter, tabular | Map-adjacent metadata |
-
-Numbers use `tabular-nums`. One display cut (Inter Tight) and one body font (Inter) —
-see `index.html` fonts.
-
-## Radius steps, spacing, elevation
-
-- **Radius:** 12 (controls/cards) / 16 (large cards) / 20 (sheet); `rounded-full` exists for
-  the search pill and small status chips only (rule 4).
-- **Spacing:** 4 px grid; `--spacing-sidebar: 408px`, `--spacing-legend` and
-  `--spacing-panel-min` are the documented layout exceptions.
-- **Elevation:** two levels, hairlines preferred over shadows —
-  `--shadow-level-1: 0 1px 2px rgba(28,35,33,.10)` (attached),
-  `--shadow-level-2: 0 12px 28px rgba(28,35,33,.16)` (floating). The legacy
-  `shadow-sm…2xl` names all resolve onto those two levels.
-
-## Icons
-
-Material Symbols Outlined only (`index.html`), `FILL 0 / wght 400 / opsz 24` default, `FILL 1`
-for the active/selected glyph, 16–24 px with a ≥44 px touch target around every pressable
-glyph. Icon colour follows its element's role: ink at rest, route blue where the control
-selects route data, sun only when the glyph reads a sun metric.
-
-## Copy voice (D6 is non-negotiable)
-
-Verdict first (`18 min — 86% shaded`), the number with its scope second, method link third.
-Every user-facing number must trace to a method with uncertainty stated; no marketing words,
-no lie-flat adjectives. Per surface (U5):
-
-- **Route card:** duration is the verdict row; the trade-off line prefers a named condition
-  over a bare delta where the delta does two jobs ("long walk between stops, +12 min", the
-  Transit-app voice) — the number quantifies, the name warns. The provenance caption joins
-  at most three facts with " · "; a fourth starts a second line, never a fourth dot.
-  Captions and tile labels sit at an **11px floor** — 9–10px is below outdoor legibility.
-- **Assistant answers:** lead with the recommendation in one sentence, then the reasons;
-  at most three itinerary options, best first (Miller). Receipt captions also 11px.
-- **Place detail:** no fabricated data — a rating that does not exist is never shown as one,
-  and an absent review source is one honest line, not invented bars and quotes.
-- **Arrival:** one peak-end sentence states what the trip earned ("340 m route — 2 of 6 min
-  in sun at a fixed 5.0 km/h pace"), stating the pace basis and, on a transit trip, the
-  scope ("ride not counted") — neither travels with the number on its own. U7 splits it
-  into the display voice (the sun-minutes figure as the verdict line) over a split bar
-  in the route card's visual language (note: the card's bar fills by distance share, the
-  arrival bar by time share — the same mark, two stated bases), with the pace/scope
-  caption beneath — no number appears twice on the card, and unknown exposure still gets
-  the honest line and no bar.
-- **Hourly strip:** "Sun by hour", verdict "most shadowed around 14:00", unsampled hours say
-  "checking…" rather than reading as zero.
-
-The guardrail binds all waves.
+Use a small irregular quadrilateral for **decorative** kicker plates and stamps; tilt about 1° where it helps the pasted-paper feel. Shadows are offset with **zero blur**. Decorative grain stays inside paper surfaces. Numbers, inputs, map controls, route geometry, aligned rows and the map canvas are square, untextured and unrotated. Interactive hit areas stay rectangular and ≥44×44px even if their visual plate is clipped. A clipped focus target needs a visible inner focus stroke, because the outer outline may be cut away.
 
 ## Component recipes
 
-- **Route card (U3):** recommended-only eyebrow (route blue — the ranking mark) → label +
-  duration verdict (right, bold tabular) → shade verdict + coverage bar + distance → one
-  trade-off line against the shortest complete route → provenance caption (source · scope ·
-  stated pace). Everything else — metric tiles, legs, transit detail, the conditions/dose
-  block, save/export — collapses into the selected card only, below a hairline divider.
-  Selected card: route-blue `border-left`, L2 shadow; the shadow-coverage bar is the card's
-  hero mark (U7): 12 px tall, rounded, its track the sun portion as the sun wash
-  (`--color-sun-soft` — sun data, so the warm hue is legal there) with the shade-green
-  fill covering it, so the shade/sun split reads at arm's length; rain mode keeps the
-  neutral ink-wash track with a route-mid fill (shelter is not sun data). The duration
-  verdict is set in the display voice (`--text-verdict`, Inter Tight 700, tabular) — the
-  number people decide with. The card never uses warm colours for ranking.
-  Actions are labelled buttons ≥44 px on the selected card — icon-only targets and
-  hover menus are banned. Once options exist the planning form collapses to a one-line
-  trip bar (Edit reopens it), so the stack starts inside the sheet's first snap point.
-- **Timeline:** one time readout; the now-marker is the **only** amber element (sun data);
-  sunrise/sunset ticks are sun/route coloured data marks; day ticks are ink washes. A thin
-  sun-arc glyph rides the ruler (horizon line + quadratic sun path, sun dot at the slider's
-  time, absent at night) — sun position, so it takes the sun hue; it is data, not chrome,
-  and the only ornament-looking element the language allows (U4).
-- **Search:** the one 999-radius pill, ≥70 % white with its allowed blur, route-blue
-  highlight on the active row; result rows on raised with hairline separators. While
-  typing, the dropdown shows **Foursquare typeahead only** (the one autocomplete path —
-  OSMF policy bars Nominatim autocomplete): each row is photo (or a canvas disc with the
-  location glyph) → name over one `category · hours` caption line, with the rating
-  (star + tabular figure on a stated /10 scale) and the distance stacked on the right.
-  An explicit submit **races both providers** and merges into one distance-ranked
-  list — Nominatim for addresses and streets, Foursquare for POIs — deduplicated by
-  name + proximity (the Nominatim row wins, it carries the bounding box); a provider
-  failing silently costs its half, never the list. Enter on the typeahead takes the
-  highlighted suggestion; the magnifier always submits the merged search.
-- **Pins & popups:** origin pin ink, destination pin route blue, assistant itinerary
-  pins route blue (numbered teardrops, 28 px, on-ink numerals, L1 shadow), user-location
-  dot route blue; popups are raised surfaces with a hairline border and L2 shadow, ink
-  text (popup CSS lives in `globals.css` under MapLibre selectors). Receipt captions
-  state the source and the evidence age — the observed-at instant is simulated map
-  time in UTC, so it is never rendered as a wall-clock time.
+- **Route card:** small neutral kicker plate → duration and shade verdict in square tabular numbers → cool/sun split bar with its basis **distance share** stated → one plain trade-off line → source, scope and uncertainty caption. When the sun is below the horizon, omit the daylight shade percentage and split bar and say why. Recommendation is a shade or neutral label, never orange. Transit legs get line bullets with identifiers.
+- **Timeline:** one selected local time, a sun-path diagram, and a timetable ruler. The orange dot is solar data; unsampled or unavailable periods have explicit labels rather than reading as zero. A day/night change follows selected time, not wall-clock time.
+- **Search:** one solid search pill, ≥44px tall, with a directory-style result list. Provider policy remains binding: Nominatim runs on explicit submit, while permitted Foursquare suggestions may appear during typing. Never imply a missing rating or provider result exists.
+- **Arrival:** postcard title and umbra-disc stamp above one sun-time verdict. Its caption keeps the fixed pace, walk scope, any excluded transit ride and shadow-estimate uncertainty with the number. If exposure is unknown, no bar or invented sun minutes appear.
+- **Map:** day paper basemap and night style are an R4 change. Pins, popups, legend and neutral cased route line must remain legible over both. R4 reruns canvas tests for `isBlueDominantShadowPixel`, sampling calibration and canopy water thresholds before the dark basemap ships.
 
-## Enforcement path
+## Voice, icons, motion, and enforcement
 
-- `npm run design:check` (`scripts/verify/design-tokens.mjs --all`) exits 0: no literal
-  hex/`rgba()` and no numeric arbitrary values outside the registry, across `app/**`.
-  Comments are stripped before scanning so issue references don't read as colours.
-- `.claude/rules/design-language.md` applies per file; the `lint-changed` PostToolUse hook
-  reports offending changed lines immediately but never blocks.
-- `interface-reviewer` checks diffs against this doc plus the outdoor standard;
-  `/gates` before any PR. Phone before/after shots ship with the design PR under
-  `docs/design/shots/u<n>/` — in this public mirror the U0 screenshot harness is
-  deliberately not carried over, so the shot runner lives only in the private repo.
+The voice is a deadpan tour guide in **kickers and empty states only**. Verdict first, then what the number covers, then the method or uncertainty. No marketing adjectives. Every user-facing number has a traceable basis; the illustrative values in [R0 previews](candidates/redesign-2.0/day-phone.png) are explicitly labelled as examples, not app output. The existing route, search, assistant and arrival truth rules survive the visual migration.
 
-## Migration status
+Material Symbols remain through R8 with the new weights. R9 introduces original sun, shade, tree, rain, transit and walk sigils and repeats one original umbra disc across logo, now marker, user dot and arrival. No third-party brand assets or artwork. Motion is a 0.1/0.2/0.3-second stamp or ink reveal on a small number of verdict and arrival moments; reduced motion removes those effects. Reduced transparency removes grain. Neither preference hides focus, numbers or source text.
 
-U2 first landed Strata/Carmine and was reworked to Canopy at the owner's review (the
-`--md-*` layer and glass helpers are deleted, `NavigationPanel.tsx` removed, every
-inventoried literal migrated, `design:check` exits 0). Component-level adoption of the type
-steps and of the wire-level component recipes continues through U3–U6; until then this doc
-is the standard the `interface-reviewer` compares diffs against.
+R1 makes `app/globals.css` the registry for these roles and updates `npm run design:check`; component work then consumes roles rather than literal hex, radius, rotation or shadow values. Every UI checkpoint ships 390×844 day/night shots after R2, reviews bright-sun legibility and focus, and runs the four project gates. R4 alone changes basemap colors, and R9 removes remaining Canopy names after the final audit. The owner merges each checkpoint separately; no session merges its own PR.

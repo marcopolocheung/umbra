@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Umbra redesign 2.0 — R0 phone vignettes</title>
+<style>
+@font-face{font-family:Grenze;src:url('./fonts/grenze-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Archivo;src:url('./fonts/archivo-expanded-800.woff2') format('woff2');font-weight:800;font-stretch:125%;font-display:swap}
+@font-face{font-family:Jost;src:url('./fonts/jost-variable.woff2') format('woff2');font-weight:400 600;font-display:swap}
+@font-face{font-family:PlexMono;src:url('./fonts/ibm-plex-mono-400.woff2') format('woff2');font-weight:400;font-display:swap}
+:root{
+  --ground:#efe4d2;--panel:#f8efdf;--ink:#1b1512;--muted:#534d45;
+  --rule:#a99c87;--shade:#4156a0;--shade-text:#243265;--shade-light:#7a9edd;--shade-wash:#dce4f3;
+  --sun:#6f3806;--sun-bar:#dd6638;--sun-wash:#f2c5a8;
+  --hard:#866b53;--on-shade:#f4e6d1;
+}
+:root[data-theme="night"]{
+  --ground:#0e0c0b;--panel:#171412;--ink:#f4e6d1;--muted:#d0c3b2;
+  --rule:#62594e;--shade:#7a9edd;--shade-text:#bdcbff;--shade-light:#bdcbff;--shade-wash:#243265;
+  --sun:#f08a5d;--sun-bar:#dd6638;--sun-wash:#6f3806;
+  --hard:#080706;--on-shade:#0e0c0b;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:400 14px/1.36 Jost,system-ui,sans-serif;background:var(--ground);color:var(--ink)}
+.phone{width:390px;height:844px;overflow:hidden;background:var(--ground);padding:22px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.mast{height:27px;display:flex;align-items:center;justify-content:space-between}
+.wordmark{font:600 26px/1 Grenze,Georgia,serif;letter-spacing:-.02em}
+.mast-tag{font:800 11px/1 Archivo,sans-serif;font-stretch:125%;letter-spacing:.09em;text-transform:uppercase}
+.panel{background:var(--panel);border:1px solid var(--rule)}
+.eyebrow{font:800 11px/1.1 Archivo,sans-serif;font-stretch:125%;letter-spacing:.07em;text-transform:uppercase}
+.paper-label{display:inline-block;background:var(--ink);color:var(--ground);padding:6px 8px 5px;clip-path:polygon(0 8%,99% 0,100% 92%,2% 100%);transform:rotate(-1deg)}
+.small{font-size:11px;line-height:1.3;color:var(--muted)}
+.number{font:800 23px/1 Archivo,sans-serif;font-stretch:125%;font-variant-numeric:tabular-nums;letter-spacing:-.04em}
+.section-title{font:600 19px/1.05 Grenze,Georgia,serif;margin:0}
+.search{height:49px;display:flex;align-items:center;gap:11px;padding:0 14px;border:2px solid var(--ink);border-radius:999px;background:var(--panel);box-shadow:4px 4px 0 var(--hard)}
+.search-icon{width:17px;height:17px;border:2px solid currentColor;border-radius:50%;position:relative;flex:none}
+.search-icon:after{content:"";position:absolute;width:7px;height:2px;background:currentColor;right:-6px;bottom:-3px;transform:rotate(45deg)}
+.search-placeholder{font-size:15px;color:var(--muted);flex:1}
+.search-key{font:400 11px/1 PlexMono,monospace;border:1px solid var(--rule);padding:4px 6px;color:var(--muted)}
+.route-card{height:220px;padding:15px 15px 12px;position:relative;box-shadow:6px 6px 0 var(--hard);display:flex;flex-direction:column;gap:7px}
+.route-top{display:flex;align-items:flex-start;justify-content:space-between}
+.route-title{font:600 22px/1 Grenze,Georgia,serif;margin:0}
+.route-badge{font:800 11px/1 Archivo,sans-serif;font-stretch:125%;letter-spacing:.03em;background:var(--shade);color:var(--on-shade);padding:8px 8px 7px;clip-path:polygon(0 8%,97% 0,100% 90%,3% 100%);transform:rotate(1deg)}
+:root[data-theme="night"] .route-badge{background:var(--ink);color:var(--ground)}
+.verdict{display:flex;align-items:baseline;gap:9px;margin-top:1px}
+.verdict .shade-text{font:800 15px/1 Archivo,sans-serif;font-stretch:125%;font-variant-numeric:tabular-nums;color:var(--shade-text)}
+.split{display:flex;height:13px;border:1px solid var(--ink);overflow:hidden;background:var(--sun-bar)}
+.split .shade{width:86%;background:var(--shade)}
+.legend{display:flex;justify-content:space-between;font:400 11px/1.15 PlexMono,monospace;color:var(--muted)}
+.legend strong{font-weight:400;color:var(--ink)}
+.route-footer{border-top:1px solid var(--rule);padding-top:7px;margin-top:auto}
+.timeline{height:174px;padding:13px 15px;display:flex;flex-direction:column;gap:6px}
+.timeline-head{display:flex;align-items:baseline;justify-content:space-between}
+.timeline-time{font:800 22px/1 Archivo,sans-serif;font-stretch:125%;font-variant-numeric:tabular-nums}
+.sunpath{height:31px;position:relative;overflow:hidden}
+.sunpath svg{width:100%;height:31px;display:block}
+.sunpath path{fill:none;stroke:var(--rule);stroke-width:1.5}
+.sunpath circle{fill:var(--sun-bar);stroke:var(--ink);stroke-width:1.4}
+.ticks{display:flex;align-items:end;justify-content:space-between;height:20px;position:relative;padding:0 6px;border-bottom:2px solid var(--ink)}
+.ticks span{height:7px;border-left:1px solid var(--ink)}
+.ticks .sun-tick{height:16px;border-left:3px solid var(--sun-bar)}
+:root[data-theme="night"] .ticks .sun-tick{height:7px;border-left:1px solid var(--ink)}
+:root[data-theme="night"] .ticks span:last-child{height:16px;border-left:3px solid var(--ink)}
+.tick-labels{display:flex;justify-content:space-between;font:400 11px/1 PlexMono,monospace;color:var(--muted)}
+.arrival{height:198px;padding:14px 16px;position:relative;display:flex;flex-direction:column;gap:8px;box-shadow:6px 6px 0 var(--hard)}
+.arrival-kicker{max-width:205px}
+.arrival-title{font:600 25px/1 Grenze,Georgia,serif;margin:0;max-width:240px}
+.arrival-verdict{font:800 20px/1 Archivo,sans-serif;font-stretch:125%;font-variant-numeric:tabular-nums;color:var(--sun)}
+.arrival-stamp{position:absolute;right:16px;top:17px;width:57px;height:57px;border:3px solid var(--sun-bar);border-radius:50%;transform:rotate(8deg)}
+.arrival-stamp:before{content:"";position:absolute;inset:8px;border-radius:50%;background:var(--sun-bar)}
+.arrival-stamp:after{content:"";position:absolute;width:22px;height:31px;right:6px;top:2px;border-radius:50%;background:var(--panel)}
+.arrival-caption{max-width:280px}
+.doc-note{margin-top:auto;font:400 11px/1.2 PlexMono,monospace;color:var(--muted)}
+.split[hidden],.legend[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.paper-label,.route-badge,.arrival-stamp{transform:none}}
+</style>
+</head>
+<body>
+<main class="phone" aria-label="Illustrative Umbra redesign 2.0 phone preview">
+  <div class="mast"><span class="wordmark">Umbra</span><span class="mast-tag" id="theme-caption">City field guide</span></div>
+  <section class="search" data-vignette="search" aria-label="Search pill preview"><span class="search-icon" aria-hidden="true"></span><span class="search-placeholder">Search places or addresses</span><span class="search-key">↵</span></section>
+  <section class="route-card panel" data-vignette="route" aria-label="Route card preview">
+    <div class="route-top"><span class="eyebrow paper-label">Keep cool on</span><span class="route-badge">More shade</span></div>
+    <h2 class="route-title">Broadway to the plaza</h2>
+    <div class="verdict"><span class="number">18 min</span><span class="shade-text">86% shaded</span></div>
+    <div class="split" aria-label="Illustrative distance split: 86 percent shade, 14 percent sun"><span class="shade"></span></div>
+    <div class="legend"><span><strong>■</strong> shade · distance share</span><span><strong>■</strong> sun</span></div>
+    <div class="small" id="route-summary">1.4 km walk · open sun on the last block</div>
+    <div class="route-footer small" id="route-provenance">Illustrative only · map shadow estimate; tree cover may be incomplete.</div>
+  </section>
+  <section class="timeline panel" data-vignette="timeline" aria-label="Timeline preview">
+    <div class="timeline-head"><span class="eyebrow paper-label">Sun timetable</span><span class="timeline-time" id="timeline-time">14:00</span></div>
+    <div class="sunpath" aria-hidden="true"><svg viewBox="0 0 320 31" preserveAspectRatio="none"><path d="M0 29 Q160 -27 320 29"/><circle cx="176" cy="2" r="4.5"/></svg></div>
+    <div class="ticks" aria-hidden="true"><span></span><span></span><span class="sun-tick"></span><span></span><span></span></div>
+    <div class="tick-labels"><span>06</span><span>10</span><span>14</span><span>18</span><span>22</span></div>
+    <div class="small" id="timeline-context">Selected map time · local clock at map center</div>
+  </section>
+  <section class="arrival panel" data-vignette="arrival" aria-label="Arrival card preview">
+    <span class="eyebrow paper-label arrival-kicker">Greetings from the shady side</span>
+    <span class="arrival-stamp" aria-hidden="true"></span>
+    <h2 class="arrival-title">You arrived.</h2>
+    <div class="arrival-verdict" id="arrival-verdict">2 of 6 min in sun</div>
+    <div class="small arrival-caption" id="arrival-caption">Illustrative 500 m walk · fixed 5.0 km/h pace · ride not counted. Sun time is a map shadow estimate.</div>
+  </section>
+  <div class="doc-note">R0 design specimen · illustrative values, not trip output</div>
+</main>
+<script>
+const theme = new URLSearchParams(location.search).get('theme');
+if (theme === 'night') {
+  document.documentElement.dataset.theme = 'night';
+  document.getElementById('theme-caption').textContent = 'After sunset';
+  document.querySelector('.route-badge').textContent = 'Night walk';
+  document.querySelector('.shade-text').textContent = 'After sunset';
+  document.querySelector('.shade-text').style.color = 'var(--muted)';
+  document.querySelector('.split').hidden = true;
+  document.querySelector('.legend').hidden = true;
+  document.getElementById('route-summary').textContent = '1.4 km walk · no solar exposure at selected time';
+  document.getElementById('route-provenance').textContent = 'Illustrative only · sun below horizon; daylight shade estimate unavailable.';
+  document.getElementById('timeline-time').textContent = '22:00';
+  document.getElementById('timeline-context').textContent = 'Selected map time · sun below horizon';
+  document.querySelector('.sunpath circle').style.display = 'none';
+  document.getElementById('arrival-verdict').textContent = '0 of 6 min in sun';
+  document.getElementById('arrival-caption').textContent = 'Illustrative 500 m walk · fixed 5.0 km/h pace · ride not counted. Sun below horizon.';
+}
+</script>
+</body>
+</html>

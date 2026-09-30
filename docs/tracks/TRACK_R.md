@@ -42,7 +42,7 @@ inspiration; the public mirror publishes everything here.
 | # | Decision | Proposed default |
 |---|---|---|
 | D1 | Semantic mapping | Sun = signal orange ramp (the accent and the sun become one). Shade = cool ramp, aligned with the painted map shadow. Route = cream (night) / ink (day) line with a dark casing. Alternative: keep route blue, move shade to teal. |
-| D2 | Theme model | Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's solar model at the selected time, with a manual override. Night shows only when there are no shadows, so the dark basemap never carries shadow pixels. |
+| D2 | Theme model | Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's solar model at the selected time. A manual UI override is allowed; the basemap follows solar altitude independently, so the dark basemap never carries daylight shadow pixels. R0 records the exact rule in `docs/design/decision.md`. |
 | D3 | Fonts | Openly licensed only, self-hosted. Display: chiseled face (candidate Grenze). Label: wide stamped grotesque (candidate Archivo Expanded 800). Body: Jost. Numbers: a clean tabular heavy sans, never the display face. |
 | D4 | Ornament boundary | Tilt, plates, grain and stamps only on labels, headings and story cards. Numbers, inputs, map controls and columnar content stay square, untextured and unrotated. Texture never over the map canvas. |
 | D5 | Icons | Keep Material Symbols through R8 restyled to the new weights; R9 replaces the Umbra-core glyphs (sun, shade, tree, rain, transit, walk) with an original sigil set. |
