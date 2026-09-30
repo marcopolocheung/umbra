@@ -123,7 +123,38 @@
   --color-map-muted-current: #525e58;
   --color-map-sun-current: #a15c00;
   --color-map-on-route-current: #ffffff;
-  --color-basemap-street: #f1f3f1;
+  /* Basemap palettes (R4), picked by solar altitude, never by the UI override.
+     Every one keeps warmth (r+g)/2 - b within -17..14, so the renderer's shadow stays
+     blue-dominant over it and sunlit ground never reads as shadow (invariant #5,
+     app/lib/basemapTheme.ts). */
+  --color-basemap-day-land: #ebe3db;
+  --color-basemap-day-landuse: #e4dcd4;
+  --color-basemap-day-field: #c2d2be;
+  --color-basemap-day-wood: #b1c4ae;
+  --color-basemap-day-water: #b3c2c6;
+  --color-basemap-day-tint: rgba(228, 220, 212, 0.3);
+  --color-basemap-day-road: #fbf7f0;
+  --color-basemap-day-path: #999088;
+  --color-basemap-day-rail: #847b73;
+  --color-basemap-day-building: #bbb3ab;
+  --color-basemap-day-edge: #a39b92;
+  --color-basemap-day-label: #3b322b;
+  --color-basemap-day-water-label: #3d4a50;
+  --color-basemap-day-park-label: #3b4633;
+  --color-basemap-night-land: #14110f;
+  --color-basemap-night-landuse: #1b1714;
+  --color-basemap-night-field: #1a2418;
+  --color-basemap-night-wood: #1d2a1c;
+  --color-basemap-night-water: #142129;
+  --color-basemap-night-tint: rgba(27, 23, 20, 0.3);
+  --color-basemap-night-road: #7c716a;
+  --color-basemap-night-path: #7c716a;
+  --color-basemap-night-rail: #5a5048;
+  --color-basemap-night-building: #231e1a;
+  --color-basemap-night-edge: #2e2823;
+  --color-basemap-night-label: #fff9f3;
+  --color-basemap-night-water-label: #9fb0b8;
+  --color-basemap-night-park-label: #a6b2a0;
   --color-canopy-map: #2e8b57;
   --color-shed-map: #1c2321;
   --color-shadow-noon: #22467f;

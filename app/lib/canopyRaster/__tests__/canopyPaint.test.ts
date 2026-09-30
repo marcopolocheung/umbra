@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BASEMAP_PALETTES } from "../../basemapTheme";
 import { isBlueDominantShadowPixel } from "../../shadowSampling";
 import { shadowPixelAt } from "../../shadowField/__tests__/agreement/harness";
 import { TARGET_GROUND_RES_M } from "../canopyCog";
@@ -30,24 +31,19 @@ type Rgb = readonly [number, number, number];
 // ─── Invariant #5 ─────────────────────────────────────────────────────────────
 
 /**
- * The outdoor-v2 surfaces the fill can land on, at street zoom, as composited RGB.
+ * The basemap surfaces the fill can land on (R4's day and night palettes), as RGB.
  *
  * Only what is drawn *beneath* the fill: it goes in under the style's first water
- * layer, so water, roads and buildings cover it and never mix with it. Translucent
- * landuse is composited over the background, as the map composites it.
+ * layer, so water, roads and buildings cover it and never mix with it.
  */
-const SURFACES: Record<string, Rgb> = {
-  background: [242, 243, 242], // hsl(120, 4%, 95%)
-  wood: [204, 224, 184], // hsl(90, 39%, 80%) — the warmest green, and the hardest case
-  tree: [216, 236, 208], // globallandcover hsl(103, 42%, 87%)
-  grass: [230, 240, 211], // hsla(81, 69%, 73%, 0.3)
-  park: [236, 244, 236], // hsl(120, 94%, 86%) at 0.1
-  residential: [237, 238, 237], // hsla(0, 0%, 89%, 0.3)
-  industrial: [244, 239, 233], // hsl(31, 54%, 92%) at 0.5
-  cemetery: [207, 214, 199], // hsl(89, 16%, 81%)
-  sand: [243, 239, 205], // hsl(53, 62%, 88%)
-  hospital: [243, 232, 239], // hsl(322, 50%, 91%) at 0.5
-};
+const SURFACES: Record<string, Rgb> = Object.fromEntries(
+  (["day", "night"] as const).flatMap((theme) =>
+    (["land", "landuse", "field", "wood"] as const).map((role) => {
+      const hex = BASEMAP_PALETTES[theme][role];
+      return [`${theme} ${role}`, [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as unknown as Rgb];
+    })
+  )
+);
 
 /** The renderer's shadow colour runs from dawn (0) to the day's highest sun (1). */
 const SUN_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
@@ -120,15 +116,6 @@ describe("the canopy fill and the shadow predicate (invariant #5)", () => {
         expect({ name, t, shift: Math.abs(filled - bare) < 0.2 }).toEqual({ name, t, shift: true });
       }
     }
-  });
-
-  it("recovers the dawn shadow on wood that the bare basemap already loses", () => {
-    // Not a goal, a consequence worth pinning: outdoor-v2's wood is warm enough that
-    // the dawn blue over it fails the predicate on `main`. The fill is cooler, so a
-    // treed patch of wood reads as shadow again. If this starts failing, the fill got
-    // warmer.
-    expect(detectedAsShadow(shadowPixelAt(0, SURFACES.wood))).toBe(false);
-    expect(detectedAsShadow(shadowPixelAt(0, underFill(SURFACES.wood, CANOPY_FILL_OPACITY)))).toBe(true);
   });
 });
 

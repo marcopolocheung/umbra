@@ -13,6 +13,8 @@ import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/c
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { token } from "../lib/css-tokens";
+import { applyBasemapTheme } from "../lib/basemapTheme";
+import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
 import type { DebugAccounting } from "../lib/shadowV2Debug/protocol";
@@ -52,6 +54,8 @@ interface MapViewProps {
   /** Sidewalk sheds the last route calculation sampled, drawn where they stand. */
   shedRings?: [number, number][][];
   showSheds?: boolean;
+  /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
+  basemapTheme?: UiTheme;
 }
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? "";
@@ -409,6 +413,7 @@ export default function MapView({
   simplifiedWaypoints,
   shedRings,
   showSheds = false,
+  basemapTheme = "day",
 }: MapViewProps) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const mapRef          = useRef<maplibregl.Map | null>(null);
@@ -462,6 +467,10 @@ export default function MapView({
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
+  // Read when the style loads, like `accumulationOnRef`. The layers are the style as
+  // loaded, before any of ours, so a theme change recolours only the basemap.
+  const basemapThemeRef = useRef(basemapTheme);
+  const basemapLayersRef = useRef<maplibregl.LayerSpecification[]>([]);
   /** Unwires the canopy atlas reader's map listeners on unmount. */
   const canopyAtlasCleanupRef = useRef<(() => void) | null>(null);
 
@@ -609,6 +618,13 @@ export default function MapView({
 
     mapRef.current = map;
     onMapReady?.(map);
+
+    // The basemap palette goes on as soon as the style parses, before any tile has
+    // painted in MapTiler's own colours, and before any of our layers exist.
+    map.once("style.load", () => {
+      basemapLayersRef.current = map.getStyle().layers;
+      applyBasemapTheme(map, basemapLayersRef.current, basemapThemeRef.current);
+    });
 
     // Close pinned point popups when clicking anywhere else.
     // Use a document-level capture handler so it works even when the map is draggable.
@@ -975,6 +991,12 @@ export default function MapView({
     showShedsRef.current = showSheds;
     shedRef.current?.setEnabled(showSheds && !accumulationOnRef.current);
   }, [showSheds]);
+
+  useEffect(() => {
+    basemapThemeRef.current = basemapTheme;
+    const map = mapRef.current;
+    if (map) applyBasemapTheme(map, basemapLayersRef.current, basemapTheme);
+  }, [basemapTheme]);
 
   // -------------------------------------------------------------------------
   // Accumulation mode

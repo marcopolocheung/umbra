@@ -371,6 +371,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         const { azimuthDeg, altitudeDeg, azimuthRad, altitudeRad } = e.data;
         // Phase 1: sun angle dirty check
         if (this.lastSunAzDeg != null && this.lastSunAltDeg != null
+            && (altitudeDeg <= 0) === (this.lastSunAltDeg <= 0)
             && Math.abs(azimuthDeg - this.lastSunAzDeg) < 0.15
             && Math.abs(altitudeDeg - this.lastSunAltDeg) < 0.15) {
           return; // sun barely moved
@@ -403,7 +404,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     }
 
     if (this.map && this.sunWorker) {
-      // Phase 4: Delegate sun computation to worker — dirty check happens in onmessage
+      // The basemap changes at the exact horizon. Clear a previous daytime pass
+      // immediately while the worker computes its next direction.
+      if (this.lastSunAltRad != null) {
+        const center = this.map.getCenter();
+        const below = SunCalc.getPosition(date, center.lat, center.lng).altitude <= 0;
+        if (below !== (this.lastSunAltRad <= 0)) {
+          this.dirty = true;
+          this.map.triggerRepaint();
+        }
+      }
+      // Phase 4: Delegate the full sun direction to the worker.
       this.postSunRequest(date);
       return;
     }
@@ -415,6 +426,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       const azDeg = sun.azimuth * 180 / Math.PI;
       const altDeg = sun.altitude * 180 / Math.PI;
       if (this.lastSunAzDeg != null && this.lastSunAltDeg != null
+          && (altDeg <= 0) === (this.lastSunAltDeg <= 0)
           && Math.abs(azDeg - this.lastSunAzDeg) < 0.15
           && Math.abs(altDeg - this.lastSunAltDeg) < 0.15) {
         return; // sun barely moved
@@ -589,6 +601,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   }
 
   readBuildingShadowMask(): BuildingShadowMask | null {
+    // The FBO may still contain the last daytime pass while the worker processes
+    // a sunset tick. Solar night has no painted mask; rain keeps its own readback.
+    if (this.hazardMode === "sun") {
+      const center = this.map?.getCenter();
+      if (center && SunCalc.getPosition(this.currentDate, center.lat, center.lng).altitude <= 0) return null;
+    }
     const gl = this.gl as WebGL2RenderingContext | null;
     if (!gl || !this.fbo || this.fboWidth <= 0 || this.fboHeight <= 0) return null;
 
@@ -1106,6 +1124,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     if (!this.map || !this.program || !this.positionBuffer || !this.u_matrix || !this.u_color) return;
     if (!this.quadProgram || !this.quadBuffer) return;
     if (!this.visuallyEnabled) return;
+    // A style repaint can precede the worker reply at sunset. The current solar
+    // clock owns visibility, so an old daytime mesh never flashes on the night map.
+    if (this.hazardMode === "sun") {
+      const center = this.map.getCenter();
+      if (SunCalc.getPosition(this.currentDate, center.lat, center.lng).altitude <= 0) return;
+    }
 
     const profile = HAZARD_PROFILES[this.hazardMode];
     const hazardDir = this.hazardDirection();
@@ -2029,14 +2053,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       this.lastSunAltRad = sunAltitude;
     }
 
-    // Sun below horizon → full dark overlay (world quad). The rain direction
-    // never reports below, so this branch is sun-only by construction.
+    // Solar night is already shown by the dark basemap. Keep the semantic flag
+    // for the renderer, but submit no solar geometry to its ground or wall passes.
     if (hazard.sunBelow) {
       return {
-        shadowVerts: new Float32Array([
-          0, 0,  1, 0,  1, 1,
-          0, 0,  1, 1,  0, 1,
-        ]),
+        shadowVerts: new Float32Array(),
         shadowHeights: new Float32Array(),
         roofVerts: new Float32Array(),
         roofHeights: new Float32Array(),

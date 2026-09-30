@@ -19,7 +19,7 @@ export type HazardMode = "sun" | "rain";
 export interface HazardDirection {
   azimuthRad: number;
   altitudeRad: number;
-  /** Sun below the horizon (the night quad). Rain never goes below. */
+  /** Sun below the horizon (no solar overlay). Rain never goes below. */
   sunBelow: boolean;
 }
 

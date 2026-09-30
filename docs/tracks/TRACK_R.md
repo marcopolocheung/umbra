@@ -24,36 +24,39 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R3 — primitives, awaiting owner review.
-- **Done:** R0 (#120), R1 (#122) and R2 (#127, fixes #123) merged; the #91 navigation-hook
-  baseline was repaired in #121. R2's `useUiTheme` drives `data-theme` from SunCalc altitude
-  at the selected place/time, with a persisted Settings override (`umbra:uiTheme`); its
-  `solar` output ignores the override and is what R4's basemap switch reads. R3 adds
-  `app/components/ui/` — `Plate` (tone panel/shade/ink, optional tilt), `Kicker` (bare or
-  plated), `Tag` (neutral + meaning tones), `LineBullet` (`code` always shown, "Line Q Uptown"
-  to screen readers), `StampBadge`, `GrainSurface` — and `motion.ts` (`STAMP`, `INK_REVEAL`).
-  Their CSS is one `@layer components` section of `app/globals.css`, with two new tokens
-  (`--filter-plate`, `--grain-opacity`, day and night). Every host box stays square: the
-  quad, tilt and grain live on inner layers, the plate's 10% inner stroke is the band between
-  two nested clipped quads and turns full ink on focus, and the small primitives get a
-  page-ink ring outside the box. `INK_REVEAL` now uses a rough SVG alpha mask that moves
-  left to right and clears at completion. Nothing consumes the primitives yet; R5 is the first user.
-- **Open PRs:** R3 — #132 (fixes #131, closes #129). Follow-ups filed: #124, #125, #126 (R2);
-  #128 (Plate cannot be a control — R5 needs `as="button"`), #130 (grain vs Safari/Firefox
-  reduce-transparency; danger tag 6.39:1 by day).
+- **Active checkpoint:** R4 — split into R4a (#139, basemaps, in review) and R4b (#134, pins,
+  popups, legend, cased route line — next).
+- **Done:** R0 (#120), R1 (#122), R2 (#127) and R3 (#132) merged. R3's `app/components/ui/`
+  primitives (`Plate`, `Kicker`, `Tag`, `LineBullet`, `StampBadge`, `GrainSurface`,
+  `motion.ts`) have no consumer yet; R5 is the first. R4a adds `app/lib/basemapTheme.ts`:
+  day (warm paper) and night (warm black) palettes, tokens `--color-basemap-{day,night}-*`,
+  recoloured in place on the loaded outdoor-v2 style at `style.load` (never `setStyle`),
+  classified by layer type/source-layer, and switched by `useUiTheme`'s `solar` through
+  `MapView`'s `basemapTheme` prop — never the UI override. Invariant #5 rests on one bound:
+  every basemap colour keeps warmth `(r+g)/2 − b` in −17..14, so sunlit ground is never
+  blue-dominant, dawn shadow is detected, and a shadow's rim needs no more coverage than
+  the harness grey (+0.05). Solar night now paints no shadow overlay or stale readback;
+  rain protection and routing continue over the dark basemap. Night roads and paths use
+  `#7c716a` and labels use `#fff9f3`; night stroke and text opacity are 1 and the loaded
+  opacity returns in daylight. The palette also fixes two `main` faults: outdoor-v2's
+  sunlit water was a false shadow, and its wood lost the dawn shadow.
+- **Open PRs:** R4a — #139 (fixes #133, #135, #136). Follow-ups: #124, #125, #126 (R2);
+  #128, #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
-  `docs/design/language.md` is binding. R3 reads the brief's "Plate (inner stroke)" as the
-  reference's 10%-ink inner stroke; plate focus reuses that band at full ink.
-- **Blocked on:** owner visual review of R3.
-- **Next action:** review `docs/design/shots/r3/` (R2/R3 app pairs plus primitive, focus and
-  paused-reveal specimens in both themes),
-  merge on sign-off, then R4 (the map — main session only, invariant #5).
-- **Last verified:** 2026-09-30; Node 24 lint (0 errors), typecheck, build, design:check and
-  1,685 unit tests pass. The 390×844 fixture-basemap app shots from R2 and R3 are pixel
-  identical in both themes, and all 10 committed shots are 780×1688 physical pixels.
-  Browser checks cover the rough edge at 150 ms, full visibility and an unclipped hard
-  shadow at completion, and immediate visibility under reduced motion. A real-phone cost
-  check of the new mask is still outstanding.
+  `docs/design/language.md` is binding. R4a keeps route/marker `--color-map-*-current`
+  tokens for R4b, maps all trail and bike-route lines to the neutral path role (their
+  magenta had no 2.0 meaning), and keeps outdoor-v2's residential wash translucent (`tint`).
+- **Blocked on:** owner visual review of R4a (`docs/design/shots/r4/`). The updated
+  day, night Sun, and night Rain phone shots use live MapTiler tiles.
+- **Next action:** R4b — neutral cased route line and restyled pins, popups, legend over
+  both basemaps (see the heads-up on #134), then R5.
+- **Last verified:** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,706 unit
+  suite, build, design:check, diff check and live-tile e2e 16/16 pass. The live R4a
+  phone frame reads 43.5% shadow pixels in daytime Sun, 0.0% at night in Sun mode,
+  and visible rain protection at night. Rendered central road pixels read 3.36:1
+  against park and cream label pixels read 15.3:1 against park; unit tests require
+  roads and paths ≥3:1 and labels ≥4.5:1 across night ground and park surfaces.
+  A real-phone outdoor look remains outstanding.
 ---
 
 ## Decisions R0 must settle (owner's call)
