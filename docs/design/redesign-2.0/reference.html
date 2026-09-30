@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Umbra Redesign 2.0</title>
+<meta name="description" content="Design language reference for Umbra redesign 2.0: palette, type, composition, texture, motion, voice, Umbra mapping and rollout.">
+<style>
+/* This in-repo copy uses openly licensed local fonts so it renders offline. */
+@font-face{font-family:Archivo;src:url('../candidates/redesign-2.0/fonts/archivo-expanded-800.woff2') format('woff2');font-weight:800;font-stretch:125%;font-display:swap}
+@font-face{font-family:Grenze;src:url('../candidates/redesign-2.0/fonts/grenze-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Grenze;src:url('../candidates/redesign-2.0/fonts/grenze-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Grenze;src:url('../candidates/redesign-2.0/fonts/grenze-700.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:Jost;src:url('../candidates/redesign-2.0/fonts/jost-variable.woff2') format('woff2');font-weight:400 600;font-display:swap}
+@font-face{font-family:'IBM Plex Mono';src:url('../candidates/redesign-2.0/fonts/ibm-plex-mono-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'IBM Plex Mono';src:url('../candidates/redesign-2.0/fonts/ibm-plex-mono-500.woff2') format('woff2');font-weight:500;font-display:swap}
+/* Layout: a field guide. Left rail is a transit-line table of contents; the reading column is 68ch;
+   specimens (swatches, plates, figures) break wider and sit slightly askew with hard offset shadows,
+   like pasted print pieces. Dark-first, like the subject. */
+:root{
+  color-scheme: dark;
+  --ground:#0e0c0b;       /* warm near-black page */
+  --panel:#171412;        /* raised band */
+  --ink-on-signal:#120d0a;
+  --cream:#f4e6d1;        /* primary text */
+  --cream-2:rgba(244,230,209,.62);
+  --cream-3:rgba(244,230,209,.38);
+  --rule:rgba(244,230,209,.13);
+  --signal:#dd6638;       /* the one accent */
+  --signal-ink:#f08a5d;   /* accent as text on ground */
+  --shadow:rgba(0,0,0,.45);
+  --grain-op:.07;
+
+  --f-display:"Grenze","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --f-label:"Archivo","Arial Black","Helvetica Neue",Arial,sans-serif;
+  --f-body:"Jost","Futura","Century Gothic","Avenir Next",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+
+  --step--1:.8rem; --step-0:1.0625rem; --step-1:1.3rem; --step-2:1.7rem; --step-3:2.35rem; --step-4:3.3rem; --step-5:clamp(3.2rem,8vw,6.2rem);
+  --hard:10px 10px 0 var(--shadow);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    color-scheme: light;
+    --ground:#efe4d2; --panel:#e5d7c0; --ink-on-signal:#1a0f09;
+    --cream:#1b1512; --cream-2:rgba(27,21,18,.72); --cream-3:rgba(27,21,18,.5); --rule:rgba(27,21,18,.16);
+    --signal:#d2592b; --signal-ink:#a8411a; --shadow:rgba(40,25,15,.22); --grain-op:.1;
+  }
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --ground:#efe4d2; --panel:#e5d7c0; --ink-on-signal:#1a0f09;
+  --cream:#1b1512; --cream-2:rgba(27,21,18,.72); --cream-3:rgba(27,21,18,.5); --rule:rgba(27,21,18,.16);
+  --signal:#d2592b; --signal-ink:#a8411a; --shadow:rgba(40,25,15,.22); --grain-op:.1;
+}
+
+*{box-sizing:border-box}
+html{background:var(--ground)}
+body{background:var(--ground);color:var(--cream);font-family:var(--f-body);font-size:var(--step-0);line-height:1.62;
+  padding-inline:clamp(16px,4vw,48px);padding-block:0 80px;-webkit-font-smoothing:antialiased;position:relative}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;opacity:var(--grain-op);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .4  0 0 0 1.4 -.35'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");}
+a{color:var(--signal-ink);text-underline-offset:3px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--signal);outline-offset:3px}
+img{max-width:100%;height:auto;display:block}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+p{margin:0}
+strong{font-weight:600;color:var(--cream)}
+
+.shell{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:210px minmax(0,1fr);gap:56px}
+@media (max-width:920px){.shell{grid-template-columns:minmax(0,1fr);gap:0}}
+
+/* ---------- route-line TOC ---------- */
+.route{position:sticky;top:calc(env(safe-area-inset-top,0px) + 28px);align-self:start;padding-top:36px}
+.route h2{font:800 .68rem/1 var(--f-label);font-stretch:125%;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-3);margin:0 0 18px}
+.route ol{list-style:none;margin:0;padding:0 0 0 22px;position:relative}
+.route ol::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;border-left:3px dotted var(--signal);opacity:.55}
+.route li{position:relative;margin:0 0 9px}
+.route li::before{content:"";position:absolute;left:-22px;top:.42em;width:15px;height:15px;border-radius:50%;
+  border:3px solid var(--signal);background:var(--ground);box-sizing:border-box}
+.route a{color:var(--cream-2);text-decoration:none;font-size:.9rem}
+.route a:hover{color:var(--cream)}
+@media (max-width:920px){
+  .route{position:static;padding-top:24px}
+  .route ol{columns:2;column-gap:28px}
+  .route li{break-inside:avoid}
+}
+@media (max-width:460px){.route ol{columns:1}}
+
+/* ---------- header ---------- */
+.masthead{padding-block:64px 40px;border-bottom:1px solid var(--rule)}
+.kicker{font:800 var(--step--1)/1.2 var(--f-label);font-stretch:125%;letter-spacing:.12em;text-transform:uppercase;color:var(--cream-3)}
+h1{font:700 var(--step-5)/.95 var(--f-display);margin:.18em 0 .28em;letter-spacing:-.01em;text-wrap:balance}
+.hl{position:relative;isolation:isolate;display:inline-block;color:var(--ink-on-signal);padding:0 .12em;rotate:-.4deg}
+.hl::before{content:"";position:absolute;inset:.12em 0 -.06em 0;background:var(--signal);rotate:-1.8deg;z-index:-1;transform-origin:0 0}
+.dek{font-size:var(--step-1);line-height:1.5;color:var(--cream-2);max-width:62ch}
+.meta{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:28px;font-size:.88rem;color:var(--cream-3)}
+.meta b{font-weight:500;color:var(--cream-2)}
+
+/* ---------- sections ---------- */
+section{padding-block:64px 8px;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{margin-bottom:28px}
+h2{font:600 var(--step-4)/1.02 var(--f-display);margin:.12em 0 .2em;text-wrap:balance}
+h3{font:600 var(--step-2)/1.15 var(--f-display);margin:48px 0 12px;text-wrap:balance}
+h4{font:800 .78rem/1.3 var(--f-label);font-stretch:125%;letter-spacing:.1em;text-transform:uppercase;color:var(--signal-ink);margin:28px 0 8px}
+.prose{max-width:68ch;display:grid;gap:1em}
+.prose ul,.prose ol{margin:0;padding-left:1.2em;display:grid;gap:.45em}
+.prose li::marker{color:var(--cream-3)}
+.lede{font-size:var(--step-1);line-height:1.5;color:var(--cream-2);max-width:62ch}
+
+/* evidence tags */
+.t{display:inline-block;font:800 .6rem/1 var(--f-label);font-stretch:125%;letter-spacing:.08em;text-transform:uppercase;
+  padding:.35em .5em .3em;border:1px solid var(--cream-3);color:var(--cream-2);vertical-align:.2em;margin-left:.3em;white-space:nowrap}
+.t.spec{border-style:dashed;color:var(--cream-3)}
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;font-size:.84rem;color:var(--cream-3);margin-top:18px;align-items:center}
+.legend .t{margin:0 .35em 0 0}
+
+/* pillars */
+.pillars{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;margin-top:8px}
+.pillar{background:var(--panel);padding:20px 20px 22px;border-left:4px solid var(--signal)}
+.pillar .n{font:700 var(--step-2)/1 var(--f-display);color:var(--signal-ink)}
+.pillar h3{margin:6px 0 8px;font-size:var(--step-1)}
+.pillar p{font-size:.95rem;color:var(--cream-2)}
+
+/* swatches */
+.sw-group{margin-top:26px}
+.sw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.sw{background:var(--panel);display:grid;grid-template-rows:64px auto}
+.sw i{display:block;border-bottom:1px solid var(--rule)}
+.sw div{padding:8px 10px 10px;display:grid;gap:2px}
+.sw b{font-weight:500;font-size:.88rem;line-height:1.25}
+.sw code{color:var(--cream-2);font-size:.78rem}
+.sw small{color:var(--cream-3);font-size:.74rem;line-height:1.3}
+.ramps{display:grid;gap:10px;margin-top:10px}
+.ramp{display:grid;grid-template-columns:150px repeat(5,minmax(0,1fr));gap:4px;align-items:stretch}
+.ramp>span:first-child{font-size:.86rem;align-self:center;line-height:1.25}
+.ramp>span:first-child small{display:block;color:var(--cream-3);font-size:.74rem}
+.ramp i{display:flex;align-items:flex-end;min-height:52px;padding:4px 5px;font:500 .66rem/1 var(--f-mono);font-style:normal}
+@media (max-width:620px){.ramp{grid-template-columns:repeat(5,minmax(0,1fr))}.ramp>span:first-child{grid-column:1/-1}}
+
+/* tables */
+.tbl{overflow-x:auto;margin-top:14px;border-top:2px solid var(--cream-3)}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:560px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px 9px 0;border-bottom:1px solid var(--rule)}
+th{font:800 .66rem/1.3 var(--f-label);font-stretch:125%;letter-spacing:.09em;text-transform:uppercase;color:var(--cream-3)}
+td code{white-space:nowrap}
+.chip{display:inline-block;width:.9em;height:.9em;vertical-align:-.1em;margin-right:.4em;border:1px solid var(--rule)}
+
+/* figures: pasted, askew */
+.plates{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:30px 26px;margin-top:22px;align-items:start}
+.plates.wide{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+figure{margin:0}
+figure img{box-shadow:var(--hard);background:#1b1715}
+figure:nth-child(3n+1) img{rotate:-.8deg}
+figure:nth-child(3n+2) img{rotate:.6deg}
+figure:nth-child(3n) img{rotate:-.3deg}
+figure.cut img{box-shadow:none;background:none;filter:drop-shadow(8px 8px 0 var(--shadow))}
+figcaption{font-size:.8rem;color:var(--cream-3);margin-top:12px;line-height:1.45}
+figcaption b{color:var(--cream-2);font-weight:500}
+@media (prefers-reduced-motion:reduce){figure img{rotate:0deg!important}}
+
+/* live recipe demo */
+.demo{margin-top:22px;background:#070707;color:#f7e9d5;padding:34px clamp(16px,4vw,40px) 40px;display:grid;gap:26px;overflow:hidden}
+.demo-row{display:flex;flex-wrap:wrap;gap:22px 34px;align-items:center}
+.d-kicker{font:800 .8rem/1 var(--f-label);font-stretch:125%;text-transform:uppercase;letter-spacing:.04em;background:#60CDE3;color:#10130D;
+  padding:.55em .9em .45em;clip-path:polygon(2.9% 100%,0 24.7%,98.3% 0,100% 68.9%);box-shadow:none;rotate:-1.2deg}
+.d-title{font:600 clamp(1.8rem,5vw,2.9rem)/1.05 var(--f-display);color:#60CDE3;text-shadow:8px 8px 0 rgba(0,0,0,.25)}
+.d-bullet{display:inline-flex;align-items:center;gap:.45em;background:#0b0b0b;border:4px solid #FFE14D;border-radius:999px;padding:.25em .9em .25em .3em;rotate:-2deg;
+  font:800 1.2rem/1 var(--f-label);font-stretch:125%;color:#f7e9d5;box-shadow:6px 6px 0 rgba(0,0,0,.35)}
+.d-bullet span{display:inline-grid;place-items:center;width:1.7em;height:1.7em;border-radius:50%;background:#FFE14D;color:#0b0b0b}
+.d-plate{position:relative;padding:18px 22px 20px;max-width:420px;background:#1A3237;clip-path:polygon(1% 3%,99% 14%,99% 87%,2.3% 97%);}
+.d-plate::after{content:"";position:absolute;inset:6px;border:5px solid rgba(96,205,227,.1);clip-path:inherit;pointer-events:none}
+.d-plate h5{margin:0;font:600 1.45rem/1.15 var(--f-display);color:#f7e9d5}
+.d-plate p{font:400 .95rem/1.55 var(--f-body);color:rgba(247,233,213,.55);margin-top:6px}
+.d-plate .k{font:800 .66rem/1 var(--f-label);font-stretch:125%;letter-spacing:.06em;text-transform:uppercase;color:rgba(247,233,213,.5);margin-bottom:6px;display:block}
+.d-dot{width:22px;height:22px;border:5px solid #dd6638;border-radius:50%;background:#131F22;box-shadow:5px 5px 0 rgba(0,0,0,.25)}
+.d-route{display:flex;align-items:center;gap:10px}
+.d-route i{width:70px;border-top:4px dashed rgba(96,205,227,.3)}
+.d-num{width:54px;height:54px;border-radius:50%;border:5px solid #dd6638;display:grid;place-items:center;font:600 1.9rem/1 var(--f-display);color:#dd6638;background:rgba(29,27,26,.5)}
+.d-tag{background:#dd6638;color:#121d22;font:800 1rem/1 var(--f-label);font-stretch:125%;text-transform:uppercase;padding:.45em .8em .5em;box-shadow:8px 8px 0 rgba(0,0,0,.25);rotate:1.5deg}
+.demo small{font:400 .78rem/1.45 var(--f-body);color:rgba(247,233,213,.45)}
+
+pre{background:var(--panel);padding:18px 20px;overflow-x:auto;font:400 .8rem/1.6 var(--f-mono);color:var(--cream-2);margin:14px 0 0;border-left:3px solid var(--signal)}
+pre b{color:var(--cream);font-weight:500}
+
+/* type specimen */
+.spec-list{display:grid;gap:0;margin-top:16px;border-top:2px solid var(--cream-3)}
+.spec-row{display:grid;grid-template-columns:190px minmax(0,1fr);gap:20px;padding:18px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+.spec-row .who{font-size:.84rem;color:var(--cream-3);line-height:1.4}
+.spec-row .who b{display:block;color:var(--cream);font-weight:500;font-size:.95rem}
+.spec-row .sample{overflow-wrap:anywhere}
+@media (max-width:620px){.spec-row{grid-template-columns:1fr;gap:6px}}
+
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px;margin-top:14px}
+.pair>div{background:var(--panel);padding:18px 20px}
+.pair h4{margin-top:0}
+.pair ul{margin:0;padding-left:1.1em;display:grid;gap:.4em;font-size:.95rem;color:var(--cream-2)}
+
+.quote{font:400 var(--step-1)/1.4 var(--f-display);color:var(--cream);border-left:3px solid var(--signal);padding-left:18px;max-width:60ch;margin:6px 0}
+.quote cite{display:block;font:400 .82rem/1.4 var(--f-body);color:var(--cream-3);font-style:normal;margin-top:6px}
+
+.src{font-size:.86rem;color:var(--cream-2);columns:2 320px;column-gap:40px;margin-top:10px;padding-left:1.1em}
+.src li{break-inside:avoid;margin-bottom:.5em}
+footer{padding-top:40px;color:var(--cream-3);font-size:.82rem;max-width:68ch}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="route" aria-label="Contents">
+  <h2>Route</h2>
+  <ol>
+    <li><a href="#thesis">The thesis</a></li>
+    <li><a href="#color">Color</a></li>
+    <li><a href="#type">Typography</a></li>
+    <li><a href="#layout">Layout &amp; plates</a></li>
+    <li><a href="#texture">Materials &amp; texture</a></li>
+    <li><a href="#motion">Motion</a></li>
+    <li><a href="#icons">Motifs &amp; icons</a></li>
+    <li><a href="#render">Rendering rules</a></li>
+    <li><a href="#voice">Voice</a></li>
+    <li><a href="#umbra">Umbra translation</a></li>
+    <li><a href="#tokens">Token sheet</a></li>
+    <li><a href="#rollout">Rollout outline</a></li>
+    <li><a href="#rules">Rules for sessions</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="masthead">
+  <div class="kicker">Design language reference · v1 · 29 Sep 2026</div>
+  <h1>Umbra <span class="hl">Redesign</span> 2.0</h1>
+  <p class="dek">The visual language Umbra is moving to: occult civic ephemera printed on warm black. This page is the shared reference for every session that works on the redesign. It records the language (principles, tokens, type, composition, texture, motion, voice), how it maps onto Umbra's data, and the order of work.</p>
+  <div class="meta">
+    <span><b>Status</b> proposed; not yet adopted</span>
+    <span><b>Binding spec until adoption</b> <code>docs/design/language.md</code> (Canopy)</span>
+    <span><b>Name</b> always "Umbra redesign 2.0"</span>
+  </div>
+  <div class="legend">
+    <span><span class="t">Measured</span>values measured from the reference system</span>
+    <span><span class="t">Umbra</span>proposed mapping for Umbra</span>
+    <span><span class="t spec">Decide</span>needs the owner's call</span>
+  </div>
+</header>
+
+<!-- ============ THESIS ============ -->
+<section id="thesis">
+  <div class="sec-head">
+    <div class="kicker">In one sentence</div>
+    <h2>A city told through its printed paper</h2>
+    <p class="lede">Umbra redesign 2.0 presents the city the way the city documents itself: postcards, transit maps, timetables, guidebooks, stamped tickets and shop catalogues. Everything sits on a warm near-black (or its paper inverse), is inked in cream, and is sorted by color the way a transit system sorts lines.</p>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><div class="n">1</div><h3>Every surface borrows a printed format</h3><p>A route is a transit strip, a trip summary is a postcard, a place is a guidebook entry, the hourly forecast is a timetable. The format tells people how to read the surface before they read it.</p></div>
+    <div class="pillar"><div class="n">2</div><h3>Never pure black, never pure white</h3><p>Ground <code>#070707</code> or green-tinted <code>#10130D</code>; ink cream <code>#F7E9D5</code> / <code>#FFEFD7</code>. In daylight the roles invert onto paper. Pure <code>#000</code> and <code>#FFF</code> never appear.</p></div>
+    <div class="pillar"><div class="n">3</div><h3>Color is a taxonomy</h3><p>Every meaning owns a hue, and every hue ships as a five-step ramp (light, bright, base, dark, darker). Chrome borrows no hue it does not mean.</p></div>
+    <div class="pillar"><div class="n">4</div><h3>Hand-placed, slightly wrong</h3><p>Plates are irregular quadrilaterals. Labels sit 0.2° to 7° off square. Shadows are hard offsets with zero blur, like a pasted cutout or a misregistered print.</p></div>
+    <div class="pillar"><div class="n">5</div><h3>Two voices of type, plus lettering</h3><p>A chiseled display face for names and titles, a wide stamped grotesque for labels, a clean geometric body. Special moments get bespoke lettering.</p></div>
+    <div class="pillar"><div class="n">6</div><h3>Texture is print damage</h3><p>Film grain, halftone dots, speckle inside type, torn and scratched edges, paper and chalk. Applied to UI surfaces, never over data.</p></div>
+    <div class="pillar"><div class="n">7</div><h3>One recurring mark</h3><p>A single motif repeats across logo, markers and states. For Umbra it is the umbra disc: a sun partly covered by its own shadow.</p></div>
+    <div class="pillar"><div class="n">8</div><h3>Readability beats spectacle</h3><p>A stated read hierarchy, cool shadows instead of black ones, rim separation, limited emissive colors, customizable danger colors. Ornament yields whenever it competes with a number.</p></div>
+    <div class="pillar"><div class="n">9</div><h3>A deadpan tour guide</h3><p>Headings pair a brochure kicker with a name. Warmth and wit live in kickers and empty states; numbers stay plain and sourced.</p></div>
+  </div>
+</section>
+
+<!-- ============ COLOR ============ -->
+<section id="color">
+  <div class="sec-head">
+    <div class="kicker">Palette</div>
+    <h2>Color</h2>
+    <p class="lede">Two layers: a presentation palette (pastel-lifted hues that glow on black) and a semantic system with a five-step ramp per meaning. The values below are the reference system's own; the Umbra mapping follows in its own section.</p>
+  </div>
+
+  <div class="sw-group">
+    <h4>Ground and ink <span class="t">Measured</span></h4>
+    <div class="sw-grid">
+      <div class="sw"><i style="background:#070707"></i><div><b>Page black</b><code>#070707</code><small>root ground</small></div></div>
+      <div class="sw"><i style="background:#100e0e"></i><div><b>Warm black</b><code>#100E0E</code><small>alternate bands</small></div></div>
+      <div class="sw"><i style="background:linear-gradient(#121010,#1A1618 83%,#000 90%)"></i><div><b>Band fade</b><code>#121010→#1A1618</code><small>vertical section gradient</small></div></div>
+      <div class="sw"><i style="background:#171717"></i><div><b>Footer</b><code>#171717</code><small>lowest band</small></div></div>
+      <div class="sw"><i style="background:#2c2e31"></i><div><b>Placeholder</b><code>#2C2E31</code><small>behind loading images</small></div></div>
+      <div class="sw"><i style="background:#10130D"></i><div><b>Ink</b><code>#10130D</code><small>green-tinted near-black for text on fills</small></div></div>
+      <div class="sw"><i style="background:#2e2c27"></i><div><b>Dark gray</b><code>#2E2C27</code><small>UI panels</small></div></div>
+      <div class="sw"><i style="background:#f7e9d5"></i><div><b>Cream</b><code>#F7E9D5</code><small>all type; 100 / 50 / 30 / 20 / 10%</small></div></div>
+      <div class="sw"><i style="background:#FFEFD7"></i><div><b>Cream, UI</b><code>#FFEFD7</code><small>base text; also "friendly"</small></div></div>
+      <div class="sw"><i style="background:#F3F0E7"></i><div><b>Off-white</b><code>#F3F0E7</code><small>paper cards</small></div></div>
+    </div>
+    <div class="ramps" style="margin-top:14px">
+      <div class="ramp"><span>Cream opacity tiers<small>the text hierarchy</small></span>
+        <i style="background:#070707;color:#f7e9d5">100% heads</i><i style="background:#070707;color:rgba(247,233,213,.5)">50% body</i><i style="background:#070707;color:rgba(247,233,213,.3)">30% captions</i><i style="background:#070707;color:rgba(247,233,213,.2)">20% tags</i><i style="background:#070707;color:rgba(247,233,213,.1)">10% legal</i></div>
+    </div>
+  </div>
+
+  <div class="sw-group">
+    <h4>Signal orange, the single accent <span class="t">Measured</span></h4>
+    <div class="sw-grid">
+      <div class="sw"><i style="background:#dd6638"></i><div><b>Signal</b><code>#DD6638</code><small>highlights, tags, map stops</small></div></div>
+      <div class="sw"><i style="background:#fb6c34"></i><div><b>Hot</b><code>#FB6C34</code><small>active badge</small></div></div>
+      <div class="sw"><i style="background:#d95b2a"></i><div><b>Display</b><code>#D95B2A</code><small>uppercase display</small></div></div>
+      <div class="sw"><i style="background:#aa4e2a"></i><div><b>Rust</b><code>#AA4E2A</code><small>secondary label</small></div></div>
+      <div class="sw"><i style="background:#450e04"></i><div><b>Oxblood ink</b><code>#450E04</code><small>text on orange</small></div></div>
+      <div class="sw"><i style="background:#121d22"></i><div><b>Teal ink</b><code>#121D22</code><small>label text on orange</small></div></div>
+      <div class="sw"><i style="background:#ED4A4B"></i><div><b>Warning red</b><code>#ED4A4B</code><small>"there's a catch" plates</small></div></div>
+      <div class="sw"><i style="background:#d4bba4"></i><div><b>Kraft tan</b><code>#D4BBA4</code><small>label numerals</small></div></div>
+      <div class="sw"><i style="background:#dfb4b5"></i><div><b>Dusty rose</b><code>#DFB4B5</code><small>card headings</small></div></div>
+      <div class="sw"><i style="background:#817a71"></i><div><b>Warm gray</b><code>#817A71</code><small>small captions; also <code>#6C615C</code></small></div></div>
+    </div>
+  </div>
+
+  <div class="sw-group">
+    <h4>Line colors (transit-style categories) <span class="t">Measured</span></h4>
+    <p style="color:var(--cream-2);font-size:.95rem;max-width:68ch">Each line is a token quartet swapped by one class: accent, badge ink, line ground, dark plate. Route connectors and chevrons draw in the accent at 10%; plates carry an 8px inner stroke of the accent at 10%.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Line</th><th>Accent (display)</th><th>Badge ink</th><th>Ground</th><th>Dark plate</th><th>Saturated UI value</th></tr></thead>
+      <tbody>
+        <tr><td>Blue</td><td><span class="chip" style="background:#60CDE3"></span><code>#60CDE3</code></td><td><code>#10130D</code></td><td><span class="chip" style="background:#0C1B1D"></span><code>#0C1B1D</code></td><td><span class="chip" style="background:#1A3237"></span><code>#1A3237</code></td><td><span class="chip" style="background:#1F5FCE"></span><code>#1F5FCE</code></td></tr>
+        <tr><td>Green</td><td><span class="chip" style="background:#97DA79"></span><code>#97DA79</code></td><td><code>#0E1A08</code></td><td><span class="chip" style="background:#101B0A"></span><code>#101B0A</code></td><td><span class="chip" style="background:#2C3D24"></span><code>#2C3D24</code></td><td><span class="chip" style="background:#70DB32"></span><code>#70DB32</code></td></tr>
+        <tr><td>Yellow</td><td><span class="chip" style="background:#FFE14D"></span><code>#FFE14D</code></td><td><code>#0B0B0B</code></td><td><span class="chip" style="background:#1F1C0C"></span><code>#1F1C0C</code></td><td><span class="chip" style="background:#3C361A"></span><code>#3C361A</code></td><td><span class="chip" style="background:#F9D506"></span><code>#F9D506</code></td></tr>
+        <tr><td>Neutral / districts</td><td><span class="chip" style="background:#82C9C5"></span><code>#82C9C5</code> at 15%</td><td>n/a</td><td>n/a</td><td>map hex <code>#BAA28F</code> at 17%</td><td>colorblind alt <code>#76A4DC</code>, green → <code>#A658CA</code></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="sw-group">
+    <h4>Warm side vs. cool side <span class="t">Measured</span></h4>
+    <div class="ramps">
+      <div class="ramp"><span>Warm (amber)<small>bright, base, dark, darker, display</small></span>
+        <i style="background:#FBDCA0;color:#302306">FBDCA0</i><i style="background:#D4860B;color:#1a1004">D4860B</i><i style="background:#937600;color:#fff5de">937600</i><i style="background:#6F3806;color:#fbdca0">6F3806</i><i style="background:#FFAC11;color:#302306">FFAC11</i></div>
+      <div class="ramp"><span>Cool (sapphire)<small>bright, base, dark, darker, display</small></span>
+        <i style="background:#BDCBFF;color:#1b2248">BDCBFF</i><i style="background:#4D75C3;color:#fff">4D75C3</i><i style="background:#4156A0;color:#fff">4156A0</i><i style="background:#243265;color:#bdcbff">243265</i><i style="background:#3874AE;color:#fff">3874AE</i></div>
+      <div class="ramp"><span>Relative<small>friend, enemy, bar, neutral, alt</small></span>
+        <i style="background:#FFEFD7;color:#10130D">FFEFD7</i><i style="background:#D73232;color:#fff">D73232</i><i style="background:#fd4949;color:#fff">fd4949</i><i style="background:#5befb5;color:#10130D">5befb5</i><i style="background:#03667b;color:#fff">03667b</i></div>
+    </div>
+  </div>
+
+  <div class="sw-group">
+    <h4>Category ramps <span class="t">Measured</span></h4>
+    <p style="font-size:.9rem;color:var(--cream-2)">Order: light, bright, base, dark, darker. Each category also owns an icon form and a letter style.</p>
+    <div class="ramps">
+      <div class="ramp"><span>Orange<small>crosshair · slab caps</small></span><i style="background:#FFD18D;color:#302306">FFD18D</i><i style="background:#EC9719;color:#302306">EC9719</i><i style="background:#9D620B;color:#ffe">9D620B</i><i style="background:#7F540E;color:#ffe">7F540E</i><i style="background:#302306;color:#FFD18D">302306</i></div>
+      <div class="ramp"><span>Green<small>plus-cross · brush script</small></span><i style="background:#D3FC96;color:#1F3400">D3FC96</i><i style="background:#7BBA1D;color:#1F3400">7BBA1D</i><i style="background:#649717;color:#fff">649717</i><i style="background:#4C7113;color:#fff">4C7113</i><i style="background:#1F3400;color:#D3FC96">1F3400</i></div>
+      <div class="ramp"><span>Purple<small>pentagram · blackletter</small></span><i style="background:#E7C8FF;color:#362147">E7C8FF</i><i style="background:#CE90FF;color:#362147">CE90FF</i><i style="background:#8A55B3;color:#fff">8A55B3</i><i style="background:#613484;color:#fff">613484</i><i style="background:#362147;color:#E7C8FF">362147</i></div>
+      <div class="ramp"><span>Modifiers<small>enhanced, corrupted, penalty</small></span><i style="background:#3FDCFF;color:#062a33">3FDCFF</i><i style="background:#0E8FAC;color:#fff">0E8FAC</i><i style="background:#D8EC57;color:#2a1040">D8EC57</i><i style="background:#6A1FA8;color:#D8EC57">6A1FA8</i><i style="background:#FF6232;color:#1a0a04">FF6232</i></div>
+    </div>
+  </div>
+
+  <div class="sw-group">
+    <h4>Glow and feedback <span class="t">Measured</span></h4>
+    <div class="sw-grid">
+      <div class="sw"><i style="background:#5FE69E"></i><div><b>Brand green</b><code>#5FE69E</code><small>light <code>#A8FFC9</code>, dark <code>#47A36C</code></small></div></div>
+      <div class="sw"><i style="background:#70F8C1"></i><div><b>Currency glow</b><code>#70F8C1</code><small>value chips; <code>#99FFD6</code></small></div></div>
+      <div class="sw"><i style="background:#FFED79"></i><div><b>Gold</b><code>#FFED79</code><small>rewards</small></div></div>
+      <div class="sw"><i style="background:#fcb43d"></i><div><b>Amber shield</b><code>#FCB43D</code><small>protective state, warm</small></div></div>
+      <div class="sw"><i style="background:#e29afd"></i><div><b>Lilac shield</b><code>#E29AFD</code><small>protective state, cool</small></div></div>
+      <div class="sw"><i style="background:#f0de8d"></i><div><b>Chalk yellow</b><code>#F0DE8D</code><small>chalk blue <code>#C3E8E8</code></small></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TYPE ============ -->
+<section id="type">
+  <div class="sec-head">
+    <div class="kicker">Letterforms</div>
+    <h2>Typography</h2>
+    <p class="lede">Three roles. The reference faces are proprietary, so Umbra uses free faces that carry the same character. Candidates below are the stand-ins; the final pick is an owner decision.</p>
+  </div>
+  <div class="spec-list">
+    <div class="spec-row"><div class="who"><b>Display · chiseled</b>Lapidary sans with flared terminals and uncial-leaning forms (round <em>v</em>). Weights 200 / 400 / 600. Candidate: Grenze.<span class="t spec">Decide</span></div>
+      <div class="sample" style="font:600 clamp(1.9rem,4.4vw,3rem)/1.05 var(--f-display)">Keep to the shady side of Broadway</div></div>
+    <div class="spec-row"><div class="who"><b>Label · stamped</b>Wide heavy grotesque, always uppercase; lowercase reads as small caps. Candidate: Archivo Expanded 800.<span class="t spec">Decide</span></div>
+      <div class="sample" style="font:800 clamp(1.1rem,2.6vw,1.7rem)/1.1 var(--f-label);font-stretch:125%;text-transform:uppercase;color:var(--signal-ink)">Recommended · 18 min · Line 1</div></div>
+    <div class="spec-row"><div class="who"><b>Body · geometric</b>Jost 400 / 500 / 600 / italic. Open license. This is the reference system's actual body face.<span class="t">Measured</span></div>
+      <div class="sample" style="font:400 1.15rem/1.57 var(--f-body);color:var(--cream-2)">Most of this walk sits under building shade until 14:00, when the avenue opens to the south-west sun.</div></div>
+    <div class="spec-row"><div class="who"><b>Numbers</b>Tabular, clean, heavy. Numbers never use the chiseled face outdoors. Candidate: Archivo or Jost with <code>tnum</code>.<span class="t spec">Decide</span></div>
+      <div class="sample" style="font:800 2.2rem/1 var(--f-label);font-variant-numeric:tabular-nums">18 min · 86%</div></div>
+  </div>
+
+  <h3>Scale and treatments</h3>
+  <p class="prose" style="color:var(--cream-2)">Measured on a 1876-unit canvas; ratios matter more than the absolute numbers. Display headings run at 1.3 line-height; body at 1.57.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Units</th><th>Role</th><th>Face</th><th>Treatment</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">160 / 124.7</td><td>Poster display</td><td>Display 600</td><td>negative leading, centered</td></tr>
+      <tr><td class="mono">88 / 114</td><td>Section headline</td><td>Display 600 or Label</td><td>hard text-shadow, 16 units at 25% black</td></tr>
+      <tr><td class="mono">64 / 83</td><td>Category name</td><td>Display 600</td><td>in the category accent</td></tr>
+      <tr><td class="mono">36–48</td><td>Kicker line</td><td>Display 600</td><td>cream 50%, rotated about −1°</td></tr>
+      <tr><td class="mono">32–43.6</td><td>Tag on plate</td><td>Label</td><td>uppercase, dark ink on accent</td></tr>
+      <tr><td class="mono">28 / 44</td><td>Body</td><td>Jost 400</td><td>cream 50%, hand-set line breaks</td></tr>
+      <tr><td class="mono">20–28</td><td>Caption</td><td>Label</td><td>cream 20–30% or warm gray</td></tr>
+    </tbody>
+  </table></div>
+  <div class="prose" style="margin-top:16px">
+    <ul>
+      <li>Heavy stamped sans for numbers and callouts; display face or lettering for names; handwriting for asides ("shady all afternoon!", "bring a hat").</li>
+      <li>The reference UI spreads a dozen faces: a numeric sans, a text sans, a serif fallback, an Art Nouveau revival for tooltips, a Deco face for nameplates, a sign face for in-world labels. Umbra should stop at three families plus one lettering asset per special moment.</li>
+      <li>Speckle masks sit inside display type so letters look printed.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ LAYOUT ============ -->
+<section id="layout">
+  <div class="sec-head">
+    <div class="kicker">Composition</div>
+    <h2>Layout, plates and the pasted look</h2>
+  </div>
+  <div class="prose">
+    <h4 style="margin-top:0">Poster canvas (marketing pages only) <span class="t">Measured</span></h4>
+    <ul>
+      <li>The root is a container defining <code>--s: calc(min(100cqw, 1500px) / 1876)</code>. Elements take inline <code>--x --y --w --h --r</code> in design units, turned into <code>left/top/width/height × --s</code> and <code>rotate</code>.</li>
+      <li>Bands are bounded by <code>y0/y1</code>. Full-bleed art escapes with <code>left: calc(50% - 50cqw); width: 100cqw</code>.</li>
+      <li>This scales as one image and does not reflow: at 400px, body copy falls near 6px. It suits a showcase page. Umbra's app must not use it; the About page may, with a reflowing phone layout.</li>
+    </ul>
+    <h4>Rotation <span class="t">Measured</span></h4>
+    <ul>
+      <li>Web: 44 rotated placements, 0.2° to 6.9°, most often 1.2–1.6°. Highlight swatches at −1.8° under text at −0.38°.</li>
+      <li>UI: −3° and −1° most common, then 2°, −5°, −10°; <code>skew(-10deg)</code> for highlight bars; stacked bars at −4°.</li>
+    </ul>
+    <h4>Shadows <span class="t">Measured</span></h4>
+    <ul>
+      <li>Objects: <code>16 16 0 rgba(0,0,0,.25)</code>; also 12, 10 and 8. Zero blur everywhere. Display type takes the same offset as a text-shadow.</li>
+      <li>Cutouts use <code>drop-shadow</code> so the shadow follows the silhouette.</li>
+    </ul>
+    <h4>Plates and badges <span class="t">Measured</span></h4>
+    <ul>
+      <li>Every plate is a quadrilateral whose corners wander. On a 442×111 plate the corners sit at (12.8, 110.9), (0, 27.4), (434.6, 0), (442, 76.4).</li>
+      <li>Dark plates: fill in the darkened line hue, 8px inner stroke of the accent at 10%, a drop plus inner shadow.</li>
+      <li>Number badges are circles masked by a rough stamped texture so the rim chips. Line badges are pills with a letter in a circle and an ink-rough rim.</li>
+      <li>Routes on maps: dashed lines in the accent at 10–30%, stops as ringed dots (signal orange rim, dark fill, hard shadow).</li>
+    </ul>
+    <h4>Component vocabulary <span class="t">Measured</span></h4>
+    <p><code>Kicker</code>, <code>Highlight</code>, <code>Blurb</code> (kicker → title → body), <code>Badge</code>, <code>Callout</code>, <code>Plate</code>, <code>TornPanel</code>, <code>PaintBg</code>, <code>SmallCard</code>, <code>Tile</code> (looping muted clip with a poster frame), <code>Lightbox</code>, <code>Panorama</code>.</p>
+  </div>
+
+  <div class="demo" aria-label="Component recipe rendered with Umbra content">
+    <div class="demo-row">
+      <span class="d-kicker">Keep cool on</span>
+      <span class="d-title">Broadway</span>
+      <span class="d-bullet"><span>1</span>Line</span>
+      <span class="d-tag">Recommended</span>
+    </div>
+    <div class="demo-row">
+      <div class="d-plate"><span class="k">Shade walk · 1.4 km</span><h5>18 min, 86% shaded</h5><p>Building shade covers the avenue until 14:00. The last block crosses open sun at the plaza.</p></div>
+      <div class="d-route"><span class="d-dot"></span><i></i><span class="d-num">2</span><i></i><span class="d-dot"></span></div>
+    </div>
+    <small>Kicker plate with a wandering clip-path, accent title with a hard text-shadow, line bullet, signal tag with offset shadow, dark plate with a 10% accent stroke, dashed route with ringed stops. Stand-in fonts.</small>
+  </div>
+</section>
+
+<!-- ============ TEXTURE ============ -->
+<section id="texture">
+  <div class="sec-head">
+    <div class="kicker">Surface</div>
+    <h2>Materials and texture</h2>
+  </div>
+  <div class="pair">
+    <div><h4>Web</h4><ul>
+      <li>A grain photo over headers; a per-section grain with <code>mix-blend-mode: exclusion</code> at 50%</li>
+      <li>A gray newspaper and poster collage behind feature sections, lit with <code>color-dodge</code> and <code>screen</code> glows</li>
+      <li>A 2000×80 torn edge repeated between bands, flipped for the opposite edge</li>
+      <li>City skyline silhouettes per category</li>
+      <li>Kraft-paper notes, torn card panels, a folded paper map</li>
+      <li>Photo toning: <code>sepia(0.8) brightness(1.33)</code> at 50%</li>
+    </ul></div>
+    <div><h4>UI</h4><ul>
+      <li>Paper tiles, worn paper overlays per card</li>
+      <li>Film grain, card grain, a print-screen overlay, a halftone dot backer</li>
+      <li>Speckle masks inside type</li>
+      <li>Rough edges and ink-threshold masks for reveals</li>
+      <li>Chalk strokes and a blackboard mask; a chalk variant of each badge</li>
+      <li>Card backers per category and tier</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ MOTION ============ -->
+<section id="motion">
+  <div class="sec-head">
+    <div class="kicker">Timing</div>
+    <h2>Motion</h2>
+  </div>
+  <div class="pair">
+    <div><h4>Web: a still poster</h4><ul>
+      <li>No scroll animation or parallax.</li>
+      <li>Motion lives in looping, muted clips with poster frames.</li>
+      <li>Hover brightens an 8-unit frame from cream 50% to 100% over 0.15s.</li>
+      <li>Lightbox on 85% black with the same hard shadow.</li>
+    </ul></div>
+    <div><h4>UI: short, stamped, masked</h4><ul>
+      <li>Durations: 0.2s most, then 0.1s and 0.3s; <code>ease-in-out</code>.</li>
+      <li>Named moves: stamp, mask wipe, logo reveal, pulse and glow for alerts.</li>
+      <li>Reveals use ink-threshold masks, so things appear printed or burned in, not faded.</li>
+      <li>Emissive colors are limited to a handful of meanings.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ ICONS ============ -->
+<section id="icons">
+  <div class="sec-head">
+    <div class="kicker">Recurring marks</div>
+    <h2>Motifs and iconography</h2>
+  </div>
+  <div class="prose"><ul>
+    <li><strong>One motif, everywhere.</strong> The reference system repeats a single watching mark across logo, status bars, creatures and signage. Umbra's equivalent is the umbra disc (sun with its shadow bite), used in the logo, the now-marker, the user dot and the arrival stamp.</li>
+    <li><strong>Transit bullets.</strong> A letter or number in a circle inside a pill, in the line color, for lines and categories.</li>
+    <li><strong>Category sigils.</strong> Each category owns one simple geometric glyph (crosshair, plus-cross, pentagram in the reference; sun, tree, umbrella, train for Umbra).</li>
+    <li><strong>Roman numerals</strong> for tiers and difficulty; <strong>starbursts</strong> for featured items.</li>
+    <li><strong>Screenprint icons:</strong> black silhouette, one accent color, paper grain; two to three colors.</li>
+    <li><strong>Diagrams as ornament:</strong> radial circles and clock faces behind portraits. For Umbra, the sun path diagram.</li>
+  </ul></div>
+</section>
+
+<!-- ============ RENDER ============ -->
+<section id="render">
+  <div class="sec-head">
+    <div class="kicker">Illustration and map</div>
+    <h2>Rendering rules</h2>
+    <p class="lede">Rules for any illustrated asset and for the basemap style. They come from the lineage of the reference system's shading and suit a product about shade.</p>
+  </div>
+  <div class="prose"><ol>
+    <li>Shading moves from warm to cool. Shadows go cool, never black.</li>
+    <li>Saturation rises where light turns to shadow; that edge is often warmed.</li>
+    <li>Drop high-frequency detail. Suggest repetition instead of drawing every window.</li>
+    <li>Interior details echo the outer silhouette.</li>
+    <li>Separate figure from ground with rim light first; outlines only where rim light fails.</li>
+    <li>Muted fields, small saturated accents. Full saturation is reserved for things that matter to the user.</li>
+    <li>State a read hierarchy and map one channel to each level: meaning by hue, kind by silhouette, urgency by local contrast.</li>
+    <li>Cut effects that compete with data; keep only the ones that inform.</li>
+  </ol></div>
+</section>
+
+<!-- ============ VOICE ============ -->
+<section id="voice">
+  <div class="sec-head">
+    <div class="kicker">Copy</div>
+    <h2>Voice</h2>
+  </div>
+  <div class="prose">
+    <p>The reference writes as a visitor's guide. Headings are a brochure kicker plus a name ("See the sights on / Main Street", "Mind the / Loose Cobbles", "Wait, what happened? / Trip Log"). Bodies set up civic normality and end on a sting.</p>
+    <p>For Umbra the kicker carries the personality and the rest stays plain. Examples:</p>
+    <ul>
+      <li>"Keep cool on / Broadway" over a route card whose verdict still reads "18 min, 86% shaded".</li>
+      <li>"Greetings from / the shady side" on the arrival postcard, above "2 of 6 min in sun at a fixed 5.0 km/h pace".</li>
+      <li>"Nothing saved yet / Your walks will live here" for the saved-routes empty state.</li>
+    </ul>
+    <p>Umbra's copy rules still govern: verdict first, every number traceable with its uncertainty, no marketing adjectives, an 11px floor for captions.</p>
+  </div>
+</section>
+
+<!-- ============ UMBRA ============ -->
+<section id="umbra">
+  <div class="sec-head">
+    <div class="kicker">Proposal</div>
+    <h2>Umbra translation</h2>
+    <p class="lede">How the language lands on Umbra's data and surfaces. Items marked Decide need the owner's sign-off before code.</p>
+  </div>
+  <h4>Semantic mapping <span class="t">Umbra</span><span class="t spec">Decide</span></h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Umbra meaning</th><th>Today (Canopy)</th><th>Redesign 2.0</th></tr></thead>
+    <tbody>
+      <tr><td>Sun, exposure, heat</td><td><code>#A15C00</code>, the one warm color</td><td>The signal orange ramp. The accent and the sun become the same thing, and the rule "warm means sun" gets stronger.</td></tr>
+      <tr><td>Shade</td><td>green <code>#2A6A4E</code></td><td>The cool ramp, aligned with the painted map shadow (<code>#22467F</code>), since shadows go cool.</td></tr>
+      <tr><td>Route</td><td>blue <code>#1D6EE0</code></td><td>Cream (night) or ink (day) line with a dark casing, so blue belongs to shade. Alternative: keep blue and move shade to teal.</td></tr>
+      <tr><td>Trees, canopy</td><td>sea green on the map</td><td>The green ramp; the map constant stays.</td></tr>
+      <tr><td>Transit lines</td><td>plain text</td><td>Line bullets in each line's own color.</td></tr>
+      <tr><td>Rain, shelter</td><td>route-blue wash</td><td>The purple ramp or a neutral ink wash.</td></tr>
+      <tr><td>Danger, errors</td><td>red <code>#B3261E</code></td><td>Red <code>#D73232</code>, user-adjustable.</td></tr>
+      <tr><td>Surfaces</td><td>paper <code>#F7F8F4</code> and white</td><td>Day: cream paper and warm ink. Night: warm black and cream.</td></tr>
+    </tbody>
+  </table></div>
+  <h4>Theme follows the sun <span class="t">Umbra</span><span class="t spec">Decide</span></h4>
+  <div class="prose"><p>Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's own solar model at the selected time, with a manual override. Night shows only when the sun is down, and with the sun down there are no shadows, so the dark basemap never has to carry shadow pixels. Outdoor daylight use keeps the high-glare-friendly light ground.</p></div>
+  <h4>Printed formats per surface <span class="t">Umbra</span></h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Surface</th><th>Printed format</th></tr></thead>
+    <tbody>
+      <tr><td>Route card</td><td>Transit strip: kicker plate, verdict, split bar, line bullets for transit legs</td></tr>
+      <tr><td>Map legend</td><td>The key of a folded city map</td></tr>
+      <tr><td>Timeline</td><td>A timetable ruler with the sun path diagram</td></tr>
+      <tr><td>Hourly strip</td><td>A departures board</td></tr>
+      <tr><td>Place detail</td><td>A guidebook entry</td></tr>
+      <tr><td>Search results</td><td>A directory listing</td></tr>
+      <tr><td>Assistant itinerary</td><td>A day-trip leaflet with numbered stops</td></tr>
+      <tr><td>Arrival</td><td>A postcard, stamped with the umbra disc</td></tr>
+      <tr><td>Saved routes</td><td>Ticket stubs</td></tr>
+      <tr><td>About page</td><td>The poster canvas, with a phone reflow</td></tr>
+    </tbody>
+  </table></div>
+  <h4>What stays fixed</h4>
+  <div class="prose"><ul>
+    <li>Shadow detection couples to shadow color: the painted shadow must stay blue-dominant after compositing over whichever basemap ships. Re-verify after every basemap or palette change.</li>
+    <li>44px touch targets, 11px caption floor, phone-first at 390×844, sunlight legibility.</li>
+    <li>Tilt, texture and plates are decoration. Numbers, inputs, map controls and anything aligned in columns stay square, untextured and unrotated.</li>
+    <li>Texture never sits over the map canvas.</li>
+    <li>Focus is always visible, including on clipped plates (use an inner stroke; outlines get clipped).</li>
+    <li>Reduced motion removes stamps and wipes; reduced transparency removes grain.</li>
+  </ul></div>
+</section>
+
+<!-- ============ TOKENS ============ -->
+<section id="tokens">
+  <div class="sec-head">
+    <div class="kicker">Distilled</div>
+    <h2>Token sheet</h2>
+    <p class="lede">The reference values in one place. Umbra's registry will rename them by role.</p>
+  </div>
+<pre>:root{
+  <i>/* ground and ink: never pure */</i>
+  <b>--ground:</b> #070707;  <b>--ground-warm:</b> #100E0E;  <b>--ink:</b> #10130D;
+  <b>--cream:</b> #F7E9D5;   <i>/* text tiers: 100 / 50 / 30 / 20 / 10 % */</i>
+
+  <i>/* the single accent */</i>
+  <b>--signal:</b> #DD6638;  <b>--signal-hot:</b> #FB6C34;  <b>--on-signal:</b> #121D22;
+
+  <i>/* lines: accent, badge ink, ground, dark plate */</i>
+  <b>--blue:</b>   #60CDE3 #10130D #0C1B1D #1A3237;
+  <b>--green:</b>  #97DA79 #0E1A08 #101B0A #2C3D24;
+  <b>--yellow:</b> #FFE14D #0B0B0B #1F1C0C #3C361A;
+
+  <i>/* warm and cool sides */</i>
+  <b>--friend:</b> #FFEFD7;  <b>--enemy:</b> #D73232;
+  <b>--warm:</b> #FBDCA0 #D4860B #937600 #6F3806;
+  <b>--cool:</b> #BDCBFF #4D75C3 #4156A0 #243265;
+
+  <i>/* categories: light, bright, base, dark, darker */</i>
+  <b>--orange:</b> #FFD18D #EC9719 #9D620B #7F540E #302306;
+  <b>--green-cat:</b> #D3FC96 #7BBA1D #649717 #4C7113 #1F3400;
+  <b>--purple:</b> #E7C8FF #CE90FF #8A55B3 #613484 #362147;
+  <b>--glow:</b> #70F8C1;  <b>--brand:</b> #5FE69E;
+
+  <i>/* type roles */</i>
+  <b>--display:</b> chiseled sans 600;  <b>--label:</b> wide grotesque 800 uppercase;
+  <b>--body:</b> Jost 400, 28/44 at 50% cream;  <b>--numeric:</b> tabular heavy sans;
+
+  <i>/* geometry */</i>
+  <b>--tilt:</b> 0.2deg … 7deg (typ. 1–1.6);  <b>--skew:</b> -10deg;
+  <b>--hard-shadow:</b> 16 16 0 rgba(0,0,0,.25);  <i>/* never blurred */</i>
+  <b>--plate:</b> irregular quad, 8px inner stroke at 10% accent;
+
+  <i>/* motion */</i>
+  <b>--t-fast:</b> .1s; <b>--t:</b> .2s; <b>--t-slow:</b> .3s ease-in-out;  <i>/* reveals by ink mask */</i>
+}</pre>
+</section>
+
+<!-- ============ ROLLOUT ============ -->
+<section id="rollout">
+  <div class="sec-head">
+    <div class="kicker">Order of work</div>
+    <h2>Rollout outline</h2>
+    <p class="lede">Track R follows Track U. One checkpoint per session and per PR, owner review on every one. The checkpoint IDs are fixed in <code>docs/tracks/TRACK_R.md</code>.</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Step</th><th>What</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">R0</td><td>Decision record and canonical spec in the repo: semantic mapping, fonts, theme model, rendered day and night vignettes. Docs only; owner merge is the sign-off.</td><td>main session, scouts read-only</td></tr>
+      <tr><td class="mono">R1</td><td>Registry and enforcement: new tokens in <code>globals.css</code>, fonts self-hosted, the token linter taught tilt, hard shadow and plate rules, both themes in the phone shot harness, reviewer and rule files updated.</td><td>main session</td></tr>
+      <tr><td class="mono">R2</td><td>Theme engine: day and night driven by the solar model with an override. Most of the app re-skins here through role tokens.</td><td>main session</td></tr>
+      <tr><td class="mono">R3</td><td>Primitives: plate, kicker, tag, line bullet, stamp badge, grain surface, motion utilities.</td><td>builder agents in worktrees (leaf files only)</td></tr>
+      <tr><td class="mono">R4</td><td>Map: day basemap style, night basemap, pins, popups, legend, route line. Shadow-color coupling re-verified, sampling calibration and browser smoke test.</td><td>main session (contested map file)</td></tr>
+      <tr><td class="mono">R5</td><td>Route cards and directions as transit strips.</td><td>main session</td></tr>
+      <tr><td class="mono">R6</td><td>Timeline, sheet, solar pill, hourly strip.</td><td>main session</td></tr>
+      <tr><td class="mono">R7</td><td>Search, place detail, assistant panel.</td><td>main session; builders for leaf panels</td></tr>
+      <tr><td class="mono">R8</td><td>Arrival postcard, saved routes, empty states, voice pass.</td><td>main session plus grounding audit</td></tr>
+      <tr><td class="mono">R9</td><td>Icon set, umbra disc motif, stamp and ink reveals, About page poster, final audit and removal of Canopy leftovers.</td><td>main session; builders for icons</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ RULES ============ -->
+<section id="rules">
+  <div class="sec-head">
+    <div class="kicker">For every session</div>
+    <h2>Rules for sessions</h2>
+  </div>
+  <div class="prose"><ul>
+    <li>Call this work "Umbra redesign 2.0" in code, commits, PRs, issues and docs. Do not name any outside product, studio or platform as its inspiration.</li>
+    <li>Use no third-party brand assets, fonts or artwork. Only openly licensed fonts and original drawings.</li>
+    <li>Until R0 merges, Canopy (<code>docs/design/language.md</code>) is the binding spec.</li>
+    <li>Every PR in the wave carries day and night phone shots, runs the interface reviewer, and runs the grounding audit whenever copy or numbers change.</li>
+  </ul></div>
+  <footer>Umbra redesign 2.0 · design language reference v1 · 29 Sep 2026.</footer>
+</section>
+</main>
+</div>
+
+</body>
+</html>

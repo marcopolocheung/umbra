@@ -1,4 +1,6 @@
-# Umbra design language — decision (Track U, checkpoint U1)
+# Umbra design language — decision record
+
+The current decision is [Umbra redesign 2.0 (R0)](#umbra-redesign-20--r0-decision-2026-09-29) at the end of this file. The Track U record below is retained as history. Until the R0 PR merges, Canopy remains the binding language on `main`.
 
 > **Status:** ready for owner review. **The merge of this doc's PR into `main` is the sign-off**
 > (decisions D1/D2). Merging without edits accepts §6 `Recommendation` verbatim.
@@ -227,3 +229,76 @@ make `docs/design/language.md` canonical.
   where a source page carried no date, the note says so and dates the access instead.
 - The three route numbers used in vignettes (86% / 41% shade, 18 / 14 min, 1.2 km, UV 44%)
   are illustrative renderings, not claims about Umbra's routing output.
+
+---
+
+## Umbra redesign 2.0 — R0 decision (2026-09-29)
+
+**Status: proposed in this PR; adopted on owner merge.** This decision replaces the Track U/Canopy choice above when merged. The [local reference](redesign-2.0/reference.html) records the visual vocabulary; [day](candidates/redesign-2.0/day-phone.png) and [night](candidates/redesign-2.0/night-phone.png) 390×844 renders show the selected Umbra mapping. Each render contains the [search](candidates/redesign-2.0/day-search.png), [route card](candidates/redesign-2.0/day-route.png), [timeline](candidates/redesign-2.0/day-timeline.png), and [arrival](candidates/redesign-2.0/day-arrival.png) vignette; matching night crops sit beside them. Values in the vignettes are **illustrative specimens, not route output**.
+
+| Decision | Settled choice | Reason and implementation boundary |
+|---|---|---|
+| D1 · Meaning | Sun/exposure = signal orange ramp; shade = cool blue ramp; walking route = ink on day and cream on night, with a dark casing; trees = green; rain/shelter = purple; danger = red. Transit line colors identify actual lines, not general chrome. | The sun is the only orange accent. Shade stays visually related to the painted blue shadow, but the renderer's blue is not changed in R0. A neutral route line stays distinct from both data fills. R4 must recheck the composited shadow predicate before changing the basemap or paint. |
+| D2 · Theme | Automatic UI theme follows solar altitude at the selected map place and time: day for altitude > 0°, night for altitude ≤ 0°. Settings may force day or night UI. The **basemap** always follows solar altitude; a daytime manual night UI override keeps the day basemap. | This resolves the manual override against shadow detection: the dark basemap is never paired with daylight shadow pixels. The override is persisted, and its scope is stated in Settings. R2 owns the state and threshold tests; R4 owns basemap switching. |
+| D3 · Type | Grenze 600 for display words only; Archivo at 125% width/800 for stamped labels and bold tabular numbers; Jost 400/500/600 for reading; IBM Plex Mono 400 only for compact numeric keys where it remains ≥11px. All app fonts self-hosted from openly licensed files in R1. | Numeric verdicts stay square, heavy and tabular. The specimen's four local WOFF2 files and OFL notices are under `candidates/redesign-2.0/fonts/`; R1 must bundle the app font subset and preload the critical faces. Licenses: [Grenze](https://github.com/google/fonts/blob/main/ofl/grenze/OFL.txt), [Archivo](https://github.com/google/fonts/blob/main/ofl/archivo/OFL.txt), [Jost](https://github.com/google/fonts/blob/main/ofl/jost/OFL.txt), [IBM Plex Mono](https://github.com/google/fonts/blob/main/ofl/ibmplexmono/OFL.txt). |
+| D4 · Ornament | Irregular clipped plates, small tilts, hard zero-blur shadows and grain belong on headings, labels, stamps and story cards. Numbers, inputs, controls, map canvas and columnar content remain square, untextured and unrotated. | Visible inner focus strokes are required on clipped interactive plates. Grain is removed for reduced transparency; stamps and wipes are removed for reduced motion. Every pressable target remains at least 44×44px. |
+| D5 · Icons | Restyle Material Symbols through R8. R9 replaces the six Umbra-core meanings (sun, shade, tree, rain, transit, walk) with original sigils and repeats the original umbra disc across logo, now marker, user dot and arrival stamp. | A staged replacement avoids a mixed, unverified icon pass before the core surfaces exist. No third-party brand artwork enters the app. |
+
+### Contrast contract
+
+The preview uses night ground `#0E0C0B`, night panel `#171412`, day ground `#EFE4D2`, day panel `#F8EFDF`, night ink `#F4E6D1`, and day ink `#1B1512`. Ratios below use [WCAG relative luminance and contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html), after alpha compositing. The hard minimum is **4.5:1 for text**, **3:1 for large text and essential graphical marks** ([non-text criterion](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html)); the outdoor target is **7:1 for primary reading**. Captions are at least 11px. Dark color chips below 4.5:1 may serve as fills or rules when their adjacent text and control boundaries pass their own contrast checks; they never become small text merely because they are a named token.
+
+#### Text opacity tiers against their intended ground
+
+| Ink alpha | Night cream on night ground | Day ink on day ground | R0 use |
+|---|---:|---:|---|
+| 100% | 15.88:1 | 14.36:1 | Primary text and numbers. |
+| 75% | 9.11:1 | 7.04:1 | Adopted body tier; use 100% where a panel or over-map surface lowers contrast. |
+| 70% | 8.03:1 | 5.99:1 | Secondary text and captions only. |
+| 50% | 4.55:1 | 3.26:1 | Reference tier; **not adopted for reading**. Night barely passes on the ground, day fails. |
+| 30% | 2.34:1 | 1.91:1 | Decorative rules only; no text or essential controls. |
+| 20% | 1.68:1 | 1.51:1 | Decorative texture only; no text or essential controls. |
+
+Panels are checked separately in R1: full ink is 14.92:1 on the night panel and 15.83:1 on the day panel. The preview's solid secondary ink is `#D0C3B2` at night (10.59:1 on panel) and `#534D45` by day (7.32:1 on panel). Do not use alpha as the sole way to set body or caption color over a variable map.
+
+#### Every proposed data hue against both grounds
+
+Five steps are ordered **light / bright / base / dark / darker**. Ratios are for the color as **text directly on the ground**, not a promise that every step is a text color. R1 defines role tokens that choose the light step at night and dark step by day for text; charts may use the other steps with a separate 3:1 boundary check. The three transit line accents are included because they carry line identity.
+
+| Meaning / step | Hex | Night ground | Day ground |
+|---|---|---:|---:|
+| Sun · light | `#FFD18D` | 13.71 | 1.13 |
+| Sun · bright | `#F08A5D` | 7.90 | 1.96 |
+| Sun · base | `#DD6638` | 5.61 | 2.77 |
+| Sun · dark | `#A8411A` | 3.19 | 4.86 |
+| Sun · darker | `#6F3806` | 2.09 | 7.44 |
+| Shade · light | `#BDCBFF` | 12.22 | 1.27 |
+| Shade · bright | `#7A9EDD` | 7.21 | 2.15 |
+| Shade · base | `#4D75C3` | 4.32 | 3.59 |
+| Shade · dark | `#4156A0` | 2.85 | 5.45 |
+| Shade · darker | `#243265` | 1.60 | 9.71 |
+| Canopy · light | `#D3FC96` | 16.85 | 1.09 |
+| Canopy · bright | `#97DA79` | 11.73 | 1.32 |
+| Canopy · base | `#649717` | 5.56 | 2.79 |
+| Canopy · dark | `#4C7113` | 3.42 | 4.54 |
+| Canopy · darker | `#1F3400` | 1.44 | 10.78 |
+| Rain · light | `#E7C8FF` | 13.11 | 1.18 |
+| Rain · bright | `#CE90FF` | 8.42 | 1.84 |
+| Rain · base | `#8A55B3` | 3.75 | 4.14 |
+| Rain · dark | `#613484` | 2.17 | 7.16 |
+| Rain · darker | `#362147` | 1.36 | 11.40 |
+| Danger · light | `#FFB4A8` | 11.47 | 1.35 |
+| Danger · bright | `#ED4A4B` | 5.28 | 2.94 |
+| Danger · base | `#D73232` | 4.08 | 3.80 |
+| Danger · dark | `#A91C25` | 2.68 | 5.80 |
+| Danger · darker | `#5F0C17` | 1.44 | 10.76 |
+| Transit blue accent | `#60CDE3` | 10.54 | 1.47 |
+| Transit green accent | `#97DA79` | 11.73 | 1.32 |
+| Transit yellow accent | `#FFE14D` | 14.99 | 1.04 |
+| Route · night cream / day ink | `#F4E6D1` / `#1B1512` | 15.88 | 14.36 |
+
+For small data labels on the **day panel**, use sun darker (8.20:1), shade darker (10.70:1), canopy darker, rain dark (7.89:1), and danger darker. On the **night panel**, use sun bright (7.42:1), shade light, canopy bright, rain bright (7.91:1), and danger light. Light transit accents are fills or marks on day; put day ink on a sufficiently light badge. The exact map label pairs need R4 verification against both basemaps.
+
+### Sign-off and sequence
+
+The owner's merge of the R0 PR adopts [the new `language.md`](language.md). Until then, Canopy on `main` remains binding. R1 migrates tokens and self-hosted fonts; R2 wires the UI theme; R4 alone changes basemaps and reruns shadow compositing tests. The original reference is a vocabulary archive, so its faint 50/30/20% type samples and illustrative orange route marks do **not** override D1, D4 or this contrast contract.

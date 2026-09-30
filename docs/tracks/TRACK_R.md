@@ -24,16 +24,18 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R0 — not started. Decision record and canonical spec (docs only).
-- **Done:** nothing yet. The reference document exists outside the repo (see above).
-- **Open PRs:** none.
-- **Decisions made:** none binding. Proposed in the reference: sun = signal orange, shade =
-  the cool ramp, route leaves blue, theme follows the solar model. Canopy
-  (`docs/design/language.md`) stays the binding spec until R0 merges.
-- **Blocked on:** nothing. Track U's wave is closed out (U7 merged as #72 on 2026-09-21) and
-  no design PRs are open, so R0 can start now and R1 follows R0's merge.
-- **Next action:** R0.
-- **Last verified:** 2026-09-29, brief written; no code touched.
+- **Active checkpoint:** R1 — registry and enforcement, next after R0's merge.
+- **Done:** R0 — decision record, canonical spec, contrast table, reference and day/night
+  vignettes; owner approved #120 for merge on 2026-09-29.
+- **Open PRs:** none; R0 merged as #120.
+- **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved. Sun = signal
+  orange; shade = cool; route = neutral cased line; UI theme may be overridden, while the
+  basemap follows solar altitude. `docs/design/language.md` becomes binding with #120's merge.
+- **Blocked on:** #91 — five pre-existing navigation-hook test failures also reproduced on
+  unchanged `umbra/main`; R1 needs a green four-gate run before its PR can be ready.
+- **Next action:** start R1 from merged `main` and coordinate #91 before opening its PR.
+- **Last verified:** 2026-09-29; lint, typecheck, build, design:check, browser renders and
+  mirror-guard pass; 1647 tests pass and 5 fail on the branch, with the same 5 on `main` (#91).
 
 ---
 
@@ -42,7 +44,7 @@ inspiration; the public mirror publishes everything here.
 | # | Decision | Proposed default |
 |---|---|---|
 | D1 | Semantic mapping | Sun = signal orange ramp (the accent and the sun become one). Shade = cool ramp, aligned with the painted map shadow. Route = cream (night) / ink (day) line with a dark casing. Alternative: keep route blue, move shade to teal. |
-| D2 | Theme model | Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's solar model at the selected time, with a manual override. Night shows only when there are no shadows, so the dark basemap never carries shadow pixels. |
+| D2 | Theme model | Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's solar model at the selected time. A manual UI override is allowed; the basemap follows solar altitude independently, so the dark basemap never carries daylight shadow pixels. R0 records the exact rule in `docs/design/decision.md`. |
 | D3 | Fonts | Openly licensed only, self-hosted. Display: chiseled face (candidate Grenze). Label: wide stamped grotesque (candidate Archivo Expanded 800). Body: Jost. Numbers: a clean tabular heavy sans, never the display face. |
 | D4 | Ornament boundary | Tilt, plates, grain and stamps only on labels, headings and story cards. Numbers, inputs, map controls and columnar content stay square, untextured and unrotated. Texture never over the map canvas. |
 | D5 | Icons | Keep Material Symbols through R8 restyled to the new weights; R9 replaces the Umbra-core glyphs (sun, shade, tree, rain, transit, walk) with an original sigil set. |
