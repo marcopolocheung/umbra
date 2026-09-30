@@ -130,7 +130,6 @@
   --color-map-night-sun: #f08a5d;
   --color-map-route: var(--color-map-day-route);
   --color-map-casing: var(--color-map-day-casing);
-  --color-map-muted: var(--color-map-day-muted);
   --color-map-sun: var(--color-map-day-sun);
   /* Basemap palettes (R4), picked by solar altitude, never by the UI override.
      Every one keeps warmth (r+g)/2 - b within -17..14, so the renderer's shadow stays
@@ -177,7 +176,6 @@
   --shadow-xl: 4px 4px 0 #1b1512;
   --shadow-2xl: 4px 4px 0 #1b1512;
   --shadow-map-marker: 2px 2px 0 var(--color-map-route);
-  --filter-map-pin: drop-shadow(2px 2px 0 var(--color-map-route));
   --radius: 4px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -224,7 +222,6 @@
 html[data-basemap="night"] {
   --color-map-route: var(--color-map-night-route);
   --color-map-casing: var(--color-map-night-casing);
-  --color-map-muted: var(--color-map-night-muted);
   --color-map-sun: var(--color-map-night-sun);
 }
 

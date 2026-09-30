@@ -211,8 +211,10 @@ export function mapColor(theme: UiTheme, role: MapRole): string {
 const OVERLAY_ROLES: ReadonlyArray<[layerId: string, property: string, role: MapRole]> = [
   ["nav-route-casing", "line-color", "casing"],
   ["nav-route-line", "line-color", "route"],
+  ["sketch-line-casing", "line-color", "casing"],
   ["sketch-line-layer", "line-color", "route"],
   ["sketch-preview-layer", "line-color", "route"],
+  ["mrt-entrance-connector-casing", "line-color", "casing"],
   ["mrt-entrance-connector-line", "line-color", "route"],
   ["train-route-stops-layer", "circle-color", "casing"],
   ["train-route-stops-layer", "circle-stroke-color", "muted"],

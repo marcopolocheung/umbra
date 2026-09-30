@@ -51,7 +51,7 @@ export function maskDiff(before: boolean[], after: boolean[]): number {
 /**
  * Pixels of the nav route line. By day (every scenario here) R4b paints it opaque
  * `--color-map-day-route` #1B1512 over a paper casing: a warm near-black nothing else
- * on either basemap reaches. The basemap's darkest ink is #3B322B, and a shadowed label
+ * on the day basemap reaches. Day only — the night ground is that dark everywhere. The basemap's darkest ink is #3B322B, and a shadowed label
  * turns blue, (18, 27, 46), which the warm test rejects. Counted in-page at full
  * resolution: the line is 4 px wide, so the shadow sampling grid would step over it.
  */

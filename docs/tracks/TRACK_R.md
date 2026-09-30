@@ -24,9 +24,8 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R4 — split into R4a (#139, basemaps, in review) and R4b (#134, pins,
-  popups, legend, cased route line — next).
-- **Done:** R0 (#120), R1 (#122), R2 (#127) and R3 (#132) merged. R3's `app/components/ui/`
+- **Active checkpoint:** R4b (#134) — map overlays, awaiting owner review.
+- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132) and R4a (#139) merged. R3's `app/components/ui/`
   primitives (`Plate`, `Kicker`, `Tag`, `LineBullet`, `StampBadge`, `GrainSurface`,
   `motion.ts`) have no consumer yet; R5 is the first. R4a adds `app/lib/basemapTheme.ts`:
   day (warm paper) and night (warm black) palettes, tokens `--color-basemap-{day,night}-*`,
@@ -39,18 +38,31 @@ inspiration; the public mirror publishes everything here.
   rain protection and routing continue over the dark basemap. Night roads and paths use
   `#7c716a` and labels use `#fff9f3`; night stroke and text opacity are 1 and the loaded
   opacity returns in daylight. The palette also fixes two `main` faults: outdoor-v2's
-  sunlit water was a false shadow, and its wood lost the dawn shadow.
-- **Open PRs:** R4a — #139 (fixes #133, #135, #136). Follow-ups: #124, #125, #126 (R2);
+  sunlit water was a false shadow, and its wood lost the dawn shadow. R4b moves every
+  overlay to `--color-map-{day,night}-{route,casing,muted,sun}` (GL layers via
+  `mapColor`/`applyOverlayTheme`; DOM via `--color-map-*` aliases under
+  `html[data-basemap]`, set from `solar`): an opaque ink route on a paper casing by day,
+  cream on warm black by night; sketch and station-connector lines cased the same way;
+  A/B, sketch and assistant pins as one hollow/filled teardrop family
+  (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
+  reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
+  blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
+- **Open PRs:** R4b (fixes #134). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #128, #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
-  `docs/design/language.md` is binding. R4a keeps route/marker `--color-map-*-current`
-  tokens for R4b, maps all trail and bike-route lines to the neutral path role (their
+  `docs/design/language.md` is binding. The route casing is paper by day, not dark
+  (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
+  panels the UI theme. R4a maps all trail and bike-route lines to the neutral path role (their
   magenta had no 2.0 meaning), and keeps outdoor-v2's residential wash translucent (`tint`).
-- **Blocked on:** owner visual review of R4a (`docs/design/shots/r4/`). The updated
-  day, night Sun, and night Rain phone shots use live MapTiler tiles.
-- **Next action:** R4b — neutral cased route line and restyled pins, popups, legend over
-  both basemaps (see the heads-up on #134), then R5.
-- **Last verified:** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,706 unit
+- **Blocked on:** owner visual review of R4b (`docs/design/shots/r4b/`). Open owner calls
+  from its review: hollow A/filled B swap light and dark at night (letters stay the
+  primary cue), and the opaque night route covers the labels it crosses.
+- **Next action:** R5 — route cards and directions as transit strips (needs #128,
+  `Plate as="button"`).
+- **Last verified (R4b):** 2026-09-30; lint (0 errors), typecheck, 1,711 unit tests
+  (single run; #140 load flakes also on `main`), build, design:check and live-tile e2e
+  16/16 pass, with the route-line pixel check now counting the day ink.
+- **Last verified (R4a):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,706 unit
   suite, build, design:check, diff check and live-tile e2e 16/16 pass. The live R4a
   phone frame reads 43.5% shadow pixels in daytime Sun, 0.0% at night in Sun mode,
   and visible rain protection at night. Rendered central road pixels read 3.36:1

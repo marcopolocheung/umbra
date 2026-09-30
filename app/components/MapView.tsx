@@ -163,8 +163,10 @@ function bringNavOverlaysToFront(map: maplibregl.Map) {
     "train-route-transfers-outer",
     "train-route-transfers-inner",
     // MRT connector
+    "mrt-entrance-connector-casing",
     "mrt-entrance-connector-line",
     // Sketch overlays (when active)
+    "sketch-line-casing",
     "sketch-line-layer",
     "sketch-preview-layer",
   ];
@@ -346,10 +348,10 @@ const SunCompass = memo(function SunCompass({ sunViz, showSunLines }: { sunViz: 
     <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
       <svg aria-hidden="true" focusable="false" width="400" height="400" viewBox="0 0 400 400" style={{ overflow: "visible" }}>
         {/* Orange is the sun's alone (D1): the daylight sector, both horizon rays and
-            the pointer. The night sector is map ink. Colours follow the basemap. */}
+            the pointer. The night sector is always a darkening ink wash. */}
         {nightPath
-          ? <path d={nightPath} style={{ fill: "var(--color-map-route)" }} fillOpacity="0.22" />
-          : <circle cx={CX} cy={CY} r={R} style={{ fill: "var(--color-map-route)" }} fillOpacity="0.22" />
+          ? <path d={nightPath} style={{ fill: "var(--color-map-day-route)" }} fillOpacity="0.22" />
+          : <circle cx={CX} cy={CY} r={R} style={{ fill: "var(--color-map-day-route)" }} fillOpacity="0.22" />
         }
         {dayPath && <path d={dayPath} style={{ fill: "var(--color-map-sun)" }} fillOpacity="0.30" />}
         <circle cx={CX} cy={CY} r={R} fill="none" style={{ stroke: "var(--color-map-route)" }} strokeOpacity="0.3" strokeWidth="1.5" />
@@ -750,6 +752,14 @@ export default function MapView({
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
+      // Cased like the walking route: bare ink is ~2.4:1 on dark shade.
+      map.addLayer({
+        id: "sketch-line-casing",
+        type: "line",
+        source: "sketch-line",
+        layout: { visibility: "none" },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 5.5 },
+      });
       map.addLayer({
         id: "sketch-line-layer",
         type: "line",
@@ -759,7 +769,6 @@ export default function MapView({
           "line-color": mapColor(basemapThemeRef.current, "route"),
           "line-width": 2.5,
           "line-dasharray": [4, 3],
-          "line-opacity": 0.85,
         },
       });
 
@@ -1082,6 +1091,7 @@ export default function MapView({
         font-size:11px;font-weight:800;color:var(--color-map-route);cursor:pointer;
       `;
       el.textContent = String(i + 1);
+      el.setAttribute("aria-label", `Waypoint ${i + 1}`);
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat(wp)
         .addTo(mapRef.current!);
@@ -1129,6 +1139,7 @@ export default function MapView({
     }
 
     const el = document.createElement("div");
+    el.setAttribute("aria-label", "Your location");
     el.style.cssText = `
       width: 18px; height: 18px; position: relative;
       display: flex; align-items: center; justify-content: center;
@@ -1138,15 +1149,15 @@ export default function MapView({
     pulse.style.cssText = `
       position: absolute;
       width: 36px; height: 36px; border-radius: var(--radius-circle);
-      background: color-mix(in srgb, var(--color-map-route) 25%, transparent);
+      border: 2px solid var(--color-map-route);
       animation: userLocationPulse 1.8s ease-out infinite;
     `;
 
     const dot = document.createElement("div");
     dot.style.cssText = `
-      width: 14px; height: 14px; border-radius: var(--radius-circle);
-      background: var(--color-map-route); border: 2.5px solid var(--color-map-casing);
-      box-shadow: var(--shadow-map-marker);
+      width: 18px; height: 18px; border-radius: var(--radius-circle); box-sizing: border-box;
+      background: radial-gradient(circle, var(--color-map-route) 0 3px, var(--color-map-casing) 3.5px);
+      border: 3px solid var(--color-map-route); box-shadow: var(--shadow-map-marker);
       position: relative; z-index: 1;
     `;
 
@@ -1163,7 +1174,8 @@ export default function MapView({
       document.head.appendChild(style);
     }
 
-    el.appendChild(pulse);
+    // Reduced motion drops the looping pulse; the reticle alone marks the spot.
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) el.appendChild(pulse);
     el.appendChild(dot);
 
     userLocationMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "center" })
@@ -1200,6 +1212,7 @@ export default function MapView({
     const coords = sketchPoints.map((p) => p.coord);
 
     if (coords.length >= 2 && !navRoute) {
+      map.setLayoutProperty("sketch-line-casing", "visibility", "visible");
       map.setLayoutProperty("sketch-line-layer", "visibility", "visible");
       src.setData({
         type: "Feature",
@@ -1207,6 +1220,7 @@ export default function MapView({
         geometry: { type: "LineString", coordinates: coords },
       });
     } else {
+      map.setLayoutProperty("sketch-line-casing", "visibility", "none");
       map.setLayoutProperty("sketch-line-layer", "visibility", "none");
       src.setData({ type: "FeatureCollection", features: [] });
     }
@@ -1514,6 +1528,7 @@ export default function MapView({
     markerBoardRef.current?.remove();  markerBoardRef.current = null;
     markerAlightRef.current?.remove(); markerAlightRef.current = null;
     if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
+    if (map.getLayer("mrt-entrance-connector-casing")) map.removeLayer("mrt-entrance-connector-casing");
     if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
 
     if (!navMrtEntrances) return;
@@ -1529,6 +1544,7 @@ export default function MapView({
         "font-family:var(--font-label)", "cursor:default",
       ].join(";");
       el.textContent = "M";
+      el.setAttribute("aria-label", "Station entrance");
       return el;
     };
 
@@ -1543,6 +1559,7 @@ export default function MapView({
     const connectors = navTrainDrawData ? stationConnectors(navMrtEntrances, navTrainDrawData) : [];
     const addConnector = () => {
       if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
+      if (map.getLayer("mrt-entrance-connector-casing")) map.removeLayer("mrt-entrance-connector-casing");
       if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
       map.addSource("mrt-entrance-connector", {
         type: "geojson",
@@ -1554,11 +1571,18 @@ export default function MapView({
         },
       });
       map.addLayer({
+        id: "mrt-entrance-connector-casing",
+        type: "line",
+        source: "mrt-entrance-connector",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 5.5 },
+      });
+      map.addLayer({
         id: "mrt-entrance-connector-line",
         type: "line",
         source: "mrt-entrance-connector",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": mapColor(basemapThemeRef.current, "route"), "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "route"), "line-width": 2.5, "line-dasharray": [0, 3] },
       });
 
       bringNavOverlaysToFront(map);
