@@ -169,6 +169,8 @@ function baseLabel(p: ShadowProvenance): string {
       return "from building geometry and tree canopy";
     case "canopy":
       return "from tree canopy";
+    case "shed":
+      return "from sidewalk sheds";
     case "canvas":
       return "from the map view";
     default:

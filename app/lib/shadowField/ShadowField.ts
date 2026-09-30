@@ -57,12 +57,19 @@ import { crownOpacity } from "./canopy";
  * and the place it is owed an answer is #277 — where `EdgeShadow` learns to carry the
  * canopy *share* so the cost model can weight it — not in a label the UI would have
  * to explain.
+ *
+ * `"shed"` (issue #85) *is* a new member, and the A8d reasoning is why: a sidewalk
+ * shed is not vegetation, so "from tree canopy" would be false for it. It is
+ * public-record point evidence — a DOB permit — placed by a model, and it only ever
+ * labels an answer no building source could give. A building-backed answer keeps its
+ * own label with sheds blended in; `EdgeShadow.sheds` records that they were.
  */
 export type ShadowSource =
   | "tiles"
   | "overpass"
   | "nyc-static"
   | "canopy"
+  | "shed"
   | "mixed"
   | "canvas"
   | "none";
@@ -94,6 +101,8 @@ export interface EdgeShadow {
   buildingSource?: PrismProvider["source"] | null;
   /** Exact canopy evidence that survived footprint masking for this edge. */
   canopySources?: { osm: boolean; raster: boolean };
+  /** Whether the edge's cell held at least one sidewalk-shed prism. */
+  sheds?: boolean;
 }
 
 /**
@@ -123,6 +132,8 @@ export interface EdgeShelter {
   buildingSource?: PrismProvider["source"] | null;
   /** Canopy evidence. `raster` is always false: the raster march is a light model. */
   canopySources?: { osm: boolean; raster: boolean };
+  /** Whether the edge's cell held at least one sidewalk-shed prism. */
+  sheds?: boolean;
 }
 
 /** A point answer for the selected exposure objective. */
@@ -295,6 +306,20 @@ export interface CanopyRasterProvider {
   load?(bbox: BBox, signal?: AbortSignal): Promise<void>;
 }
 
+/**
+ * A source of sidewalk-shed slabs (issue #85).
+ *
+ * A fourth list because sheds are additive like canopy but are neither vegetation nor
+ * seasonal: `prismsFor` takes no date — the permit set is today's whatever moment is
+ * asked about. Same two rules as every provider: the same array for the same area,
+ * and `null`, never an empty set, when it cannot speak for an area.
+ */
+export interface ShedProvider {
+  source: "shed";
+  prismsFor(bbox: BBox): PrismSet | null;
+  load?(bbox: BBox, signal?: AbortSignal): Promise<void>;
+}
+
 // ─── Tunables, all of them documented ─────────────────────────────────────────
 
 /** Below this, `shadowAt`'s answer is a hint; callers should consult another source. */
@@ -378,7 +403,7 @@ const LOW_SUN_ALTITUDE_RAD = (10 * Math.PI) / 180;
  * flat default (see issue #120). Neither is measured ground truth — these are
  * priors, and A3's agreement harness is what turns them into calibrated numbers.
  */
-type SourceKey = PrismProvider["source"] | "canopy" | "canopy-raster";
+type SourceKey = PrismProvider["source"] | "canopy" | "canopy-raster" | "shed";
 
 const SOURCE_BASE_CONFIDENCE: Record<SourceKey, number> = {
   tiles: 0.8,
@@ -422,6 +447,14 @@ const SOURCE_BASE_CONFIDENCE: Record<SourceKey, number> = {
    * sampler that cannot see a tree at all.
    */
   "canopy-raster": 0.45,
+  /**
+   * Sheds alone sit below canopy: the permit is real public record, but where the
+   * slab lands is a model — snapped to the nearest edge, side read from a centerline
+   * geocode (92% agreement, Midtown only), length guessed — and a shed says nothing
+   * about the tower across the street. So an answer resting on sheds alone is, like
+   * canopy alone, a request to fall back. A prior, not a measurement.
+   */
+  shed: 0.3,
 };
 
 /** Applied when the covering source holds no buildings at all for the area. */
@@ -578,9 +611,12 @@ interface SunCell {
    * altitude, and the crown's opacity from the date.
    */
   rasterShade: CanopyShade | null;
+  /** Sidewalk-shed shadow for the same cell, indexed separately for the canopy's reasons. */
+  shedIndex: ShadowIndex | null;
   resolved: Resolved | null;
   canopy: PrismSet | null;
   raster: CanopyHeightField | null;
+  sheds: PrismSet | null;
 }
 
 /**
@@ -729,6 +765,7 @@ function sunCellsAt(
     resolved: Resolved | null;
     canopy: PrismSet | null;
     raster: CanopyHeightField | null;
+    sheds: PrismSet | null;
   }>,
   phases?: ShadowIndexPhases,
 ): SunCell[] {
@@ -748,6 +785,7 @@ function sunCellsAt(
     const tPrep = globalThis.performance?.now?.() ?? 0;
     const index = build(source.resolved ? preparedCastersFor(source.resolved.set.prisms) : null);
     const canopyIndex = build(source.canopy ? preparedCastersFor(source.canopy.prisms) : null);
+    const shedIndex = build(source.sheds ? preparedCastersFor(source.sheds.prisms) : null);
     if (phases) phases.shadowIndexPrepMs += (globalThis.performance?.now?.() ?? 0) - tPrep;
     const rasterShade =
       source.raster && sun.altitude > 0
@@ -759,9 +797,11 @@ function sunCellsAt(
         index,
         canopyIndex,
         rasterShade,
+        shedIndex,
         resolved: source.resolved,
         canopy: source.canopy,
         raster: source.raster,
+        sheds: source.sheds,
       };
     }
   }
@@ -851,7 +891,7 @@ function rainRasterSampler(
  * answers, so a caller can put the fast synchronous tile provider ahead of the
  * Overpass one and get the network path only where the renderer has nothing loaded.
  */
-/** Options for `createGeometryShadowField` beyond the three provider lists. */
+/** Options for `createGeometryShadowField` beyond the four provider lists. */
 export interface GeometryShadowFieldOptions {
   /**
    * The current dataset generation, read at the moment a `ready`/`readyEdges`
@@ -866,6 +906,7 @@ export function createGeometryShadowField(
   providers: PrismProvider[],
   canopyProviders: CanopyProvider[] = [],
   rasterProviders: CanopyRasterProvider[] = [],
+  shedProviders: ShedProvider[] = [],
   options: GeometryShadowFieldOptions = {}
 ): ShadowField {
   let overpassTail = Promise.resolve();
@@ -951,6 +992,15 @@ export function createGeometryShadowField(
     return null;
   }
 
+  /** Sidewalk sheds for an area, or `null` if no shed source can speak for it. */
+  function resolveSheds(bbox: BBox): PrismSet | null {
+    for (const provider of shedProviders) {
+      const set = provider.prismsFor(bbox);
+      if (set) return set;
+    }
+    return null;
+  }
+
   /** The canopy height field for an area, unmasked. No date: a raster is not seasonal. */
   function resolveRaster(bbox: BBox): CanopyHeightField | null {
     for (const provider of rasterProviders) {
@@ -993,16 +1043,18 @@ export function createGeometryShadowField(
    * A building wins outright: it is opaque, so nothing a crown adds can make the
    * point darker than 1, and the canopy index is only consulted where the buildings
    * answered sun. That ordering is what keeps A7 off the hot path in the cities where
-   * it has nothing to say.
+   * it has nothing to say. A shed slab is opaque too, so it wins the same way, second.
    */
   function pointShadow(
     index: ShadowIndex | null,
+    shedIndex: ShadowIndex | null,
     canopyIndex: ShadowIndex | null,
     rasterShade: CanopyShade | null,
     lng: number,
     lat: number
   ): number {
     if (index?.isShadowed(lng, lat)) return 1;
+    if (shedIndex?.isShadowed(lng, lat)) return 1;
 
     // Two canopy sources combine by **maximum**, which is the rule `opacityAt`
     // already applies between two overlapping crowns inside one index: the beam is
@@ -1027,12 +1079,14 @@ export function createGeometryShadowField(
    */
   function pointShelter(
     index: ShadowIndex | null,
+    shedIndex: ShadowIndex | null,
     canopyIndex: ShadowIndex | null,
     rasterSampler: CanopyRaySampler | null,
     lng: number,
     lat: number
   ): { shelter: number; complete: boolean } {
     if (index?.isShadowed(lng, lat)) return { shelter: 1, complete: true };
+    if (shedIndex?.isShadowed(lng, lat)) return { shelter: 1, complete: true };
 
     let shelter = canopyIndex ? canopyIndex.opacityAt(lng, lat) : 0;
     let complete = true;
@@ -1090,17 +1144,28 @@ export function createGeometryShadowField(
     return best;
   }
 
+  /**
+   * Sheds never touch a building-backed score. Nearly every Manhattan cell holds a
+   * shed, so docking or relabelling on their presence would stamp every route there;
+   * `EdgeShadow.sheds` records them instead. They only speak where nothing else can,
+   * and there below canopy — see `SOURCE_BASE_CONFIDENCE.shed`.
+   */
   function scoreFor(
     resolved: Resolved | null,
     canopy: PrismSet | null,
     raster: CanopyHeightField | null,
+    sheds: PrismSet | null,
     sunAltitude: number
   ): { source: ShadowSource; confidence: number } {
     const fromCanopy = canopyConfidence(canopy, raster, sunAltitude);
 
     if (!resolved) {
-      if (fromCanopy === 0) return { source: "none", confidence: 0 };
-      return { source: "canopy", confidence: fromCanopy };
+      if (fromCanopy > 0) return { source: "canopy", confidence: fromCanopy };
+      const shedPrisms = sheds?.prisms.length ?? 0;
+      if (shedPrisms > 0) {
+        return { source: "shed", confidence: confidenceFor("shed", sunAltitude, shedPrisms) };
+      }
+      return { source: "none", confidence: 0 };
     }
 
     const base = confidenceFor(
@@ -1114,10 +1179,11 @@ export function createGeometryShadowField(
     resolved: Resolved | null,
     canopy: PrismSet | null,
     raster: CanopyHeightField | null,
+    sheds: PrismSet | null,
     shadow: number,
     sunAltitude: number
   ): ShadowSample {
-    return { shadow, ...scoreFor(resolved, canopy, raster, sunAltitude) };
+    return { shadow, ...scoreFor(resolved, canopy, raster, sheds, sunAltitude) };
   }
 
   /**
@@ -1133,13 +1199,14 @@ export function createGeometryShadowField(
     resolved: Resolved | null,
     canopy: PrismSet | null,
     raster: CanopyHeightField | null,
+    sheds: PrismSet | null,
     lng: number,
     lat: number,
     when: Date,
     sunAzimuth: number,
     sunAltitude: number
   ): ShadowSample {
-    if (!resolved && !canopy && !raster) return { shadow: 0, source: "none", confidence: 0 };
+    if (!resolved && !canopy && !raster && !sheds) return { shadow: 0, source: "none", confidence: 0 };
 
     const { mPerLat, mPerLng } = metersPerDegree(lat);
     const offsets = POINT_OFFSETS_M.map(
@@ -1152,15 +1219,18 @@ export function createGeometryShadowField(
       );
     const index = resolved ? build(resolved.set.prisms) : null;
     const canopyIndex = canopy ? build(canopy.prisms) : null;
+    const shedIndex = sheds ? build(sheds.prisms) : null;
     const masked = maskedRaster(raster, resolved);
     const rasterShade = masked?.shadeFor(sunAzimuth, sunAltitude, when) ?? null;
 
     let shadowed = 0;
     for (const [sampleLng, sampleLat] of offsets) {
-      shadowed += pointShadow(index, canopyIndex, rasterShade, sampleLng, sampleLat);
+      shadowed += pointShadow(index, shedIndex, canopyIndex, rasterShade, sampleLng, sampleLat);
     }
 
-    return sampleFor(resolved, canopy, masked, shadowed / POINT_OFFSETS_M.length, sunAltitude);
+    return sampleFor(
+      resolved, canopy, masked, sheds, shadowed / POINT_OFFSETS_M.length, sunAltitude
+    );
   }
 
   function shadowAt(lng: number, lat: number, when: Date): ShadowSample {
@@ -1169,7 +1239,7 @@ export function createGeometryShadowField(
 
     const bbox = bboxAroundPoint(lng, lat, QUERY_PAD_M);
     return probe(
-      resolve(bbox), resolveCanopy(bbox, when), resolveRaster(bbox),
+      resolve(bbox), resolveCanopy(bbox, when), resolveRaster(bbox), resolveSheds(bbox),
       lng, lat, when, sun.azimuth, sun.altitude
     );
   }
@@ -1190,13 +1260,14 @@ export function createGeometryShadowField(
 
       // Both sidewalks resolve the same providers over the same bbox, so the source
       // and the confidence are properties of the edge, not of a side of it.
-      const score = scoreFor(cell.resolved, cell.canopy, cell.raster, sun.altitude);
+      const score = scoreFor(cell.resolved, cell.canopy, cell.raster, cell.sheds, sun.altitude);
       const provenance = {
         buildingSource: cell.resolved?.source ?? null,
         canopySources: {
           osm: (cell.canopy?.prisms.length ?? 0) > 0,
           raster: (cell.raster?.maxHeightM ?? 0) > 0,
         },
+        sheds: (cell.sheds?.prisms.length ?? 0) > 0,
       };
       if (score.source === "none") {
         return {
@@ -1219,6 +1290,7 @@ export function createGeometryShadowField(
           const t = i / steps;
           sum += pointShadow(
             cell.index,
+            cell.shedIndex,
             cell.canopyIndex,
             cell.rasterShade,
             edge.from[0] + t * (edge.to[0] - edge.from[0]) + offset[0],
@@ -1244,7 +1316,12 @@ export function createGeometryShadowField(
       const bbox = queryBboxForCell(cell);
       const resolved = resolve(bbox);
       const canopy = resolveCanopy(bbox, when);
-      return { resolved, canopy, raster: maskedRaster(resolveRaster(bbox), resolved) };
+      return {
+        resolved,
+        canopy,
+        raster: maskedRaster(resolveRaster(bbox), resolved),
+        sheds: resolveSheds(bbox),
+      };
     });
     return sampleEdgesWithSun(
       edges, plan, sunCellsAt(plan, edges.length, when, sources, phases)
@@ -1287,7 +1364,8 @@ export function createGeometryShadowField(
           ? rainRasterSampler(raster, direction, cell.lat, when)
           : null;
       const rasterIncomplete = raster !== null && rasterSampler === null;
-      const score = scoreFor(resolved, canopy, raster, altitudeRad);
+      const sheds = resolveSheds(bbox);
+      const score = scoreFor(resolved, canopy, raster, sheds, altitudeRad);
 
       // The index speaks in **radians** (SunCalc's convention for the sun path),
       // and its azimuth points the direction shadows FALL. A rain ray arrives FROM
@@ -1315,7 +1393,18 @@ export function createGeometryShadowField(
             cell.region
           )
         : null;
-
+      // A shed roof is opaque to rain as well as light, so it skips the canopy's
+      // rain re-opacification and goes straight to the rain casters.
+      const shedIndex = sheds
+        ? buildShadowIndexFor(
+            preparedRainCastersFor(sheds.prisms),
+            rayAzimuth,
+            altitudeRad,
+            cell.mPerLat,
+            cell.mPerLng,
+            cell.region
+          )
+        : null;
 
       const wallDocked =
         resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
@@ -1335,6 +1424,7 @@ export function createGeometryShadowField(
             const t = s / steps;
             const sample = pointShelter(
               buildingIndex,
+              shedIndex,
               canopyIndex,
               rasterSampler,
               edge.from[0] + t * (edge.to[0] - edge.from[0]) + offset[0],
@@ -1355,6 +1445,7 @@ export function createGeometryShadowField(
             osm: (canopy?.prisms.length ?? 0) > 0,
             raster: (raster?.maxHeightM ?? 0) > 0,
           },
+          sheds: (sheds?.prisms.length ?? 0) > 0,
         };
       }
     }
@@ -1377,9 +1468,10 @@ export function createGeometryShadowField(
     const resolved = resolve(bbox);
     const canopy = resolveCanopy(bbox, when);
     const raster = maskedRaster(resolveRaster(bbox), resolved);
+    const sheds = resolveSheds(bbox);
     const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
-    const score = scoreFor(resolved, canopy, raster, altitudeRad);
-    if (!resolved && !canopy && !raster) {
+    const score = scoreFor(resolved, canopy, raster, sheds, altitudeRad);
+    if (!resolved && !canopy && !raster && !sheds) {
       return {
         shelter: 0,
         left: 0,
@@ -1388,6 +1480,7 @@ export function createGeometryShadowField(
         confidence: 0,
         buildingSource: null,
         canopySources: { osm: false, raster: false },
+        sheds: false,
       };
     }
 
@@ -1414,11 +1507,21 @@ export function createGeometryShadowField(
           region,
         )
       : null;
+    const shedIndex = sheds
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(sheds.prisms),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region,
+        )
+      : null;
     const wallDocked = resolved !== null && direction.altitudeDeg < RAIN_TILT_DOCK_ALTITUDE_DEG;
     const rasterSampler =
       raster && raster.maxHeightM > 0 ? rainRasterSampler(raster, direction, lat, when) : null;
     const confidence = wallDocked ? score.confidence * RAIN_TILT_WALL_DOCK : score.confidence;
-    const sampled = pointShelter(buildingIndex, canopyIndex, rasterSampler, lng, lat);
+    const sampled = pointShelter(buildingIndex, shedIndex, canopyIndex, rasterSampler, lng, lat);
     return {
       shelter: sampled.shelter,
       left: sampled.shelter,
@@ -1430,6 +1533,7 @@ export function createGeometryShadowField(
         osm: (canopy?.prisms.length ?? 0) > 0,
         raster: (raster?.maxHeightM ?? 0) > 0,
       },
+      sheds: (sheds?.prisms.length ?? 0) > 0,
     };
   }
 
@@ -1472,8 +1576,9 @@ export function createGeometryShadowField(
     const resolved = resolve(padded);
     const canopy = resolveCanopy(padded, when);
     const raster = maskedRaster(resolveRaster(padded), resolved);
+    const sheds = resolveSheds(padded);
     const altitudeRad = (direction.altitudeDeg * Math.PI) / 180;
-    const score = scoreFor(resolved, canopy, raster, altitudeRad);
+    const score = scoreFor(resolved, canopy, raster, sheds, altitudeRad);
     const rayAzimuth = ((direction.fromDeg + 180) * Math.PI) / 180;
 
     const region: IndexRegion = { ...padded };
@@ -1490,6 +1595,16 @@ export function createGeometryShadowField(
     const canopyIndex = canopy
       ? buildShadowIndexFor(
           preparedRainCastersFor(rainCanopyCastersFor(canopy.prisms)),
+          rayAzimuth,
+          altitudeRad,
+          mPerLat,
+          mPerLng,
+          region
+        )
+      : null;
+    const shedIndex = sheds
+      ? buildShadowIndexFor(
+          preparedRainCastersFor(sheds.prisms),
           rayAzimuth,
           altitudeRad,
           mPerLat,
@@ -1529,7 +1644,9 @@ export function createGeometryShadowField(
             const lng = lngLeft + (sc + 0.5) * subLngStep;
             // A building pass wins opaque (1); canopy adds its rain-prior fraction,
             // raster and OSM combined by maximum — the same rule as every other query.
-            sum += pointShelter(buildingIndex, canopyIndex, rasterSampler, lng, lat).shelter;
+            sum += pointShelter(
+              buildingIndex, shedIndex, canopyIndex, rasterSampler, lng, lat
+            ).shelter;
           }
         }
         values[k++] = sum / (SUB_SAMPLES * SUB_SAMPLES);
@@ -1551,7 +1668,9 @@ export function createGeometryShadowField(
             const bbox = queryBboxForCell(cell);
             const resolved = resolve(bbox);
             const raster = maskedRaster(resolveRaster(bbox), resolved);
-            return scoreFor(resolved, resolveCanopy(bbox, when), raster, sun.altitude);
+            return scoreFor(
+              resolved, resolveCanopy(bbox, when), raster, resolveSheds(bbox), sun.altitude
+            );
           })();
       if (score.confidence < weakest.confidence) weakest = score;
     }
@@ -1586,11 +1705,20 @@ export function createGeometryShadowField(
     // Raster cells use the store's scheduler and may run together. The two OSM
     // provider families stay on one serial chain so a route never bursts the
     // volunteer Overpass service. Provider caches make these missing-only loads.
+    // Sheds are NYC Open Data, on neither host, so they run in the parallel group —
+    // but on the deadline signal, since nothing outlives the calculation for them.
     const raster = Promise.all(missing.map(async (bbox) => {
       for (const provider of rasterProviders) {
         if (provider.fieldFor(bbox)) break;
         await provider.load?.(bbox, options.signal);
         if (provider.fieldFor(bbox)) break;
+      }
+    }));
+    const sheds = Promise.all(missing.map(async (bbox) => {
+      for (const provider of shedProviders) {
+        if (provider.prismsFor(bbox)) break;
+        await provider.load?.(bbox, window.signal);
+        if (provider.prismsFor(bbox)) break;
       }
     }));
     const overpass = serializeOverpass(async () => {
@@ -1616,7 +1744,7 @@ export function createGeometryShadowField(
     // Overpass waiters are cancelled at the absolute deadline. Raster waiters use
     // only the caller signal: their shared scheduler may finish for later reuse.
     const completed = await settleReadiness(
-      Promise.all([raster, overpass]).then(() => undefined),
+      Promise.all([raster, sheds, overpass]).then(() => undefined),
       window.signal,
     );
     if (completed) {
@@ -1660,7 +1788,10 @@ export function createGeometryShadowField(
       // question this answers, which is whether the caller may skip a fallback path:
       // a `"mixed"` that resolves to `"tiles"` costs nothing, and both are well above
       // `LOW_CONFIDENCE` whenever the building source is.
-      return scoreFor(resolve(bbox), resolveCanopy(bbox, when), resolveRaster(bbox), sun.altitude);
+      return scoreFor(
+        resolve(bbox), resolveCanopy(bbox, when), resolveRaster(bbox), resolveSheds(bbox),
+        sun.altitude,
+      );
     },
 
     sweep(edges, times) {
@@ -1674,15 +1805,21 @@ export function createGeometryShadowField(
       const stable = plan.cells.map((cell) => {
         const bbox = queryBboxForCell(cell);
         const resolved = resolve(bbox);
-        return { bbox, resolved, raster: maskedRaster(resolveRaster(bbox), resolved) };
+        return {
+          bbox,
+          resolved,
+          raster: maskedRaster(resolveRaster(bbox), resolved),
+          sheds: resolveSheds(bbox),
+        };
       });
       return times.map((when) => {
         // Canopy is resolved per time because its opacity is seasonal, and prepared
         // per resolution — but the provider hands back the same array for every time
         // in one leaf state, so both caches hit and a day's sweep prepares once.
-        const sources = stable.map(({ bbox, resolved, raster }) => ({
+        const sources = stable.map(({ bbox, resolved, raster, sheds }) => ({
           resolved,
           raster,
+          sheds,
           canopy: resolveCanopy(bbox, when),
         }));
         return sampleEdgesWithSun(
@@ -1716,6 +1853,11 @@ export function createGeometryShadowField(
       const completed = await settleReadiness(Promise.all([
         Promise.all(
           rasterProviders.map((provider) => provider.load?.(bbox, options.signal)),
+        ),
+        // Sheds are NYC Open Data — neither Overpass nor the raster mirror — so they
+        // run beside both, cut at the deadline like the Overpass chain.
+        Promise.all(
+          shedProviders.map((provider) => provider.load?.(bbox, window.signal)),
         ),
         serializeOverpass(async () => {
           if (window.signal.aborted) return;
@@ -1845,6 +1987,16 @@ export function staticPrismProvider(
 export function staticCanopyProvider(set: PrismSet, coverage: BBox): CanopyProvider {
   return {
     source: "canopy",
+    prismsFor(bbox) {
+      return bboxContains(coverage, bbox) ? set : null;
+    },
+  };
+}
+
+/** A shed provider over a fixed prism set covering a fixed area. For tests. */
+export function staticShedProvider(set: PrismSet, coverage: BBox): ShedProvider {
+  return {
+    source: "shed",
     prismsFor(bbox) {
       return bboxContains(coverage, bbox) ? set : null;
     },

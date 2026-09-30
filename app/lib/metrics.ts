@@ -220,6 +220,8 @@ export interface RoutingRunMetrics {
   boardingStopCount?: number; // bus boardings sampled
   busPreloadCount?: number; // bus stop ready() preloads issued (<= MAX_STOP_PRELOADS)
   canopySourceShares?: Partial<Record<"osm" | "raster" | "both" | "none", number>>;
+  /** Share of sampled edges whose field cell held at least one sidewalk-shed prism. */
+  shedEdgeShare?: number;
   fallbackReason?: "low-confidence" | "mask-unavailable" | null;
   /**
    * Checkpoint 6 navigation record: counts, byte figures, source labels and

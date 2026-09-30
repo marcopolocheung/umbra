@@ -26,14 +26,23 @@ import {
 } from "../overpass";
 import type { CanopyTileStore } from "../canopyRaster/canopyTileStore";
 import { sharedCanopyTileStore } from "../canopyRaster/sharedStore";
+import {
+  NYC_BOUNDS,
+  type ShedPermit,
+  type ShedPermitResult,
+  fetchShedPermits,
+} from "../../services/sidewalkSheds";
 import type {
   BBox,
   CanopyProvider,
   CanopyRasterProvider,
+  EdgeRef,
   PrismProvider,
+  ShedProvider,
 } from "./ShadowField";
 import { bboxContains } from "./ShadowField";
 import { prismsFromCanopy } from "./canopy";
+import { shedPrismsFromPermits } from "./sheds";
 import { type CanopyHeightField, createCanopyHeightField } from "./canopyRasterField";
 import {
   type BuildingFeatureLike,
@@ -654,6 +663,122 @@ export function createRasterCanopyProvider(opts?: {
       await raceDeadline(waiter, readyBudgetMs);
     },
   };
+}
+
+// ─── Sidewalk sheds ───────────────────────────────────────────────────────────
+
+export interface NycShedProvider extends ShedProvider {
+  /** The routing edges permits are snapped to. Until bound, `prismsFor` declines. */
+  bindEdges(edges: EdgeRef[]): void;
+}
+
+interface ShedEntry {
+  coverage: BBox;
+  permits: ShedPermit[];
+  placed: { edges: EdgeRef[]; set: PrismSet } | null;
+}
+
+function intersects(a: BBox, b: BBox): boolean {
+  return a.west <= b.east && a.east >= b.west && a.south <= b.north && a.north >= b.south;
+}
+
+/** Upper bound on one permit request. Socrata measured 0.7–3.6 s cold. */
+const SHED_FETCH_TIMEOUT_MS = 15000;
+
+/**
+ * Sidewalk-shed slabs from NYC DOB permits (issue #85).
+ *
+ * Shaped like the Overpass providers — `load()` is the only path to the wire — with one
+ * extra input: a permit becomes a slab only once it is snapped to a routing edge, so
+ * the provider holds the edges the route calculation binds (the `bindSnapshot`
+ * pattern) and declines until it has both. Slabs are memoised on (permits, edges)
+ * identity, so the field's prepared-caster cache hits across one calculation.
+ *
+ * Like the raster provider, the wait is bounded and the read is not: `signal` stops
+ * `load()` waiting, while the fetch runs on and fills the cache, so a cold request
+ * that misses one route's readiness budget serves the next calculation.
+ *
+ * An empty permit list inside NYC is a real answer — no sheds here. A failed fetch,
+ * or a response `SHED_LIMIT` may have truncated, is not, and caches nothing.
+ */
+export function createShedProvider(opts?: {
+  fetchPermits?: (bbox: BBox) => Promise<ShedPermitResult>;
+}): NycShedProvider {
+  const fetchPermits =
+    opts?.fetchPermits ??
+    ((bbox) => fetchShedPermits(bbox, { signal: AbortSignal.timeout(SHED_FETCH_TIMEOUT_MS) }));
+  const cache: ShedEntry[] = [];
+  const inFlight: Array<{ bbox: BBox; promise: Promise<void> }> = [];
+  let edges: EdgeRef[] | null = null;
+
+  function lookup(bbox: BBox): ShedEntry | null {
+    for (let i = 0; i < cache.length; i++) {
+      if (bboxContains(cache[i].coverage, bbox)) {
+        const [entry] = cache.splice(i, 1);
+        cache.unshift(entry);
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  return {
+    source: "shed",
+
+    bindEdges(next) {
+      edges = next;
+    },
+
+    prismsFor(bbox) {
+      if (!edges) return null;
+      const entry = lookup(bbox);
+      if (!entry) return null;
+      if (entry.placed?.edges !== edges) {
+        entry.placed = { edges, set: shedPrismsFromPermits(entry.permits, edges).set };
+      }
+      return entry.placed.set;
+    },
+
+    async load(bbox, signal) {
+      if (lookup(bbox)) return;
+      if (signal?.aborted) return;
+      if (!intersects(NYC_BOUNDS, bbox)) return;
+
+      // A wider request already on the wire answers this one too.
+      let pending = inFlight.find((entry) => bboxContains(entry.bbox, bbox));
+      if (!pending) {
+        const entry = { bbox, promise: Promise.resolve() };
+        entry.promise = fetchPermits(bbox)
+          .then((result) => {
+            if (!result.complete) return;
+            cache.unshift({ coverage: result.coverage, permits: result.permits, placed: null });
+            if (cache.length > CACHE_ENTRIES) cache.length = CACHE_ENTRIES;
+          })
+          .catch(() => {
+            // Never cache a failure as "no sheds here": `prismsFor` keeps declining.
+          })
+          .finally(() => {
+            inFlight.splice(inFlight.indexOf(entry), 1);
+          });
+        inFlight.push(entry);
+        pending = entry;
+      }
+      await untilAborted(pending.promise, signal);
+    },
+  };
+}
+
+/** `promise`, or `signal` aborting — whichever is first, with the listener removed either way. */
+function untilAborted(promise: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
+  if (!signal) return promise;
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    signal.addEventListener("abort", done, { once: true });
+    promise.then(done, done);
+  });
 }
 
 /**
