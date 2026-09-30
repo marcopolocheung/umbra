@@ -49,11 +49,11 @@ export function maskDiff(before: boolean[], after: boolean[]): number {
 }
 
 /**
- * Pixels of the nav route line. Strata (U2) paints routes in --color-route
- * #155FD6 at 0.9 opacity; the predicate hunts the blue-dominant composite,
- * deliberately narrower than the app shadow-predicate so shadow wash does not
- * count as a route line. Counted in-page at full resolution: the line is 4 px
- * wide, so the shadow sampling grid would step straight over it.
+ * Pixels of the nav route line. By day (every scenario here) R4b paints it opaque
+ * `--color-map-day-route` #1B1512 over a paper casing: a warm near-black nothing else
+ * on the day basemap reaches. Day only — the night ground is that dark everywhere. The basemap's darkest ink is #3B322B, and a shadowed label
+ * turns blue, (18, 27, 46), which the warm test rejects. Counted in-page at full
+ * resolution: the line is 4 px wide, so the shadow sampling grid would step over it.
  */
 export async function countRouteLinePixels(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -71,7 +71,7 @@ export async function countRouteLinePixels(page: Page): Promise<number> {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
-      if (r < 120 && g < 190 && b > 180 && b > r + 60 && b > g + 40) count++;
+      if (r <= 40 && g <= 40 && b <= 40 && Math.abs(r - b) <= 12) count++;
     }
     return count;
   });

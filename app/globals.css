@@ -117,12 +117,20 @@
   --color-line-yellow-plate: #3c361a;
 
   /* Renderer-facing values stay fixed through R4. */
-  --color-map-route-current: #1d6ee0;
-  --color-map-ink-current: #1c2321;
-  --color-map-panel-current: #ffffff;
-  --color-map-muted-current: #525e58;
-  --color-map-sun-current: #a15c00;
-  --color-map-on-route-current: #ffffff;
+  /* Map overlays (R4b) — route, casing, pins, stops, sun diagram — follow the basemap
+     (solar altitude, `html[data-basemap]`), not the UI override: they are read against
+     the map. None is blue-dominant, so a drawn route never reads as shade (#5). */
+  --color-map-day-route: #1b1512;
+  --color-map-day-casing: #f8efdf;
+  --color-map-day-muted: #504942;
+  --color-map-day-sun: #a8411a;
+  --color-map-night-route: #f4e6d1;
+  --color-map-night-casing: #0e0c0b;
+  --color-map-night-muted: #bab0a0;
+  --color-map-night-sun: #f08a5d;
+  --color-map-route: var(--color-map-day-route);
+  --color-map-casing: var(--color-map-day-casing);
+  --color-map-sun: var(--color-map-day-sun);
   /* Basemap palettes (R4), picked by solar altitude, never by the UI override.
      Every one keeps warmth (r+g)/2 - b within -17..14, so the renderer's shadow stays
      blue-dominant over it and sunlit ground never reads as shadow (invariant #5,
@@ -167,10 +175,7 @@
   --shadow-lg: 4px 4px 0 #1b1512;
   --shadow-xl: 4px 4px 0 #1b1512;
   --shadow-2xl: 4px 4px 0 #1b1512;
-  --shadow-map-marker: 2px 2px 0 #1c2321;
-  --shadow-map-dot: 0 0 0 3px rgba(29, 110, 224, 0.45);
-  --shadow-map-station: 0 0 0 5px rgba(29, 110, 224, 0.25);
-  --filter-map-pin: drop-shadow(2px 2px 0 #1c2321);
+  --shadow-map-marker: 2px 2px 0 var(--color-map-route);
   --radius: 4px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -212,6 +217,12 @@
   --spacing-sidebar: 408px;
   --spacing-legend: 15rem;
   --spacing-panel-min: 15rem;
+}
+
+html[data-basemap="night"] {
+  --color-map-route: var(--color-map-night-route);
+  --color-map-casing: var(--color-map-night-casing);
+  --color-map-sun: var(--color-map-night-sun);
 }
 
 html[data-theme="night"] {

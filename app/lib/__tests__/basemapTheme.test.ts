@@ -1,7 +1,16 @@
 import type { LayerSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 import { fixtureBasemapStyle } from "../../../e2e/fixtures/basemapStyle";
-import { applyBasemapTheme, BASEMAP_PALETTES, basemapPaint, WARMTH_RANGE } from "../basemapTheme";
+import {
+  applyBasemapTheme,
+  applyOverlayTheme,
+  BASEMAP_PALETTES,
+  basemapPaint,
+  type MapRole,
+  mapColor,
+  overlayPaint,
+  WARMTH_RANGE,
+} from "../basemapTheme";
 import { BASEMAP_RGB, shadowPixelAt } from "../shadowField/__tests__/agreement/harness";
 import { isBlueDominantShadowPixel } from "../shadowSampling";
 import type { UiTheme } from "../uiTheme";
@@ -190,5 +199,67 @@ describe("applyBasemapTheme", () => {
     applyBasemapTheme(map, layers, "day");
     expect(calls).toContainEqual(["Road", "line-opacity", 0.45]);
     expect(calls).toContainEqual(["Labels", "text-opacity", 0.6]);
+  });
+});
+
+describe("map overlays (R4b)", () => {
+  const ROLES: MapRole[] = ["route", "casing", "muted", "sun"];
+  const MAP_SURFACES = ["land", "landuse", "field", "wood", "water", "road", "building"] as const;
+
+  it("never draws a blue-dominant overlay, so a route left on screen is never read as shade", () => {
+    expect(detected(rgb("#1d6ee0"))).toBe(true); // the pre-2.0 route blue was
+    for (const theme of THEMES) {
+      for (const role of ROLES) {
+        expect({ theme, role, detected: detected(rgb(mapColor(theme, role))) }).toEqual({ theme, role, detected: false });
+      }
+    }
+  });
+
+  it("separates the route from its casing, and the cased line from every map surface, at 3:1", () => {
+    for (const theme of THEMES) {
+      const line = rgb(mapColor(theme, "route"));
+      const casing = rgb(mapColor(theme, "casing"));
+      expect(contrast(line, casing)).toBeGreaterThanOrEqual(3);
+      for (const surface of MAP_SURFACES) {
+        const ground = rgb(BASEMAP_PALETTES[theme][surface]);
+        const edge = Math.max(contrast(line, ground), contrast(casing, ground));
+        expect({ theme, surface, readable: edge >= 3 }).toEqual({ theme, surface, readable: true });
+      }
+    }
+  });
+
+  it("keeps the cased day route separable over painted shade, from dawn to noon", () => {
+    // Bare ink is ~2.4:1 on the dark dawn shade; the paper casing is what carries the
+    // line there — the reason the day casing is light rather than dark.
+    const line = rgb(mapColor("day", "route"));
+    const casing = rgb(mapColor("day", "casing"));
+    for (const surface of ["land", "road", "building", "field"] as const) {
+      for (const t of SUN_FRACTIONS) {
+        const shaded = shadowPixelAt(t, rgb(BASEMAP_PALETTES.day[surface]));
+        const edge = Math.max(contrast(line, shaded), contrast(casing, shaded));
+        expect({ surface, t, readable: edge >= 3 }).toEqual({ surface, t, readable: true });
+      }
+    }
+  });
+
+  it("paints only Umbra's own layers, with the theme's own map colours", () => {
+    const basemapIds = new Set(OUTDOOR_V2_LAYERS.map((l) => l.id));
+    for (const theme of THEMES) {
+      const own = new Set(ROLES.map((role) => mapColor(theme, role)));
+      for (const [id, , color] of overlayPaint(theme)) {
+        expect(basemapIds.has(id)).toBe(false);
+        expect(own.has(color)).toBe(true);
+      }
+    }
+  });
+
+  it("recolours the overlay layers that exist and skips the rest", () => {
+    const calls: string[] = [];
+    const map = {
+      getLayer: (id: string) => (id === "nav-route-line" ? { id } : undefined),
+      setPaintProperty: (id: string, property: string, value: unknown) => calls.push(`${id} ${property} ${value}`),
+    };
+    applyOverlayTheme(map, "night");
+    expect(calls).toEqual([`nav-route-line line-color ${mapColor("night", "route")}`]);
   });
 });

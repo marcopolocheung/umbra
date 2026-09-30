@@ -12,8 +12,9 @@ import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/canopyLayer";
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
-import { token } from "../lib/css-tokens";
-import { applyBasemapTheme } from "../lib/basemapTheme";
+import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
+import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
+import { mapPinElement } from "./mapPins";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
@@ -64,121 +65,6 @@ const SHADOW_V2_DEBUG = isShadowV2DebugEnabled();
 // directly, preserving its existing CORS policy.
 const SHADOW_DEBUG_BASE = import.meta.env.DEV ? "/__shadow" : (import.meta.env.VITE_SHADOW_API_BASE ?? "").replace(/\/$/, "");
 const EMPTY_DEBUG_ACCOUNTING: DebugAccounting = { cacheBytes: 0, compressedBytes: 0, workerBytes: 0, stagingBytes: 0, gpuBytes: 0, requested: 0, inFlight: 0, ready: 0, incomplete: 0, error: 0, evicted: 0 };
-
-/**
- * Ensure nav overlays stay visible.
- *
- * The shadow layer draws the tilted buildings itself, and it writes depth doing
- * so, so a building between the camera and the route would occlude the line.
- * Route, transit and sketch overlays belong on top of it.
- *
- * We defensively move key overlay layers to the top whenever we (re)apply them.
- * Note this list deliberately omits `local-shadow-layer`: it has to stay below
- * the overlays, and this runs on every shadow recompute.
- */
-/**
- * Vector-tile source layers whose symbols are *places* — what a person is looking
- * for on the map, not what the map is made of.
- *
- * These are lifted above the shadow layer so a building never hides them. The
- * layers left behind (`transportation_name`, `water_name`, contours) are the ones
- * whose whole job is to label the ground, and seeing a street name printed across
- * the tower standing on it is a large part of what reads as "transparent
- * buildings".
- */
-const PLACE_LABEL_SOURCE_LAYERS = new Set([
-  "poi",
-  "outdoor_poi",
-  "place",
-  "park",
-  "aerodrome_label",
-  "mountain_peak",
-]);
-
-/**
- * A place-label layer and the layer it originally sat immediately below.
- *
- * Capture this before *any* of our own layers are added, so no successor is one of
- * them. `bringNavOverlaysToFront` reshuffles ours on every shadow recompute, and a
- * slot anchored to one would restore its label above the buildings rather than
- * below — which, since the style's last layers are a solid run of place labels,
- * strands the whole run. A label that was last in the basemap has no successor and
- * restores to just under the shadow layer, the top of the basemap now.
- */
-type PlaceLabelSlot = { id: string; beforeId: string | undefined };
-
-/** The place-label layers of the current style, each with the slot it came from. */
-function findPlaceLabelSlots(map: maplibregl.Map): PlaceLabelSlot[] {
-  const order = map.getLayersOrder();
-  const slots: PlaceLabelSlot[] = [];
-  for (let i = 0; i < order.length; i++) {
-    const layer = map.getLayer(order[i]);
-    if (layer?.type !== "symbol") continue;
-    if (!PLACE_LABEL_SOURCE_LAYERS.has(layer.sourceLayer ?? "")) continue;
-    slots.push({ id: order[i], beforeId: order[i + 1] });
-  }
-  return slots;
-}
-
-/**
- * Float the basemap's place labels over the buildings, or put them back.
- *
- * Only while the camera is tilted. Everything above the first 3D layer is drawn
- * by MapLibre with depth testing off, so a layer lifted up here is unconditionally
- * visible over the extrusions — but flat-on there are no extrusions to hide behind,
- * and the flat view is the one the shadow sampler reads back off the canvas
- * (invariant #5), where an untinted label over a shadowed sidewalk would score as
- * open sun. Restoring walks the slots backwards so each layer's recorded successor
- * is already home by the time it is used.
- */
-function setPlaceLabelsAboveBuildings(
-  map: maplibregl.Map,
-  slots: PlaceLabelSlot[],
-  shadowLayerId: string,
-  above: boolean
-) {
-  const move = (id: string, beforeId?: string) => {
-    if (!map.getLayer(id)) return;
-    if (beforeId && !map.getLayer(beforeId)) return;
-    map.moveLayer(id, beforeId);
-  };
-  if (above) {
-    for (const slot of slots) move(slot.id);
-  } else {
-    for (let i = slots.length - 1; i >= 0; i--) {
-      move(slots[i].id, slots[i].beforeId ?? shadowLayerId);
-    }
-  }
-  bringNavOverlaysToFront(map);
-}
-
-function bringNavOverlaysToFront(map: maplibregl.Map) {
-  const layerIds = [
-    // Main walking route
-    "nav-route-line",
-    // Train routing overlays
-    "train-route-lines-layer",
-    "train-route-stops-layer",
-    "train-route-transfers-outer",
-    "train-route-transfers-inner",
-    // MRT connector
-    "mrt-entrance-connector-line",
-    // Sketch overlays (when active)
-    "sketch-line-layer",
-    "sketch-preview-layer",
-  ];
-
-  for (const id of layerIds) {
-    if (map.getLayer(id)) {
-      try {
-        // No `beforeId` moves it to the top of the layer stack.
-        map.moveLayer(id);
-      } catch {
-        // moveLayer can throw transiently while the style is updating; ignore.
-      }
-    }
-  }
-}
 
 function waitForMapLoad(map: maplibregl.Map): Promise<void> {
   return new Promise((resolve) => {
@@ -332,8 +218,6 @@ const SunCompass = memo(function SunCompass({ sunViz, showSunLines }: { sunViz: 
   const nightPath = (riseScreen !== null && setScreen !== null)
     ? sectorPath(CX, CY, R, setScreen, riseScreen)   : null;
 
-  const [riseGx, riseGy] = riseScreen !== null ? svgPt(CX, CY, R, riseScreen) : [CX, CY - R];
-  const [setGx,  setGy]  = setScreen  !== null ? svgPt(CX, CY, R, setScreen)  : [CX, CY + R];
   const [riseLx, riseLy] = riseScreen !== null ? svgPt(CX, CY, R, riseScreen) : [CX, CY];
   const [setLx,  setLy]  = setScreen  !== null ? svgPt(CX, CY, R, setScreen)  : [CX, CY];
 
@@ -346,32 +230,23 @@ const SunCompass = memo(function SunCompass({ sunViz, showSunLines }: { sunViz: 
   return (
     <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
       <svg aria-hidden="true" focusable="false" width="400" height="400" viewBox="0 0 400 400" style={{ overflow: "visible" }}>
-        <defs>
-          <linearGradient
-            id="sunDayGrad"
-            gradientUnits="userSpaceOnUse"
-            x1={riseGx} y1={riseGy}
-            x2={setGx}  y2={setGy}
-          >
-            <stop offset="0%"   stopColor={token("color-map-sun-current")} stopOpacity="0.30" />
-            <stop offset="100%" stopColor={token("color-map-route-current")} stopOpacity="0.30" />
-          </linearGradient>
-        </defs>
+        {/* Orange is the sun's alone (D1): the daylight sector, both horizon rays and
+            the pointer. The night sector is always a darkening ink wash. */}
         {nightPath
-          ? <path d={nightPath} fill={token("color-map-ink-current")} fillOpacity="0.22" />
-          : <circle cx={CX} cy={CY} r={R} fill={token("color-map-ink-current")} fillOpacity="0.22" />
+          ? <path d={nightPath} style={{ fill: "var(--color-map-day-route)" }} fillOpacity="0.22" />
+          : <circle cx={CX} cy={CY} r={R} style={{ fill: "var(--color-map-day-route)" }} fillOpacity="0.22" />
         }
-        {dayPath && <path d={dayPath} fill="url(#sunDayGrad)" />}
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="color-mix(in srgb, var(--color-map-panel-current) 18%, transparent)" strokeWidth="1.5" />
+        {dayPath && <path d={dayPath} style={{ fill: "var(--color-map-sun)" }} fillOpacity="0.30" />}
+        <circle cx={CX} cy={CY} r={R} fill="none" style={{ stroke: "var(--color-map-route)" }} strokeOpacity="0.3" strokeWidth="1.5" />
         {riseScreen !== null && (
-          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} stroke={token("color-map-sun-current")} strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={riseLx} y2={riseLy} style={{ stroke: "var(--color-map-sun)" }} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         {setScreen !== null && (
-          <line x1={CX} y1={CY} x2={setLx} y2={setLy} stroke={token("color-map-route-current")} strokeWidth="1.5" strokeOpacity="0.75" />
+          <line x1={CX} y1={CY} x2={setLx} y2={setLy} style={{ stroke: "var(--color-map-sun)" }} strokeWidth="1.5" strokeOpacity="0.75" />
         )}
         <polygon
           points={`${tipX.toFixed(2)},${tipY.toFixed(2)} ${b1x.toFixed(2)},${b1y.toFixed(2)} ${b2x.toFixed(2)},${b2y.toFixed(2)}`}
-          fill={token("color-map-sun-current")} fillOpacity="0.92"
+          style={{ fill: "var(--color-map-sun)" }} fillOpacity="0.92"
         />
         <text
           x={sunEmX.toFixed(2)} y={sunEmY.toFixed(2)}
@@ -471,6 +346,8 @@ export default function MapView({
   // loaded, before any of ours, so a theme change recolours only the basemap.
   const basemapThemeRef = useRef(basemapTheme);
   const basemapLayersRef = useRef<maplibregl.LayerSpecification[]>([]);
+  const basemapSymbolIdsRef = useRef<string[]>([]);
+  const shadowLayerIdRef = useRef<string | undefined>(undefined);
   /** Unwires the canopy atlas reader's map listeners on unmount. */
   const canopyAtlasCleanupRef = useRef<(() => void) | null>(null);
 
@@ -623,6 +500,11 @@ export default function MapView({
     // painted in MapTiler's own colours, and before any of our layers exist.
     map.once("style.load", () => {
       basemapLayersRef.current = map.getStyle().layers;
+      basemapSymbolIdsRef.current = basemapLayersRef.current
+        // Keep icons in mixed text/icon layers with their labels. Icon-only
+        // symbols can retain their original basemap depth.
+        .filter((layer) => layer.type === "symbol" && layer.layout?.["text-field"] !== undefined)
+        .map((layer) => layer.id);
       applyBasemapTheme(map, basemapLayersRef.current, basemapThemeRef.current);
     });
 
@@ -708,6 +590,8 @@ export default function MapView({
       });
     };
     map.on("rotate", rotateHandler);
+    const pitchHandler = () => reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
+    map.on("pitch", pitchHandler);
 
     map.on("moveend", refreshSunViz);
 
@@ -719,10 +603,6 @@ export default function MapView({
     };
 
     map.on("load", async () => {
-      // Captured first, while the style still holds nothing but the basemap — see
-      // `PlaceLabelSlot`.
-      const placeLabelSlots = findPlaceLabelSlots(map);
-
       if (SHADOW_V2_DEBUG && SHADOW_DEBUG_BASE) {
         debugLayer = new DebugFieldLayer();
         debugLayer.onGpuBytes = (bytes) => debugService?.setGpuBytes(bytes);
@@ -760,16 +640,23 @@ export default function MapView({
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
+      // Cased like the walking route: bare ink is ~2.4:1 on dark shade.
+      map.addLayer({
+        id: "sketch-line-casing",
+        type: "line",
+        source: "sketch-line",
+        layout: { visibility: "none" },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 5.5 },
+      });
       map.addLayer({
         id: "sketch-line-layer",
         type: "line",
         source: "sketch-line",
         layout: { visibility: "none" },
         paint: {
-          "line-color": token("color-map-route-current"),
+          "line-color": mapColor(basemapThemeRef.current, "route"),
           "line-width": 2.5,
           "line-dasharray": [4, 3],
-          "line-opacity": 0.85,
         },
       });
 
@@ -784,7 +671,7 @@ export default function MapView({
         source: "sketch-preview",
         layout: { visibility: "none" },
         paint: {
-          "line-color": token("color-map-route-current"),
+          "line-color": mapColor(basemapThemeRef.current, "route"),
           "line-width": 1.5,
           "line-opacity": 0.45,
         },
@@ -796,19 +683,28 @@ export default function MapView({
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
+      // Ink on a paper casing by day, cream on warm black by night: the casing always
+      // contrasts with the line, so the route separates from shade and labels alike.
+      map.addLayer({
+        id: "nav-route-casing",
+        type: "line",
+        source: "nav-route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 7 },
+      });
       map.addLayer({
         id: "nav-route-line",
         type: "line",
         source: "nav-route",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": token("color-map-route-current"), "line-width": 4, "line-opacity": 0.9 },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "route"), "line-width": 4 },
       });
       const navSrc = map.getSource("nav-route") as maplibregl.GeoJSONSource;
       const current = navRouteRef.current;
       navSrc.setData(
         current ? (current as GeoJSON.GeoJSON) : { type: "FeatureCollection", features: [] }
       );
-      if (current) bringNavOverlaysToFront(map);
+      if (current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
 
       // There is deliberately no terrain here. Terrain replaces the ground with a
       // displaced mesh while the shadow layer's triangles stay at z = 0, so shadows
@@ -827,30 +723,11 @@ export default function MapView({
       // If local renderer (CustomLayer), register it as a map layer
       const maybeCustom = shadowLayer as unknown as maplibregl.CustomLayerInterface;
       if (maybeCustom?.type === 'custom' && typeof maybeCustom?.render === 'function') {
+        shadowLayerIdRef.current = maybeCustom.id;
         if (!map.getLayer(maybeCustom.id)) {
-          // Topmost, because this one layer draws both the ground shadow and the
-          // tilted buildings, in that order and in one pass — so the buildings cover
-          // the ground shadow without needing a separate style layer above it.
-          // `bringNavOverlaysToFront` then lifts the route back over both.
+          // This layer draws ground shade and tilted buildings in one pass. The
+          // navigation lines clear its depth; basemap labels clear the lines.
           map.addLayer(maybeCustom);
-
-          // Place labels ride above the extrusions, but only while tilted.
-          //
-          // On `pitch`, not `pitchend`: the 3D toggle is a 400 ms ease, and Pass E
-          // starts drawing buildings the moment pitch leaves 0, so waiting for the
-          // ease to settle buries the labels for the whole tilt. The remembered
-          // state makes every frame of that ease free — the layer moves happen once,
-          // as pitch crosses 0, rather than on each of the ~24 events it fires.
-          let labelsLifted: boolean | null = null;
-          const updateLabelDepth = () => {
-            const lift = map.getPitch() > 0;
-            if (lift === labelsLifted) return;
-            labelsLifted = lift;
-            setPlaceLabelsAboveBuildings(map, placeLabelSlots, maybeCustom.id, lift);
-          };
-          map.on("pitch", updateLabelDepth);
-          map.on("pitchend", updateLabelDepth);
-          updateLabelDepth();
         }
 
         // Estimated canopy from the raster the route card already quotes (#275).
@@ -892,11 +769,11 @@ export default function MapView({
         void reader(map);
       }
 
-      shadowLayer.on('idle', () => bringNavOverlaysToFront(map));
+      shadowLayer.on('idle', () => reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current));
       const resizeHandler = () => { shadowRef.current?.setDate(dateRef.current); };
       map.on("resize", resizeHandler);
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
 
       if (accumulation.enabled) {
         shadowLayer.setSunExposure(true, {
@@ -928,6 +805,7 @@ export default function MapView({
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
       map.off("rotate", rotateHandler);
+      map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
       map.off("moveend", updateDebugViewport);
       debugService?.shutdown();
@@ -994,8 +872,12 @@ export default function MapView({
 
   useEffect(() => {
     basemapThemeRef.current = basemapTheme;
+    // The DOM markers and the sun diagram read `--color-map-*`, which this switches.
+    document.documentElement.dataset.basemap = basemapTheme;
     const map = mapRef.current;
-    if (map) applyBasemapTheme(map, basemapLayersRef.current, basemapTheme);
+    if (!map) return;
+    applyBasemapTheme(map, basemapLayersRef.current, basemapTheme);
+    applyOverlayTheme(map, basemapTheme);
   }, [basemapTheme]);
 
   // -------------------------------------------------------------------------
@@ -1030,7 +912,7 @@ export default function MapView({
       if (markerARef.current) {
         markerARef.current.setLngLat(navWaypoints.a);
       } else {
-        const mA = new maplibregl.Marker({ color: token("color-map-ink-current"), draggable: true })
+        const mA = new maplibregl.Marker({ element: mapPinElement("hollow", "Start", "A"), anchor: "bottom", draggable: true })
           .setLngLat(navWaypoints.a)
           .addTo(map);
         mA.on('dragend', () => {
@@ -1048,7 +930,7 @@ export default function MapView({
       if (markerBRef.current) {
         markerBRef.current.setLngLat(navWaypoints.b);
       } else {
-        const mB = new maplibregl.Marker({ color: token("color-map-route-current"), draggable: true })
+        const mB = new maplibregl.Marker({ element: mapPinElement("filled", "Destination", "B"), anchor: "bottom", draggable: true })
           .setLngLat(navWaypoints.b)
           .addTo(map);
         mB.on('dragend', () => {
@@ -1074,11 +956,12 @@ export default function MapView({
       const el = document.createElement("div");
       el.style.cssText = `
         width:22px;height:22px;border-radius:var(--radius-circle);
-        background:var(--color-map-panel-current);border:2px solid var(--color-map-ink-current);
-        display:flex;align-items:center;justify-content:center;
-        font-size:11px;font-weight:700;color:var(--color-map-ink-current);cursor:pointer;
+        background:var(--color-map-casing);border:2px solid var(--color-map-route);
+        display:flex;align-items:center;justify-content:center;font-family:var(--font-numeric);
+        font-size:11px;font-weight:800;color:var(--color-map-route);cursor:pointer;
       `;
       el.textContent = String(i + 1);
+      el.setAttribute("aria-label", `Waypoint ${i + 1}`);
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat(wp)
         .addTo(mapRef.current!);
@@ -1087,32 +970,20 @@ export default function MapView({
   }, [additionalWaypoints]);
 
   // -------------------------------------------------------------------------
-  // Assistant itinerary pins — numbered route-blue teardrops (itinerary data,
-  // so the route hue; the language reserves ink for the plain origin pin)
+  // Assistant itinerary pins — numbered filled teardrops, like the destination:
+  // each is a place the day goes to
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!mapRef.current) return;
     assistantPinRefs.current.forEach((m) => m.remove());
     assistantPinRefs.current = [];
     (assistantPins ?? []).forEach((pin, i) => {
-      const el = document.createElement("div");
-      el.style.cssText = `
-        width:28px;height:28px;border-radius:var(--radius-pin);
-        transform:rotate(var(--angle-marker));
-        background:var(--color-map-route-current);border:2px solid var(--color-map-panel-current);
-        box-shadow:var(--shadow-map-marker);
-        display:flex;align-items:center;justify-content:center;cursor:pointer;
-      `;
-      const inner = document.createElement("span");
-      inner.style.cssText = `transform:rotate(var(--angle-marker-inner));font-size:11px;font-weight:700;color:var(--color-map-on-route-current);font-family:var(--font-sans);`;
-      inner.textContent = String(i + 1);
-      el.appendChild(inner);
-
+      const el = mapPinElement("filled", pin.label ? `Stop ${i + 1}: ${pin.label}` : `Stop ${i + 1}`, String(i + 1));
       const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([pin.lng, pin.lat]);
       if (pin.label) {
         marker.setPopup(
-          new maplibregl.Popup({ offset: 28, closeButton: false, className: "sketch-point-popup" }).setText(
+          new maplibregl.Popup({ offset: 40, closeButton: false, className: "sketch-point-popup" }).setText(
             `${i + 1}. ${pin.label}`
           )
         );
@@ -1138,6 +1009,7 @@ export default function MapView({
     }
 
     const el = document.createElement("div");
+    el.setAttribute("aria-label", "Your location");
     el.style.cssText = `
       width: 18px; height: 18px; position: relative;
       display: flex; align-items: center; justify-content: center;
@@ -1147,15 +1019,15 @@ export default function MapView({
     pulse.style.cssText = `
       position: absolute;
       width: 36px; height: 36px; border-radius: var(--radius-circle);
-      background: color-mix(in srgb, var(--color-map-route-current) 25%, transparent);
+      border: 2px solid var(--color-map-route);
       animation: userLocationPulse 1.8s ease-out infinite;
     `;
 
     const dot = document.createElement("div");
     dot.style.cssText = `
-      width: 14px; height: 14px; border-radius: var(--radius-circle);
-      background: var(--color-map-route-current); border: 2.5px solid var(--color-map-panel-current);
-      box-shadow: var(--shadow-map-dot);
+      width: 18px; height: 18px; border-radius: var(--radius-circle); box-sizing: border-box;
+      background: radial-gradient(circle, var(--color-map-route) 0 3px, var(--color-map-casing) 3.5px);
+      border: 3px solid var(--color-map-route); box-shadow: var(--shadow-map-marker);
       position: relative; z-index: 1;
     `;
 
@@ -1172,7 +1044,8 @@ export default function MapView({
       document.head.appendChild(style);
     }
 
-    el.appendChild(pulse);
+    // Reduced motion drops the looping pulse; the reticle alone marks the spot.
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) el.appendChild(pulse);
     el.appendChild(dot);
 
     userLocationMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "center" })
@@ -1209,6 +1082,7 @@ export default function MapView({
     const coords = sketchPoints.map((p) => p.coord);
 
     if (coords.length >= 2 && !navRoute) {
+      map.setLayoutProperty("sketch-line-casing", "visibility", "visible");
       map.setLayoutProperty("sketch-line-layer", "visibility", "visible");
       src.setData({
         type: "Feature",
@@ -1216,6 +1090,7 @@ export default function MapView({
         geometry: { type: "LineString", coordinates: coords },
       });
     } else {
+      map.setLayoutProperty("sketch-line-casing", "visibility", "none");
       map.setLayoutProperty("sketch-line-layer", "visibility", "none");
       src.setData({ type: "FeatureCollection", features: [] });
     }
@@ -1257,7 +1132,7 @@ export default function MapView({
 
     // Create new markers only for newly added points
     for (let i = existing.length; i < newCount; i++) {
-      const marker = new maplibregl.Marker({ color: token("color-map-ink-current") })
+      const marker = new maplibregl.Marker({ element: mapPinElement("hollow", `Sketch point ${i + 1}`), anchor: "bottom" })
         .setLngLat(sketchPoints[i].coord)
         .addTo(map);
 
@@ -1331,7 +1206,7 @@ export default function MapView({
 
     for (const wp of simplifiedWaypoints) {
       const addr = getSketchAddressForCoord(wp);
-      const marker = new maplibregl.Marker({ color: token("color-map-ink-current") })
+      const marker = new maplibregl.Marker({ element: mapPinElement("hollow", addr ? `Waypoint: ${addr}` : "Waypoint"), anchor: "bottom" })
         .setLngLat(wp)
         .addTo(map);
 
@@ -1377,7 +1252,7 @@ export default function MapView({
       ? (navRoute as GeoJSON.GeoJSON)
       : { type: "FeatureCollection", features: [] };
     source.setData(data);
-    if (navRoute) bringNavOverlaysToFront(map);
+    if (navRoute) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
   }, [navRoute]);
 
   // -------------------------------------------------------------------------
@@ -1455,9 +1330,9 @@ export default function MapView({
           source: "train-route-stops",
           paint: {
             "circle-radius": 6,
-            "circle-color": token("color-map-panel-current"),
+            "circle-color": mapColor(basemapThemeRef.current, "casing"),
             "circle-stroke-width": 2,
-            "circle-stroke-color": token("color-map-muted-current"),
+            "circle-stroke-color": mapColor(basemapThemeRef.current, "muted"),
           },
         });
       }
@@ -1481,9 +1356,9 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 12,
-            "circle-color": token("color-map-panel-current"),
+            "circle-color": mapColor(basemapThemeRef.current, "casing"),
             "circle-stroke-width": 3,
-            "circle-stroke-color": token("color-map-ink-current"),
+            "circle-stroke-color": mapColor(basemapThemeRef.current, "route"),
           },
         });
         map.addLayer({
@@ -1492,23 +1367,22 @@ export default function MapView({
           source: "train-route-transfers",
           paint: {
             "circle-radius": 5,
-            "circle-color": token("color-map-ink-current"),
+            "circle-color": mapColor(basemapThemeRef.current, "route"),
           },
         });
       }
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
     };
 
-    if (map.isStyleLoaded()) {
+    // The route source is created in the map's load handler. Once it exists,
+    // layers may be added even while tiles are still loading; waiting for a
+    // later styledata event can strand transit when reconciliation is a no-op.
+    if (map.getSource("nav-route")) {
       apply();
     } else {
-      // `load` fires once, when the map first comes up — long before any route
-      // exists. Waiting on it here means waiting for an event that has already
-      // happened, so the train layers were never added at all. `styledata`
-      // recurs, which is why the MRT connector below has always worked.
-      map.once("styledata", apply);
-      return () => { map.off("styledata", apply); };
+      map.once("load", apply);
+      return () => { map.off("load", apply); };
     }
   }, [navTrainDrawData]);
 
@@ -1523,6 +1397,7 @@ export default function MapView({
     markerBoardRef.current?.remove();  markerBoardRef.current = null;
     markerAlightRef.current?.remove(); markerAlightRef.current = null;
     if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
+    if (map.getLayer("mrt-entrance-connector-casing")) map.removeLayer("mrt-entrance-connector-casing");
     if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
 
     if (!navMrtEntrances) return;
@@ -1531,13 +1406,14 @@ export default function MapView({
       const el = document.createElement("div");
       el.style.cssText = [
         "width:26px", "height:26px", "border-radius:var(--radius-circle)",
-        "background:var(--color-map-panel-current)", "border:3px solid var(--color-map-route-current)",
-        "box-shadow:var(--shadow-map-station)",
+        "background:var(--color-map-casing)", "border:3px solid var(--color-map-route)",
+        "box-shadow:var(--shadow-map-marker)",
         "display:flex", "align-items:center", "justify-content:center",
-        "font-size:11px", "font-weight:700", "color:var(--color-map-route-current)",
-        "font-family:sans-serif", "cursor:default",
+        "font-size:11px", "font-weight:800", "color:var(--color-map-route)",
+        "font-family:var(--font-label)", "cursor:default",
       ].join(";");
       el.textContent = "M";
+      el.setAttribute("aria-label", "Station entrance");
       return el;
     };
 
@@ -1552,6 +1428,7 @@ export default function MapView({
     const connectors = navTrainDrawData ? stationConnectors(navMrtEntrances, navTrainDrawData) : [];
     const addConnector = () => {
       if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
+      if (map.getLayer("mrt-entrance-connector-casing")) map.removeLayer("mrt-entrance-connector-casing");
       if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
       map.addSource("mrt-entrance-connector", {
         type: "geojson",
@@ -1563,20 +1440,28 @@ export default function MapView({
         },
       });
       map.addLayer({
+        id: "mrt-entrance-connector-casing",
+        type: "line",
+        source: "mrt-entrance-connector",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 5.5 },
+      });
+      map.addLayer({
         id: "mrt-entrance-connector-line",
         type: "line",
         source: "mrt-entrance-connector",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": token("color-map-route-current"), "line-width": 2.5, "line-dasharray": [0, 3], "line-opacity": 0.8 },
+        paint: { "line-color": mapColor(basemapThemeRef.current, "route"), "line-width": 2.5, "line-dasharray": [0, 3] },
       });
 
-      bringNavOverlaysToFront(map);
+      reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
     };
 
-    if (map.isStyleLoaded()) {
+    if (map.getSource("nav-route")) {
       addConnector();
     } else {
-      map.once("styledata", addConnector);
+      map.once("load", addConnector);
+      return () => { map.off("load", addConnector); };
     }
   }, [navMrtEntrances, navTrainDrawData]);
 
