@@ -28,7 +28,7 @@ import {
   navigationRecordFrom,
   recordNavigationDecline,
 } from "../lib/metrics";
-import { snapOutsideBuilding } from "../lib/building-snap";
+import { createBuildingSnapper } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
   findBestTrainRoute,
@@ -423,8 +423,9 @@ export function useRouting({
         ]);
       }
 
-      const a = snapOutsideBuilding(rawA, map as unknown as MapBuildingQuery);
-      const b = snapOutsideBuilding(rawB, map as unknown as MapBuildingQuery);
+      const snapOutsideBuilding = createBuildingSnapper(map as unknown as MapBuildingQuery);
+      const a = snapOutsideBuilding(rawA);
+      const b = snapOutsideBuilding(rawB);
       if (process.env.NODE_ENV !== "production") {
         if (a[0] !== rawA[0] || a[1] !== rawA[1])
           console.log(`[routing] waypoint A snapped out of building: [${rawA}] → [${a}]`);
@@ -511,9 +512,7 @@ export function useRouting({
         const padding = basePadding;
         let routeStops: [number, number][] = [
           a,
-          ...(plan?.via ?? additionalWaypoints).map((wp) =>
-            snapOutsideBuilding(wp, map as unknown as MapBuildingQuery),
-          ),
+          ...(plan?.via ?? additionalWaypoints).map((wp) => snapOutsideBuilding(wp)),
           b,
         ];
         const allLats = routeStops.map((w) => w[1]);
