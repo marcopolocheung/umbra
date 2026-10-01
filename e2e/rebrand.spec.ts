@@ -36,8 +36,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.getByTitle("Close", { exact: true }).filter({ visible: true }).click();
     if (viewport.width < 768) await page.goto(SHARE_URL);
     // A saved route keeps this section collapsed at the first sheet snap point.
-    await page.getByRole("button", { name: /Saved Routes 1/ }).filter({ visible: true }).click();
-    const legacyRoute = page.getByRole("button", { name: /My shaded walk/ }).filter({ visible: true });
+    await page.getByRole("button", { name: /Saved routes\s*1/i }).filter({ visible: true }).click();
+    // Anchored: the ticket's rename and delete controls carry the name too.
+    const legacyRoute = page.getByRole("button", { name: /^My shaded walk/ }).filter({ visible: true });
     await expect(legacyRoute).toContainText("75% shadow");
     await legacyRoute.click();
     await expect(page.getByText("Most shadowed", { exact: true }).filter({ visible: true }).first()).toBeVisible();
