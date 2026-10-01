@@ -369,7 +369,8 @@ Parallelizable: leaf panels via `builder`; `page.tsx` wiring stays in the sessio
 Acceptance:
 - `ArrivalPanel` as a postcard stamped with the umbra disc; `SavedRoutesSection` as ticket
   stubs; every empty state gets a kicker/title pair.
-- Voice pass across the app: personality lives in kickers and empty states only;
+- Voice pass across the app: personality lives in kickers, empty states, and the
+  assistant's verified guide note only;
   `grounding-auditor` on the full diff.
 
 ### R9 — icons, motif, motion, cleanup

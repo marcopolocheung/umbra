@@ -14,7 +14,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "e2e/shots",
-  testMatch: ["design-shots.spec.ts", "r3-review.spec.ts", "r4-review.spec.ts", "r4b-review.spec.ts", "r5-review.spec.ts", "r5b-review.spec.ts", "transit-badges-review.spec.ts", "transit-transfer-review.spec.ts", "r6a-review.spec.ts", "r6b-review.spec.ts", "r7a-review.spec.ts", "r7b-review.spec.ts", "r7c-review.spec.ts"],
+  testMatch: ["design-shots.spec.ts", "r3-review.spec.ts", "r4-review.spec.ts", "r4b-review.spec.ts", "r5-review.spec.ts", "r5b-review.spec.ts", "transit-badges-review.spec.ts", "transit-transfer-review.spec.ts", "r6a-review.spec.ts", "r6b-review.spec.ts", "r7a-review.spec.ts", "r7b-review.spec.ts", "r7c-review.spec.ts", "r7d-review.spec.ts"],
   retries: 0,
   workers: 1,
   timeout: 180_000,
