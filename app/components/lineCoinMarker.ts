@@ -71,6 +71,8 @@ export function attachLineCoin(
   let offV = { x: 0, y: 0 };
   let frame: number | null = null;
   let intro: number | undefined;
+  // Where a slide off a stop is headed; reached exactly, not crept up on.
+  let settleTo: number | null = null;
 
   const marker = new maplibregl.Marker({ element, anchor: "center", draggable: true })
     .setLngLat(pointAtDistance(coords, s))
@@ -120,10 +122,15 @@ export function attachLineCoin(
       off = { x: 0, y: 0 };
       offV = { x: 0, y: 0 };
       v = 0;
+      if (settleTo !== null) {
+        s = settleTo;
+        settleTo = null;
+      }
       place();
       const clear = restingGap(s, stopsAlong, length, STOP_CLEARANCE_PX * mpp());
       if (clear !== null) {
         // A coast covers v0 / friction in all, so aim a short slide at the clear point.
+        settleTo = clear;
         v = (clear - s) * COIN_FRICTION;
         frame = requestAnimationFrame(tick);
         return;
@@ -136,12 +143,17 @@ export function attachLineCoin(
 
   // Along-ride velocity while dragging, smoothed as the time slider smooths its own.
   let lastMove = 0;
+  // maplibre measures a grab from the marker's spot on the line, not from where a
+  // wobbling coin is drawn; carrying the offset at the grab keeps it under the finger.
+  let grabOff = { x: 0, y: 0 };
   marker.on("dragstart", () => {
     // A grab ends any coast or wobble, and the first-render glide if it has not begun.
     window.clearTimeout(intro);
     stop();
     v = 0;
+    settleTo = null;
     offV = { x: 0, y: 0 };
+    grabOff = { ...off };
     lastMove = performance.now();
   });
   marker.on("drag", () => {
@@ -150,7 +162,8 @@ export function attachLineCoin(
       return [p.x, p.y] as [number, number];
     });
     // maplibre has just moved the marker to follow the pointer; read where that is.
-    const here = map.project(marker.getLngLat());
+    const raw = map.project(marker.getLngLat());
+    const here = { x: raw.x + grabOff.x, y: raw.y + grabOff.y };
     const snap = snapToPath(path, [here.x, here.y]);
     if (!snap) return;
     const next = distanceAt(coords, snap.index, snap.t);

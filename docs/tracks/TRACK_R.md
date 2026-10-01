@@ -43,7 +43,9 @@ inspiration; the public mirror publishes everything here.
   rests over a stop slides just clear (`restingGap`, `stopDistances`), so no stop is hidden.
   Stops now count along the ride: `TrainDrawData.stops` carries each stop's line colour,
   rings drawn in it (removed from `basemapTheme`'s re-themed roles, like the lines), board and
-  exit a size up and named on map-ink plates (`mapPins.stopLabelElement`). The terminus is
+  exit a size up and named on map-ink plates (`mapPins.stopLabelElement`) set off the ride's
+  perpendicular on the down-right side (entrance pins grow upward). A grab mid-wobble keeps
+  the coin under the finger; a slide off a stop lands exactly. The terminus is
   deliberately not shown on the map (it reads as the rider's destination). The transit smoke
   test drags the coin ~56px off the line, asserts by canvas readback that it slid and still
   sits on the track, and asserts the board/exit names.

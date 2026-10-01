@@ -1302,6 +1302,26 @@ export default function MapView({
       // DOM markers, so the shadow sampler's canvas readback never sees them.
       // Remembered per ride — its line and end stations — so the same trip
       // recalculated at another time keeps its place, and a new trip starts fresh.
+      // Board and exit names sit beside the ride, never on it: off along its
+      // perpendicular, on the side that points down and right, since entrance pins
+      // grow upward from their doors. Added before the coins so a coin draws above.
+      for (const label of stopLabelRefs.current) label.remove();
+      stopLabelRefs.current = [0, stops.length - 1]
+        .filter((i, n, all) => stops[i] && all.indexOf(i) === n)
+        .map((i) => {
+          const st = stops[i];
+          const next = stops[i === 0 ? 1 : i - 1] ?? st;
+          const a = map.project([st.lon, st.lat]);
+          const b = map.project([next.lon, next.lat]);
+          const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          let [px, py] = [-(b.y - a.y) / len, (b.x - a.x) / len];
+          if (px + py < 0) [px, py] = [-px, -py];
+          const anchor = py > 0.38 ? (px > 0.38 ? "top-left" : px < -0.38 ? "top-right" : "top") : "left";
+          return new maplibregl.Marker({ element: stopLabelElement(st.name), anchor, offset: [px * 14, py * 14] })
+            .setLngLat([st.lon, st.lat])
+            .addTo(map);
+        });
+
       const stopPoints = stops.map((st) => [st.lon, st.lat] as [number, number]);
       lineCoinRefs.current = lineBadgePlacements(polylines).map((placement) => {
         const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
@@ -1351,14 +1371,6 @@ export default function MapView({
           properties: { name: s.name, color: s.color, end: s.id === boardId || s.id === exitId },
           geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
         }));
-      for (const label of stopLabelRefs.current) label.remove();
-      stopLabelRefs.current = [stops[0], stops.length > 1 ? stops[stops.length - 1] : undefined]
-        .filter((st): st is (typeof stops)[number] => !!st)
-        .map((st) =>
-          new maplibregl.Marker({ element: stopLabelElement(st.name), anchor: "left", offset: [14, 0] })
-            .setLngLat([st.lon, st.lat])
-            .addTo(map),
-        );
       const stopsFC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: stopFeatures };
       if (map.getSource("train-route-stops")) {
         (map.getSource("train-route-stops") as maplibregl.GeoJSONSource).setData(stopsFC);
