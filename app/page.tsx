@@ -332,7 +332,7 @@ export default function Home() {
   } = nav;
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
-  // of the two route surfaces the current breakpoint shows.
+  // route surface the current breakpoint shows: the phone sheet or the floating cards.
   const hourlyExposure = useHourlyExposure(
     filteredRoutes[selectedRouteIndex] ?? null,
     shadowField,
@@ -1381,6 +1381,7 @@ export default function Home() {
               isCalculating={isCalculating}
               routeProgress={routeProgress}
               routes={filteredRoutes}
+              exposureSlot={exposureSlot}
               weather={heatWeather}
               rainWind={routeWind}
               selectedRouteIndex={selectedRouteIndex}

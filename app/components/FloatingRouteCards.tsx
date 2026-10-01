@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { WeatherHour } from "../lib/heat/types";
 import type { RouteOption } from "../lib/routing";
-import { shortestRoute } from "../lib/routeTradeoff";
+import { routeAfterSunset, shortestRoute } from "../lib/routeTradeoff";
 import RouteCard from "./RouteCard";
 import SolarPill from "./SolarPill";
 
@@ -62,7 +62,9 @@ export default function FloatingRouteCards({
       >
         {/* Solar pill — sun semantics, so it yields to a rain objective. The
             recommended option needs no header here: the card says it. */}
-        {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
+        {!rainMode && solarIntensity != null && (
+          <SolarPill intensity={solarIntensity} afterSunset={routeAfterSunset(selectedRoute ?? routes[0])} />
+        )}
 
         {/* Route cards — the selected card carries the detail block. Same
             radiogroup semantics as the panel's stack (U4). */}

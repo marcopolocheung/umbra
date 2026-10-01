@@ -168,8 +168,9 @@ export default function BottomSheet({ snap, onSnapChange, children, contentKey }
         touchAction: "none",
         willChange: "height",
         background: "var(--color-panel)",
-        borderTop: isHidden ? "none" : "1px solid var(--color-rule)",
-        borderRadius: "var(--radius-2xl) var(--radius-2xl) 0 0",
+        // Square, with the timeline card's 2px ink rule for an edge: the panel
+        // fill alone barely parts from either basemap in glare.
+        borderTop: isHidden ? "none" : "2px solid var(--color-ink)",
         pointerEvents: isHidden ? "none" : undefined,
       }}
       onPointerDown={onPointerDown}
@@ -178,7 +179,7 @@ export default function BottomSheet({ snap, onSnapChange, children, contentKey }
     >
       {/* Drag handle — the 44px band onPointerDown accepts drags in */}
       <div className="flex h-11 items-center justify-center cursor-grab active:cursor-grabbing shrink-0">
-        <div className="w-8 h-1 rounded-full" style={{ background: "var(--color-rule)" }} />
+        <div className="w-8 h-1" style={{ background: "var(--color-ink)" }} />
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 umbra-scrollbar">

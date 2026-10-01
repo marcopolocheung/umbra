@@ -7,7 +7,7 @@ import { TRAVEL_MODE_POLICIES } from "../lib/travelMode";
 import type { RouteCalculationProgress } from "../lib/routeProgress";
 import { routeProgressCount, routeProgressPercent } from "../lib/routeProgress";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
-import { shortestRoute } from "../lib/routeTradeoff";
+import { routeAfterSunset, shortestRoute } from "../lib/routeTradeoff";
 import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";
 import WaypointInput from "./WaypointInput";
 import RouteCard from "./RouteCard";
@@ -573,7 +573,9 @@ export default function DirectionsPanel({
           puts it at end-position, where memory favours the weakest option. */}
       {!hideRouteCards && routes.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
-          {!rainMode && solarIntensity != null && <SolarPill intensity={solarIntensity} />}
+          {!rainMode && solarIntensity != null && (
+            <SolarPill intensity={solarIntensity} afterSunset={routeAfterSunset(selectedRoute ?? routes[0])} />
+          )}
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Route options">
             {routes.map((r, i) => (
               <Fragment key={i}>

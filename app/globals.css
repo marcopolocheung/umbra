@@ -76,6 +76,20 @@
   --color-danger-dark: #a91c25;
   --color-danger-darker: #5f0c17;
 
+  /* Ramp steps for magnitude (the hourly board): 1 is the smallest share. By day
+     they run light→darker; the night block reverses them, so the larger share is
+     always the fill with more contrast against the panel. */
+  --color-sun-step-1: var(--color-sun-light);
+  --color-sun-step-2: var(--color-sun-bright);
+  --color-sun-step-3: var(--color-sun-base);
+  --color-sun-step-4: var(--color-sun-dark);
+  --color-sun-step-5: var(--color-sun-darker);
+  --color-rain-step-1: var(--color-rain-light);
+  --color-rain-step-2: var(--color-rain-bright);
+  --color-rain-step-3: var(--color-rain-base);
+  --color-rain-step-4: var(--color-rain-dark);
+  --color-rain-step-5: var(--color-rain-darker);
+
   /* Existing semantic utilities now resolve to 2.0 text/fill steps. */
   --color-route: #1b1512;
   --color-route-strong: #1b1512;
@@ -267,6 +281,16 @@ html[data-theme="night"] {
   --color-on-canopy: #0e0c0b;
   --color-on-rain: #0e0c0b;
   --color-on-danger: #0e0c0b;
+  --color-sun-step-1: var(--color-sun-darker);
+  --color-sun-step-2: var(--color-sun-dark);
+  --color-sun-step-3: var(--color-sun-base);
+  --color-sun-step-4: var(--color-sun-bright);
+  --color-sun-step-5: var(--color-sun-light);
+  --color-rain-step-1: var(--color-rain-darker);
+  --color-rain-step-2: var(--color-rain-dark);
+  --color-rain-step-3: var(--color-rain-base);
+  --color-rain-step-4: var(--color-rain-bright);
+  --color-rain-step-5: var(--color-rain-light);
   --shadow-hard-1: 2px 2px 0 #f4e6d1;
   --shadow-hard-2: 4px 4px 0 #f4e6d1;
   --shadow-sm: 2px 2px 0 #f4e6d1;
