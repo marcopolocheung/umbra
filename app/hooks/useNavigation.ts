@@ -20,13 +20,14 @@ export type { RouteReceiptMapObject };
 
 interface UseNavigationArgs {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
+  getRouteFitPadding?: () => number | { top: number; right: number; bottom: number; left: number };
   shadowLayerRef?: React.MutableRefObject<IShadowLayer | null>;
   dateRef: React.MutableRefObject<Date>;
   setDate: React.Dispatch<React.SetStateAction<Date>>;
   date?: Date;
 }
 
-export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }: UseNavigationArgs) {
+export function useNavigation({ mapRef, getRouteFitPadding, shadowLayerRef, dateRef, setDate, date }: UseNavigationArgs) {
   // Navigation state
   const [navMode, setNavMode] = useState(false);
 
@@ -153,6 +154,7 @@ export function useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date }
     filteredRoutes,
   } = useRouting({
     mapRef,
+    getRouteFitPadding,
     shadowLayerRef,
     dateRef,
     date,

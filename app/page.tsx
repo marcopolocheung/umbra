@@ -216,6 +216,42 @@ export default function Home() {
   // Sidewalk sheds from the last route, on the map (#85). Off by default.
   const [showSheds, setShowSheds] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [wideDesktop, setWideDesktop] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 1200px)").matches,
+  );
+  const [preferDockedOnWideDesktop, setPreferDockedOnWideDesktop] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1200px)");
+    const update = () => setWideDesktop(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  // Closing the sidebar always leaves the route choices accessible on the map.
+  const routeCardsDocked = sidebarOpen && (!wideDesktop || preferDockedOnWideDesktop);
+  const routeFitPaddingRef = useRef<
+    number | { top: number; right: number; bottom: number; left: number }
+  >(80);
+  // The insets match the 408px sidebar and the floating card's 320px width
+  // plus its 24px edge gap. The route is framed for whichever surface is open
+  // when calculation finishes; later placement changes leave the camera alone.
+  routeFitPaddingRef.current = typeof window === "undefined" || window.innerWidth < 768
+    ? 80
+    : {
+        top: 80,
+        right: routeCardsDocked ? 32 : 344,
+        bottom: 104,
+        left: sidebarOpen ? 432 : 32,
+      };
+  const getRouteFitPadding = useCallback(() => routeFitPaddingRef.current, []);
+  const handleDockRouteCards = useCallback(() => {
+    if (wideDesktop) setPreferDockedOnWideDesktop(true);
+    setSidebarOpen(true);
+  }, [wideDesktop]);
+  const handleUndockRouteCards = useCallback(() => {
+    if (wideDesktop) setPreferDockedOnWideDesktop(false);
+    else setSidebarOpen(false);
+  }, [wideDesktop]);
   const shadow = useShadowTime();
   const {
     date,
@@ -246,7 +282,7 @@ export default function Home() {
   const { solar, preference: themePreference, setPreference: setThemePreference } = useUiTheme(date, mapCenter);
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
-  const nav = useNavigation({ mapRef, shadowLayerRef, dateRef, setDate, date });
+  const nav = useNavigation({ mapRef, getRouteFitPadding, shadowLayerRef, dateRef, setDate, date });
   const {
     navMode,
     waypointA,
@@ -1101,7 +1137,8 @@ export default function Home() {
             warning={navWarning}
             onBack={() => dispatch({ type: "BACK" })}
             onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
-            hideRouteCards
+            hideRouteCards={!routeCardsDocked}
+            onUndockRouteCards={routeCardsDocked ? handleUndockRouteCards : undefined}
             routeMode={routeMode}
             onRouteModeChange={handleRouteModeChange}
             canTransit={canTransit}
@@ -1213,7 +1250,7 @@ export default function Home() {
       )}
 
       {/* Floating route cards — desktop only, during DIRECTIONS phase */}
-      {!uiHidden && phase === "DIRECTIONS" && filteredRoutes.length > 0 && (
+      {!uiHidden && phase === "DIRECTIONS" && filteredRoutes.length > 0 && !routeCardsDocked && (
         <FloatingRouteCards
           routes={filteredRoutes}
           selectedRouteIndex={selectedRouteIndex}
@@ -1225,6 +1262,7 @@ export default function Home() {
           rainWind={routeWind}
           exposureSlot={exposureSlot}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
+          onDock={handleDockRouteCards}
           rainMode={rainMode}
           rainIntensity={rainIntensity}
         />

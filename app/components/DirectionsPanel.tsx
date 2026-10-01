@@ -95,6 +95,7 @@ export interface DirectionsPanelProps {
   warning?: string | null;
   onBack: () => void;
   onStartNavigation?: () => void;
+  onUndockRouteCards?: () => void;
   hideRouteCards?: boolean;
   /** The dose line and hourly exposure strip, rendered under the tradeoff line. */
   exposureSlot?: ReactNode;
@@ -143,6 +144,7 @@ export default function DirectionsPanel({
   warning,
   onBack,
   onStartNavigation,
+  onUndockRouteCards,
   hideRouteCards = false,
   exposureSlot,
   routeMode = 'walk', onRouteModeChange,
@@ -572,7 +574,21 @@ export default function DirectionsPanel({
           stack passes three options (serial position): trailing the stack
           puts it at end-position, where memory favours the weakest option. */}
       {!hideRouteCards && routes.length > 0 && (
-        <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-rule)" }}>
+        <div
+          data-testid={onUndockRouteCards ? "route-preview-docked" : undefined}
+          className="flex flex-col gap-1.5 border-t pt-2"
+          style={{ borderColor: "var(--color-rule)" }}
+        >
+          {onUndockRouteCards && (
+            <button
+              type="button"
+              onClick={onUndockRouteCards}
+              className="self-end min-h-11 rounded-lg px-2 text-xs font-medium hover:bg-canvas"
+              style={{ color: "var(--color-ink-muted)" }}
+            >
+              Show on map
+            </button>
+          )}
           {!rainMode && solarIntensity != null && (
             <SolarPill intensity={solarIntensity} afterSunset={routeAfterSunset(selectedRoute ?? routes[0])} />
           )}
