@@ -144,25 +144,18 @@ describe("transferFlagElement", () => {
     expect((flag.querySelector("[data-part='to-shield']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
     expect((flag.querySelector("[data-part='to-shield'] [data-part='line']") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
     const plate = flag.querySelector<HTMLElement>("[data-part='kicker']")!;
-    expect(plate.style.background).toBe("rgb(0, 147, 60)");
-    expect(plate.style.color).toBe("var(--color-line-ink-dark)");
-    const tail = plate.querySelector<HTMLElement>("[data-part='transfer-tail']")!;
-    expect((tail.firstElementChild as HTMLElement).style.background).toBe("rgb(185, 51, 173)");
-    expect(tail.style.filter).toBe("var(--filter-tear)");
+    expect(plate.style.filter).toBe("var(--filter-map-marker)");
+    expect(plate.querySelector<HTMLElement>("[data-part='transfer-from']")!.style.background).toBe("rgb(0, 147, 60)");
+    expect(plate.querySelector<HTMLElement>("[data-part='transfer-to']")!.style.background).toBe("rgb(185, 51, 173)");
     expect(flag.style.pointerEvents).toBe("none");
   });
 
-  it("sets the word in the arriving line's ink and tails in the boarded colour", () => {
-    const flag = transferFlagElement(
-      { line: "N", color: "#FCCC0A", name: "Canal St" },
-      { line: "A", color: "#0039A6", name: "Canal St" },
-      [1, 0],
-    );
-    const plate = flag.querySelector<HTMLElement>("[data-part='kicker']")!;
-    expect(plate.style.background).toBe("rgb(252, 204, 10)");
-    expect(plate.style.color).toBe("var(--color-line-ink-dark)");
-    expect(plate.style.backgroundImage).not.toContain("gradient");
-    const tail = plate.querySelector<HTMLElement>("[data-part='transfer-tail'] > span")!;
-    expect(tail.style.background).toBe("rgb(0, 57, 166)");
+  it("sets the word in cream on ink whatever the line colours", () => {
+    for (const [from, to] of [["#FCCC0A", "#0039A6"], ["#EE352E", "#EE352E"]]) {
+      const flag = transferFlagElement({ line: "N", color: from, name: "Canal St" }, { line: "A", color: to, name: "Canal St" }, [1, 0]);
+      const word = [...flag.querySelectorAll<HTMLElement>("[data-part='kicker'] span")].find((part) => part.textContent === "Transfer" && !part.children.length)!;
+      expect(word.style.background).toBe("var(--color-line-ink-dark)");
+      expect(word.style.color).toBe("var(--color-line-ink-light)");
+    }
   });
 });

@@ -276,35 +276,32 @@ export function transferFlagElement(
     transform:translate(${shift(px)}%, ${shift(py)}%);
     display:flex;flex-direction:column;align-items:flex-start;
   `;
+  // The kicker is an arrow sign, so a change reads by its shape rather than by two
+  // line colours: a notched tail in the arriving line's colour, the word in cream on
+  // ink, and a pointed head in the boarded line's. The sign's cream ground shows as
+  // keylines between the parts, separating even two lines of one colour. The shadow
+  // sits on a wrapper because clipping the sign itself would cut it away.
   const plate = document.createElement("span");
   plate.dataset.part = "kicker";
-  plate.textContent = "Transfer";
-  // The word takes the arriving line's plate, inked as its Enter here plate is.
-  const css = lineCssColor(from.color);
-  const ink = lineBulletInk(css);
-  plate.style.cssText = `
-    position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 26px 2px 7px;white-space:nowrap;
+  plate.style.cssText = "position:relative;z-index:1;margin:0 0 -3px 10px;filter:var(--filter-map-marker);";
+  const sign = document.createElement("span");
+  sign.style.cssText = `
+    display:flex;gap:2px;white-space:nowrap;background:var(--color-line-ink-light);
     font-family:var(--font-label);font-size:11px;font-weight:800;letter-spacing:0.06em;
-    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
-    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
+    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);
+    clip-path:polygon(0 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,0 100%,7px 50%);
   `;
-  // A torn tail of the boarded line's colour. The tear is edged in cream, then a
-  // hard dark shadow, so it reads between lines of equal lightness; the filter sits
-  // on a wrapper because clipping the same element would cut its shadow away.
   const tail = document.createElement("span");
-  tail.dataset.part = "transfer-tail";
-  tail.setAttribute("aria-hidden", "true");
-  tail.style.cssText = `
-    position:absolute;top:0;bottom:0;right:0;width:18px;
-    filter:var(--filter-tear);
-  `;
-  const tailFill = document.createElement("span");
-  tailFill.style.cssText = `
-    display:block;height:100%;background:${lineCssColor(to.color)};
-    clip-path:polygon(5px 0,100% 0,100% 100%,5px 100%,0 80%,5px 60%,0 40%,5px 20%);
-  `;
-  tail.appendChild(tailFill);
-  plate.appendChild(tail);
+  tail.dataset.part = "transfer-from";
+  tail.style.cssText = `width:14px;background:${lineCssColor(from.color)};`;
+  const word = document.createElement("span");
+  word.textContent = "Transfer";
+  word.style.cssText = "padding:2px 7px;background:var(--color-line-ink-dark);color:var(--color-line-ink-light);";
+  const head = document.createElement("span");
+  head.dataset.part = "transfer-to";
+  head.style.cssText = `width:18px;background:${lineCssColor(to.color)};`;
+  sign.append(tail, word, head);
+  plate.appendChild(sign);
   const shields = document.createElement("div");
   shields.dataset.part = "shield";
   shields.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;";
