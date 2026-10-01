@@ -7,13 +7,28 @@ interface HourlyExposureStripProps {
   onPickHour: (when: Date) => void;
 }
 
+const RAMP = ["light", "bright", "base", "dark", "darker"] as const;
+
+/** The five-step ramp entry for a 0–1 share: fifths, light to darker. */
+export function rampStep(share: number): (typeof RAMP)[number] {
+  return RAMP[Math.min(RAMP.length - 1, Math.max(0, Math.floor(share * RAMP.length)))];
+}
+
+/** 12-hour numeral for a board key; the meridiem row says AM or PM. */
+function hourKey(hour: number): string {
+  return String(hour % 12 || 12);
+}
+
 /**
- * Shadow on this route, hour by hour — the "when should I go?" answer.
+ * Shadow on this route, hour by hour — the "when should I go?" answer — as a
+ * departures board: an ink header row, one ruled column per hour with a mono
+ * key under a 2px ink rule, and the hour on the timeline as an ink ticket.
  *
  * Bars are drawn as *sun*, not shadow: the thing being avoided is the thing worth
  * seeing, and a short bar reading as a good hour matches how the rest of the app
- * talks about exposure. Hours still being sampled stay blank rather than showing
- * a zero the field never measured.
+ * talks about exposure. Each bar is a step of the sun (or rain) ramp by its share,
+ * keylined in ink so a pale step still holds against the panel. Hours not yet or
+ * never sampled show a dash rather than a zero the field never measured.
  */
 export default function HourlyExposureStrip({
   exposure,
@@ -23,44 +38,52 @@ export default function HourlyExposureStrip({
   const { samples, readyCount, best } = exposure;
   if (samples.length === 0) return null;
   const rain = samples[0].objective === "rain";
+  const checking = readyCount < samples.length;
+  const anyUnsampled = !checking && samples.some((sample) => sample.available === false);
 
   return (
-    <div
-      className="rounded-lg border px-3 py-2 shadow-hard-2"
-      style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <div
-          className="text-[11px] uppercase tracking-widest font-bold"
-          style={{ color: "var(--color-ink-muted)" }}
+    <div className="border-2" style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)" }}>
+      <div
+        className="flex items-baseline justify-between gap-2 px-2 py-1"
+        style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", fontSize: "var(--text-caption)" }}
+      >
+        <span
+          className="shrink-0 font-extrabold uppercase tracking-wider"
+          style={{ fontFamily: "var(--font-label)" }}
         >
           {rain ? "Rain shelter by hour" : "Sun by hour"}
-        </div>
-        <div className="text-[11px]" aria-live="polite" style={{ color: "var(--color-ink-muted)" }}>
-          {readyCount < samples.length
+        </span>
+        <span aria-live="polite" className="text-right" style={{ fontFamily: "var(--font-mono)" }}>
+          {checking
             ? "checking…"
             : best
               ? rain ? `most sheltered around ${best.label}` : `most shadowed around ${best.label}`
               : null}
-        </div>
+        </span>
       </div>
 
-      <fieldset className="mt-1.5 flex items-end gap-1 border-0 p-0 m-0">
+      <fieldset
+        className="m-0 grid border-0 px-1.5 pt-1.5 pb-1"
+        style={{ gridTemplateColumns: `repeat(${samples.length}, minmax(0, 1fr))` }}
+      >
         <legend className="sr-only">{rain ? "Rain shelter by hour" : "Sun exposure by hour"}</legend>
         {samples.map((sample, i) => {
           const ready = i < readyCount && sample.available !== false;
           const sunPct = Math.round(sample.sunExposure * 100);
           const shelterPct = Math.round(sample.shadowCoverage * 100);
+          const share = rain ? sample.shadowCoverage : sample.sunExposure;
           const isNow = sample.hour === currentHour;
+          const meridiem = sample.hour < 12 ? "AM" : "PM";
+          const prevMeridiem = i > 0 ? (samples[i - 1].hour < 12 ? "AM" : "PM") : null;
           return (
             <button
               key={sample.date.getTime()}
               type="button"
               onClick={() => onPickHour(sample.date)}
               disabled={!ready}
-              // 44px of touch target, of which only the bar is inked — the app is
-              // used one-handed, outdoors, and a 12px bar is not a tap target.
-              className="group relative flex h-11 flex-1 items-end justify-center"
+              // The whole column is the target: 44px of bar plus the key, of which
+              // only the bar is inked — the app is used one-handed, outdoors.
+              className="flex min-w-0 flex-col items-stretch"
               aria-label={
                 ready
                   ? rain
@@ -72,27 +95,57 @@ export default function HourlyExposureStrip({
               title={ready ? `${sample.label} · ${rain ? `${shelterPct}% sheltered` : `${sunPct}% sun`}` : sample.label}
             >
               <span
-                className="w-full rounded-sm transition-[height] duration-200 motion-reduce:transition-none"
+                className="flex h-11 items-end justify-center border-b-2 px-0.5"
+                style={{ borderColor: "var(--color-ink)" }}
+              >
+                {ready ? (
+                  <span
+                    data-testid="hour-bar"
+                    className="w-full transition-[height] duration-200 motion-reduce:transition-none"
+                    style={{
+                      // A fully shadowed hour still gets a sliver, so the bar reads as a
+                      // measurement rather than a gap in the data.
+                      height: `${Math.max(6, share * 100)}%`,
+                      background: `var(--color-${rain ? "rain" : "sun"}-${rampStep(share)})`,
+                      borderStyle: "solid",
+                      borderWidth: "1px 1px 0",
+                      borderColor: "var(--color-ink)",
+                    }}
+                  />
+                ) : (
+                  <span aria-hidden="true" style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)" }}>
+                    –
+                  </span>
+                )}
+              </span>
+              <span
+                className="mt-0.5 text-center tabular-nums leading-tight"
                 style={{
-                  // A fully shadowed hour still gets a sliver, so the bar reads as a
-                  // measurement rather than a gap in the data.
-                  height: ready ? `${Math.max(6, (rain ? sample.shadowCoverage : sample.sunExposure) * 100)}%` : "6%",
-                  background: ready
-                    ? isNow
-                      ? rain ? "var(--color-rain)" : "var(--color-sun-signal)"
-                      : rain ? "var(--color-rain)" : "var(--color-sun-mid)"
-                    : "color-mix(in srgb, var(--color-ink) 18%, transparent)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-caption)",
+                  background: isNow ? "var(--color-ink)" : undefined,
+                  color: isNow ? "var(--color-on-ink)" : "var(--color-ink)",
                 }}
-              />
+              >
+                {hourKey(sample.hour)}
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-center leading-tight"
+                style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}
+              >
+                {meridiem !== prevMeridiem ? meridiem : "\u00a0"}
+              </span>
             </button>
           );
         })}
       </fieldset>
 
-      <div className="mt-1 flex justify-between text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-        <span>{samples[0].label}</span>
-        <span>{samples[samples.length - 1].label}</span>
-      </div>
+      {anyUnsampled && (
+        <div className="px-2 pb-1" style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
+          – not sampled
+        </div>
+      )}
     </div>
   );
 }

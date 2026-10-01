@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DirectionsPanel from "../DirectionsPanel";
+import type { ResolvedExposureContext } from "../../lib/exposure";
 import type { RouteOption } from "../../lib/routing";
 
 /**
@@ -242,5 +243,52 @@ describe("DirectionsPanel chrome (R5b)", () => {
       expect(screen.getByRole("group", { name })).toBeTruthy();
     }
     expect(screen.getByRole("button", { name: "Swap start and destination" })).toBeTruthy();
+  });
+});
+
+describe("DirectionsPanel — solar pill after sunset (R6b)", () => {
+  /** Evaluated in Midtown: 03:00Z is 23:00 EDT, 10:00Z is 06:00 EDT (sun up, low). */
+  function renderAt(iso: string, solarIntensity: number) {
+    const evaluatedContext = {
+      objective: "sun",
+      time: new Date(iso),
+      referenceLocation: { lat: 40.754, lng: -73.984 },
+    } as ResolvedExposureContext;
+    render(
+      <DirectionsPanel
+        waypointA={[-73.9855, 40.753]}
+        waypointB={[-73.9825, 40.755]}
+        waypointALabel="Start point"
+        waypointBLabel="End point"
+        onSetWaypointA={vi.fn()}
+        onSetWaypointB={vi.fn()}
+        onSwapWaypoints={vi.fn()}
+        onClearWaypointA={vi.fn()}
+        onClearWaypointB={vi.fn()}
+        onClear={vi.fn()}
+        onCalculate={vi.fn()}
+        isCalculating={false}
+        routes={[{ ...ROUTE, objective: "sun", evaluatedContext }]}
+        selectedRouteIndex={0}
+        onSelectRoute={vi.fn()}
+        error={null}
+        pendingSlot={null}
+        onSetPendingSlot={vi.fn()}
+        onBack={vi.fn()}
+        onTravelModeChange={vi.fn()}
+        solarIntensity={solarIntensity}
+      />,
+    );
+  }
+
+  it("says the sun is down at 23:00, on the route card's 0° rule", () => {
+    renderAt("2026-06-21T03:00:00Z", 0);
+    expect(screen.getByText("Sun down — shadow not weighed")).toBeTruthy();
+    expect(screen.queryByText(/Low sun/)).toBeNull();
+  });
+
+  it("still says low sun while the sun is up", () => {
+    renderAt("2026-06-21T10:00:00Z", 0.1);
+    expect(screen.getByText("Low sun — shadow routing minimal")).toBeTruthy();
   });
 });
