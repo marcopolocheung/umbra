@@ -250,6 +250,18 @@ describe("SearchBar Foursquare typeahead", () => {
     expect(options[1].textContent).toContain("Far Library");
   });
 
+  it("labels the listing and says what its distances are measured from", async () => {
+    suggestPlaces.mockResolvedValue([SUGGESTION]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "library" } });
+    expect(await screen.findByRole("listbox", { name: /Places nearby/ })).toBeTruthy();
+    expect(screen.getByText("from map center")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Search"));
+    expect(await screen.findByRole("listbox", { name: /Directory/ })).toBeTruthy();
+  });
+
   it("measures a Nominatim row from the map center and ranks it by that distance", async () => {
     // ~167 m north of the map center: nearer than the 420 m POI. With the
     // center passed as [lat, lng] it read ~15,000 km and sank to the bottom.
