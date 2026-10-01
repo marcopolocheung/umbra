@@ -56,10 +56,11 @@ describe("TimelineSlider", () => {
     expect(screen.getByText("↓ 8:31 PM")).toBeTruthy();
   });
 
-  it("draws no sun path without a map place", () => {
+  it("says there is no sun path without a map place, rather than drawing none", () => {
     render(<TimelineSlider minutes={600} onChange={() => {}} />);
     expect(screen.queryByTestId("timeline-sun")).toBeNull();
     expect(screen.queryByTestId("timeline-night")).toBeNull();
+    expect(screen.getByText("No sun path until the map has a place")).toBeTruthy();
     expect(screen.getByText("10 AM")).toBeTruthy();
   });
 });

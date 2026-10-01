@@ -113,11 +113,11 @@ function TimeInput({
             setEditing(false);
           }
         }}
-        className="min-h-11 px-2 py-1 text-xs border focus:outline-none w-24 text-center"
+        className="min-h-11 px-2 py-1 text-xs border-2 focus:outline-none w-24 text-center"
         style={{
           background: "var(--color-ground)",
           color: "var(--color-ink)",
-          borderColor: "var(--color-rule)",
+          borderColor: "var(--color-ink)",
           fontFamily: "var(--font-sans)",
         }}
       />
@@ -822,7 +822,7 @@ export default function Home() {
     // Timetable (R6a): square, with a 2px ink rule along the top that holds
     // against either basemap in glare.
     <div
-      className="overflow-hidden border-t-2 md:border-2"
+      className="border-t-2 md:border-2"
       style={{
         background: "var(--color-panel)",
         borderColor: "var(--color-ink)",
@@ -889,8 +889,10 @@ export default function Home() {
         />
       )}
 
-      {/* Controls row */}
-      <div className="flex items-center justify-center gap-3 px-4 py-2">
+      {/* Controls row — pb-1.5 gives back the 2px top rule, so the card keeps
+          its 104px and the floating map controls their clearance. gap-2/px-2
+          fit the row inside 390px. */}
+      <div className="flex items-center justify-center gap-2 px-2 pt-2 pb-1.5">
         <button
           type="button"
           onClick={() => setIsPlaying((p) => !p)}
@@ -909,7 +911,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setSliderMode((m) => (m === "time" ? "day" : "time"))}
-          className="flex min-h-11 items-center gap-1.5 px-3 hover:bg-ground transition-colors border"
+          className="flex min-h-11 items-center gap-1.5 px-2 hover:bg-ground transition-colors border"
           style={{ borderColor: "var(--color-rule)" }}
           title={sliderMode === "time" ? "Switch to day of year" : "Switch to time of day"}
         >

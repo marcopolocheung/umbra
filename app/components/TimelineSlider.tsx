@@ -125,7 +125,7 @@ const Ruler = memo(function Ruler() {
                 whiteSpace: "nowrap",
                 fontSize: 11,
                 lineHeight: 1,
-                color: "var(--color-ink-muted)",
+                color: "var(--color-ink)",
                 fontFamily: "var(--font-mono)",
                 userSelect: "none",
                 pointerEvents: "none",
@@ -182,6 +182,14 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
         ? sunAltitudeTrace(date, latDeg, lngDeg, effectiveOffset)
         : null,
     [dayKey, latDeg, lngDeg, effectiveOffset],
+  );
+  const nights = useMemo(() => (trace ? nightSpans(trace) : []), [trace]);
+  const sunPathPoints = useMemo(
+    () =>
+      trace
+        ?.map((alt, i) => `${i * SUN_PATH_STEP_MIN * PX_PER_MIN},${RULE_Y - Math.max(0, alt) * PX_PER_DEG}`)
+        .join(" "),
+    [trace],
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -355,21 +363,20 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
         style={{ width: TOTAL_PX, willChange: "transform" }}
       >
         {/* ── Night: flat bands wherever the sun is at or below 0° ─────── */}
-        {trace &&
-          nightSpans(trace).map(([from, to]) => (
-            <div
-              key={from}
-              data-testid="timeline-night"
-              style={{
-                position: "absolute",
-                left: from * PX_PER_MIN,
-                width: (to - from) * PX_PER_MIN,
-                top: 0,
-                bottom: 0,
-                backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-              }}
-            />
-          ))}
+        {nights.map(([from, to]) => (
+          <div
+            key={from}
+            data-testid="timeline-night"
+            style={{
+              position: "absolute",
+              left: from * PX_PER_MIN,
+              width: (to - from) * PX_PER_MIN,
+              top: 0,
+              bottom: 0,
+              backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+            }}
+          />
+        ))}
 
         {sunriseMin !== undefined && <SunEventLabel minutes={sunriseMin} side="left" text={`↑ ${fmtMin(sunriseMin)}`} />}
         {sunsetMin !== undefined && <SunEventLabel minutes={sunsetMin} side="right" text={`↓ ${fmtMin(sunsetMin)}`} />}
@@ -385,15 +392,12 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
             aria-hidden="true"
           >
             <polyline
-              points={trace
-                .map((alt, i) => `${i * SUN_PATH_STEP_MIN * PX_PER_MIN},${RULE_Y - Math.max(0, alt) * PX_PER_DEG}`)
-                .join(" ")}
+              points={sunPathPoints}
               fill="none"
               stroke="var(--color-ink-muted)"
               strokeWidth={1.5}
             />
-            {/* sun dot at the slider's time — the only element this component
-                re-renders for during a drag */}
+            {/* sun dot at the slider's time — with the needle, what a drag re-renders */}
             {sunDot && (
               <circle
                 data-testid="timeline-sun"
@@ -412,7 +416,8 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
         <Ruler />
       </div>
 
-      {/* Needle: stands on the rule at the selected time, clear of the labels */}
+      {/* Needle: stands on the rule at the selected time, clear of the labels.
+          Ink keylines hold the orange core against the day panel in glare. */}
       <div
         data-testid="timeline-needle"
         className="absolute pointer-events-none z-10"
@@ -420,11 +425,20 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           left: "50%",
           top: 0,
           height: RULE_Y,
-          width: 3,
-          transform: "translateX(-1px)",
+          width: 5,
+          transform: "translateX(-2px)",
           backgroundColor: needleColor,
+          borderInline: "1px solid var(--color-ink)",
         }}
       />
+      {!trace && (
+        <span
+          className="absolute left-3 pointer-events-none select-none"
+          style={{ top: 2, fontSize: 11, lineHeight: 1, color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)" }}
+        >
+          No sun path until the map has a place
+        </span>
+      )}
     </div>
   );
 });

@@ -24,7 +24,19 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** #157 — show every boarding and transfer in the transit route card
+- **Active checkpoint:** R6a — the timetable ruler (first slice of R6; R6b is #159: sheet
+  edge #138, SolarPill night wording #147, the hourly strip as a departures board). Ticks
+  stand on a 2px ink rule with IBM Plex Mono hour labels in full ink under it, so the
+  needle, which stops at the rule, never covers one. The band above is the real SunCalc
+  altitude across the map-local day (`lib/sunPath.ts`, 0° on the rule, 90° at the top,
+  replacing U4's stylised parabola). Night is a flat band wherever altitude ≤ 0°. The
+  needle is orange with ink keylines while the sun is up and ink once it is down. Without
+  a map place the ruler says so. The selected time is an ink ticket (no longer orange)
+  with a Sun down cell when `solar` is night. The day-of-year ruler matches (44px; the
+  seasonal sun/shade tints are gone). The card, buttons and Time/Date fields are square;
+  an editing field takes a 2px ink border. The card keeps its 104px height. Drag, inertia
+  and snap code is unchanged. Shots: `docs/design/shots/r6a/`.
+- **#157 (merged, via #158):** show every boarding and transfer in the transit route card
   and navigation itinerary. The path already carries each line; the card had collapsed it
   to the first one. Walking turns now come from the access and exit routes rather than a
   fixed zero. The rail time, wait and exposure remain whole-trip figures; no per-line
@@ -80,8 +92,8 @@ inspiration; the public mirror publishes everything here.
   request): start pin, round dots on foot through each walk step, the line's bullet heading
   a solid bar in its colour that ends in a ring at the exit stop, dots on to the destination
   pin; the ride step names its wait so steps sum to Time.
-- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139), R4b (#141), R5a (#148) and
-  R5b (#152) merged.
+- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139), R4b (#141), R5a (#148),
+  R5b (#152) and the transfer itinerary (#158) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
   `Plate` now takes `button`/`a` (#128; a focused ink plate also takes the page-ink outline,
@@ -116,7 +128,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** #158 (draft; fixes #157, transfer itinerary). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R6a (this checkpoint). R6a follow-ups: #159 (R6b), #160 (sunrise label vs 0° rule, owner call), #161 (drag readout goes stale; DaySlider touch-action), #162 (map controls overlap the card), #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -129,7 +141,11 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** independent reviews of #158 when agent quota permits, then owner review and R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of R6a, then R6b (#159). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (R6a):** 2026-10-01 on Node 24; lint (0 errors, 80 baseline warnings),
+  typecheck, 1,810 unit tests, build, design:check and e2e 11/11 (smoke and nav-smoke; no
+  MapTiler key in the worktree, so smoke-live did not run). Day and night 390×844 shots on
+  the fixture basemap; a real-phone look in sun is outstanding.
 - **Last verified (#157):** 2026-10-01 on Node 24; lint (0 errors, 81 baseline warnings),
   typecheck, 1,806 unit tests, build, design:check and e2e 18/18. Day and night phone shots
   show filled 7 bullets, the change station, and the arrow-sign Transfer flag on the map. The supplied

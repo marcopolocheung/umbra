@@ -192,7 +192,7 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
             {label && (
               <span
                 className="absolute text-[11px] leading-none whitespace-nowrap select-none"
-                style={{ top: RULE_Y + RULE_W + 2, left: 2, color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)" }}
+                style={{ top: RULE_Y + RULE_W + 2, left: 2, color: "var(--color-ink)", fontFamily: "var(--font-mono)" }}
               >
                 {label}
               </span>
