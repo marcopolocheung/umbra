@@ -4,9 +4,12 @@ import {
   LINE_HALF_WIDTH,
   bulbFillets,
   coast,
+  distanceAlong,
   distanceAt,
   restingGap,
+  rideWindow,
   rubberBand,
+  sharpTurns,
   springStep,
   stopDistances,
   weldOutline,
@@ -115,7 +118,7 @@ describe("weldOutline", () => {
     }
     // The casing edges carry no end cap: each runs along one side only.
     expect(edges[0].every(([, y]) => y >= LINE_HALF_WIDTH - 1e-9)).toBe(true);
-    expect(edges[1].every(([, y]) => y <= LINE_HALF_WIDTH)).toBe(true);
+    expect(edges[1].every(([, y]) => y <= -LINE_HALF_WIDTH + 1e-9)).toBe(true);
   });
 });
 
@@ -185,5 +188,33 @@ describe("springStep", () => {
 
   it("survives a long frame without blowing up", () => {
     expect(Math.abs(springStep(10, 0, 500).x)).toBeLessThan(10);
+  });
+});
+
+describe("the weld's mask helpers", () => {
+  const km = 1000 / 111_195;
+  // North 1 km, then a right angle east 1 km.
+  const east = km / Math.cos((40.7 * Math.PI) / 180);
+  const ride: [number, number][] = [[-73.98, 40.7], [-73.98, 40.7 + km], [-73.98 + east, 40.7 + km]];
+
+  it("cuts a window of the ride that follows its turns and stops at its real ends", () => {
+    const win = rideWindow(ride, 900, 1100);
+    expect(win).toHaveLength(3);
+    expect(win[1]).toEqual(ride[1]);
+    expect(win[0][1]).toBeCloseTo(40.7 + 0.9 * km, 6);
+    // Past either end it clamps to the end, never extending the ride.
+    expect(rideWindow(ride, -50, 100)[0]).toEqual(ride[0]);
+    expect(rideWindow(ride, 1900, 2500).at(-1)).toEqual(ride[2]);
+  });
+
+  it("knows where along a ride a stop lies, and that another ride's stop is not on it", () => {
+    expect(distanceAlong(ride, [-73.98, 40.7 + 0.5 * km])).toBeCloseTo(500, -1);
+    expect(distanceAlong(ride, [-73.95, 40.7])).toBeNull();
+  });
+
+  it("finds the sharp turns a resting coin should keep clear of, not the gentle ones", () => {
+    expect(sharpTurns(ride).map((d) => Math.round(d / 10) * 10)).toEqual([1000]);
+    const gentle: [number, number][] = [[-73.98, 40.7], [-73.98, 40.7 + km], [-73.98 + east * 0.2, 40.7 + 2 * km]];
+    expect(sharpTurns(gentle)).toEqual([]);
   });
 });

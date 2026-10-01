@@ -38,9 +38,12 @@ inspiration; the public mirror publishes everything here.
   redraws the weld each frame in the line's on-screen direction (rotation and tilt
   included); the marker is a zero-size anchor on the line with `subpixelPositioning` (no
   half-pixel seam) and a 44px grip riding on the coin. Because the map's stops and line lie
-  under any DOM overlay, the weld is masked away around every stop (its drawn radius from
-  `MapView`) and clipped at the ride's ends; the coin's disc stays unmasked so a dragged coin
-  passes in front of a stop. Motion is unchanged from the coin round except friction: the
+  under any DOM overlay, the weld is masked to the ride as drawn on screen (`rideWindow`, a
+  wide band cut square at the ride's real ends, tilt included) and away from this ride's
+  nearby stops (their drawn radius from `MapView`); the coin's disc stays unmasked so a
+  dragged coin passes in front of a stop. Scale is measured on screen at the coin, and a
+  resting coin keeps clear of sharp turns (`sharpTurns`) as of stops, since the weld is laid
+  straight along the line. Motion is unchanged from the coin round except friction: the
   time slider's 0.009/ms plus 5% (`COIN_FRICTION` 0.00945, owner's tuning). Stops are ringed
   in their line's colour, board/exit a size up and named beside the ride; a resting coin slides
   clear of any stop; the terminus is not shown. DOM only for coin and names, never the canvas
@@ -106,7 +109,7 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,782 unit tests,
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,785 unit tests,
   build, design:check and e2e 16/16. The weld was checked on the live day and night maps at rest
   and mid-pull; a real-phone feel check is outstanding.
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit

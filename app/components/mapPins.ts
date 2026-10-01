@@ -49,9 +49,9 @@ export function mapPinElement(variant: MapPinVariant, label: string, text = ""):
 export interface LineCoinParts {
   /** The marker element: a zero-size anchor on the line where the coin sits. */
   host: HTMLDivElement;
-  /** The weld's clip (the ride's extent) and stop mask live here. */
+  /** The weld's mask lives here: the ride as drawn, minus the stops on it. */
   defs: SVGDefsElement;
-  /** The welded joint's group: masked around stops, clipped to the ride. */
+  /** The welded joint's group, masked to the ride and away from its stops. */
   joint: SVGGElement;
   casing: SVGPathElement;
   fill: SVGPathElement;
@@ -95,9 +95,8 @@ export function lineCoinElement(line: string, color: string): LineCoinParts {
   const svg = make("svg", { width: "160", height: "160", viewBox: "-80 -80 160 160", "aria-hidden": "true" });
   svg.style.cssText = "position:absolute;left:-80px;top:-80px;overflow:visible;pointer-events:none;";
   const defs = make("defs", {});
-  defs.appendChild(make("clipPath", { id: `${id}-ride` }));
-  defs.appendChild(make("mask", { id: `${id}-stops`, maskUnits: "userSpaceOnUse", x: "-200", y: "-200", width: "400", height: "400" }));
-  const joint = make("g", { "clip-path": `url(#${id}-ride)`, mask: `url(#${id}-stops)`, "data-part": "joint" });
+  defs.appendChild(make("mask", { id: `${id}-ride`, maskUnits: "userSpaceOnUse", x: "-200", y: "-200", width: "400", height: "400" }));
+  const joint = make("g", { mask: `url(#${id}-ride)`, "data-part": "joint" });
   const casing = make("path", {
     fill: "none", stroke: "var(--color-map-casing)", "stroke-width": "3",
     "stroke-linecap": "butt", "stroke-linejoin": "round", "data-part": "casing",

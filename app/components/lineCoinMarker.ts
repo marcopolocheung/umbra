@@ -4,15 +4,17 @@ import {
   COIN_FRICTION,
   COIN_RADIUS,
   coast,
+  distanceAlong,
   distanceAt,
   type LineBadgePlacement,
   pointAtDistance,
   restingGap,
   rideLength,
+  rideWindow,
   rubberBand,
   snapToPath,
+  sharpTurns,
   springStep,
-  stopDistances,
   weldOutline,
 } from "../lib/lineBadges";
 import { lineCoinElement } from "./mapPins";
@@ -31,10 +33,8 @@ const STOP_CLEARANCE_PX = COIN_RADIUS + 10;
 const GRIP_IN_MS = 120;
 const GRIP_OUT_MS = 150;
 
-/** Metres per screen pixel at a latitude and zoom (512px maplibre tiles). */
-function metresPerPixel(map: maplibregl.Map, lat: number): number {
-  return (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
-}
+/** How far around the coin (px along the ride) the weld can reach, and so its mask must cover. */
+const REACH_PX = 80;
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -80,10 +80,15 @@ export function attachLineCoin(
 ): { remove: () => void } {
   const { coords } = placement;
   const length = rideLength(coords);
-  const stopsAlong = stopDistances(coords, stops.map((st) => st.at));
+  // This ride's own stops, with where along it each lies; other rides' stops are not its concern.
+  const rideStops = stops
+    .map((st) => ({ ...st, d: distanceAlong(coords, st.at) }))
+    .filter((st): st is LineCoinStop & { d: number } => st.d !== null);
+  // A resting coin keeps clear of stops, and of sharp turns, where a straight weld would leave the line.
+  const keepClear = [...rideStops.map((st) => st.d), ...sharpTurns(coords)].sort((a, b) => a - b);
   const still = prefersReducedMotion();
   const parts = lineCoinElement(placement.line, placement.color);
-  const [clip, mask] = [parts.defs.children[0], parts.defs.children[1]] as [SVGClipPathElement, SVGMaskElement];
+  const mask = parts.defs.children[0] as SVGMaskElement;
   let s = (fraction ?? 0.5) * length;
   // Along-ride velocity (m/ms); off-line offset (px) and its velocity (px/ms); grip 0–1.
   let v = 0;
@@ -99,7 +104,13 @@ export function attachLineCoin(
   const marker = new maplibregl.Marker({ element: parts.host, anchor: "center", draggable: true, subpixelPositioning: true })
     .setLngLat(pointAtDistance(coords, s))
     .addTo(map);
-  const mpp = () => metresPerPixel(map, marker.getLngLat().lat);
+  /** Metres per screen px along the ride at the coin, measured on screen, so tilt is honoured. */
+  const mpp = () => {
+    const step = Math.min(10, length / 2) || 1;
+    const a = map.project(pointAtDistance(coords, Math.min(s, length - step)));
+    const b = map.project(pointAtDistance(coords, Math.min(s, length - step) + step));
+    return step / (Math.hypot(b.x - a.x, b.y - a.y) || 1);
+  };
   // The coin's centre relative to the line, along the line's normal on the pulled side.
   let coinAt = { x: 0, y: 0 };
 
@@ -108,7 +119,8 @@ export function attachLineCoin(
     const here = pointAtDistance(coords, s);
     marker.setLngLat(here);
     const F = map.project(here);
-    const step = Math.min(8 * mpp(), length / 2);
+    const scale = mpp();
+    const step = Math.min(8 * scale, length / 2);
     const a = map.project(pointAtDistance(coords, s - step));
     const b = map.project(pointAtDistance(coords, s + step));
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -126,22 +138,25 @@ export function attachLineCoin(
     parts.disc.setAttribute("cy", coinAt.y.toFixed(2));
     parts.grip.style.transform = `translate(${coinAt.x.toFixed(2)}px, ${coinAt.y.toFixed(2)}px)`;
 
-    // Clip to the ride's extent, so the weld never pokes past its start or end;
-    // the coin's own circle is kept whole.
-    const toStart = s / mpp();
-    const toEnd = (length - s) / mpp();
-    const box = [[-toStart, -80], [toEnd, -80], [toEnd, 80], [-toStart, 80]].map((p) => toScreen(p as Pt));
-    clip.innerHTML =
-      `<polygon points="${box.map((p) => p.map((v2) => v2.toFixed(2)).join(",")).join(" ")}"/>` +
-      `<circle cx="${coinAt.x.toFixed(2)}" cy="${coinAt.y.toFixed(2)}" r="${COIN_RADIUS + 2}"/>`;
-    // Cut the weld away around nearby stops: the map's stop and line lie beneath
-    // any DOM overlay, so the stop must show through rather than be painted over.
-    const holes = stops
-      .map((st) => ({ p: map.project(st.at), r: st.radius + 1 }))
-      .filter(({ p }) => Math.hypot(p.x - F.x, p.y - F.y) < 80 + COIN_RADIUS)
-      .map(({ p, r }) => `<circle cx="${(p.x - F.x).toFixed(2)}" cy="${(p.y - F.y).toFixed(2)}" r="${r}" fill="black"/>`)
+    // Mask the weld to the ride as drawn on screen — a wide band along its real path,
+    // cut square at its real ends, so it never pokes past the start or the end, tilt
+    // and curves included — and cut it away around this ride's nearby stops, since
+    // the map's stop and line lie under any DOM overlay. The coin's own circle stays.
+    const reach = REACH_PX * scale;
+    const band = rideWindow(coords, s - reach, s + reach)
+      .map((q) => map.project(q))
+      .map((q) => `${(q.x - F.x).toFixed(2)},${(q.y - F.y).toFixed(2)}`)
+      .join("L");
+    const holes = rideStops
+      .filter((st) => Math.abs(st.d - s) < reach + COIN_RADIUS * scale)
+      .map((st) => {
+        const q = map.project(st.at);
+        return `<circle cx="${(q.x - F.x).toFixed(2)}" cy="${(q.y - F.y).toFixed(2)}" r="${st.radius + 1}" fill="black"/>`;
+      })
       .join("");
-    mask.innerHTML = `<rect x="-200" y="-200" width="400" height="400" fill="white"/>${holes}`;
+    mask.innerHTML =
+      `<path d="M${band}" fill="none" stroke="white" stroke-width="${2 * REACH_PX}" stroke-linecap="butt" stroke-linejoin="round"/>` +
+      `<circle cx="${coinAt.x.toFixed(2)}" cy="${coinAt.y.toFixed(2)}" r="${COIN_RADIUS + 2}" fill="white"/>${holes}`;
   };
 
   const stop = () => {
@@ -155,7 +170,7 @@ export function attachLineCoin(
     stop();
     if (still) {
       off = { x: 0, y: 0 };
-      const clear = restingGap(s, stopsAlong, length, STOP_CLEARANCE_PX * mpp());
+      const clear = restingGap(s, keepClear, length, STOP_CLEARANCE_PX * mpp());
       if (clear !== null) s = clear;
       render();
       rest();
@@ -189,7 +204,7 @@ export function attachLineCoin(
         settleTo = null;
       }
       render();
-      const clear = restingGap(s, stopsAlong, length, STOP_CLEARANCE_PX * mpp());
+      const clear = restingGap(s, keepClear, length, STOP_CLEARANCE_PX * mpp());
       if (clear !== null) {
         // A coast covers v0 / friction in all, so aim a short slide at the clear point.
         settleTo = clear;

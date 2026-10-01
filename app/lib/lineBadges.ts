@@ -205,20 +205,62 @@ function toLocal(origin: [number, number], p: [number, number]): [number, number
  * than `toleranceM` from the track belong to another ride and are left out.
  */
 export function stopDistances(coords: [number, number][], stops: [number, number][], toleranceM = 25): number[] {
-  if (coords.length === 0) return [];
+  return stops
+    .map((stop) => distanceAlong(coords, stop, toleranceM))
+    .filter((d): d is number => d !== null)
+    .sort((x, y) => x - y);
+}
+
+/** How far along a ride a point lies, in metres; `null` when it is more than `toleranceM` off the track. */
+export function distanceAlong(coords: [number, number][], point: [number, number], toleranceM = 25): number | null {
+  if (coords.length === 0) return null;
   const origin = coords[0];
   const path = coords.map((c) => toLocal(origin, c));
-  const out: number[] = [];
-  for (const stop of stops) {
-    const p = toLocal(origin, stop);
-    const snap = snapToPath(path, p);
-    if (!snap) continue;
-    const a = path[snap.index];
-    const b = path[Math.min(snap.index + 1, path.length - 1)];
-    const at = [a[0] + (b[0] - a[0]) * snap.t, a[1] + (b[1] - a[1]) * snap.t];
-    if (Math.hypot(p[0] - at[0], p[1] - at[1]) <= toleranceM) out.push(distanceAt(coords, snap.index, snap.t));
+  const p = toLocal(origin, point);
+  const snap = snapToPath(path, p);
+  if (!snap) return null;
+  const a = path[snap.index];
+  const b = path[Math.min(snap.index + 1, path.length - 1)];
+  const at = [a[0] + (b[0] - a[0]) * snap.t, a[1] + (b[1] - a[1]) * snap.t];
+  return Math.hypot(p[0] - at[0], p[1] - at[1]) <= toleranceM ? distanceAt(coords, snap.index, snap.t) : null;
+}
+
+/**
+ * The stretch of a ride between two distances along it, as [lng, lat] points:
+ * the end points interpolated, every vertex between kept. What the coin's weld
+ * is masked to, so it follows the ride as drawn and stops square at its ends.
+ */
+export function rideWindow(coords: [number, number][], from: number, to: number): [number, number][] {
+  const length = rideLength(coords);
+  const [lo, hi] = [Math.max(0, Math.min(from, to)), Math.min(length, Math.max(from, to))];
+  const out: [number, number][] = [pointAtDistance(coords, lo)];
+  let d = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    d += metres(coords[i], coords[i + 1]);
+    if (d > lo && d < hi) out.push(coords[i + 1]);
   }
-  return out.sort((x, y) => x - y);
+  out.push(pointAtDistance(coords, hi));
+  return out;
+}
+
+/**
+ * Where a ride turns sharply (more than `minTurnDeg` at a vertex), as distances
+ * along it. The weld is laid straight along the line, so on such a turn its arms
+ * would leave the drawn line; a resting coin keeps clear of these as of stops.
+ */
+export function sharpTurns(coords: [number, number][], minTurnDeg = 25): number[] {
+  const out: number[] = [];
+  let d = 0;
+  for (let i = 1; i < coords.length - 1; i++) {
+    d += metres(coords[i - 1], coords[i]);
+    const [a, b, c] = [toLocal(coords[i], coords[i - 1]), [0, 0], toLocal(coords[i], coords[i + 1])];
+    const inA = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const outA = Math.atan2(c[1] - b[1], c[0] - b[0]);
+    let turn = Math.abs(outA - inA);
+    if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    if ((turn * 180) / Math.PI > minTurnDeg) out.push(d);
+  }
+  return out;
 }
 
 /**

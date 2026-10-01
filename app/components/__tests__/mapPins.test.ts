@@ -18,9 +18,8 @@ describe("lineCoinElement", () => {
     expect(disc.getAttribute("fill")).toBe("#FCCC0A");
     expect(disc.getAttribute("r")).toBe(String(COIN_RADIUS));
     expect(casing.getAttribute("stroke")).toBe("var(--color-map-casing)");
-    // The weld is masked around stops and clipped to the ride; the disc is neither.
-    expect(joint.getAttribute("mask")).toMatch(/^url\(#line-coin-\d+-stops\)$/);
-    expect(joint.getAttribute("clip-path")).toMatch(/^url\(#line-coin-\d+-ride\)$/);
+    // The weld is masked to the ride and away from its stops; the disc is not.
+    expect(joint.getAttribute("mask")).toMatch(/^url\(#line-coin-\d+-ride\)$/);
     expect(disc.parentElement).not.toBe(joint);
   });
 
