@@ -5,8 +5,8 @@ import { loadEnv } from "vite";
 import { SHARE_URL, WAYPOINT_A, WAYPOINT_B, stubNetwork } from "../helpers/scenario";
 
 // Run with R8B_STAGE=before against the R8a preview, then R8B_STAGE=after against the
-// R8b preview. Three v1 saved routes are seeded (a sun walk, a rain walk with unknown
-// shelter, and a sun walk in a folder) and the Saved routes section is opened in the
+// R8b preview. Three v1 saved routes are seeded (a sun walk, a rain walk and a sun
+// walk in a folder) and the Saved routes section is opened in the
 // directions sheet: `saved-*` at the phone's mid snap, `saved-full-*` with the sheet
 // raised, `desktop-saved-*` the sidebar.
 const stage = process.env.R8B_STAGE;
@@ -46,7 +46,7 @@ const ROUTES = [
 const FOLDERS = [{ id: "f1", name: "Weekdays", createdAt: 1 }];
 
 async function openSaved(page: Page) {
-  const toggle = page.getByRole("button", { name: /Saved routes/i }).filter({ visible: true }).first();
+  const toggle = page.getByRole("button", { name: /Saved routes\s*\d/i }).filter({ visible: true }).first();
   await toggle.click();
   await page.waitForTimeout(500);
 }

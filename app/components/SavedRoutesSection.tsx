@@ -1,16 +1,25 @@
-import { useEffect, useRef, useState, memo } from "react";
+import { useEffect, useId, useRef, useState, memo } from "react";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
 import { routeShadowLabel } from "../lib/routeTradeoff";
 import Kicker from "./ui/Kicker";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** The date and time a saved figure was computed for, as a ticket stub prints it. */
-function stubDate(dateIso: string, minutes: number): [string, string] {
-  const [, month, day] = dateIso.split("-").map(Number);
-  const h = Math.floor(minutes / 60);
-  const time = `${h % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-  return [`${MONTHS[month - 1] ?? ""} ${day}`, time];
+/**
+ * The date and time a saved figure was computed for, as a ticket stub prints
+ * it: the trip's departure instant in the departure stop's own zone — the map
+ * place's time the timeline showed, never the browser's clock (a 9 PM New York
+ * walk saved from Los Angeles must not read 6 PM). Null when the record holds
+ * no readable instant or zone.
+ */
+function stubDate(at: { instant: string; zone: string } | undefined): [string, string] | null {
+  const d = at ? new Date(at.instant) : null;
+  if (!at || !d || Number.isNaN(d.getTime())) return null;
+  try {
+    const format = (options: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat("en-US", { timeZone: at.zone, ...options }).format(d).replace(/\u202f/g, " ");
+    return [format({ month: "short", day: "numeric" }), format({ hour: "numeric", minute: "2-digit" })];
+  } catch {
+    return null;
+  }
 }
 
 interface SavedRoutesSectionProps {
@@ -34,6 +43,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const folderIdPrefix = useId();
 
   useEffect(() => {
     if (!renamingId) return;
@@ -72,7 +82,7 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
     const distKm = r.routeOption.distanceM >= 1000
       ? `${(r.routeOption.distanceM / 1000).toFixed(1)} km`
       : `${Math.round(r.routeOption.distanceM)} m`;
-    const [day, time] = stubDate(r.dateIso, r.timeOfDayMinutes);
+    const stub = stubDate(r.trip?.departAt);
     return (
       <li key={r.id} className="flex min-w-0 border-2 border-ink bg-panel">
         {renamingId === r.id ? (
@@ -87,7 +97,8 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             }}
             onBlur={() => commitRename(r.id)}
             className="min-h-11 min-w-0 flex-1 px-3 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
-            style={{ background: "var(--color-ground)", color: "var(--color-ink)", fontSize: "var(--text-small)" }}
+            // 16px: anything smaller makes iOS Safari zoom when the field takes focus.
+            style={{ background: "var(--color-ground)", color: "var(--color-ink)", fontSize: "1rem" }}
           />
         ) : (
           <button type="button"
@@ -95,31 +106,31 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
             className="flex min-h-11 min-w-0 flex-1 items-stretch text-left hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
           >
             <span className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
-              <span className="truncate font-semibold" style={{ color: "var(--color-ink)", fontSize: "var(--text-small)" }}>{r.name}</span>
-              <span className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</span>
+              <span className="truncate font-semibold" title={r.name} style={{ color: "var(--color-ink)", fontSize: "var(--text-small)" }}>{r.name}</span>
+              <span className="font-numeric text-[11px] font-extrabold tabular-nums" style={{ color: "var(--color-ink)" }}>{distKm} · {protectionLabel}</span>
             </span>
-            <span
-              className="flex shrink-0 flex-col items-end justify-center border-l-2 border-dashed border-ink px-2 font-mono text-[11px] uppercase tabular-nums"
-              style={{ color: "var(--color-ink)" }}
-            >
-              <span>{day}</span>
-              <span>{time}</span>
-            </span>
+            {stub && (
+              <span
+                className="flex shrink-0 flex-col items-end justify-center border-l-2 border-dashed border-ink px-2 font-mono text-[11px] uppercase tabular-nums"
+                style={{ color: "var(--color-ink)" }}
+              >
+                <span>{stub[0]}</span>
+                <span>{stub[1]}</span>
+              </span>
+            )}
           </button>
         )}
         <button type="button"
           onClick={() => { setRenamingId(r.id); setRenameValue(r.name); }}
           aria-label={`Rename ${r.name}`}
-          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
-          style={{ color: "var(--color-ink)" }}
+          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink text-ink focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
         >
           <span className="material-symbols-outlined text-lg" aria-hidden="true">edit</span>
         </button>
         <button type="button"
           onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
           aria-label={`Delete ${r.name}`}
-          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
-          style={{ color: "var(--color-ink)" }}
+          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink text-ink hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
         >
           <span className="material-symbols-outlined text-lg" aria-hidden="true">delete</span>
         </button>
@@ -151,8 +162,8 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
         <div className="mt-1 flex flex-col gap-2">
           {uncategorised.length > 0 && <ul className="flex flex-col gap-2">{uncategorised.map(renderRoute)}</ul>}
           {byFolder.map(({ folder, routes: fr }) => (
-            <section key={folder.id} aria-label={folder.name} className="flex flex-col gap-1">
-              <Kicker>{folder.name}</Kicker>
+            <section key={folder.id} aria-labelledby={`${folderIdPrefix}-${folder.id}`} className="flex flex-col gap-1">
+              <Kicker id={`${folderIdPrefix}-${folder.id}`}>{folder.name}</Kicker>
               <ul className="flex flex-col gap-2">{fr.map(renderRoute)}</ul>
             </section>
           ))}
