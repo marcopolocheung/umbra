@@ -421,18 +421,22 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   const suggestionsOpen = !isOpen && suggestions.length > 0;
   const showSections = isActive && !isOpen && !suggestionsOpen && (recent.length > 0 || saved.length > 0);
 
+  const distanceFrom = (c: [number, number]) => (mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), c)) : "");
+  const distanceNote = mapCenter ? "from map center" : undefined;
+
   return (
     <div ref={containerRef} className="relative">
-      {/* Canopy search — the one 999 pill, >=70% white, the only blurred surface */}
+      {/* The one search pill: solid panel, 2px ink rule, hard offset shadow; every
+          control in it is a 44px square target. */}
       <div
-        className="w-full flex items-center rounded-full bg-panel/90 backdrop-blur-md h-14 px-4 gap-3 border border-rule"
-        style={isActive ? { boxShadow: "var(--shadow-hard-2)" } : undefined}
+        className="w-full flex items-center rounded-full h-14 px-1.5 gap-0.5 border-2"
+        style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", boxShadow: "var(--shadow-hard-2)" }}
       >
         {/* Hamburger — toggles desktop sidebar */}
         {onMenuToggle && (
           <button type="button"
             onClick={onMenuToggle}
-            className="shrink-0 text-ink hover:opacity-80 transition-opacity"
+            className={PILL_BUTTON}
             aria-label="Toggle menu"
           >
             <span className="material-symbols-outlined">menu</span>
@@ -453,15 +457,15 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           aria-controls={isOpen || suggestionsOpen ? listId : undefined}
           aria-activedescendant={highlightIndex >= 0 ? `${listId}-opt-${highlightIndex}` : undefined}
           aria-autocomplete="list"
-          className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder-ink-muted"
-          style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
+          className={`min-w-0 flex-1 bg-transparent focus:outline-none placeholder-ink-muted ${onMenuToggle ? "px-1" : "px-2.5"}`}
+          style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)", fontSize: "var(--text-body)" }}
         />
 
         {/* Clear button */}
         {query.length > 0 && (
           <button type="button"
             onClick={handleClear}
-            className="shrink-0 text-ink-muted hover:text-ink-muted transition-colors"
+            className={PILL_BUTTON}
             aria-label="Clear search"
           >
             <svg width="16" height="16" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -475,7 +479,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           <button type="button"
             onClick={onLocateMe}
             disabled={isLocating}
-            className="shrink-0 text-ink hover:opacity-80 transition-opacity"
+            className={PILL_BUTTON}
             aria-label={isLocating ? "Finding your location" : "My location"}
             aria-busy={isLocating}
           >
@@ -492,7 +496,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         <button type="button"
           onClick={handleMagnifierClick}
           onMouseDown={(e) => e.preventDefault()}
-          className="shrink-0 text-ink hover:opacity-80 transition-opacity"
+          className={PILL_BUTTON}
           aria-label={isSearching ? "Searching" : "Search"}
           aria-busy={isSearching}
         >
@@ -505,7 +509,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         {onDirections && (
           <button type="button"
             onClick={onDirections}
-            className="shrink-0 text-ink-muted hover:opacity-80 transition-opacity"
+            className={PILL_BUTTON}
             aria-label="Directions"
           >
             <span className="material-symbols-outlined">directions</span>
@@ -517,12 +521,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         {onOpenAssistant && (
           <button type="button"
             onClick={onOpenAssistant}
-            className="relative shrink-0 text-ink hover:opacity-80 transition-opacity"
+            className={`relative ${PILL_BUTTON}`}
             aria-label="Open Umbra Assistant"
           >
             {isAssistantThinking && (
               <span
-                className="absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping"
+                className="absolute inset-2.5 rounded-full opacity-40 motion-safe:animate-ping"
                 style={{ background: "var(--color-ink)" }}
                 aria-hidden="true"
               />
@@ -539,212 +543,197 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
       {/* Recent/Saved sections */}
       {showSections && (
-        <div
-          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20"
-          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
-        >
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE}>
           {recent.length > 0 && (
-            <div className="py-1">
-              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-ink-muted)" }}>
-                RECENT
+            <>
+              <DirectoryHead title="Recent" note={distanceNote} />
+              <div className="divide-y divide-rule">
+                {recent.map((it, i) => (
+                  <Listing key={`${it.label}-${i}`} name={it.label} distance={distanceFrom(it.center)} onClick={() => handleSelectSaved(it)} />
+                ))}
               </div>
-              {recent.map((it, i) => {
-                const dist = mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), it.center)) : "";
-                return (
-                  <button type="button"
-                    key={`${it.label}-${i}`}
-                    onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-ground"
-                  >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
-                      <span className="material-symbols-outlined text-base">location_on</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>{it.label}</div>
-                      {dist && <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{dist}</div>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            </>
           )}
 
           {saved.length > 0 && (
-            <div className="border-t py-1" style={{ borderColor: "var(--color-rule)" }}>
-              <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-ink-muted)" }}>
-                SAVED
+            <>
+              <DirectoryHead title="Saved" note={recent.length > 0 ? undefined : distanceNote} />
+              <div className="divide-y divide-rule">
+                {saved.map((it, i) => (
+                  <Listing key={`${it.label}-${i}`} name={it.label} distance={distanceFrom(it.center)} onClick={() => handleSelectSaved(it)} />
+                ))}
               </div>
-              {saved.map((it, i) => {
-                const dist = mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), it.center)) : "";
-                return (
-                  <button type="button"
-                    key={`${it.label}-${i}`}
-                    onClick={() => handleSelectSaved(it)}
-                    className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-ground"
-                  >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
-                      <span className="material-symbols-outlined text-base">bookmark</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>{it.label}</div>
-                      {dist && <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{dist}</div>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            </>
           )}
         </div>
       )}
 
       {/* Foursquare typeahead suggestions — the one autocomplete path */}
       {suggestionsOpen && (
-        <div
-          id={listId}
-          role="listbox"
-          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
-          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
-        >
-          {suggestions.map((s, i) => (
-            <button
-              key={`${s.fsqId ?? s.name}-${i}`}
-              type="button"
-              id={`${listId}-opt-${i}`}
-              role="option"
-              aria-selected={i === highlightIndex}
-              onClick={() => handleSelectSuggestion(s)}
-              className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                i === highlightIndex ? "bg-ground" : "hover:bg-ground"
-              }`}
-            >
-              {s.photo ? (
-                <img
-                  src={s.photo}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="w-10 h-10 rounded-lg object-cover shrink-0"
-                  style={{ border: "1px solid var(--color-rule)" }}
-                />
-              ) : (
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-                >
-                  <span className="material-symbols-outlined text-base">location_on</span>
-                </div>
-              )}
-
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
-                  {s.name}
-                </div>
-                {(s.category || s.hours) && (
-                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
-                    {[s.category, s.hours].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-              </div>
-
-              <div className="shrink-0 flex flex-col items-end gap-0.5">
-                {typeof s.rating === "number" && (
-                  <div
-                    className="text-[11px] tabular-nums flex items-center gap-0.5"
-                    style={{ color: "var(--color-ink)" }}
-                  >
-                    <span className="material-symbols-outlined text-xs" aria-hidden="true">star</span>
-                    {s.rating.toFixed(1)}/10
-                  </div>
-                )}
-                {mapCenter && typeof s.distanceM === "number" && (
-                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
-                    {formatDistance(s.distanceM)}
-                  </div>
-                )}
-              </div>
-            </button>
-          ))}
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE}>
+          <DirectoryHead id={`${listId}-head`} title="Places nearby" note={distanceNote} />
+          <div id={listId} role="listbox" aria-labelledby={`${listId}-head`} className="max-h-72 overflow-y-auto umbra-scrollbar divide-y divide-rule">
+            {suggestions.map((s, i) => (
+              <Listing
+                key={`${s.fsqId ?? s.name}-${i}`}
+                id={`${listId}-opt-${i}`}
+                role="option"
+                aria-selected={i === highlightIndex}
+                highlighted={i === highlightIndex}
+                onClick={() => handleSelectSuggestion(s)}
+                name={s.name}
+                detail={[s.category, s.hours].filter(Boolean).join(" · ")}
+                rating={s.rating}
+                photo={s.photo}
+                distance={mapCenter && typeof s.distanceM === "number" ? formatDistance(s.distanceM) : ""}
+              />
+            ))}
+          </div>
         </div>
       )}
 
       {/* Results dropdown — merged submit results from both providers */}
       {isOpen && (
-        <div
-          id={listId}
-          role="listbox"
-          className="absolute top-full mt-2 w-full bg-panel rounded-2xl overflow-hidden border z-20 max-h-72 overflow-y-auto umbra-scrollbar"
-          style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
-        >
-          {results.map((row, i) =>
-            row.kind === "fsq" ? (
-              <button
-                key={`fsq-${row.s.fsqId ?? row.s.name}-${i}`}
-                type="button"
-                id={`${listId}-opt-${i}`}
-                role="option"
-                aria-selected={i === highlightIndex}
-                onClick={() => handleSelect(row)}
-                className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                  i === highlightIndex ? "bg-ground" : "hover:bg-ground"
-                }`}
-              >
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-                >
-                  <span className="material-symbols-outlined text-base">location_on</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
-                    {row.s.name}
-                  </div>
-                  {(row.s.category || row.s.hours) && (
-                    <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
-                      {[row.s.category, row.s.hours].filter(Boolean).join(" · ")}
-                    </div>
-                  )}
-                </div>
-                {mapCenter && typeof row.s.distanceM === "number" && (
-                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
-                    {formatDistance(row.s.distanceM)}
-                  </div>
-                )}
-              </button>
-            ) : (
-              <button
-                key={`nom-${i}`}
-                type="button"
-                id={`${listId}-opt-${i}`}
-                role="option"
-                aria-selected={i === highlightIndex}
-                onClick={() => handleSelect(row)}
-                className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 min-h-11 ${
-                  i === highlightIndex ? "bg-ground" : "hover:bg-ground"
-                }`}
-              >
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}>
-                  <span className="material-symbols-outlined text-base">location_on</span>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
-                    {primaryName(row.r.display_name)}
-                  </div>
-                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
-                    {guessCategory(row.r.display_name)}
-                  </div>
-                </div>
-
-                {mapCenter && row.distM != null && (
-                  <div className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
-                    {formatDistance(row.distM)}
-                  </div>
-                )}
-              </button>
-            ),
-          )}
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE}>
+          <DirectoryHead id={`${listId}-head`} title="Directory" note={distanceNote} />
+          <div id={listId} role="listbox" aria-labelledby={`${listId}-head`} className="max-h-72 overflow-y-auto umbra-scrollbar divide-y divide-rule">
+            {results.map((row, i) =>
+              row.kind === "fsq" ? (
+                <Listing
+                  key={`fsq-${row.s.fsqId ?? row.s.name}-${i}`}
+                  id={`${listId}-opt-${i}`}
+                  role="option"
+                  aria-selected={i === highlightIndex}
+                  highlighted={i === highlightIndex}
+                  onClick={() => handleSelect(row)}
+                  name={row.s.name}
+                  detail={[row.s.category, row.s.hours].filter(Boolean).join(" · ")}
+                  distance={mapCenter && typeof row.s.distanceM === "number" ? formatDistance(row.s.distanceM) : ""}
+                />
+              ) : (
+                <Listing
+                  key={`nom-${i}`}
+                  id={`${listId}-opt-${i}`}
+                  role="option"
+                  aria-selected={i === highlightIndex}
+                  highlighted={i === highlightIndex}
+                  onClick={() => handleSelect(row)}
+                  name={primaryName(row.r.display_name)}
+                  detail={guessCategory(row.r.display_name)}
+                  distance={mapCenter && row.distM != null ? formatDistance(row.distM) : ""}
+                />
+              ),
+            )}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+const PILL_BUTTON =
+  "grid size-11 shrink-0 place-items-center rounded-full text-ink hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
+
+// Square and ruled like the departures board: a directory, not a floating card.
+const DIRECTORY_PANEL = "absolute top-full mt-2 w-full overflow-hidden border-2 z-20";
+const DIRECTORY_PANEL_STYLE = {
+  background: "var(--color-panel)",
+  borderColor: "var(--color-ink)",
+  boxShadow: "var(--shadow-hard-2)",
+} as const;
+
+/** A directory's ink header band: what the listing is, and what its distances are measured from. */
+function DirectoryHead({ id, title, note }: { id?: string; title: string; note?: string }) {
+  return (
+    <div
+      id={id}
+      className="flex items-baseline justify-between gap-2 px-3 py-1"
+      style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", fontSize: "var(--text-caption)" }}
+    >
+      <span className="font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)" }}>
+        {title}
+      </span>
+      {note && (
+        <span className="min-w-0 truncate text-right" style={{ fontFamily: "var(--font-mono)" }}>
+          {note}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type ListingProps = {
+  name: string;
+  detail?: string | null;
+  distance?: string;
+  rating?: number | null;
+  photo?: string | null;
+  highlighted?: boolean;
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "className" | "style">;
+
+/**
+ * One directory line: the name, a dotted leader and its distance, with what the
+ * place is (and its hours or rating, when the provider gave one) under it. The
+ * whole square row is the ≥44px target; the highlighted row inverts to ink.
+ */
+function Listing({ name, detail, distance, rating, photo, highlighted = false, ...button }: ListingProps) {
+  return (
+    <button
+      type="button"
+      {...button}
+      className={`flex w-full min-h-11 items-center gap-3 px-3 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current ${
+        highlighted ? "" : "hover:bg-ground"
+      }`}
+      style={highlighted ? { background: "var(--color-ink)", color: "var(--color-on-ink)" } : { color: "var(--color-ink)" }}
+    >
+      {photo && (
+        <img
+          src={photo}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="size-10 shrink-0 object-cover border"
+          style={{ borderColor: "currentColor" }}
+        />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-1.5">
+          <span className="min-w-0 truncate font-semibold" style={{ fontSize: "var(--text-body)" }}>
+            {name}
+          </span>
+          {distance && (
+            <>
+              <span
+                aria-hidden="true"
+                className="min-w-3 flex-1 border-b-2 border-dotted"
+                style={{ borderColor: highlighted ? "currentColor" : "var(--color-ink-muted)" }}
+              />
+              <span
+                className="shrink-0 tabular-nums font-extrabold"
+                style={{ fontFamily: "var(--font-numeric)", fontSize: "var(--text-small)" }}
+              >
+                {distance}
+              </span>
+            </>
+          )}
+        </span>
+        {(detail || typeof rating === "number") && (
+          <span
+            className="mt-0.5 flex items-center justify-between gap-2"
+            style={{ fontSize: "var(--text-caption)", color: highlighted ? "inherit" : "var(--color-ink-muted)" }}
+          >
+            <span className="min-w-0 truncate font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)" }}>
+              {detail}
+            </span>
+            {typeof rating === "number" && (
+              <span className="flex shrink-0 items-center gap-0.5 tabular-nums font-extrabold" style={{ fontFamily: "var(--font-numeric)" }}>
+                <span className="material-symbols-outlined text-xs" aria-hidden="true">star</span>
+                {rating.toFixed(1)}/10
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }

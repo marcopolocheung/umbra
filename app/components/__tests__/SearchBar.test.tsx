@@ -250,6 +250,18 @@ describe("SearchBar Foursquare typeahead", () => {
     expect(options[1].textContent).toContain("Far Library");
   });
 
+  it("labels the listing and says what its distances are measured from", async () => {
+    suggestPlaces.mockResolvedValue([SUGGESTION]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "library" } });
+    expect(await screen.findByRole("listbox", { name: /Places nearby/ })).toBeTruthy();
+    expect(screen.getByText("from map center")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Search"));
+    expect(await screen.findByRole("listbox", { name: /Directory/ })).toBeTruthy();
+  });
+
   it("drops a Foursquare duplicate of a Nominatim result instead of listing it twice", async () => {
     suggestPlaces.mockResolvedValue([
       { ...SUGGESTION, name: "Brooklyn Bridge", lat: 40.7061, lng: -73.9969 },
