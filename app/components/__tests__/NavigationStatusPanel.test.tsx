@@ -117,6 +117,38 @@ describe("NavigationStatusPanel (R5b)", () => {
     expect(steps[5].textContent).toContain("Bryant Park");
   });
 
+  it("draws each boarding and the transfer while quoting rail time once", () => {
+    const legs: RouteLeg[] = [
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+      {
+        type: "transit", geojson: LINE, line: "4", lineName: "Lexington Avenue Express",
+        travelTimeSec: 1200, waitSec: 420,
+        rides: [
+          { line: "4", lineName: "Lexington Avenue Express", lineColor: "var(--color-route)", board: { id: "A", name: "Astor Pl" }, exit: { id: "B", name: "Grand Central" }, stopCount: 2 },
+          { line: "7", lineName: "Flushing Local", lineColor: "var(--color-route)", board: { id: "B", name: "Grand Central" }, exit: { id: "C", name: "Vernon Blvd" }, stopCount: 1 },
+        ],
+      },
+      { type: "walk", geojson: LINE, distanceM: 90, shadowCoverage: 0.5 },
+    ];
+    panel(walk({ label: "Via Subway", legs, totalTimeSec: 1320, turnCount: 4 }));
+
+    const steps = [...screen.getByRole("list", { name: "Route steps" }).querySelectorAll("li")];
+    expect(steps.map((li) => li.querySelector(".umbra-leg-rail")?.className ?? null)).toEqual([
+      "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--ride",
+      "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--ride",
+      "umbra-leg-rail umbra-leg-rail--foot",
+      "umbra-leg-rail umbra-leg-rail--foot",
+      null,
+    ]);
+    expect(steps[3].textContent).toBe("Change at Grand Central");
+    expect(steps[4].textContent).toContain("Ride Flushing Local");
+    expect(screen.getAllByText(/Rail total 20 min/)).toHaveLength(1);
+    expect(screen.getByText("Walking turns").parentElement?.textContent).toContain("4");
+  });
+
   it("starts at the line's bullet when the trip starts at the station door, with no zero-metre walk", () => {
     const legs: RouteLeg[] = [
       { type: "walk", geojson: LINE, distanceM: 0, shadowCoverage: 0 },

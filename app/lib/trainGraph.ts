@@ -164,6 +164,48 @@ export interface TransferSegment {
 
 export type TrainSegment = TrainRouteSegment | TransferSegment;
 
+/** One uninterrupted boarding, in the order the chosen path actually rides it. */
+export interface TrainRide {
+  line: string;
+  lineName: string;
+  lineColor?: string;
+  board: { id: string; name: string };
+  exit: { id: string; name: string };
+  /** Train edges only; a walked transfer is not a stop. */
+  stopCount: number;
+}
+
+export function summarizeTrainRides(
+  segments: TrainSegment[],
+  lineNames: Map<string, string>,
+  lineColors: Map<string, string>,
+): TrainRide[] {
+  const rides: TrainRide[] = [];
+  let afterTransfer = false;
+  for (const segment of segments) {
+    if (segment.type === "transfer") {
+      afterTransfer = true;
+      continue;
+    }
+    const last = rides[rides.length - 1];
+    if (last && !afterTransfer && last.line === segment.line) {
+      last.exit = { id: segment.to.id, name: segment.to.name };
+      last.stopCount++;
+    } else {
+      rides.push({
+        line: segment.line,
+        lineName: lineNames.get(segment.line) ?? segment.line,
+        lineColor: lineColors.get(segment.line) ?? "#0070BD",
+        board: { id: segment.from.id, name: segment.from.name },
+        exit: { id: segment.to.id, name: segment.to.name },
+        stopCount: 1,
+      });
+    }
+    afterTransfer = false;
+  }
+  return rides;
+}
+
 // ─── Draw data for MapView rendering ─────────────────────────────────────────
 
 export interface TrainDrawData {

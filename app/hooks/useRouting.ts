@@ -35,6 +35,7 @@ import {
   matchEntranceToTrainStation,
   TRAIN_SUN_EXPOSURE,
   buildTrainDrawData,
+  summarizeTrainRides,
   ENTRANCE_MATCH_MAX_M,
   MIN_TRANSIT_DISTANCE_M,
 } from "../lib/trainGraph";
@@ -1516,6 +1517,11 @@ export function useRouting({
                     const stopNames = bestTrain.path.stationIds.map(
                       (id) => trainGraph.stations.get(id)?.name ?? `Station ${id}`,
                     );
+                    const rides = summarizeTrainRides(
+                      bestTrain.path.segments,
+                      trainGraph.lineNames,
+                      trainGraph.lineColors,
+                    );
 
                     const primaryLine = bestTrain.path.lines[0] ?? "";
                     const lineColor = trainGraph.lineColors.get(primaryLine) ?? "#0070BD";
@@ -1645,6 +1651,7 @@ export function useRouting({
                         line: primaryLine,
                         lineColor,
                         lineName,
+                        rides,
                         sunExposure,
                         ...(sunExposureCoverage != null ? { sunExposureCoverage } : {}),
                         ...(aboveGroundShare != null ? { aboveGroundShare } : {}),
@@ -1708,7 +1715,7 @@ export function useRouting({
                       longestContinuousSunM: 0,
                       shadowTransitions: 0,
                       detourRatio: 1.0,
-                      turnCount: 0,
+                      turnCount: walkA.turnCount + walkB.turnCount,
                       legs,
                       ...(rainObjective
                         ? {

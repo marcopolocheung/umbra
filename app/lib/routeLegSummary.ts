@@ -1,4 +1,5 @@
 import type { RouteLeg } from "./routing";
+import type { TrainRide } from "./trainGraph";
 import type { TransitWaitExposure } from "./transitWaitExposure";
 import { getTravelModePolicy } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
@@ -158,6 +159,28 @@ export interface RouteLegSummary {
   detail: string;
 }
 
+/** Old saved routes have one transit leg but no boarding breakdown. */
+export function transitRides(leg: RouteLeg): TrainRide[] {
+  if (leg.rides?.length) return leg.rides;
+  const board = leg.stops?.[0] ?? "";
+  const exit = leg.stops?.[leg.stops.length - 1] ?? "";
+  return [{
+    line: leg.line || leg.lineName || "?",
+    lineName: leg.lineName ?? leg.line ?? "Transit",
+    lineColor: leg.lineColor,
+    board: { id: board, name: board },
+    exit: { id: exit, name: exit },
+    stopCount: Math.max(0, (leg.stops?.length ?? 2) - 1),
+  }];
+}
+
+export function transitChangeLabel(from: TrainRide, to: TrainRide): string {
+  if (!from.exit.name || !to.board.name) return "Change trains";
+  if (from.exit.id === to.board.id || from.exit.name === to.board.name)
+    return `Change at ${from.exit.name}`;
+  return `Transfer ${from.exit.name} → ${to.board.name}`;
+}
+
 /**
  * `afterSunset` drops the per-leg shadow shares a sun route would quote: with
  * the sun down they are every metre by definition, not a daylight estimate,
@@ -170,8 +193,10 @@ export function routeLegSummary(
   afterSunset = false,
 ): RouteLegSummary {
   if (leg.type === "transit") {
-    const line = leg.lineName || leg.line || "Transit";
-    const stopCount = leg.stops ? Math.max(0, leg.stops.length - 1) : null;
+    const line = leg.rides && leg.rides.length > 1 ? "Transit" : leg.lineName || leg.line || "Transit";
+    const stopCount = leg.rides?.length
+      ? leg.rides.reduce((sum, ride) => sum + ride.stopCount, 0)
+      : leg.stops ? Math.max(0, leg.stops.length - 1) : null;
     const parts = [
       leg.travelTimeSec != null ? formatMinutes(leg.travelTimeSec) : null,
       // Named rather than folded in silently: the quoted time includes the

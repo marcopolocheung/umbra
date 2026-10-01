@@ -1,7 +1,7 @@
 // Pure TypeScript routing utilities — no browser dependencies
 import { MinHeap } from "./minHeap";
 import type { PartialRouteInfo } from "./partialRoute";
-import type { TrainDrawData, TransitProvenance } from "./trainGraph";
+import type { TrainDrawData, TrainRide, TransitProvenance } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
 import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
@@ -169,6 +169,8 @@ export interface RouteLeg {
   line?: string;             // transit legs: line ref/code
   lineColor?: string;        // transit legs: hex color
   lineName?: string;         // transit legs: display name
+  /** Ordered boardings on the chosen path. Absent on routes saved before this field existed. */
+  rides?: TrainRide[];
   /**
    * Transit legs: share of riding time open to the sky. Measured from the
    * published per-segment structure where there is any, otherwise the per-mode
