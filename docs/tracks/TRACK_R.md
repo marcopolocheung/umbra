@@ -218,7 +218,8 @@ inspiration; the public mirror publishes everything here.
 - **Next action:** owner review of R8a #194 and R8b in stack order, then R8c (#190). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (R8b):** 2026-10-01 on Node 24; lint (0 errors, 79 baseline warnings),
   typecheck, 1,857 unit tests (the stub suite also passes under TZ=UTC, Los Angeles and
-  Tokyo), build and e2e. design:check reports the 9 findings already on main (#165),
+  Tokyo), build and e2e 12/12 (the rebrand spec's saved-routes locators follow the
+  new sentence-case disclosure and anchored ticket names). design:check reports the 9 findings already on main (#165),
   none new. Day and night 390×844 and desktop before/after shots on the fixture
   basemap; focus rings and rename mode are not in a shot, and a real-phone look is
   outstanding.

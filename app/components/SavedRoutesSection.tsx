@@ -5,10 +5,9 @@ import Kicker from "./ui/Kicker";
 
 /**
  * The date and time a saved figure was computed for, as a ticket stub prints
- * it: the trip's departure instant in the departure stop's own zone — the map
- * place's time the timeline showed, never the browser's clock (a 9 PM New York
- * walk saved from Los Angeles must not read 6 PM). Null when the record holds
- * no readable instant or zone.
+ * it: the trip's departure instant in the departure stop's own zone, never the
+ * browser's clock (a 9 PM New York walk saved from Los Angeles must not read
+ * 6 PM). Null when the record holds no readable instant or zone.
  */
 function stubDate(at: { instant: string; zone: string } | undefined): [string, string] | null {
   const d = at ? new Date(at.instant) : null;
