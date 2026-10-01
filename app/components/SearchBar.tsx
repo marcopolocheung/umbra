@@ -426,10 +426,10 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
   return (
     <div ref={containerRef} className="relative">
-      {/* The one search pill: solid panel, 2px ink rule, hard offset shadow; every
-          control in it is a 44px square target. */}
+      {/* The one search pill: solid panel, 2px ink rule, hard offset shadow, ringed
+          while the field has focus; every control in it is a 44px square target. */}
       <div
-        className="w-full flex items-center rounded-full h-14 px-1.5 gap-0.5 border-2"
+        className="w-full flex items-center rounded-full h-14 px-1.5 gap-0.5 border-2 has-[input:focus]:outline-2 has-[input:focus]:outline-offset-2 has-[input:focus]:outline-ink"
         style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", boxShadow: "var(--shadow-hard-2)" }}
       >
         {/* Hamburger — toggles desktop sidebar */}
@@ -632,7 +632,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 }
 
 const PILL_BUTTON =
-  "grid size-11 shrink-0 place-items-center rounded-full text-ink hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
+  "grid size-11 shrink-0 place-items-center text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
 
 // Square and ruled like the departures board: a directory, not a floating card.
 const DIRECTORY_PANEL = "absolute top-full mt-2 w-full overflow-hidden border-2 z-20";
@@ -648,7 +648,13 @@ function DirectoryHead({ id, title, note }: { id?: string; title: string; note?:
     <div
       id={id}
       className="flex items-baseline justify-between gap-2 px-3 py-1"
-      style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", fontSize: "var(--text-caption)" }}
+      // The panel-coloured foot keeps a highlighted (ink) first row from merging into the band.
+      style={{
+        background: "var(--color-ink)",
+        color: "var(--color-on-ink)",
+        fontSize: "var(--text-caption)",
+        borderBottom: "2px solid var(--color-panel)",
+      }}
     >
       <span className="font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)" }}>
         {title}
