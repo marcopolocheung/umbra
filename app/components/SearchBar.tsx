@@ -94,9 +94,18 @@ function loadSaved(): SavedItem[] {
   }
 }
 
-function guessCategory(displayName: string): string {
-  const parts = (displayName ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return parts[1] ?? "Place";
+/**
+ * What kind of place a Nominatim result is, from the OSM tag it matched — never
+ * from `display_name`, whose second part is a house number or a borough as often
+ * as anything. Null when the tag says nothing a reader could use. Exported for tests.
+ */
+export function nominatimCategory(r: Pick<NominatimResult, "class" | "type">): string | null {
+  if (r.class === "highway") return "Street";
+  if (r.class === "place" && r.type === "house") return "Address";
+  const tag = r.type && r.type !== "yes" ? r.type : r.class;
+  if (!tag) return null;
+  const words = tag.replaceAll("_", " ");
+  return words[0].toUpperCase() + words.slice(1);
 }
 
 function addressFromDisplayName(displayName: string): string {
@@ -138,6 +147,7 @@ export type MergedSearchResult =
 export function mergeSearchResults(
   nominatim: NominatimResult[],
   fsq: FoursquareSuggestion[],
+  /** [lng, lat] — not the map hook's [lat, lng]; see `toLngLat`. */
   center: [number, number] | null,
 ): MergedSearchResult[] {
   const rows: MergedSearchResult[] = nominatim.map((r) => ({
@@ -232,7 +242,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
             )
           : Promise.resolve([] as FoursquareSuggestion[]),
       ]);
-      const merged = mergeSearchResults(nominatim, fsq, ll ?? null);
+      const merged = mergeSearchResults(nominatim, fsq, ll ? toLngLat(ll) : null);
       // The query moved on while this was in flight — its results belong to a
       // string the user is no longer looking at, and the top one is armed for
       // the next Enter, so dropping them is the whole point of the guard.
@@ -290,7 +300,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
     onSelect({
       name,
-      category: guessCategory(r.display_name),
+      category: nominatimCategory(r),
       address: addressFromDisplayName(r.display_name) || null,
       center,
       zoom,
@@ -730,9 +740,11 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
                   <div className="text-[13px] font-medium truncate" style={{ color: "var(--color-ink)" }}>
                     {primaryName(row.r.display_name)}
                   </div>
-                  <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
-                    {guessCategory(row.r.display_name)}
-                  </div>
+                  {nominatimCategory(row.r) && (
+                    <div className="text-[11px] truncate" style={{ color: "var(--color-ink-muted)" }}>
+                      {nominatimCategory(row.r)}
+                    </div>
+                  )}
                 </div>
 
                 {mapCenter && row.distM != null && (
