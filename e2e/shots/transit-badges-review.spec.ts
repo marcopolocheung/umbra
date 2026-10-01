@@ -31,5 +31,20 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     await page.addStyleTag({ content: "[data-testid='bottom-sheet'] { visibility: hidden !important; }" });
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(out, `map-${theme}.png`) });
+
+    // Mid-pull: the coin grabbed and pulled 40 px off its line, held on the rubber band.
+    const coin = page.locator(".maplibregl-marker[aria-label='Line E']");
+    if (stage === "after" && (await coin.count()) === 1) {
+      const box = await coin.boundingBox();
+      if (box) {
+        const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x - 28, y - 28, { steps: 6 });
+        await page.waitForTimeout(150);
+        await page.screenshot({ path: path.join(out, `pull-${theme}.png`) });
+        await page.mouse.up();
+      }
+    }
   });
 }

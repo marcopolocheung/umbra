@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { COIN_RADIUS, coinOutline } from "../../lib/lineBadges";
-import { lineCoinElement } from "../mapPins";
+import { lineCoinElement, stopLabelElement } from "../mapPins";
 
 const letterOf = (host: HTMLElement) => host.querySelector(":scope > span") as HTMLElement;
 
@@ -37,5 +37,15 @@ describe("lineCoinElement", () => {
     const host = lineCoinElement("L", "#A7A9AC");
     expect([host.style.width, host.style.height]).toEqual(["44px", "44px"]);
     expect((host.querySelector("svg") as SVGSVGElement).style.pointerEvents).toBe("none");
+  });
+});
+
+describe("stopLabelElement", () => {
+  it("names a stop on a plate in the map's overlay inks, and lets the map keep its gestures", () => {
+    const label = stopLabelElement("34 St–Herald Sq");
+    expect(label.textContent).toBe("34 St–Herald Sq");
+    expect(label.style.background).toBe("var(--color-map-casing)");
+    expect(label.style.color).toBe("var(--color-map-route)");
+    expect(label.style.pointerEvents).toBe("none");
   });
 });

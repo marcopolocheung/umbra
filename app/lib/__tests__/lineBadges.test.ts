@@ -4,6 +4,10 @@ import {
   coast,
   coinOutline,
   distanceAt,
+  restingGap,
+  rubberBand,
+  springStep,
+  stopDistances,
   lineBadgePlacements,
   pointAtDistance,
   rideLength,
@@ -92,5 +96,64 @@ describe("coinOutline", () => {
     const radii = coinOutline("A").slice(1, -1).split("L").map((p) => Math.hypot(...(p.split(",").map(Number) as [number, number])));
     expect(radii).toHaveLength(48);
     for (const r of radii) expect(Math.abs(r - COIN_RADIUS) / COIN_RADIUS).toBeLessThan(0.08);
+  });
+});
+
+describe("stopDistances", () => {
+  const km = 1000 / 111_195;
+  const ride: [number, number][] = [[-73.98, 40.7], [-73.98, 40.7 + 2 * km]];
+
+  it("places the ride's stops along it and leaves other rides' stops out", () => {
+    const d = stopDistances(ride, [[-73.98, 40.7 + 2 * km], [-73.98, 40.7 + km], [-73.97, 40.7 + km]]);
+    expect(d).toHaveLength(2);
+    expect(d[0]).toBeCloseTo(1000, -1);
+    expect(d[1]).toBeCloseTo(2000, -1);
+  });
+});
+
+describe("restingGap", () => {
+  const stops = [0, 400, 800];
+
+  it("leaves a coin that hides no stop where it is", () => {
+    expect(restingGap(200, stops, 800, 60)).toBeNull();
+  });
+
+  it("nudges a coin off a stop by the smallest clear step", () => {
+    expect(restingGap(390, stops, 800, 60)).toBe(340);
+    expect(restingGap(420, stops, 800, 60)).toBe(460);
+    // At the board stop the only clear side is onward.
+    expect(restingGap(10, stops, 800, 60)).toBe(60);
+  });
+
+  it("gives up on a ride too dense to hold the coin clear", () => {
+    expect(restingGap(50, [0, 50, 100], 100, 60)).toBeNull();
+  });
+});
+
+describe("rubberBand", () => {
+  it("follows a small pull and stiffens toward the limit without reaching it", () => {
+    expect(rubberBand(1, 12)).toBeCloseTo(1, 1);
+    expect(rubberBand(12, 12)).toBeCloseTo(9.1, 1);
+    expect(rubberBand(200, 12)).toBeLessThan(12);
+    expect(rubberBand(200, 12)).toBeGreaterThan(11.9);
+  });
+});
+
+describe("springStep", () => {
+  it("wobbles a released coin back past the line and settles on it", () => {
+    let state = { x: 10, v: 0 };
+    let crossings = 0;
+    for (let t = 0; t < 1200; t += 16) {
+      const next = springStep(state.x, state.v, 16);
+      if (Math.sign(next.x) !== Math.sign(state.x) && state.x !== 0) crossings++;
+      state = next;
+    }
+    // Under-damped: it overshoots at least once, then comes to rest on the line.
+    expect(crossings).toBeGreaterThanOrEqual(1);
+    expect(Math.abs(state.x)).toBeLessThan(0.3);
+  });
+
+  it("survives a long frame without blowing up", () => {
+    expect(Math.abs(springStep(10, 0, 500).x)).toBeLessThan(10);
   });
 });

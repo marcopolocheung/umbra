@@ -37,9 +37,16 @@ inspiration; the public mirror publishes everything here.
   a new trip starts fresh), and on a ride's first render glides it from mid-ride to a random
   resting place (none under reduced motion; a grab cancels it). One per ride, not per hop.
   DOM markers only — the shadow sampler never sees them (#5); the marker element *is* the
-  44px grip, because maplibre re-enables pointer events on it after every press. The transit
-  smoke test drags it ~56px off the line and asserts, by canvas readback, that it slid and
-  still sits on the magenta track.
+  44px grip, because maplibre re-enables pointer events on it after every press. Owner's
+  second round: a pull off the line stretches the coin on a rubber band (`rubberBand`, ≤12px)
+  and a damped spring (`springStep`, ~3 Hz, ζ 0.3) wobbles it back on release; a coin that
+  rests over a stop slides just clear (`restingGap`, `stopDistances`), so no stop is hidden.
+  Stops now count along the ride: `TrainDrawData.stops` carries each stop's line colour,
+  rings drawn in it (removed from `basemapTheme`'s re-themed roles, like the lines), board and
+  exit a size up and named on map-ink plates (`mapPins.stopLabelElement`). The terminus is
+  deliberately not shown on the map (it reads as the rider's destination). The transit smoke
+  test drags the coin ~56px off the line, asserts by canvas readback that it slid and still
+  sits on the track, and asserts the board/exit names.
 - **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
   (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
   inset focus, disabled on the 75% role with a strike), used by Walk/Transit, Sun/Rain,
@@ -88,7 +95,7 @@ inspiration; the public mirror publishes everything here.
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
 - **Open PRs:** #153 (fixes #149, transit line coins on the map). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
-  SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); filed elsewhere from R5a: #144, #145 (E), #146 (A).
+  SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. The route casing is paper by day, not dark
   (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
@@ -100,8 +107,9 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,769 unit tests,
-  build, design:check and e2e 16/16 (the transit drag check 2/2 more on repeat).
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,779 unit tests
+  (9 of 10 full runs clean; the other hit #154, a pre-existing timer-after-teardown leak in
+  `useRouting`), build, design:check and e2e 16/16.
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.

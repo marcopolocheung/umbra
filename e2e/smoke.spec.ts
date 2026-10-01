@@ -278,10 +278,13 @@ test("routes on the published transit data and draws the line", async ({ page },
   // it and ~56 px off it: the coin must slide, and must stay on the track.
   await page.mouse.move(before.x + 120, before.y - 40, { steps: 8 });
   await page.mouse.up();
-  await page.waitForTimeout(1_200); // any coast settles
+  await page.waitForTimeout(2_500); // the coast, the spring back onto the line, any slide off a stop
   const after = await centre();
   expect(Math.hypot(after.x - before.x, after.y - before.y), "the coin did not move when dragged").toBeGreaterThan(5);
   expect(await transitLineNear(page, after.x, after.y), "the dragged coin left its line").toBe(true);
+
+  // The two stops a rider acts on are named beside their dots on the map.
+  await expect(page.locator("[data-part='stop-label']")).toHaveText(["Grid South", "Grid North"]);
 
   // Half the published headway, on the day type the clock is actually set to.
   // The fixture ships 600 s for Sunday hour 9 and 300 s for the weekday, and

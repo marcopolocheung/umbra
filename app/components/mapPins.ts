@@ -106,3 +106,22 @@ export function lineCoinElement(line: string, color: string): HTMLDivElement {
   host.appendChild(letter);
   return host;
 }
+
+/**
+ * The name beside a ride's board or exit stop: a small paper plate in the map's
+ * overlay inks (it follows the basemap theme), the two stops a rider acts on.
+ * Not a control, so it lets the map keep its gestures.
+ */
+export function stopLabelElement(name: string): HTMLDivElement {
+  const label = document.createElement("div");
+  label.dataset.part = "stop-label";
+  label.textContent = name;
+  label.style.cssText = `
+    pointer-events:none;white-space:nowrap;padding:2px 6px;
+    font-family:var(--font-body);font-size:11px;font-weight:600;line-height:1.3;
+    background:var(--color-map-casing);color:var(--color-map-route);
+    border:1.5px solid var(--color-map-route);border-radius:var(--radius-sm);
+    box-shadow:var(--shadow-map-marker);
+  `;
+  return label;
+}

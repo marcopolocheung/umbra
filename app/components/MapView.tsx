@@ -14,7 +14,7 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { mapPinElement } from "./mapPins";
+import { mapPinElement, stopLabelElement } from "./mapPins";
 import { attachLineCoin } from "./lineCoinMarker";
 import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
@@ -305,6 +305,7 @@ export default function MapView({
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
   const lineCoinRefs       = useRef<{ remove: () => void }[]>([]);
+  const stopLabelRefs      = useRef<maplibregl.Marker[]>([]);
   // Where each ride's coin last rested (0–1 along it), so a recalculation keeps it put.
   const lineCoinFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
@@ -811,6 +812,8 @@ export default function MapView({
       markerAlightRef.current?.remove();markerAlightRef.current = null;
       for (const coin of lineCoinRefs.current) coin.remove();
       lineCoinRefs.current = [];
+      for (const label of stopLabelRefs.current) label.remove();
+      stopLabelRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1285,6 +1288,8 @@ export default function MapView({
       for (const coin of lineCoinRefs.current) coin.remove();
       lineCoinRefs.current = [];
       if (!navTrainDrawData) {
+        for (const label of stopLabelRefs.current) label.remove();
+        stopLabelRefs.current = [];
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
         for (const s of SOURCES) if (map.getSource(s)) map.removeSource(s);
@@ -1297,9 +1302,11 @@ export default function MapView({
       // DOM markers, so the shadow sampler's canvas readback never sees them.
       // Remembered per ride — its line and end stations — so the same trip
       // recalculated at another time keeps its place, and a new trip starts fresh.
+      const stopPoints = stops.map((st) => [st.lon, st.lat] as [number, number]);
       lineCoinRefs.current = lineBadgePlacements(polylines).map((placement) => {
         const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
         return attachLineCoin(map, placement, {
+          stops: stopPoints,
           fraction: lineCoinFractions.current.get(key),
           onRest: (fraction) => lineCoinFractions.current.set(key, fraction),
         });
@@ -1332,14 +1339,26 @@ export default function MapView({
         });
       }
 
-      // Station stop dots (exclude transfer stations — they get distinct markers)
+      // Station stop dots, ringed in the colour of the line that serves them so the
+      // stops can be counted along the ride (transfer stations get their own marker).
+      // The board and exit stops are a size up, and named beside the dot.
+      const boardId = stops[0]?.id;
+      const exitId = stops[stops.length - 1]?.id;
       const stopFeatures = stops
         .filter((s) => !transferIds.has(s.id))
         .map((s) => ({
           type: "Feature" as const,
-          properties: { name: s.name },
+          properties: { name: s.name, color: s.color, end: s.id === boardId || s.id === exitId },
           geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
         }));
+      for (const label of stopLabelRefs.current) label.remove();
+      stopLabelRefs.current = [stops[0], stops.length > 1 ? stops[stops.length - 1] : undefined]
+        .filter((st): st is (typeof stops)[number] => !!st)
+        .map((st) =>
+          new maplibregl.Marker({ element: stopLabelElement(st.name), anchor: "left", offset: [14, 0] })
+            .setLngLat([st.lon, st.lat])
+            .addTo(map),
+        );
       const stopsFC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: stopFeatures };
       if (map.getSource("train-route-stops")) {
         (map.getSource("train-route-stops") as maplibregl.GeoJSONSource).setData(stopsFC);
@@ -1350,10 +1369,11 @@ export default function MapView({
           type: "circle",
           source: "train-route-stops",
           paint: {
-            "circle-radius": 6,
+            "circle-radius": ["case", ["get", "end"], 7, 5],
             "circle-color": mapColor(basemapThemeRef.current, "casing"),
-            "circle-stroke-width": 2,
-            "circle-stroke-color": mapColor(basemapThemeRef.current, "muted"),
+            "circle-stroke-width": 3,
+            // The line's identity, like the ride itself: not re-themed (basemapTheme OVERLAY_ROLES).
+            "circle-stroke-color": ["get", "color"],
           },
         });
       }
