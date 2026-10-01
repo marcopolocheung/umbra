@@ -1558,9 +1558,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* AI assistant: the launcher's one permanent home is the search bar
-          (see SearchBar's assistant button); the floating and docked blobs are
-          gone. The chat panel itself is unchanged. */}
+      {/* The search bar owns the assistant launcher; the leaflet receives the
+          same plotted pin order that MapView numbers. */}
       <AssistantPanel
         open={assistantOpen && !uiHidden}
         onClose={() => setAssistantOpen(false)}
@@ -1569,6 +1568,7 @@ export default function Home() {
         onSend={agent.sendMessage}
         onReset={agent.reset}
         onFocusMapObject={agent.focusMapObject}
+        stopIds={assistantPins.map((pin) => pin.objectId ?? assistantPinId(pin.lat, pin.lng))}
       />
     </>
   );

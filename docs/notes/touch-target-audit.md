@@ -1,6 +1,6 @@
 # Touch Target Audit
 
-Date: 2026-08-16 · re-audited 2026-09-20 (U4: timeline, bottom sheet, search/sheet interplay, directions form) · 2026-10-01 (R6a: timeline and day rulers; #162: phone control stack, no collapsed sheet; R6b: sheet edge, hourly board; R7a: search pill and directory; R7b: place entry)
+Date: 2026-08-16 · re-audited 2026-09-20 (U4: timeline, bottom sheet, search/sheet interplay, directions form) · 2026-10-01 (R6a: timeline and day rulers; #162: phone control stack, no collapsed sheet; R6b: sheet edge, hourly board; R7a: search pill and directory; R7b: place entry; R7c: assistant leaflet)
 
 Scope: timeline slider, day slider, bottom sheet, hourly exposure board, and floating map controls for a heatwave user outdoors on a phone, one-handed. The 2026-09-20 pass re-audited exactly the surfaces U4 changed.
 
@@ -18,6 +18,7 @@ Scope: timeline slider, day slider, bottom sheet, hourly exposure board, and flo
 | Segmented controls in the reopened directions form (U4) | Fixed | Walk/Transit tabs, Sun/Rain selector and Walk/Bike/Scoot travel tabs were `py-1` (~25px tall). All three now carry `min-h-11` rows (44px). Walk/Transit also gained `aria-pressed`. |
 | Search pill and directory (R7a) | Fixed | The pill's icon buttons were their ~24px glyphs; each is now a square 44px target (`size-11`), leaving about 135px for typing at 390px with four buttons. Directory rows are full-width buttons, 44px for one line and about 58px with the category line. |
 | Place entry (R7b) | Fixed | Back, Copy address and the phone and website links are each at least 44px tall (`min-h-11`); Directions is the full-width 44px start button, now directly under the heading so it stays inside the first snap point. The old action pills (74px wide) did nothing beyond Directions and are gone. |
+| Assistant leaflet (R7c) | Fixed | Reset, Close, Send and each numbered stop use 44×44px buttons; suggestion rows and the textarea are at least 44px high. A verified receipt for a pin no longer plotted has no number or dead focus target. The number itself is 26px within its 44px button, matching the map pin's visual size. |
 | Mobile search bar over directions (U4) | Fixed | The floating search pill no longer renders during DIRECTIONS/NAVIGATING — it previously sat half over the sheet's planning form and read as a search panel slid open over the navigation card. In IDLE/PLACE_DETAIL/ARRIVAL it is unchanged. |
 | Floating map controls vs raised timeline (U4, review finding) | Fixed | #162: the stack starts at 112px, 8px clear of the 104px timeline card. The old 96/176px offsets assumed an 88px card and sat 8px under it. |
 
