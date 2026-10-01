@@ -106,11 +106,11 @@ const DateInput = memo(function DateInput({
             setEditing(false);
           }
         }}
-        className="min-h-11 rounded px-2 py-1 text-xs border focus:outline-none w-32 text-center"
+        className="min-h-11 px-2 py-1 text-xs border-2 focus:outline-none w-28 text-center"
         style={{
           background: "var(--color-ground)",
           color: "var(--color-ink)",
-          borderColor: "var(--color-rule)",
+          borderColor: "var(--color-ink)",
           fontFamily: "var(--font-sans)",
         }}
       />
@@ -122,9 +122,10 @@ const DateInput = memo(function DateInput({
       type="button"
       aria-label={ariaLabel}
       onClick={startEdit}
-      className="min-h-11 text-xs tabular-nums w-32 text-center rounded px-2 py-1 hover:bg-ground transition-colors"
+      className="min-h-11 text-xs tabular-nums w-28 text-center border px-2 py-1 hover:bg-ground transition-colors"
       style={{
-        color: "var(--color-ink-muted)",
+        color: "var(--color-ink)",
+        borderColor: "var(--color-rule)",
         fontFamily: "var(--font-sans)",
       }}
       title="Click to set date (e.g. Mar 3, 3/3/2026)"

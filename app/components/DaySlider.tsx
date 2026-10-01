@@ -7,20 +7,10 @@ const MONTH_NAMES = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-const MONTH_TINTS = [
-  "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Jan — winter
-  "color-mix(in srgb, var(--color-shade) 6%, transparent)", // Feb
-  "color-mix(in srgb, var(--color-shade) 6%, transparent)", // Mar — spring
-  "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Apr
-  "color-mix(in srgb, var(--color-shade) 6%, transparent)", // May
-  "color-mix(in srgb, var(--color-sun) 8%, transparent)",  // Jun — summer
-  "color-mix(in srgb, var(--color-sun) 10%, transparent)", // Jul
-  "color-mix(in srgb, var(--color-sun) 8%, transparent)",  // Aug
-  "color-mix(in srgb, var(--color-sun) 6%, transparent)",  // Sep — fall
-  "color-mix(in srgb, var(--color-sun) 8%, transparent)",  // Oct
-  "color-mix(in srgb, var(--color-sun) 6%, transparent)",  // Nov
-  "color-mix(in srgb, var(--color-shade) 8%, transparent)", // Dec — winter
-];
+// Timetable ruler geometry, shared with TimelineSlider (R6a): ticks stand on a
+// 2px ink rule, month labels sit under it, and the needle stops at the rule.
+const RULE_Y = 28;
+const RULE_W = 2;
 
 interface Props {
   /** 0-indexed day of year (0 = Jan 1) */
@@ -49,20 +39,16 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
 
   // Precompute tick marks once per year
   const ticks = useMemo(() => {
-    type Tick = { day: number; height: number; color: string; label?: string };
+    type Tick = { day: number; height: number; label?: string };
     const r: Tick[] = [];
     for (let m = 0; m < 12; m++) {
       const s = monthStarts[m];
       const e = monthStarts[m + 1];
-      r.push({ day: s, height: 20, color: "color-mix(in srgb, var(--color-ink) 35%, transparent)", label: MONTH_NAMES[m] });
+      r.push({ day: s, height: 10, label: MONTH_NAMES[m] });
       for (let d = s + 1; d < e; d++) {
         const inM = d - s;
         const isWeek = inM % 7 === 0;
-        r.push({
-          day: d,
-          height: isWeek ? 12 : 5,
-          color: isWeek ? "color-mix(in srgb, var(--color-ink) 18%, transparent)" : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-        });
+        r.push({ day: d, height: isWeek ? 6 : 3 });
       }
     }
     return r;
@@ -168,17 +154,19 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
   return (
     <div
       ref={containerRef}
-      className="relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
-      style={{ height: 48 }}
+      className="relative h-11 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      // Same as TimelineSlider: a slightly diagonal thumb drag must stay a scrub,
+      // not become a browser pan that cancels the pointer (#161).
+      style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {/* Fixed red center cursor */}
+      {/* Fixed center needle — ink, not orange: a date is not sun data */}
       <div
-        className="absolute inset-y-0 w-px z-10 pointer-events-none"
-        style={{ left: "50%", backgroundColor: "var(--color-sun-signal)" }}
+        className="absolute top-0 z-10 pointer-events-none"
+        style={{ left: "50%", height: RULE_Y, width: 3, transform: "translateX(-1px)", backgroundColor: "var(--color-ink)" }}
       />
 
       {/* Scrollable content */}
@@ -187,31 +175,31 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
         className="absolute top-0 h-full"
         style={{ width: totalDays * PX_PER_DAY, willChange: "transform" }}
       >
-        {/* Seasonal tint bands */}
-        {monthStarts.slice(0, 12).map((start, m) => (
-          <div
-            key={m}
-            className="absolute top-0 bottom-0"
-            style={{
-              left: start * PX_PER_DAY,
-              width: (monthStarts[m + 1] - start) * PX_PER_DAY,
-              backgroundColor: MONTH_TINTS[m],
-            }}
-          />
-        ))}
+        <div
+          className="absolute inset-x-0"
+          style={{ top: RULE_Y, height: RULE_W, backgroundColor: "var(--color-ink)" }}
+        />
 
         {/* Tick marks + month labels */}
-        {ticks.map(({ day, height, color, label }) => (
-          <div key={day} className="absolute bottom-0" style={{ left: day * PX_PER_DAY }}>
+        {ticks.map(({ day, height, label }) => (
+          <div key={day} className="absolute inset-y-0" style={{ left: day * PX_PER_DAY }}>
+            <div
+              className="absolute left-0"
+              style={{
+                top: RULE_Y - height,
+                width: label ? 2 : 1,
+                height,
+                backgroundColor: label ? "var(--color-ink)" : "var(--color-ink-muted)",
+              }}
+            />
             {label && (
               <span
-                className="absolute text-[11px] whitespace-nowrap select-none"
-                style={{ bottom: height + 2, left: 2, color: "var(--color-ink-muted)", fontFamily: "var(--font-sans)" }}
+                className="absolute text-[11px] leading-none whitespace-nowrap select-none"
+                style={{ top: RULE_Y + RULE_W + 2, left: 2, color: "var(--color-ink)", fontFamily: "var(--font-mono)" }}
               >
                 {label}
               </span>
             )}
-            <div style={{ width: 1, height, backgroundColor: color }} />
           </div>
         ))}
       </div>

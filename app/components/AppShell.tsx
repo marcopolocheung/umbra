@@ -85,13 +85,12 @@ export default function AppShell({
         </button>
       </aside>
 
-      {/* Map area — padding shifts content right when sidebar opens */}
+      {/* Map area — padding shifts content right when sidebar opens. Desktop
+          only: the sidebar is hidden on phones, where 408px of padding widened
+          the map area past a narrow screen and pushed its right edge off (#162). */}
       <div
-        className="relative flex-1 min-h-0 overflow-hidden"
-        style={{
-          paddingLeft: sidebarOpen ? "408px" : "0",
-          transition: "padding-left 300ms ease-in-out",
-        }}
+        className={`relative flex-1 min-h-0 overflow-hidden ${sidebarOpen ? "md:pl-[408px]" : ""}`}
+        style={{ transition: "padding-left 300ms ease-in-out" }}
       >
         <div ref={mapContainerRef} className="absolute inset-0 overflow-hidden" style={{ zIndex: 0 }}>
           {map}

@@ -113,11 +113,11 @@ function TimeInput({
             setEditing(false);
           }
         }}
-        className="min-h-11 rounded px-2 py-1 text-xs border focus:outline-none w-24 text-center"
+        className="min-h-11 px-2 py-1 text-xs border-2 focus:outline-none w-24 text-center"
         style={{
           background: "var(--color-ground)",
           color: "var(--color-ink)",
-          borderColor: "var(--color-rule)",
+          borderColor: "var(--color-ink)",
           fontFamily: "var(--font-sans)",
         }}
       />
@@ -128,8 +128,8 @@ function TimeInput({
     <button
       type="button"
       onClick={startEdit}
-      className="min-h-11 text-xs tabular-nums w-24 text-center rounded px-2 py-1 hover:bg-ground transition-colors"
-      style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-sans)" }}
+      className="min-h-11 text-xs tabular-nums w-24 text-center border px-2 py-1 hover:bg-ground transition-colors"
+      style={{ color: "var(--color-ink)", borderColor: "var(--color-rule)", fontFamily: "var(--font-sans)" }}
       title="Click to type a time (e.g. 6:30 AM, 14:30)"
     >
       {formatTime12h(date, utcOffsetMin)}
@@ -148,7 +148,7 @@ function CloudCoverBadge({ pct }: { pct: number }) {
 
   return (
     <div
-      className="mx-3 mt-3 rounded-lg border px-3 py-1.5 text-center text-[11px] font-medium"
+      className="mx-3 mt-3 border px-3 py-1.5 text-center text-[11px] font-medium"
       style={{
         background: strongClouds
           ? "color-mix(in srgb, var(--color-ink) 10%, transparent)"
@@ -414,7 +414,7 @@ export default function Home() {
     shadowLayerReady,
   ]);
 
-  const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
+  const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("hidden");
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const [cloudCoverPct, setCloudCoverPct] = useState<number | null>(null);
   const [shadowLegendDismissed, setShadowLegendDismissed] = useState(readShadowLegendDismissed);
@@ -782,7 +782,7 @@ export default function Home() {
     } else if (phase === "PLACE_DETAIL") {
       setBottomSheetSnap("mid");
     } else if (phase === "IDLE") {
-      setBottomSheetSnap("collapsed");
+      setBottomSheetSnap("hidden");
     }
   }, [phase, menuOpen]);
 
@@ -819,29 +819,44 @@ export default function Home() {
 
   // -- Timeline controls (floating card style) --
   const timelineControls = !accumulation.enabled ? (
+    // Timetable (R6a): square, with a 2px ink rule along the top that holds
+    // against either basemap in glare.
     <div
-      className="rounded-t-2xl md:rounded-2xl overflow-hidden"
+      className="border-t-2 md:border-2"
       style={{
         background: "var(--color-panel)",
+        borderColor: "var(--color-ink)",
         boxShadow: "var(--shadow-hard-2)",
       }}
     >
-      {/* Floating tooltip */}
+      {/* Selected time: an ink ticket over the needle. Ink, not orange — the
+          time is not the sun; "Sun down" says why the ruler has no sun dot. */}
       <div
         className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20"
         style={{ bottom: "calc(100% + 6px)" }}
       >
         <div
-          className="text-[11px] font-bold px-2.5 py-0.5 rounded-md tabular-nums shadow-md whitespace-nowrap"
-          style={{ background: "var(--color-sun-signal)", color: "var(--color-on-sun-signal)", fontFamily: "var(--font-numeric)" }}
+          data-testid="timeline-readout"
+          className="flex items-stretch whitespace-nowrap"
+          style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
         >
-          {sliderMode === "time"
-            ? formatTime12h(date, mapUtcOffsetMin)
-            : new Date(date.getTime() + mapUtcOffsetMin * 60000).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                timeZone: "UTC",
-              })}
+          <span className="px-2.5 py-1 text-[13px] font-extrabold tabular-nums" style={{ fontFamily: "var(--font-numeric)" }}>
+            {sliderMode === "time"
+              ? formatTime12h(date, mapUtcOffsetMin)
+              : new Date(date.getTime() + mapUtcOffsetMin * 60000).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  timeZone: "UTC",
+                })}
+          </span>
+          {solar === "night" && (
+            <span
+              className="flex items-center border-l px-2 text-[11px] font-extrabold uppercase tracking-wider"
+              style={{ borderColor: "var(--color-on-ink)", fontFamily: "var(--font-label)" }}
+            >
+              Sun down
+            </span>
+          )}
         </div>
         <div
           style={{
@@ -849,7 +864,7 @@ export default function Home() {
             height: 0,
             borderLeft: "5px solid transparent",
             borderRight: "5px solid transparent",
-            borderTop: "5px solid var(--color-sun-signal)",
+            borderTop: "5px solid var(--color-ink)",
           }}
         />
       </div>
@@ -874,13 +889,15 @@ export default function Home() {
         />
       )}
 
-      {/* Controls row */}
-      <div className="flex items-center justify-center gap-3 px-4 py-2">
+      {/* Controls row — pb-1.5 gives back the 2px top rule, so the card keeps
+          its 104px and the floating map controls their clearance. gap-2/px-2
+          fit the row inside 390px. */}
+      <div className="flex items-center justify-center gap-2 px-2 pt-2 pb-1.5">
         <button
           type="button"
           onClick={() => setIsPlaying((p) => !p)}
-          className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ground transition-colors"
-          style={{ color: "var(--color-ink-muted)" }}
+          className="flex items-center justify-center w-11 h-11 hover:bg-ground transition-colors"
+          style={{ color: "var(--color-ink)" }}
           title={isPlaying ? "Pause" : "Play"}
         >
           <span
@@ -894,7 +911,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setSliderMode((m) => (m === "time" ? "day" : "time"))}
-          className="flex min-h-11 items-center gap-1.5 px-3 rounded-lg hover:bg-ground transition-colors border"
+          className="flex min-h-11 items-center gap-1.5 px-2 hover:bg-ground transition-colors border"
           style={{ borderColor: "var(--color-rule)" }}
           title={sliderMode === "time" ? "Switch to day of year" : "Switch to time of day"}
         >
@@ -941,7 +958,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => adjustYear(-1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
+              className="w-11 h-11 flex items-center justify-center hover:bg-ground transition-colors"
               style={{ color: "var(--color-ink-muted)" }}
               aria-label="Previous year"
             >
@@ -956,7 +973,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => adjustYear(+1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
+              className="w-11 h-11 flex items-center justify-center hover:bg-ground transition-colors"
               style={{ color: "var(--color-ink-muted)" }}
               aria-label="Next year"
             >
@@ -1168,6 +1185,8 @@ export default function Home() {
             mapCenter={mapCenter}
             onOpenAssistant={() => setAssistantOpen(true)}
             isAssistantThinking={agent.isThinking}
+            onLocateMe={handleLocateMe}
+            isLocating={isLocating}
           />
         </div>
       )}
@@ -1211,15 +1230,13 @@ export default function Home() {
         />
       )}
 
-      {/* Floating map controls — right side. Their bottom rides the same
-          choreography as the timeline card below them (U4): timeline at
-          0–~88px with no sheet, at 80–~168px over the collapsed band, under
-          the sheet otherwise. */}
+      {/* Phone controls are one right-hand stack over the 104px timeline card
+          (#162): Hide interface at 112px, 3D tilt at 172px, and this column
+          (only Sun/Rain on a phone) at 232px. Zoom is pinch and locate is in
+          the search pill. An open sheet covers the stack. Desktop keeps its
+          top-right column. */}
       {!uiHidden && (
-        <div
-          className="absolute md:top-24 md:bottom-auto right-3 z-10"
-          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
-        >
+        <div className="absolute bottom-[232px] right-3 z-10 md:top-24 md:bottom-auto">
           <FloatingMapControls
             mapRef={mapRef}
             onLocateMe={handleLocateMe}
@@ -1232,25 +1249,20 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2D/3D tilt — its own left-side column, mirroring the right controls'
-          bottom choreography. Desktop parks it under the shadow legend
-          (top-20 left-6), so it doesn't collide with the legend plate. */}
+      {/* 2D/3D tilt — in the phone's right stack; desktop parks it under the
+          shadow legend (top-20 left-6), so it doesn't collide with the legend plate. */}
       {!uiHidden && (
-        <div
-          className="absolute left-3 md:left-6 md:top-44 md:bottom-auto z-10"
-          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
-        >
+        <div className="absolute bottom-[172px] right-3 z-10 md:left-6 md:right-auto md:top-44 md:bottom-auto">
           <Tilt3DButton mapRef={mapRef} pitch={mapPitch} />
         </div>
       )}
 
       {/* Keep the focus toggle off an open phone sheet. It remains available
-          when the sheet is collapsed or hidden, and always restores focus mode. */}
+          when the sheet is hidden, and always restores focus mode. */}
       <button
         type="button"
         onClick={() => setUiHidden((v) => !v)}
-        className={`absolute left-3 md:left-6 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
-        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+        className={`absolute bottom-28 right-3 md:right-auto md:left-6 md:bottom-24 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
         aria-pressed={uiHidden}
         aria-label={uiHidden ? "Show interface" : "Hide interface"}
         title={uiHidden ? "Show interface" : "Hide interface"}
@@ -1311,18 +1323,13 @@ export default function Home() {
       {/* Mobile timeline — full width at the map's bottom edge. U4 removed a
           stray `relative` that lost to `.absolute` in Tailwind's output order,
           dropping the whole card *below* the map (offscreen at phone widths).
-          While the sheet is settled at its collapsed snap, the timeline rides
-          above the 80px band so the trip bar owns the thumb zone alone; at
-          taller snaps the sheet covers it entirely, which is the honest state
-          (the sheet owns the screen then). */}
+          An open sheet covers it entirely, which is the honest state (the
+          sheet owns the screen then). */}
       {!accumulation.enabled && (
         <div
           className="absolute bottom-0 left-0 right-0 z-10 md:hidden"
-          style={{
-            // Sits on the sheet's collapsed band when open (80px), else the
-            // container bottom — plus the iOS home-inset, matching the sheet.
-            bottom: `calc(env(safe-area-inset-bottom) + ${menuOpen && bottomSheetSnap === "collapsed" ? 80 : 0}px)`,
-          }}
+          // The iOS home-inset, matching the sheet.
+          style={{ bottom: "env(safe-area-inset-bottom)" }}
         >
           {timelineControls}
         </div>
@@ -1332,15 +1339,13 @@ export default function Home() {
       {!uiHidden && menuOpen && bottomSheetSnap === "hidden" && (
         <button
           type="button"
-          onClick={() => setBottomSheetSnap("collapsed")}
-          // Left edge, mirroring the right-edge controls column (zoom etc. at
-          // right-3): the reopen affordance keeps to the left, above the
-          // timeline the hidden sheet leaves behind.
+          onClick={() => setBottomSheetSnap("mid")}
+          // Left edge, opposite the right-hand control stack, at the stack's
+          // 112px base above the timeline card.
           // absolute, not fixed — anchors to the h-dvh map container so it
           // stays clear of Chrome's bottom toolbar like the sheet/timeline.
-          className="absolute z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-hard-2 md:hidden"
+          className="absolute bottom-28 z-20 flex min-h-11 items-center gap-1.5 rounded-full px-4 py-2.5 shadow-hard-2 md:hidden"
           style={{
-            bottom: "9.5rem",
             left: "0.75rem",
             background: "var(--color-panel)",
             border: "1px solid var(--color-rule)",

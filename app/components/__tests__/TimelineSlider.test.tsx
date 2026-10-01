@@ -1,47 +1,93 @@
 /* @vitest-environment jsdom */
-import { cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { sunArcPoint } from "../TimelineSlider";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { nightSpans, sunAltitudeTrace } from "../../lib/sunPath";
+import TimelineSlider from "../TimelineSlider";
 
 afterEach(cleanup);
 
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+// Midtown Manhattan on the June solstice, EDT (UTC−4): published sun times 05:26–20:31.
+const at = (iso: string, minutes: number) => (
+  <TimelineSlider
+    minutes={minutes}
+    onChange={() => {}}
+    date={new Date(iso)}
+    latDeg={40.754}
+    lngDeg={-73.984}
+    utcOffsetMin={-240}
+  />
+);
+
 /**
- * The sun-arc glyph's geometry (U4). The claims are behavioural: the dot sits
- * on the horizon at sunrise and sunset, rides above it through the day, and
- * disappears at night — so a wrong curve breaks them.
+ * The timetable ruler (R6a): the sun dot and the orange needle are solar data,
+ * so they follow the sun's altitude at the selected time, and night is drawn
+ * as bands rather than an absent path.
  */
-describe("sunArcPoint", () => {
-  const rise = 6 * 60; // 06:00
-  const set = 20 * 60; // 20:00
-  const HORIZON_Y = 22;
-  const APEX_Y = 7;
-
-  it("sits on the horizon at sunrise and sunset", () => {
-    expect(sunArcPoint(rise, rise, set)?.y).toBe(HORIZON_Y);
-    expect(sunArcPoint(set, rise, set)?.y).toBe(HORIZON_Y);
+describe("TimelineSlider", () => {
+  it("rides the sun dot on the path and paints the needle orange while the sun is up", () => {
+    render(at("2026-06-21T13:00:00Z", 9 * 60));
+    const sun = screen.getByTestId("timeline-sun");
+    expect(Number(sun.getAttribute("cx"))).toBe(9 * 60 * 2);
+    // Higher in the sky at 1 PM than at 9 AM: SVG y grows downward.
+    const nineY = Number(sun.getAttribute("cy"));
+    cleanup();
+    render(at("2026-06-21T17:00:00Z", 13 * 60));
+    expect(Number(screen.getByTestId("timeline-sun").getAttribute("cy"))).toBeLessThan(nineY);
+    expect(screen.getByTestId("timeline-needle").style.backgroundColor).toBe("var(--color-sun-signal)");
   });
 
-  it("peaks at the apex at midday", () => {
-    const noon = (rise + set) / 2;
-    const p = sunArcPoint(noon, rise, set);
-    expect(p?.y).toBeCloseTo(APEX_Y, 5);
-    // And its x tracks the minutes → px scale the ruler uses.
-    expect(p?.x).toBe(noon * 2);
+  it("drops the sun dot and inks the needle after sunset", () => {
+    render(at("2026-06-22T02:00:00Z", 22 * 60));
+    expect(screen.queryByTestId("timeline-sun")).toBeNull();
+    expect(screen.getByTestId("timeline-needle").style.backgroundColor).toBe("var(--color-ink)");
   });
 
-  it("climbs monotonically to solar noon and descends after", () => {
-    // SVG y grows downward, so sun height is HORIZON_Y − y. Solar noon is the
-    // rise/set midpoint — 13:00 for this 06:00–20:00 day.
-    const heightAt = (m: number) => HORIZON_Y - sunArcPoint(m, rise, set)!.y;
-    expect(heightAt(9 * 60)).toBeGreaterThan(heightAt(8 * 60));
-    expect(heightAt(12 * 60)).toBeGreaterThan(heightAt(11 * 60));
-    expect(heightAt(14 * 60)).toBeLessThan(heightAt(13 * 60));
-    // Morning is the mirror of the afternoon two hours either side of noon.
-    expect(heightAt(11 * 60)).toBeCloseTo(heightAt(15 * 60), 5);
+  it("bands both nights and labels sunrise and sunset at the bands' 0° edges (#160)", () => {
+    render(at("2026-06-21T13:00:00Z", 9 * 60));
+    expect(screen.getAllByTestId("timeline-night")).toHaveLength(2);
+    // The labels sit where the needle turns orange, a few minutes inside the
+    // published 5:26 / 8:31, which use the −0.833° refraction convention.
+    const [[, dawn], [dusk]] = nightSpans(sunAltitudeTrace(new Date("2026-06-21T13:00:00Z"), 40.754, -73.984, -240));
+    expect(Math.round(dawn)).toBeGreaterThan(5 * 60 + 26);
+    expect(Math.round(dusk)).toBeLessThan(20 * 60 + 31);
+    const clock = (m: number) => `${Math.floor(m / 60) % 12 || 12}:${String(m % 60).padStart(2, "0")}`;
+    expect(screen.getByText(`↑ ${clock(Math.round(dawn))} AM`)).toBeTruthy();
+    expect(screen.getByText(`↓ ${clock(Math.round(dusk))} PM`)).toBeTruthy();
   });
 
-  it("is gone before sunrise and after sunset (night)", () => {
-    expect(sunArcPoint(rise - 1, rise, set)).toBeNull();
-    expect(sunArcPoint(set + 1, rise, set)).toBeNull();
+  it("lands the last drag position even when the drag pauses inside the throttle window (#161)", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const onChange = vi.fn();
+      render(<TimelineSlider minutes={600} onChange={onChange} />);
+      const ruler = screen.getByTestId("timeline-slider");
+      ruler.setPointerCapture = () => {};
+      vi.advanceTimersByTime(1000); // a real clock is never at 0
+      fireEvent.pointerDown(ruler, { clientX: 200, pointerId: 1 });
+      fireEvent.pointerMove(ruler, { clientX: 180, pointerId: 1 }); // −20px = +10 min, sent at once
+      vi.advanceTimersByTime(5);
+      fireEvent.pointerMove(ruler, { clientX: 160, pointerId: 1 }); // throttled
+      expect(onChange).toHaveBeenLastCalledWith(610);
+      vi.advanceTimersByTime(30); // the thumb has stopped; no further move arrives
+      expect(onChange).toHaveBeenLastCalledWith(620);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says there is no sun path without a map place, rather than drawing none", () => {
+    render(<TimelineSlider minutes={600} onChange={() => {}} />);
+    expect(screen.queryByTestId("timeline-sun")).toBeNull();
+    expect(screen.queryByTestId("timeline-night")).toBeNull();
+    expect(screen.getByText("No sun path until the map has a place")).toBeTruthy();
+    expect(screen.getByText("10 AM")).toBeTruthy();
   });
 });
