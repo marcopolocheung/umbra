@@ -143,20 +143,26 @@ describe("transferFlagElement", () => {
     expect((flag.querySelector("[data-part='from-shield']") as HTMLElement).style.border).toContain("rgb(0, 147, 60)");
     expect((flag.querySelector("[data-part='to-shield']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
     expect((flag.querySelector("[data-part='to-shield'] [data-part='line']") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
-    expect((flag.querySelector("[data-part='kicker']") as HTMLElement).style.backgroundImage).toContain("linear-gradient");
-    expect((flag.querySelector("[data-part='kicker']") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
+    const plate = flag.querySelector<HTMLElement>("[data-part='kicker']")!;
+    expect(plate.style.background).toBe("rgb(0, 147, 60)");
+    expect(plate.style.color).toBe("var(--color-line-ink-dark)");
+    const tail = plate.querySelector<HTMLElement>("[data-part='transfer-tail']")!;
+    expect((tail.firstElementChild as HTMLElement).style.background).toBe("rgb(185, 51, 173)");
+    expect(tail.style.filter).toBe("var(--filter-tear)");
     expect(flag.style.pointerEvents).toBe("none");
   });
 
-  it("keeps the gradient but grounds text when a bright line cannot carry white", () => {
+  it("sets the word in the arriving line's ink and tails in the boarded colour", () => {
     const flag = transferFlagElement(
       { line: "N", color: "#FCCC0A", name: "Canal St" },
-      { line: "7", color: "#B933AD", name: "Times Sq" },
+      { line: "A", color: "#0039A6", name: "Canal St" },
       [1, 0],
     );
     const plate = flag.querySelector<HTMLElement>("[data-part='kicker']")!;
-    expect(plate.style.backgroundImage).toContain("linear-gradient");
-    expect(plate.querySelector("span")?.style.background).toBe("var(--color-line-ink-dark)");
-    expect(plate.querySelector("span")?.textContent).toBe("Transfer");
+    expect(plate.style.background).toBe("rgb(252, 204, 10)");
+    expect(plate.style.color).toBe("var(--color-line-ink-dark)");
+    expect(plate.style.backgroundImage).not.toContain("gradient");
+    const tail = plate.querySelector<HTMLElement>("[data-part='transfer-tail'] > span")!;
+    expect(tail.style.background).toBe("rgb(0, 57, 166)");
   });
 });

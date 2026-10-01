@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrastRatio, lineBulletInk, lineWhitePlateFill } from "../lineBulletInk";
+import { contrastRatio, lineBulletInk } from "../lineBulletInk";
 
 describe("lineBulletInk", () => {
   it.each([
@@ -30,18 +30,5 @@ describe("lineBulletInk", () => {
     expect(lineBulletInk("")).toBeNull();
     const contrastGap = `#${"77".repeat(3)}`;
     expect(lineBulletInk(contrastGap)).toBeNull();
-  });
-});
-
-describe("lineWhitePlateFill", () => {
-  it("keeps the purple hue and darkens green only enough for white text", () => {
-    const green = lineWhitePlateFill("#00933C");
-    expect(green).not.toBe("#00933C");
-    expect(contrastRatio(green!, "#ffffff")).toBeGreaterThanOrEqual(4.5);
-    expect(lineWhitePlateFill("#B933AD")).toBe("#b933ad");
-  });
-
-  it("leaves a bright line to use a solid text inset", () => {
-    expect(lineWhitePlateFill("#FCCC0A")).toBeNull();
   });
 });

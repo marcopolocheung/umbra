@@ -1,5 +1,5 @@
 import { COIN_RADIUS } from "../lib/lineBadges";
-import { lineBulletInk, lineCssColor, lineWhitePlateFill } from "../lib/lineBulletInk";
+import { lineBulletInk, lineCssColor } from "../lib/lineBulletInk";
 
 /**
  * Umbra redesign 2.0 R4b map pins: one teardrop, two fills, never colour alone.
@@ -278,25 +278,33 @@ export function transferFlagElement(
   `;
   const plate = document.createElement("span");
   plate.dataset.part = "kicker";
-  const fromPlate = lineWhitePlateFill(from.color);
-  const toPlate = lineWhitePlateFill(to.color);
-  const whiteOnGradient = fromPlate !== null && toPlate !== null;
+  plate.textContent = "Transfer";
+  // The word takes the arriving line's plate, inked as its Enter here plate is.
+  const css = lineCssColor(from.color);
+  const ink = lineBulletInk(css);
   plate.style.cssText = `
-    position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 7px;white-space:nowrap;
+    position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 26px 2px 7px;white-space:nowrap;
     font-family:var(--font-label);font-size:11px;font-weight:800;letter-spacing:0.06em;
-    text-transform:uppercase;line-height:1.3;color:var(--color-line-ink-white);
-    rotate:var(--angle-flag);clip-path:var(--plate-clip);
-    background:linear-gradient(90deg, ${fromPlate ?? lineCssColor(from.color)}, ${toPlate ?? lineCssColor(to.color)});
+    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
+    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
   `;
-  if (whiteOnGradient) {
-    plate.textContent = "Transfer";
-  } else {
-    const plateText = document.createElement("span");
-    plateText.textContent = "Transfer";
-    plateText.style.cssText = "display:block;padding:0 3px;background:var(--color-line-ink-dark);color:var(--color-line-ink-white);";
-    plate.style.padding = "3px 5px";
-    plate.appendChild(plateText);
-  }
+  // A torn tail of the boarded line's colour. The tear is edged in cream, then a
+  // hard dark shadow, so it reads between lines of equal lightness; the filter sits
+  // on a wrapper because clipping the same element would cut its shadow away.
+  const tail = document.createElement("span");
+  tail.dataset.part = "transfer-tail";
+  tail.setAttribute("aria-hidden", "true");
+  tail.style.cssText = `
+    position:absolute;top:0;bottom:0;right:0;width:18px;
+    filter:var(--filter-tear);
+  `;
+  const tailFill = document.createElement("span");
+  tailFill.style.cssText = `
+    display:block;height:100%;background:${lineCssColor(to.color)};
+    clip-path:polygon(5px 0,100% 0,100% 100%,5px 100%,0 80%,5px 60%,0 40%,5px 20%);
+  `;
+  tail.appendChild(tailFill);
+  plate.appendChild(tail);
   const shields = document.createElement("div");
   shields.dataset.part = "shield";
   shields.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;";

@@ -49,16 +49,3 @@ export function lineBulletInk(lineColor: string): "dark" | "light" | "white" | n
   }
   return dark >= light ? "dark" : "light";
 }
-
-/** A line hue darkened only enough for white kicker text, within a small colour shift. */
-export function lineWhitePlateFill(lineColor: string): string | null {
-  const css = lineCssColor(lineColor);
-  const match = /^#([0-9a-f]{6})$/i.exec(css);
-  if (!match) return null;
-  const channels = [0, 2, 4].map((index) => Number.parseInt(match[1].slice(index, index + 2), 16));
-  for (let shade = 0; shade <= 20; shade++) {
-    const fill = `#${channels.map((channel) => Math.round(channel * (100 - shade) / 100).toString(16).padStart(2, "0")).join("")}`;
-    if ((contrastRatio(fill, WHITE) ?? 0) >= MIN_TEXT_CONTRAST) return fill;
-  }
-  return null;
-}

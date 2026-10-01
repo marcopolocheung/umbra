@@ -30,8 +30,8 @@ inspiration; the public mirror publishes everything here.
   fixed zero. The rail time, wait and exposure remain whole-trip figures; no per-line
   minutes are inferred. Each new boarding now flies a Transfer kicker flag from the
   change stop, with separate line-coloured shields for the arriving and departing stops
-  and an arrow between them; the kicker plate grades from the arriving line's colour to
-  the boarded line's. Same-station changes need no explicit transfer edge. The
+  and an arrow between them; the kicker plate reads on the arriving line's colour and ends
+  in a torn tail of the boarded line's. Same-station changes need no explicit transfer edge. The
   flag is a pointer-free DOM overlay and clamps inside the map. The longer itinerary keeps
   Start Navigating at the phone sheet foot and resets the sheet to its top on phase changes.
   Before/after phone shots in both themes are in `docs/design/shots/transit-transfer/`.
@@ -132,7 +132,7 @@ inspiration; the public mirror publishes everything here.
 - **Next action:** independent reviews of #158 when agent quota permits, then owner review and R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (#157):** 2026-10-01 on Node 24; lint (0 errors, 81 baseline warnings),
   typecheck, 1,806 unit tests, build, design:check and e2e 18/18. Day and night phone shots
-  show filled 7 bullets, the change station, and the graded Transfer flag on the map. The supplied
+  show filled 7 bullets, the change station, and the torn-tail Transfer flag on the map. The supplied
   live route could not be checked locally because its street-data request returned 503;
   a real-phone feel check is outstanding.
 - **Last verified (#155):** 2026-09-30 on Node 24; lint (0 errors, 81 baseline warnings),

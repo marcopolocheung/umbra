@@ -332,7 +332,7 @@ test("shows both lines and the transfer before and during navigation", async ({ 
   await expect(transferFlag).toHaveCount(1);
   await expect(transferFlag).toHaveAttribute("aria-label", "Transfer: 4, Grid Middle to 7, Grid Middle");
   await expect(transferFlag.locator("[data-part='kicker']")).toHaveText("Transfer");
-  await expect(transferFlag.locator("[data-part='kicker']")).toHaveCSS("background-image", /linear-gradient/);
+  await expect(transferFlag.locator("[data-part='transfer-tail'] > span")).toHaveCSS("background-color", "rgb(185, 51, 173)");
   await expect(transferFlag.locator("[data-part='line']")).toHaveText(["4", "7"]);
   await expect(transferFlag.locator("[data-part='to-shield'] [data-part='line']")).toHaveCSS("color", "rgb(255, 255, 255)");
 

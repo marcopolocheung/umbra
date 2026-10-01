@@ -24,7 +24,7 @@ These are source values; R1 registers role names, not generic color utilities. S
 
 For actual transit line bullets, the reference quartets are blue `#60CDE3 / #10130D / #0C1B1D / #1A3237`, green `#97DA79 / #0E1A08 / #101B0A / #2C3D24`, and yellow `#FFE14D / #0B0B0B / #1F1C0C / #3C361A` (accent / badge ink / ground / plate). R1 may adapt the ground and plate to the day theme while preserving the line's identity and contrast. A colored line alone must never be the only distinction; show its identifier.
 
-Published line colours keep a filled identifier when dark, cream, or white ink reaches 4.5:1. White keeps the 7's purple and J/Z brown filled where cream misses. A line colour that still has no readable ink uses a ringed identifier. Transfer kickers run from the arriving line's colour to the boarded line's colour; the plate darkens either end only enough for white text, or sets the text on dark ink when a bright line cannot carry white.
+Published line colours keep a filled identifier when dark, cream, or white ink reaches 4.5:1. White keeps the 7's purple and J/Z brown filled where cream misses. A line colour that still has no readable ink uses a ringed identifier. A transfer kicker reads Transfer on the arriving line's colour in that line's ink, then ends in a torn tail of the boarded line's colour; the tear is edged in cream with a hard dark shadow so the change reads even between lines of equal lightness.
 
 ### Contrast and outdoor reading
 
