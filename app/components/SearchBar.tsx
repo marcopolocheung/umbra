@@ -23,6 +23,9 @@ interface SearchBarProps {
   onOpenAssistant?: () => void;
   /** The agent's turn status, for the thinking ping on the assistant button. */
   isAssistantThinking?: boolean;
+  /** Phone only: locate-me lives in the pill, not the map column (#162). */
+  onLocateMe?: () => void;
+  isLocating?: boolean;
 }
 
 type RecentItem = { label: string; center: [number, number]; zoom: number };
@@ -168,7 +171,7 @@ export function mergeSearchResults(
     .slice(0, 8);
 }
 
-export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections, onOpenAssistant, isAssistantThinking = false }: SearchBarProps) {
+export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuToggle, onDirections, onOpenAssistant, isAssistantThinking = false, onLocateMe, isLocating = false }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MergedSearchResult[]>([]);
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
@@ -465,6 +468,23 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
               <line x1="1" y1="1" x2="9" y2="9" />
               <line x1="9" y1="1" x2="1" y2="9" />
             </svg>
+          </button>
+        )}
+
+        {onLocateMe && (
+          <button type="button"
+            onClick={onLocateMe}
+            disabled={isLocating}
+            className="shrink-0 text-ink hover:opacity-80 transition-opacity"
+            aria-label={isLocating ? "Finding your location" : "My location"}
+            aria-busy={isLocating}
+          >
+            <span
+              className={`material-symbols-outlined${isLocating ? " animate-spin" : ""}`}
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              {isLocating ? "progress_activity" : "my_location"}
+            </span>
           </button>
         )}
 

@@ -414,7 +414,7 @@ export default function Home() {
     shadowLayerReady,
   ]);
 
-  const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("collapsed");
+  const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("hidden");
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const [cloudCoverPct, setCloudCoverPct] = useState<number | null>(null);
   const [shadowLegendDismissed, setShadowLegendDismissed] = useState(readShadowLegendDismissed);
@@ -782,7 +782,7 @@ export default function Home() {
     } else if (phase === "PLACE_DETAIL") {
       setBottomSheetSnap("mid");
     } else if (phase === "IDLE") {
-      setBottomSheetSnap("collapsed");
+      setBottomSheetSnap("hidden");
     }
   }, [phase, menuOpen]);
 
@@ -1185,6 +1185,8 @@ export default function Home() {
             mapCenter={mapCenter}
             onOpenAssistant={() => setAssistantOpen(true)}
             isAssistantThinking={agent.isThinking}
+            onLocateMe={handleLocateMe}
+            isLocating={isLocating}
           />
         </div>
       )}
@@ -1228,15 +1230,13 @@ export default function Home() {
         />
       )}
 
-      {/* Floating map controls — right side. Their bottom rides the same
-          choreography as the timeline card below them (U4): timeline at
-          0–~88px with no sheet, at 80–~168px over the collapsed band, under
-          the sheet otherwise. */}
+      {/* Phone controls are one right-hand stack over the 104px timeline card
+          (#162): Hide interface at 112px, 3D tilt at 172px, and this column
+          (only Sun/Rain on a phone) at 232px. Zoom is pinch and locate is in
+          the search pill. An open sheet covers the stack. Desktop keeps its
+          top-right column. */}
       {!uiHidden && (
-        <div
-          className="absolute md:top-24 md:bottom-auto right-3 z-10"
-          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
-        >
+        <div className="absolute bottom-[232px] right-3 z-10 md:top-24 md:bottom-auto">
           <FloatingMapControls
             mapRef={mapRef}
             onLocateMe={handleLocateMe}
@@ -1249,25 +1249,20 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2D/3D tilt — its own left-side column, mirroring the right controls'
-          bottom choreography. Desktop parks it under the shadow legend
-          (top-20 left-6), so it doesn't collide with the legend plate. */}
+      {/* 2D/3D tilt — in the phone's right stack; desktop parks it under the
+          shadow legend (top-20 left-6), so it doesn't collide with the legend plate. */}
       {!uiHidden && (
-        <div
-          className="absolute left-3 md:left-6 md:top-44 md:bottom-auto z-10"
-          style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
-        >
+        <div className="absolute bottom-[172px] right-3 z-10 md:left-6 md:right-auto md:top-44 md:bottom-auto">
           <Tilt3DButton mapRef={mapRef} pitch={mapPitch} />
         </div>
       )}
 
       {/* Keep the focus toggle off an open phone sheet. It remains available
-          when the sheet is collapsed or hidden, and always restores focus mode. */}
+          when the sheet is hidden, and always restores focus mode. */}
       <button
         type="button"
         onClick={() => setUiHidden((v) => !v)}
-        className={`absolute left-3 md:left-6 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
-        style={{ bottom: menuOpen && bottomSheetSnap === "collapsed" ? 176 : 96 }}
+        className={`absolute bottom-28 right-3 md:right-auto md:left-6 md:bottom-24 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
         aria-pressed={uiHidden}
         aria-label={uiHidden ? "Show interface" : "Hide interface"}
         title={uiHidden ? "Show interface" : "Hide interface"}
@@ -1328,18 +1323,13 @@ export default function Home() {
       {/* Mobile timeline — full width at the map's bottom edge. U4 removed a
           stray `relative` that lost to `.absolute` in Tailwind's output order,
           dropping the whole card *below* the map (offscreen at phone widths).
-          While the sheet is settled at its collapsed snap, the timeline rides
-          above the 80px band so the trip bar owns the thumb zone alone; at
-          taller snaps the sheet covers it entirely, which is the honest state
-          (the sheet owns the screen then). */}
+          An open sheet covers it entirely, which is the honest state (the
+          sheet owns the screen then). */}
       {!accumulation.enabled && (
         <div
           className="absolute bottom-0 left-0 right-0 z-10 md:hidden"
-          style={{
-            // Sits on the sheet's collapsed band when open (80px), else the
-            // container bottom — plus the iOS home-inset, matching the sheet.
-            bottom: `calc(env(safe-area-inset-bottom) + ${menuOpen && bottomSheetSnap === "collapsed" ? 80 : 0}px)`,
-          }}
+          // The iOS home-inset, matching the sheet.
+          style={{ bottom: "env(safe-area-inset-bottom)" }}
         >
           {timelineControls}
         </div>
@@ -1349,15 +1339,13 @@ export default function Home() {
       {!uiHidden && menuOpen && bottomSheetSnap === "hidden" && (
         <button
           type="button"
-          onClick={() => setBottomSheetSnap("collapsed")}
-          // Left edge, mirroring the right-edge controls column (zoom etc. at
-          // right-3): the reopen affordance keeps to the left, above the
-          // timeline the hidden sheet leaves behind.
+          onClick={() => setBottomSheetSnap("mid")}
+          // Left edge, opposite the right-hand control stack, at the stack's
+          // 112px base above the timeline card.
           // absolute, not fixed — anchors to the h-dvh map container so it
           // stays clear of Chrome's bottom toolbar like the sheet/timeline.
-          className="absolute z-20 flex items-center gap-1.5 rounded-full px-4 py-2.5 shadow-hard-2 md:hidden"
+          className="absolute bottom-28 z-20 flex min-h-11 items-center gap-1.5 rounded-full px-4 py-2.5 shadow-hard-2 md:hidden"
           style={{
-            bottom: "9.5rem",
             left: "0.75rem",
             background: "var(--color-panel)",
             border: "1px solid var(--color-rule)",
