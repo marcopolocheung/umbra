@@ -1,6 +1,10 @@
+import { useId } from "react";
 import type { RouteOption } from "../lib/routing";
-import { routeExposureMinutes, routeExposureScope } from "../lib/routeTradeoff";
+import { routeAfterSunset, routeExposureMinutes, routeExposureScope, routeSplitBasis } from "../lib/routeTradeoff";
+import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { getTravelModePolicy } from "../lib/travelMode";
+import Kicker from "./ui/Kicker";
+import StampBadge from "./ui/StampBadge";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -23,7 +27,23 @@ export default function ArrivalPanel({
   onDone,
   rainMode = false,
 }: ArrivalPanelProps) {
-  const destination = waypointBLabel ?? (waypointB ? `${waypointB[1].toFixed(5)}, ${waypointB[0].toFixed(5)}` : "Destination");
+  const biteId = useId();
+  // A coordinate is a number, and numbers never take the display face: an
+  // unnamed destination gets a plain title and its coordinates as a caption.
+  const destination = waypointBLabel ?? "Your destination";
+  const coordinates = !waypointBLabel && waypointB ? `${waypointB[1].toFixed(5)}, ${waypointB[0].toFixed(5)}` : null;
+  // Sun at or below the horizon where the route was evaluated: the route card
+  // already says "after sunset" instead of a share, and the postcard must not
+  // turn the same night walk back into daylight sun minutes (R8a).
+  const afterSunset = !!route && !rainMode && routeAfterSunset(route);
+  // Where the shadow (or shelter) figure came from, as the route card states it.
+  // Absent on sketch and transit routes, which were not sampled per sidewalk.
+  const sourceLine = route && !afterSunset
+    ? (() => {
+        const source = rainMode ? route.shelterSource : route.shadowSource;
+        return source ? describeShadowProvenance(source) : null;
+      })()
+    : null;
 
   // The peak-end line: what the trip earned. Journeys are remembered by their
   // end, and the arrival card used to restate only distance and a percentage.
@@ -47,6 +67,7 @@ export default function ArrivalPanel({
         const exposure = routeExposureMinutes(route);
         const scope = routeExposureScope(route);
         const dist = `${formatDistance(route.distanceM)} route`;
+        if (afterSunset) return `${dist} — no sun minutes: the sun was down at the route's time`;
         const paceKmh = (
           (getTravelModePolicy(route.travelMode ?? "walk").speedMps * 3.6).toFixed(1)
         );
@@ -79,6 +100,7 @@ export default function ArrivalPanel({
           const pct = Math.round(shelter * 100);
           return { headline: `${pct}% sheltered`, pct };
         }
+        if (afterSunset) return { headline: "After sunset", pct: null };
         const exposure = routeExposureMinutes(route);
         if (!exposure) return null;
         const total = Math.round(exposure.sunMinutes + exposure.shadowMinutes);
@@ -93,93 +115,120 @@ export default function ArrivalPanel({
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      <div className="flex items-center justify-between">
-        <div className="w-7" />
-        <h2 className="text-[13px] font-medium" style={{ color: "var(--color-ink)" }}>Arrived</h2>
-        <button
-          type="button"
-          onClick={onDone}
-          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-ground"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-          title="Close"
-          aria-label="Close"
-        >
-          <span className="material-symbols-outlined text-base">close</span>
-        </button>
-      </div>
-
-      {/* The peak-end sentence (U7): the walk's shade story told once, at the
-          display voice, with the same split bar the route card carries. The
-          boldness is spent on the story — the badge demotes to a small glyph
-          so nothing on this card competes with it. */}
-      <div
-        className="rounded-xl border p-4 text-center"
-        style={{
-          background: "var(--color-shade-soft)",
-          borderColor: "var(--color-shade-mid)",
-          color: "var(--color-ink)",
-        }}
+      <button
+        type="button"
+        onClick={onDone}
+        className="flex h-11 w-11 items-center justify-center self-end focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+        style={{ color: "var(--color-ink)" }}
+        title="Close"
+        aria-label="Close"
       >
-        <div className="flex items-center justify-center gap-1.5">
-          <span
-            className="material-symbols-outlined text-[20px]"
-            style={{ color: "var(--color-shade)" }}
-            aria-hidden="true"
-          >
-            flag
-          </span>
-          <div className="text-[13px] font-semibold">Arrived at {destination}</div>
-        </div>
+        <span className="material-symbols-outlined text-xl" aria-hidden="true">close</span>
+      </button>
+
+      {/* Arrival as a postcard (R8a): the greeting on a kicker plate, the place
+          as its title, the umbra disc as the postmark, then the trip's one
+          sun-time verdict told once in square numbers with the split bar the
+          route card carries. Voice lives in the kicker; the numbers stay plain. */}
+      <article
+        aria-labelledby={`${biteId}-title`}
+        className="border-2 border-ink bg-panel p-4 shadow-hard-2"
+        style={{ color: "var(--color-ink)" }}
+      >
+        <header className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+            <Kicker plated>Greetings from</Kicker>
+            <h2 id={`${biteId}-title`} className="font-display text-verdict font-semibold leading-tight">
+              {destination}
+            </h2>
+            {coordinates && (
+              <div className="font-mono text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
+                {coordinates}
+              </div>
+            )}
+          </div>
+          {/* The umbra disc — a sun with its own shadow's bite — postmarks the card. */}
+          <StampBadge tone="sun" className="shrink-0">
+            {/* Side padding widens the ring so the word sits inside it below centre. */}
+            <span className="flex flex-col items-center gap-0.5 px-2">
+              <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                <mask id={biteId}>
+                  <rect width="24" height="24" fill="white" />
+                  <circle cx="16" cy="9" r="7.5" fill="black" />
+                </mask>
+                <circle cx="12" cy="12" r="9" fill="currentColor" mask={`url(#${biteId})`} />
+              </svg>
+              Arrived
+            </span>
+          </StampBadge>
+        </header>
+
         {shadeStory ? (
           <>
             <div
               className="font-numeric text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]"
-              style={{ color: "var(--color-ink)" }}
+              style={{
+                color: shadeStory.pct == null ? "var(--color-ink)" : rainMode ? "var(--color-rain)" : "var(--color-sun)",
+              }}
             >
               {shadeStory.headline}
             </div>
-            {/* The split bar: the sun wash is the track, the shade fill covers
-                it — the same mark as the route card, so the story ends on the
-                same visual it started with. */}
-            <div
-              className="mt-2 h-3 rounded-full overflow-hidden"
-              style={{
-                background: rainMode
-                  ? "color-mix(in srgb, var(--color-ink) 8%, transparent)"
-                  : "var(--color-sun-soft)",
-              }}
-            >
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${shadeStory.pct}%`,
-                  background: rainMode ? "var(--color-rain)" : "var(--color-shade)",
-                }}
-              />
-            </div>
+            {/* The split bar, square and ink-ruled as on the route card: shade
+                against sun (signal orange), or sheltered against open on a
+                neutral track in rain. Never drawn after sunset. */}
+            {shadeStory.pct != null && route && (
+              <>
+                <div className="mt-2 flex h-3 border border-ink" aria-hidden="true">
+                  <div
+                    className="h-full"
+                    style={{ width: `${shadeStory.pct}%`, background: rainMode ? "var(--color-rain)" : "var(--color-shade)" }}
+                  />
+                  {shadeStory.pct < 100 && (
+                    <div
+                      className={`h-full flex-1 ${shadeStory.pct > 0 ? "border-l-2 border-panel" : ""}`}
+                      style={{
+                        background: rainMode
+                          ? "color-mix(in srgb, var(--color-ink) 8%, transparent)"
+                          : "var(--color-sun-signal)",
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="mt-1 flex items-center gap-3 font-mono text-[11px]" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2" style={{ background: rainMode ? "var(--color-rain)" : "var(--color-shade)" }} />
+                    {rainMode ? "sheltered" : "shade"}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="h-2 w-2 border border-ink"
+                      style={{ background: rainMode ? "transparent" : "var(--color-sun-signal)" }}
+                    />
+                    {rainMode ? "open" : "sun"}
+                  </span>
+                  <span className="ml-auto">{routeSplitBasis(route)} share</span>
+                </div>
+              </>
+            )}
           </>
         ) : null}
         {earned && (
-          <div className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
-            {earned}
+          <div className="mt-2 border-t pt-1 text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)", borderColor: "var(--color-rule)" }}>
+            <div>{earned}</div>
+            {sourceLine && <div>{rainMode ? "Shelter" : "Shadow"} estimate · {sourceLine}</div>}
           </div>
         )}
-      </div>
+      </article>
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onPlanAnother}
-          className="flex-1 min-h-11 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
-        >
-          Plan another
+      <div className="flex gap-3">
+        <button type="button" onClick={onPlanAnother} className="umbra-start-button flex-1">
+          PLAN ANOTHER
         </button>
         <button
           type="button"
           onClick={onDone}
-          className="min-h-11 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
-          style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
+          className="min-h-11 border-2 border-ink px-4 font-extrabold uppercase tracking-wider focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+          style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-small)", color: "var(--color-ink)" }}
         >
           Done
         </button>
