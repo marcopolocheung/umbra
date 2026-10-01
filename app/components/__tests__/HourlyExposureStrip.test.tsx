@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import registryCss from "../../globals.css?raw";
 import type { HourlyExposure } from "../../hooks/useHourlyExposure";
 import type { HourlyExposureSample } from "../../lib/bestTime";
 import HourlyExposureStrip, { rampStep } from "../HourlyExposureStrip";
@@ -27,12 +28,12 @@ function strip(exposure: HourlyExposure, currentHour = 10, onPickHour = vi.fn())
 /** R6b: the hourly strip as a departures board. */
 describe("HourlyExposureStrip", () => {
   it("steps the five-step ramp by fifths of the share", () => {
-    expect(rampStep(0)).toBe("light");
-    expect(rampStep(0.19)).toBe("light");
-    expect(rampStep(0.2)).toBe("bright");
-    expect(rampStep(0.5)).toBe("base");
-    expect(rampStep(0.79)).toBe("dark");
-    expect(rampStep(1)).toBe("darker");
+    expect(rampStep(0)).toBe(1);
+    expect(rampStep(0.19)).toBe(1);
+    expect(rampStep(0.2)).toBe(2);
+    expect(rampStep(0.5)).toBe(3);
+    expect(rampStep(0.79)).toBe(4);
+    expect(rampStep(1)).toBe(5);
   });
 
   it("colours each sun bar by its ramp step and keys hours in 12-hour numerals", () => {
@@ -40,10 +41,10 @@ describe("HourlyExposureStrip", () => {
     strip({ samples, readyCount: 4, best: samples[0] });
     const bars = screen.getAllByTestId("hour-bar");
     expect(bars.map((b) => b.style.background)).toEqual([
-      "var(--color-sun-light)",
-      "var(--color-sun-base)",
-      "var(--color-sun-darker)",
-      "var(--color-sun-bright)",
+      "var(--color-sun-step-1)",
+      "var(--color-sun-step-3)",
+      "var(--color-sun-step-5)",
+      "var(--color-sun-step-2)",
     ]);
     expect(screen.getByText("Sun by hour")).toBeTruthy();
     expect(screen.getByText("most shadowed around 10 AM")).toBeTruthy();
@@ -71,7 +72,7 @@ describe("HourlyExposureStrip", () => {
     const pending = screen.getByRole("button", { name: "11 AM: unavailable for recommendation" });
     expect((pending as HTMLButtonElement).disabled).toBe(true);
     expect(pending.textContent).toContain("–");
-    expect(screen.queryByText("– not sampled")).toBeNull();
+    expect(screen.queryByText(/no reading$/)).toBeNull();
   });
 
   it("labels rain hours that have no reading once sampling ends", () => {
@@ -81,8 +82,26 @@ describe("HourlyExposureStrip", () => {
     ];
     strip({ samples, readyCount: 2, best: samples[0] });
     expect(screen.getAllByText("Rain shelter by hour")).toHaveLength(2); // header and legend
-    expect(screen.getAllByTestId("hour-bar")[0].style.background).toBe("var(--color-rain-dark)");
+    expect(screen.getAllByTestId("hour-bar")[0].style.background).toBe("var(--color-rain-step-4)");
     expect(screen.getByRole("button", { name: "11 AM: unavailable for recommendation" })).toBeTruthy();
-    expect(screen.getByText("– not sampled")).toBeTruthy();
+    expect(screen.getByText(/no reading$/)).toBeTruthy();
+  });
+});
+
+describe("ramp step tokens", () => {
+  function steps(block: string, meaning: "sun" | "rain"): string[] {
+    return [1, 2, 3, 4, 5].map((n) => {
+      const m = block.match(new RegExp(`--color-${meaning}-step-${n}:\\s*var\\(--color-${meaning}-(\\w+)\\)`));
+      return m?.[1] ?? "missing";
+    });
+  }
+  const night = registryCss.slice(registryCss.indexOf('html[data-theme="night"]'));
+  const day = registryCss.slice(0, registryCss.indexOf('html[data-theme="night"]'));
+
+  it("run light to darker by day and reverse at night, so more share is more contrast", () => {
+    for (const meaning of ["sun", "rain"] as const) {
+      expect(steps(day, meaning)).toEqual(["light", "bright", "base", "dark", "darker"]);
+      expect(steps(night, meaning)).toEqual(["darker", "dark", "base", "bright", "light"]);
+    }
   });
 });

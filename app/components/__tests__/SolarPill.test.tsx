@@ -12,7 +12,7 @@ afterEach(cleanup);
 describe("SolarPill", () => {
   it("says the sun is down after sunset, whatever the intensity", () => {
     render(<SolarPill intensity={0} afterSunset />);
-    expect(screen.getByText("Sun down — shadow not weighed")).toBeTruthy();
+    expect(screen.getByText("Sun down — no direct sun")).toBeTruthy();
     expect(screen.queryByText(/Low sun/)).toBeNull();
   });
 

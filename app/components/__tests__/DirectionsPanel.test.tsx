@@ -283,7 +283,7 @@ describe("DirectionsPanel — solar pill after sunset (R6b)", () => {
 
   it("says the sun is down at 23:00, on the route card's 0° rule", () => {
     renderAt("2026-06-21T03:00:00Z", 0);
-    expect(screen.getByText("Sun down — shadow not weighed")).toBeTruthy();
+    expect(screen.getByText("Sun down — no direct sun")).toBeTruthy();
     expect(screen.queryByText(/Low sun/)).toBeNull();
   });
 

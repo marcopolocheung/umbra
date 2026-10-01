@@ -10,9 +10,9 @@ import Tag from "./ui/Tag";
  * with each other about the same number.
  *
  * `afterSunset` is the route card's 0° rule (`routeAfterSunset`), the same one
- * the theme and the timeline's Sun down cell use. Below the horizon routing
- * scales shadow's weight by an intensity of zero, so the pill says the sun is
- * down instead of calling it low.
+ * the theme and the timeline's Sun down cell use, so below the horizon the pill
+ * says the sun is down instead of calling it low. It claims only that: a direct
+ * walk's Pareto search does not read the intensity at all.
  */
 const SolarPill = memo(function SolarPill({
   intensity,
@@ -22,7 +22,7 @@ const SolarPill = memo(function SolarPill({
   afterSunset?: boolean;
 }) {
   if (afterSunset) {
-    return <Tag className="self-start">Sun down — shadow not weighed</Tag>;
+    return <Tag className="self-start">Sun down — no direct sun</Tag>;
   }
   if (intensity < 0.15) {
     return (

@@ -7,11 +7,9 @@ interface HourlyExposureStripProps {
   onPickHour: (when: Date) => void;
 }
 
-const RAMP = ["light", "bright", "base", "dark", "darker"] as const;
-
-/** The five-step ramp entry for a 0–1 share: fifths, light to darker. */
-export function rampStep(share: number): (typeof RAMP)[number] {
-  return RAMP[Math.min(RAMP.length - 1, Math.max(0, Math.floor(share * RAMP.length)))];
+/** The five-step ramp step (1–5) for a 0–1 share, by fifths. */
+export function rampStep(share: number): number {
+  return Math.min(5, Math.max(1, Math.floor(share * 5) + 1));
 }
 
 /** 12-hour numeral for a board key; the meridiem row says AM or PM. */
@@ -27,8 +25,9 @@ function hourKey(hour: number): string {
  * Bars are drawn as *sun*, not shadow: the thing being avoided is the thing worth
  * seeing, and a short bar reading as a good hour matches how the rest of the app
  * talks about exposure. Each bar is a step of the sun (or rain) ramp by its share,
- * keylined in ink so a pale step still holds against the panel. Hours not yet or
- * never sampled show a dash rather than a zero the field never measured.
+ * keylined in ink so a pale step still holds against the panel. Hours without a
+ * reading (still sampling, or none came back) show a dash rather than a zero the
+ * field never measured.
  */
 export default function HourlyExposureStrip({
   exposure,
@@ -48,12 +47,12 @@ export default function HourlyExposureStrip({
         style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", fontSize: "var(--text-caption)" }}
       >
         <span
-          className="shrink-0 font-extrabold uppercase tracking-wider"
+          className="font-extrabold uppercase tracking-wider"
           style={{ fontFamily: "var(--font-label)" }}
         >
           {rain ? "Rain shelter by hour" : "Sun by hour"}
         </span>
-        <span aria-live="polite" className="text-right" style={{ fontFamily: "var(--font-mono)" }}>
+        <span aria-live="polite" className="min-w-0 text-right" style={{ fontFamily: "var(--font-mono)" }}>
           {checking
             ? "checking…"
             : best
@@ -83,7 +82,7 @@ export default function HourlyExposureStrip({
               disabled={!ready}
               // The whole column is the target: 44px of bar plus the key, of which
               // only the bar is inked — the app is used one-handed, outdoors.
-              className="flex min-w-0 flex-col items-stretch"
+              className="flex min-w-0 flex-col items-stretch focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
               aria-label={
                 ready
                   ? rain
@@ -106,7 +105,9 @@ export default function HourlyExposureStrip({
                       // A fully shadowed hour still gets a sliver, so the bar reads as a
                       // measurement rather than a gap in the data.
                       height: `${Math.max(6, share * 100)}%`,
-                      background: `var(--color-${rain ? "rain" : "sun"}-${rampStep(share)})`,
+                      // Step tokens run light→darker by day and darker→light at night,
+                      // so the larger share is always the higher-contrast fill.
+                      background: `var(--color-${rain ? "rain" : "sun"}-step-${rampStep(share)})`,
                       borderStyle: "solid",
                       borderWidth: "1px 1px 0",
                       borderColor: "var(--color-ink)",
@@ -143,7 +144,7 @@ export default function HourlyExposureStrip({
 
       {anyUnsampled && (
         <div className="px-2 pb-1" style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
-          – not sampled
+          <span aria-hidden="true">– </span>no reading
         </div>
       )}
     </div>
