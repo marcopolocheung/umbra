@@ -33,7 +33,7 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     await page.screenshot({ path: path.join(out, `map-${theme}.png`) });
 
     // Mid-pull: the coin grabbed and pulled 40 px off its line, held on the rubber band.
-    const coin = page.locator(".maplibregl-marker[aria-label='Line E']");
+    const coin = page.locator(".maplibregl-marker[aria-label='Line E'] [data-part='grip']");
     if (stage === "after" && (await coin.count()) === 1) {
       const box = await coin.boundingBox();
       if (box) {

@@ -1273,6 +1273,7 @@ export default function MapView({
     if (!map) return;
 
     const LAYERS = [
+      "train-route-lines-casing",
       "train-route-lines-layer",
       "train-route-stops-layer",
       "train-route-transfers-inner",
@@ -1297,6 +1298,7 @@ export default function MapView({
       }
 
       const { polylines, stops, transfers } = navTrainDrawData;
+      const transferIds = new Set(transfers.map((t) => t.at.id));
 
       // Each ride's line identifier as a draggable coin threaded on its track (#149):
       // DOM markers, so the shadow sampler's canvas readback never sees them.
@@ -1322,7 +1324,12 @@ export default function MapView({
             .addTo(map);
         });
 
-      const stopPoints = stops.map((st) => [st.lon, st.lat] as [number, number]);
+      // Each stop's drawn radius, ring included (stop and transfer layers below), so the
+      // coin's weld is cut away to exactly the dot it would otherwise paint over.
+      const stopPoints = stops.map((st, i) => ({
+        at: [st.lon, st.lat] as [number, number],
+        radius: transferIds.has(st.id) ? 15 : i === 0 || i === stops.length - 1 ? 10 : 8,
+      }));
       lineCoinRefs.current = lineBadgePlacements(polylines).map((placement) => {
         const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
         return attachLineCoin(map, placement, {
@@ -1331,7 +1338,6 @@ export default function MapView({
           onRest: (fraction) => lineCoinFractions.current.set(key, fraction),
         });
       });
-      const transferIds = new Set(transfers.map((t) => t.at.id));
 
       // Line polylines — one color per train line segment
       const linesFC: GeoJSON.FeatureCollection = {
@@ -1346,6 +1352,16 @@ export default function MapView({
         (map.getSource("train-route-lines") as maplibregl.GeoJSONSource).setData(linesFC);
       } else if (polylines.length > 0) {
         map.addSource("train-route-lines", { type: "geojson", data: linesFC });
+        // The ride on a paper casing (warm black at night), like the walking route: the
+        // casing the line's coin is welded into continues the whole length of the ride.
+        map.addLayer({
+          id: "train-route-lines-casing",
+          type: "line",
+          source: "train-route-lines",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 8 },
+        });
+        // Opaque, so the coin's weld (drawn in the same colour above it) meets it seamlessly.
         map.addLayer({
           id: "train-route-lines-layer",
           type: "line",
@@ -1354,7 +1370,6 @@ export default function MapView({
           paint: {
             "line-color": ["get", "color"],
             "line-width": 5,
-            "line-opacity": 0.9,
           },
         });
       }

@@ -79,8 +79,11 @@ export function pointAtDistance(coords: [number, number][], s: number): [number,
   return coords[coords.length - 1];
 }
 
-/** The timeline slider's inertia: velocity halves about every 77 ms. */
-export const COIN_FRICTION = 0.009;
+/**
+ * The timeline slider's inertia (0.009/ms) plus 5%, the owner's tuning for the
+ * coin: velocity halves about every 73 ms, so a fling stops a little sooner.
+ */
+export const COIN_FRICTION = 0.00945;
 
 /**
  * One frame of a coast along a ride: exponential velocity decay (the time
@@ -97,36 +100,95 @@ export function coast(s: number, v: number, dtMs: number, length: number): { s: 
   return { s: next, v: nextV, atEnd: false };
 }
 
-/** Deterministic 0–1 stream from a string, so a line keeps one shape. */
-function seeded(key: string): () => number {
-  let h = 2166136261;
-  for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
-  return () => {
-    h = Math.imul(h ^ (h >>> 15), 2246822507);
-    h = Math.imul(h ^ (h >>> 13), 3266489909);
-    h ^= h >>> 16;
-    return (h >>> 0) / 4294967296;
-  };
+/** The coin's radius in CSS px: a 31px coin, welded into a 5px line, inside its 44px grip. */
+export const COIN_RADIUS = 15.5;
+/** Half the drawn transit line's width (`train-route-lines-layer`, 5px). */
+export const LINE_HALF_WIDTH = 2.5;
+
+type Pt = [number, number];
+
+function arc(cx: number, cy: number, r: number, a0: number, a1: number, steps: number): Pt[] {
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const a = a0 + (a1 - a0) * (i / steps);
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)] as Pt;
+  });
 }
 
-/** The coin's radius in CSS px, rim included: a 31px coin inside its 44px grip. */
-export const COIN_RADIUS = 14;
+function shortTurn(a0: number, a1: number): number {
+  let d = a1 - a0;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return a0 + d;
+}
 
 /**
- * The outline of a line's coin as an SVG path around the origin: a circle whose
- * radius wanders by a few percent, like a rim inked by hand. Seeded by the line's
- * identifier, so each line keeps the same edge every time.
+ * The coin welded into its line (#149, the owner's "pressure bulb"): one outline
+ * that runs along the line's edges, turns into the coin through a concave fillet
+ * on each side, and rounds the coin. Line-local px: x along the line, y toward
+ * the pull, the coin's centre at (0, c). `rPull`/`rTrail` are the fillet radii on
+ * the pull side and the side behind.
+ *
+ * Each fillet is the CAD arc tangent to a line and a circle: its centre sits
+ * `r` off the line's edge and `R + r` from the coin's centre, and it meets the
+ * coin on the line joining the two centres. The construction holds while the
+ * coin still covers both edges, `c < R − w` (13px), which the 12px rubber band
+ * guarantees.
+ *
+ * Returns the closed `fill` outline and the two long `edges` (pull side, then
+ * trail side) without the end caps across the line, which is what a keyline
+ * casing strokes, so the casing never ticks across the line where the weld ends.
  */
-export function coinOutline(key: string, radius = COIN_RADIUS): string {
-  const rand = seeded(key);
-  const waves = [3, 5, 7].map((k) => ({ k, amp: 0.012 + rand() * 0.02, phase: rand() * Math.PI * 2 }));
-  const points: string[] = [];
-  for (let i = 0; i < 48; i++) {
-    const a = (i / 48) * Math.PI * 2;
-    const r = radius * (1 + waves.reduce((sum, w) => sum + w.amp * Math.sin(w.k * a + w.phase), 0));
-    points.push(`${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`);
-  }
-  return `M${points.join("L")}Z`;
+export function weldOutline(c: number, rPull: number, rTrail: number): { fill: Pt[]; edges: [Pt[], Pt[]]; reach: number } {
+  const R = COIN_RADIUS;
+  const w = LINE_HALF_WIDTH;
+  const lift = Math.min(Math.max(0, c), R - w - 0.3);
+  const C: Pt = [0, lift];
+  const sP = Math.sqrt((R + rPull) ** 2 - (w + rPull - lift) ** 2);
+  const sT = Math.sqrt((R + rTrail) ** 2 - (-(w + rTrail) - lift) ** 2);
+  const reach = Math.max(sP, sT) + 0.5;
+  const onCoin = (F: Pt, r: number): Pt => [(R * F[0]) / (R + r), lift + (R * (F[1] - lift)) / (R + r)];
+  const angle = (p: Pt, c0: Pt) => Math.atan2(p[1] - c0[1], p[0] - c0[0]);
+  const fillet = (F: Pt, r: number, from: Pt, to: Pt): Pt[] => {
+    const a0 = angle(from, F);
+    return arc(F[0], F[1], r, a0, shortTurn(a0, angle(to, F)), 8);
+  };
+  const FPR: Pt = [sP, w + rPull];
+  const FPL: Pt = [-sP, w + rPull];
+  const FTR: Pt = [sT, -(w + rTrail)];
+  const FTL: Pt = [-sT, -(w + rTrail)];
+  const [PR, PL, TR, TL] = [onCoin(FPR, rPull), onCoin(FPL, rPull), onCoin(FTR, rTrail), onCoin(FTL, rTrail)];
+  const aTL = angle(TL, C);
+  let aTR = angle(TR, C);
+  if (aTR < aTL) aTR += 2 * Math.PI;
+  const aPR = angle(PR, C);
+  let aPL = angle(PL, C);
+  if (aPL < aPR) aPL += 2 * Math.PI;
+  const trail: Pt[] = [
+    [-reach, -w], [-sT, -w],
+    ...fillet(FTL, rTrail, [-sT, -w], TL),
+    ...arc(0, lift, R, aTL, aTR, 32),
+    ...fillet(FTR, rTrail, TR, [sT, -w]),
+    [reach, -w],
+  ];
+  const pull: Pt[] = [
+    [reach, w], [sP, w],
+    ...fillet(FPR, rPull, [sP, w], PR),
+    ...arc(0, lift, R, aPR, aPL, 32),
+    ...fillet(FPL, rPull, PL, [-sP, w]),
+    [-reach, w],
+  ];
+  return { fill: [...trail, ...pull], edges: [pull, trail], reach };
+}
+
+/**
+ * The bulb's fillet radii: 4px at rest, swelling to 8px as the coin is gripped
+ * (`grip` 0→1), then stretching toward the pull — up to 12px ahead, down to 3
+ * behind, at the rubber band's 12px — so the joint is drawn out like goo.
+ */
+export function bulbFillets(c: number, grip: number): { pull: number; trail: number } {
+  const base = 4 + 4 * Math.min(1, Math.max(0, grip));
+  const k = Math.min(1, Math.max(0, c) / 12);
+  return { pull: base + 4 * k, trail: Math.max(2, base - 5 * k) };
 }
 
 /** [lng, lat] → local metres east/north of an origin; flat is exact enough across a ride. */

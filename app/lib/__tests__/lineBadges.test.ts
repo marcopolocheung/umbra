@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   COIN_RADIUS,
+  LINE_HALF_WIDTH,
+  bulbFillets,
   coast,
-  coinOutline,
   distanceAt,
   restingGap,
   rubberBand,
   springStep,
   stopDistances,
+  weldOutline,
   lineBadgePlacements,
   pointAtDistance,
   rideLength,
@@ -71,9 +73,9 @@ describe("distance along a ride", () => {
 });
 
 describe("coast", () => {
-  it("decays like the time slider and stops dead at the ends", () => {
+  it("decays with the coin's friction and stops dead at the ends", () => {
     const step = coast(100, 1, 16, 1000);
-    expect(step.v).toBeCloseTo(Math.exp(-0.009 * 16));
+    expect(step.v).toBeCloseTo(Math.exp(-0.00945 * 16));
     expect(step.s).toBeGreaterThan(100);
     expect(coast(995, 1, 16, 1000)).toEqual({ s: 1000, v: 0, atEnd: true });
     expect(coast(5, -1, 16, 1000)).toEqual({ s: 0, v: 0, atEnd: true });
@@ -82,20 +84,48 @@ describe("coast", () => {
   it("travels v0 / friction in all, so a glide can be aimed at a resting point", () => {
     let state = { s: 0, v: 0.9, atEnd: false };
     for (let i = 0; i < 400 && Math.abs(state.v) > 1e-6; i++) state = coast(state.s, state.v, 16, 1e6);
-    expect(state.s).toBeCloseTo(0.9 / 0.009, -1);
+    expect(state.s).toBeCloseTo(0.9 / 0.00945, -1);
   });
 });
 
-describe("coinOutline", () => {
-  it("is the same hand-inked edge for one line and a different one for another", () => {
-    expect(coinOutline("L")).toBe(coinOutline("L"));
-    expect(coinOutline("L")).not.toBe(coinOutline("G"));
+describe("weldOutline", () => {
+  const leaves = (edge: [number, number][], y: number) =>
+    // Where the outline leaves the line's edge: the last straight point before a fillet.
+    Math.max(...edge.filter(([, py]) => Math.abs(py - y) < 1e-9).map(([x]) => Math.abs(x)).filter((x, _, all) => x < Math.max(...all)));
+
+  it("flares from the line into the coin at the report's span, symmetric at rest", () => {
+    const { edges } = weldOutline(0, 4, 4);
+    // r = 4 at c = 0: the fillet leaves the stroke 18.4px from the coin's centre (report table).
+    expect(leaves(edges[0], LINE_HALF_WIDTH)).toBeCloseTo(18.4, 1);
+    expect(leaves(edges[1], -LINE_HALF_WIDTH)).toBeCloseTo(18.4, 1);
   });
 
-  it("stays a coin: every point within a few percent of the radius", () => {
-    const radii = coinOutline("A").slice(1, -1).split("L").map((p) => Math.hypot(...(p.split(",").map(Number) as [number, number])));
-    expect(radii).toHaveLength(48);
-    for (const r of radii) expect(Math.abs(r - COIN_RADIUS) / COIN_RADIUS).toBeLessThan(0.08);
+  it("draws the pull side out and the trailing side in as the coin is pulled", () => {
+    // r = 4 at c = 12: 18.7px ahead, 6.2px behind (report table).
+    const { edges } = weldOutline(12, 4, 4);
+    expect(leaves(edges[0], LINE_HALF_WIDTH)).toBeCloseTo(18.7, 1);
+    expect(leaves(edges[1], -LINE_HALF_WIDTH)).toBeCloseTo(6.2, 1);
+  });
+
+  it("never reaches past the coin's own edge on the coin, and closes on the line", () => {
+    const { fill, edges } = weldOutline(6, 8, 6);
+    for (const [x, y] of fill) {
+      const onLine = Math.abs(y) <= LINE_HALF_WIDTH + 1e-9;
+      expect(onLine || Math.hypot(x, y - 6) <= COIN_RADIUS + 12).toBe(true);
+    }
+    // The casing edges carry no end cap: each runs along one side only.
+    expect(edges[0].every(([, y]) => y >= LINE_HALF_WIDTH - 1e-9)).toBe(true);
+    expect(edges[1].every(([, y]) => y <= LINE_HALF_WIDTH)).toBe(true);
+  });
+});
+
+describe("bulbFillets", () => {
+  it("rests at 4px, swells to 8 when gripped, and stretches toward the pull", () => {
+    expect(bulbFillets(0, 0)).toEqual({ pull: 4, trail: 4 });
+    expect(bulbFillets(0, 1)).toEqual({ pull: 8, trail: 8 });
+    expect(bulbFillets(12, 1)).toEqual({ pull: 12, trail: 3 });
+    // Never thinner than 2px behind, however hard the pull.
+    expect(bulbFillets(40, 0).trail).toBe(2);
   });
 });
 

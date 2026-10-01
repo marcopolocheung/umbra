@@ -217,6 +217,7 @@ const OVERLAY_ROLES: ReadonlyArray<[layerId: string, property: string, role: Map
   ["sketch-preview-layer", "line-color", "route"],
   ["mrt-entrance-connector-casing", "line-color", "casing"],
   ["mrt-entrance-connector-line", "line-color", "route"],
+  ["train-route-lines-casing", "line-color", "casing"],
   ["train-route-stops-layer", "circle-color", "casing"],
   ["train-route-transfers-outer", "circle-color", "casing"],
   ["train-route-transfers-outer", "circle-stroke-color", "route"],

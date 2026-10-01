@@ -25,30 +25,27 @@ inspiration; the public mirror publishes everything here.
 ## Current state
 
 - **Active checkpoint:** #149 — transit line coins on the map, awaiting owner review.
-  Owner picked the coin (study 2 of four, artifact "Umbra Line Shields") over an irregular
-  swelling and a shield: each ride's letter on a coin of the line's published colour inside a
-  hand-inked rim (`lib/lineBadges.coinOutline`, seeded per line; theme-fixed line-bullet
-  inks; a cream letter disc where no ink reaches 4.5:1; wider for three-character routes),
-  threaded on the drawn track (`mapPins.lineCoinElement`). `components/lineCoinMarker.ts`
-  drags it only along its own ride (each frame snaps to the nearest track point,
-  `snapToPath`), flings it with the time slider's inertia (friction 0.009/ms, same smoothing
-  and 80 ms cutoff, exact per-frame decay so a glide can be aimed), remembers where each ride
-  rested (keyed by line and end stations, so the same trip at another time keeps its place and
-  a new trip starts fresh), and on a ride's first render glides it from mid-ride to a random
-  resting place (none under reduced motion; a grab cancels it). One per ride, not per hop.
-  DOM markers only — the shadow sampler never sees them (#5); the marker element *is* the
-  44px grip, because maplibre re-enables pointer events on it after every press. Owner's
-  second round: a pull off the line stretches the coin on a rubber band (`rubberBand`, ≤12px)
-  and a damped spring (`springStep`, ~3 Hz, ζ 0.3) wobbles it back on release; a coin that
-  rests over a stop slides just clear (`restingGap`, `stopDistances`), so no stop is hidden.
-  Stops now count along the ride: `TrainDrawData.stops` carries each stop's line colour,
-  rings drawn in it (removed from `basemapTheme`'s re-themed roles, like the lines), board and
-  exit a size up and named on map-ink plates (`mapPins.stopLabelElement`) set off the ride's
-  perpendicular on the down-right side (entrance pins grow upward). A grab mid-wobble keeps
-  the coin under the finger; a slide off a stop lands exactly. The terminus is
-  deliberately not shown on the map (it reads as the rider's destination). The transit smoke
-  test drags the coin ~56px off the line, asserts by canvas readback that it slid and still
-  sits on the track, and asserts the board/exit names.
+  Owner's final pick, after four rounds (studies: swelling, shields, the coin, then six
+  "line weld" studies in the artifact "Umbra Line Welds" with a research report): the
+  **pressure bulb with a keyline**. The coin (31px, the line's published colour) is welded
+  into its 5px line: one outline runs along the line's edges and turns into the coin through
+  concave CAD fillets (`lib/lineBadges.weldOutline`), 4px at rest, swelling to 8 when gripped
+  and drawn out toward the pull, up to 12 ahead and 3 behind (`bulbFillets`); a paper casing
+  (warm black at night, `--color-map-casing`) strokes only the weld's two long edges and
+  continues as a new GL casing under the whole ride (`train-route-lines-casing`, themed and
+  ordered like the walking route's), so line and coin read as one cut-out shape. The ride is
+  now opaque, so the weld meets it without a colour step. `components/lineCoinMarker.ts`
+  redraws the weld each frame in the line's on-screen direction (rotation and tilt
+  included); the marker is a zero-size anchor on the line with `subpixelPositioning` (no
+  half-pixel seam) and a 44px grip riding on the coin. Because the map's stops and line lie
+  under any DOM overlay, the weld is masked away around every stop (its drawn radius from
+  `MapView`) and clipped at the ride's ends; the coin's disc stays unmasked so a dragged coin
+  passes in front of a stop. Motion is unchanged from the coin round except friction: the
+  time slider's 0.009/ms plus 5% (`COIN_FRICTION` 0.00945, owner's tuning). Stops are ringed
+  in their line's colour, board/exit a size up and named beside the ride; a resting coin slides
+  clear of any stop; the terminus is not shown. DOM only for coin and names, never the canvas
+  (#5); the stop rings and the new casing are canvas paint. The transit smoke test drags the
+  coin off the line and proves by readback that it slid and still sits on the track.
 - **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
   (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
   inset focus, disabled on the 75% role with a strike), used by Walk/Transit, Sun/Rain,
@@ -109,9 +106,9 @@ inspiration; the public mirror publishes everything here.
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
-- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,779 unit tests
-  (9 of 10 full runs clean; the other hit #154, a pre-existing timer-after-teardown leak in
-  `useRouting`), build, design:check and e2e 16/16.
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,782 unit tests,
+  build, design:check and e2e 16/16. The weld was checked on the live day and night maps at rest
+  and mid-pull; a real-phone feel check is outstanding.
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.
