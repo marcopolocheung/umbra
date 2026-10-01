@@ -178,6 +178,7 @@ export function routesForMode(
  */
 export interface UseRoutingArgs {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
+  getRouteFitPadding?: () => number | { top: number; right: number; bottom: number; left: number };
   shadowLayerRef?: React.MutableRefObject<IShadowLayer | null>;
   dateRef: React.MutableRefObject<Date>;
   /** React date state only to schedule condition refreshes; calculations still read dateRef. */
@@ -213,6 +214,7 @@ export interface UseRoutingArgs {
  */
 export function useRouting({
   mapRef,
+  getRouteFitPadding,
   shadowLayerRef,
   dateRef,
   date,
@@ -396,9 +398,9 @@ export function useRouting({
       const bounds = routeBounds(route);
       if (!map || !bounds) return;
 
-      map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 800 });
+      map.fitBounds(bounds, { padding: getRouteFitPadding?.() ?? 80, maxZoom: 16, duration: 800 });
     },
-    [mapRef],
+    [mapRef, getRouteFitPadding],
   );
 
   const calculateRoute = useCallback(
