@@ -119,6 +119,8 @@ describe("ArrivalPanel as a postcard (R8a)", () => {
 
     expect(screen.getByText("42% sheltered")).toBeTruthy();
     expect(screen.getByText("open")).toBeTruthy();
+    // Shelter is not sun data: the postmark stays ink.
+    expect(screen.getByText("Arrived").closest(".umbra-stamp-badge--sun")).toBeNull();
     expect(screen.queryByText(/min in sun/)).toBeNull();
   });
 
