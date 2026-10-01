@@ -1,5 +1,5 @@
 import { COIN_RADIUS } from "../lib/lineBadges";
-import { lineBulletInk, lineCssColor } from "../lib/lineBulletInk";
+import { lineBulletInk, lineCssColor, lineWhitePlateFill } from "../lib/lineBulletInk";
 
 /**
  * Umbra redesign 2.0 R4b map pins: one teardrop, two fills, never colour alone.
@@ -166,7 +166,7 @@ function flagShield(line: string, color: string, name: string): HTMLDivElement {
  *
  * The shield's inks are theme-fixed like the line bullets', so it reads the same
  * on both maps; the plate and coin take whichever ink reads at 4.5:1 on the
- * line's colour, or a cream ground ringed in it where neither does. A zero-size
+ * line's colour, using white where cream misses the threshold, or a cream ground ringed in it where neither does. A zero-size
  * anchor at the door or stop that never takes the pointer; DOM only, never the canvas.
  */
 export function stopFlagElement(
@@ -278,14 +278,25 @@ export function transferFlagElement(
   `;
   const plate = document.createElement("span");
   plate.dataset.part = "kicker";
-  plate.textContent = "Transfer";
+  const fromPlate = lineWhitePlateFill(from.color);
+  const toPlate = lineWhitePlateFill(to.color);
+  const whiteOnGradient = fromPlate !== null && toPlate !== null;
   plate.style.cssText = `
     position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 7px;white-space:nowrap;
     font-family:var(--font-label);font-size:11px;font-weight:800;letter-spacing:0.06em;
-    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
-    background:var(--color-line-ink-light);color:var(--color-line-ink-dark);
-    border-left:3px solid ${lineCssColor(from.color)};border-right:3px solid ${lineCssColor(to.color)};
+    text-transform:uppercase;line-height:1.3;color:var(--color-line-ink-white);
+    rotate:var(--angle-flag);clip-path:var(--plate-clip);
+    background:linear-gradient(90deg, ${fromPlate ?? lineCssColor(from.color)}, ${toPlate ?? lineCssColor(to.color)});
   `;
+  if (whiteOnGradient) {
+    plate.textContent = "Transfer";
+  } else {
+    const plateText = document.createElement("span");
+    plateText.textContent = "Transfer";
+    plateText.style.cssText = "display:block;padding:0 3px;background:var(--color-line-ink-dark);color:var(--color-line-ink-white);";
+    plate.style.padding = "3px 5px";
+    plate.appendChild(plateText);
+  }
   const shields = document.createElement("div");
   shields.dataset.part = "shield";
   shields.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;";

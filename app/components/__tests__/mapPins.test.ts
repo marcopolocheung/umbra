@@ -33,11 +33,12 @@ describe("lineCoinElement", () => {
     expect(letter.style.color).toBe("var(--color-line-ink-dark)");
   });
 
-  it("sets the letter on a cream disc where no ink reads on the line's colour", () => {
+  it("sets the 7 directly on purple with white text", () => {
     const { fill, grip } = lineCoinElement("7", "B933AD");
     // A bare-hex OSM colour is made valid CSS.
     expect(fill.getAttribute("fill")).toBe("#B933AD");
-    expect((grip.querySelector("span") as HTMLElement).style.background).toBe("var(--color-line-ink-light)");
+    expect((grip.querySelector("span") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
+    expect((grip.querySelector("span") as HTMLElement).style.background).toBe("");
   });
 
   it("gives every coin its own clip and mask ids", () => {
@@ -115,10 +116,12 @@ describe("stopFlagElement", () => {
     expect(part(flag, "leader").getAttribute("d")).toBe("M-6.00,0.00L0.00,-8.00");
   });
 
-  it("rings the letter and plate on cream where no ink reads on the line's colour", () => {
+  it("fills the 7 and its plate purple with white text", () => {
     const flag = stopFlagElement("enter", "7", "B933AD", "Flushing–Main St", [1, 0]);
-    expect(part(flag, "kicker").style.background).toBe("var(--color-line-ink-light)");
-    expect(part(flag, "line").style.border).toContain("rgb(185, 51, 173)");
+    expect(part(flag, "kicker").style.background).toBe("rgb(185, 51, 173)");
+    expect(part(flag, "kicker").style.color).toBe("var(--color-line-ink-white)");
+    expect(part(flag, "line").style.background).toBe("rgb(185, 51, 173)");
+    expect(part(flag, "line").style.color).toBe("var(--color-line-ink-white)");
   });
 
   it("never takes the pointer", () => {
@@ -139,7 +142,21 @@ describe("transferFlagElement", () => {
     expect([...flag.querySelectorAll("[data-part='stop-name']")].map((part) => part.textContent)).toEqual(["Grid Middle", "Grid Middle"]);
     expect((flag.querySelector("[data-part='from-shield']") as HTMLElement).style.border).toContain("rgb(0, 147, 60)");
     expect((flag.querySelector("[data-part='to-shield']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
-    expect((flag.querySelector("[data-part='to-shield'] [data-part='line']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
+    expect((flag.querySelector("[data-part='to-shield'] [data-part='line']") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
+    expect((flag.querySelector("[data-part='kicker']") as HTMLElement).style.backgroundImage).toContain("linear-gradient");
+    expect((flag.querySelector("[data-part='kicker']") as HTMLElement).style.color).toBe("var(--color-line-ink-white)");
     expect(flag.style.pointerEvents).toBe("none");
+  });
+
+  it("keeps the gradient but grounds text when a bright line cannot carry white", () => {
+    const flag = transferFlagElement(
+      { line: "N", color: "#FCCC0A", name: "Canal St" },
+      { line: "7", color: "#B933AD", name: "Times Sq" },
+      [1, 0],
+    );
+    const plate = flag.querySelector<HTMLElement>("[data-part='kicker']")!;
+    expect(plate.style.backgroundImage).toContain("linear-gradient");
+    expect(plate.querySelector("span")?.style.background).toBe("var(--color-line-ink-dark)");
+    expect(plate.querySelector("span")?.textContent).toBe("Transfer");
   });
 });

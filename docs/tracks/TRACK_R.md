@@ -30,11 +30,12 @@ inspiration; the public mirror publishes everything here.
   fixed zero. The rail time, wait and exposure remain whole-trip figures; no per-line
   minutes are inferred. Each new boarding now flies a Transfer kicker flag from the
   change stop, with separate line-coloured shields for the arriving and departing stops
-  and an arrow between them; same-station changes need no explicit transfer edge. The
+  and an arrow between them; the kicker plate grades from the arriving line's colour to
+  the boarded line's. Same-station changes need no explicit transfer edge. The
   flag is a pointer-free DOM overlay and clamps inside the map. The longer itinerary keeps
   Start Navigating at the phone sheet foot and resets the sheet to its top on phase changes.
-  Before/after phone shots
-  in both themes are in `docs/design/shots/transit-transfer/`. A check of the supplied
+  Before/after phone shots in both themes are in `docs/design/shots/transit-transfer/`.
+  A check of the supplied
   live route is outstanding after the local street-data request returned 503.
 - **#155 (merged):** kicker flags at transit station doors.
   Each ride's board and exit door now has a compact dot and a dotted leader in the line's
@@ -87,8 +88,8 @@ inspiration; the public mirror publishes everything here.
   since its cream band matches the page), though the start action ended up a square ink
   `.umbra-start-button` by owner call.
   `LineBullet accent` fills with the line's published colour; `lib/lineBulletInk.ts` picks the
-  identifier ink by WCAG contrast (`--color-line-ink-{dark,light}`), or rings the identifier
-  when neither reaches 4.5:1 (the 7's purple, the J/Z brown). The split bar is square and
+  identifier ink by WCAG contrast (`--color-line-ink-{dark,light,white}`), or rings the identifier
+  when none reaches 4.5:1. White fills the 7's purple and the J/Z brown. The split bar is square and
   ink-ruled, shade against solid `--color-sun-signal`, with its basis stated under it
   (`routeSplitBasis`: distance for a walk, time outdoors for transit). After sunset at the
   route's own `evaluatedContext` time and place (`routeAfterSunset`, the theme's 0° rule),
@@ -130,8 +131,8 @@ inspiration; the public mirror publishes everything here.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** independent reviews of #158 when agent quota permits, then owner review and R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (#157):** 2026-10-01 on Node 24; lint (0 errors, 81 baseline warnings),
-  typecheck, 1,802 unit tests, build, design:check and e2e 18/18. Day and night phone shots
-  show both line bullets, the change station, and the Transfer flag on the map. The supplied
+  typecheck, 1,806 unit tests, build, design:check and e2e 18/18. Day and night phone shots
+  show filled 7 bullets, the change station, and the graded Transfer flag on the map. The supplied
   live route could not be checked locally because its street-data request returned 503;
   a real-phone feel check is outstanding.
 - **Last verified (#155):** 2026-09-30 on Node 24; lint (0 errors, 81 baseline warnings),

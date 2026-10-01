@@ -115,10 +115,11 @@
   --color-line-yellow-on: #0b0b0b;
   --color-line-yellow-ground: #1f1c0c;
   --color-line-yellow-plate: #3c361a;
-  /* A line's own published colour fills its bullet; its identifier takes the ink
-     `lineBulletInk` measures higher. Theme-fixed: the fill does not flip. */
+  /* A line's own published colour fills its bullet; its identifier takes a
+     contrasting dark, cream, or white ink. Theme-fixed: the fill does not flip. */
   --color-line-ink-dark: #0b0b0b;
   --color-line-ink-light: #f8efdf;
+  --color-line-ink-white: #ffffff;
 
   /* Renderer-facing values stay fixed through R4. */
   /* Map overlays (R4b) — route, casing, pins, stops, sun diagram — follow the basemap

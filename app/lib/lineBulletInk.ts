@@ -5,14 +5,15 @@
  * bullet fills with it so the card names the line the map draws. The
  * identifier on that fill must still read, so it takes whichever registry ink
  * — the line-bullet near-black or the day panel cream — has the higher WCAG
- * contrast against it. `null` when neither ink reaches 4.5:1 (mid-tones such
- * as the 7's purple and the J/Z brown) or the colour is not a hex value (an
- * OSM `colour=red`, say): the caller then rings the identifier in the line's
- * colour instead of filling behind it.
+ * contrast against it. White replaces cream where cream narrowly misses 4.5:1,
+ * as on the 7's purple and the J/Z brown. `null` when no ink reaches 4.5:1
+ * or the colour is not a hex value (an OSM `colour=red`, say): the caller then
+ * rings the identifier in the line's colour instead of filling behind it.
  */
 
 const DARK = "#0b0b0b";
 const LIGHT = "#f8efdf";
+const WHITE = "#ffffff";
 const MIN_TEXT_CONTRAST = 4.5;
 
 function luminance(hex: string): number | null {
@@ -38,9 +39,26 @@ export function contrastRatio(a: string, b: string): number | null {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-export function lineBulletInk(lineColor: string): "dark" | "light" | null {
+export function lineBulletInk(lineColor: string): "dark" | "light" | "white" | null {
   const dark = contrastRatio(lineColor, DARK);
   const light = contrastRatio(lineColor, LIGHT);
-  if (dark == null || light == null || Math.max(dark, light) < MIN_TEXT_CONTRAST) return null;
+  if (dark == null || light == null) return null;
+  if (Math.max(dark, light) < MIN_TEXT_CONTRAST) {
+    const white = contrastRatio(lineColor, WHITE);
+    return white != null && white >= MIN_TEXT_CONTRAST ? "white" : null;
+  }
   return dark >= light ? "dark" : "light";
+}
+
+/** A line hue darkened only enough for white kicker text, within a small colour shift. */
+export function lineWhitePlateFill(lineColor: string): string | null {
+  const css = lineCssColor(lineColor);
+  const match = /^#([0-9a-f]{6})$/i.exec(css);
+  if (!match) return null;
+  const channels = [0, 2, 4].map((index) => Number.parseInt(match[1].slice(index, index + 2), 16));
+  for (let shade = 0; shade <= 20; shade++) {
+    const fill = `#${channels.map((channel) => Math.round(channel * (100 - shade) / 100).toString(16).padStart(2, "0")).join("")}`;
+    if ((contrastRatio(fill, WHITE) ?? 0) >= MIN_TEXT_CONTRAST) return fill;
+  }
+  return null;
 }

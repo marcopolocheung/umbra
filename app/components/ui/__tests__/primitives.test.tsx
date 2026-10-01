@@ -218,10 +218,17 @@ describe("LineBullet", () => {
     expect(bullet.style.getPropertyValue("--line-on")).toBe("var(--color-line-ink-dark)");
   });
 
-  it("rings the identifier when no ink reads on the line's colour", () => {
-    render(<LineBullet accent="#4d75c3" code="7" data-testid="seven" />);
+  it("rings the identifier when a line colour cannot be measured", () => {
+    render(<LineBullet accent="red" code="7" data-testid="seven" />);
     expect(screen.getByTestId("seven").className).toBe("umbra-line-bullet umbra-line-bullet--data umbra-line-bullet--ringed");
     expect(screen.getByText("7").className).toBe("umbra-line-bullet__id");
+  });
+
+  it("fills the 7's purple with white text", () => {
+    render(<LineBullet accent="B933AD" code="7" data-testid="seven" />);
+    const bullet = screen.getByTestId("seven");
+    expect(bullet.className).toBe("umbra-line-bullet umbra-line-bullet--data");
+    expect(bullet.style.getPropertyValue("--line-on")).toBe("var(--color-line-ink-white)");
   });
 
   it("reads a bare-hex line colour as hex rather than dropping it", () => {

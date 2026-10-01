@@ -326,12 +326,15 @@ test("shows both lines and the transfer before and during navigation", async ({ 
   expect(card).toContain("Flushing Local");
   expect(card).toContain("Walking turns");
   expect(card).toContain("2 stops");
+  await expect(page.locator(".umbra-line-bullet--data .umbra-line-bullet__id").filter({ hasText: "7" }).first()).toHaveCSS("color", "rgb(255, 255, 255)");
   await expect(page.locator("[data-part='stop-flag'] [data-part='line']")).toHaveText(["4", "7"]);
   const transferFlag = page.locator("[data-part='transfer-flag']");
   await expect(transferFlag).toHaveCount(1);
   await expect(transferFlag).toHaveAttribute("aria-label", "Transfer: 4, Grid Middle to 7, Grid Middle");
   await expect(transferFlag.locator("[data-part='kicker']")).toHaveText("Transfer");
+  await expect(transferFlag.locator("[data-part='kicker']")).toHaveCSS("background-image", /linear-gradient/);
   await expect(transferFlag.locator("[data-part='line']")).toHaveText(["4", "7"]);
+  await expect(transferFlag.locator("[data-part='to-shield'] [data-part='line']")).toHaveCSS("color", "rgb(255, 255, 255)");
 
   await page.getByRole("button", { name: "START NAVIGATING" }).filter({ visible: true }).first().click();
   await expect.poll(() => page.locator('ol[aria-label="Route steps"]').first().textContent()).toContain("Change at Grid Middle");
