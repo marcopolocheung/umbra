@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useAgent";
+import { guideNote } from "../lib/agent/guideNote";
 import { noticeLabel, receiptDetail, receiptLabel, unknownLabel } from "../lib/agent/receipts";
 
 interface AssistantPanelProps {
@@ -7,11 +8,14 @@ interface AssistantPanelProps {
   onClose: () => void;
   messages: ChatMessage[];
   isThinking: boolean;
+  progress?: string | null;
   onSend: (text: string) => void;
   onReset: () => void;
   onFocusMapObject: (objectId: string) => void;
   /** Current map pin identities in their plotted order. */
   stopIds: string[];
+  /** Current route objects, supplied by the map owner. */
+  routeIds?: string[];
 }
 
 const SUGGESTIONS = [
@@ -22,7 +26,7 @@ const SUGGESTIONS = [
 const focusClass = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
 
 export default function AssistantPanel({
-  open, onClose, messages, isThinking, onSend, onReset, onFocusMapObject, stopIds,
+  open, onClose, messages, isThinking, progress, onSend, onReset, onFocusMapObject, stopIds, routeIds = [],
 }: AssistantPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -91,16 +95,13 @@ export default function AssistantPanel({
         )}
 
         {messages.map((message) => {
-          if (message.role === "tool") return (
-            <p key={message.id} className="border-l-2 px-2 py-1" style={{ borderColor: "var(--color-ink)", color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }}>
-              {message.text}
-            </p>
-          );
+          if (message.role === "tool") return null;
           if (message.role === "user") return (
             <p key={message.id} className="max-w-[88%] self-end whitespace-pre-wrap break-words border-2 px-3 py-2 text-sm" style={{ background: "var(--color-ink)", borderColor: "var(--color-ink)", color: "var(--color-on-ink)" }}>
               {message.text}
             </p>
           );
+          const note = message.answer ? guideNote(message.answer, stopIds, routeIds) : null;
           return (
             <article key={message.id} className="w-full break-words">
               {message.answer ? (
@@ -149,10 +150,43 @@ export default function AssistantPanel({
                   })}
                 </div>
               ) : <p className="whitespace-pre-wrap text-sm">{message.text}</p>}
+              {note && (
+                <div className="umbra-guide-bubble mt-3 max-w-[92%] border-2 px-3 py-2 text-sm"
+                  style={{ background: "var(--color-ground)", borderColor: "var(--color-ink)" }}
+                  data-claim-ids={note.claimIds.join(" ")}>
+                  <p>{note.text}</p>
+                  {note.action && (
+                    <button type="button" className={`mt-2 flex min-h-11 items-center border-2 px-3 text-sm font-semibold ${focusClass}`}
+                      style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", borderColor: "var(--color-ink)" }}
+                      onClick={() => {
+                        onFocusMapObject(note.action!.mapObjectId);
+                        if (window.innerWidth < 640) onClose();
+                      }}>
+                      {note.action.label}
+                    </button>
+                  )}
+                </div>
+              )}
             </article>
           );
         })}
-        {isThinking && <p className="px-2 py-1" style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }}>Working…</p>}
+        {isThinking && (
+          <div className="self-start">
+            <p className="px-1 py-1" style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }} aria-hidden="true">
+              {progress ?? "Working…"}
+            </p>
+            <div className="umbra-guide-bubble border-2 px-3 py-3" style={{ background: "var(--color-ground)", borderColor: "var(--color-ink)" }} aria-hidden="true">
+              <span className="umbra-typing-squares"><span /><span /><span /></span>
+            </div>
+          </div>
+        )}
+        <span role="status" aria-live="polite" className="sr-only">
+          {isThinking
+            ? "Umbra is working on your request."
+            : messages.at(-1)?.role === "assistant"
+              ? "Umbra has finished responding."
+              : ""}
+        </span>
       </div>
 
       <div className="border-t-2 p-2" style={{ borderColor: "var(--color-ink)" }}>

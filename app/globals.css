@@ -321,6 +321,46 @@ html[data-theme="night"] {
   background-clip: content-box;
 }
 
+/* The guide note is attached to its receipt like a small paper speech bubble. */
+.umbra-guide-bubble {
+  position: relative;
+}
+
+.umbra-guide-bubble::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 15px;
+  width: 11px;
+  height: 11px;
+  transform: rotate(45deg);
+  background: var(--color-ground);
+  border-top: 2px solid var(--color-ink);
+  border-left: 2px solid var(--color-ink);
+}
+
+.umbra-typing-squares {
+  display: flex;
+  gap: 5px;
+}
+
+.umbra-typing-squares span {
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes umbra-typing {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
+  .umbra-typing-squares span { animation: umbra-typing 900ms ease-in-out infinite; }
+  .umbra-typing-squares span:nth-child(2) { animation-delay: 150ms; }
+  .umbra-typing-squares span:nth-child(3) { animation-delay: 300ms; }
+}
+
 /* Entrance for the assistant blob and the panel it opens. The blob pops from
    the corner it is docked in; the panel rises from the same corner, so the
    two read as one surface splitting open. Motion honoured via the media

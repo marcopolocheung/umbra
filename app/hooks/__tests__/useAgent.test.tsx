@@ -2,6 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAgent } from "../useAgent";
+import { guideNote } from "../../lib/agent/guideNote";
 import type { ToolResultEnvelope, VerifiedAnswer } from "../../lib/agent/receipts";
 
 const runAgent = vi.fn();
@@ -94,6 +95,7 @@ describe("useAgent receipt revalidation", () => {
     });
     const current = result.current.messages.at(-1)?.answer?.receipts[0];
     expect(current?.verification).toBe("verified");
+    expect(guideNote(result.current.messages.at(-1)!.answer!, [], ["route:request-7:action-7:7"])?.action?.label).toBe("View route");
 
     revision = 8;
     rerender();
@@ -102,5 +104,6 @@ describe("useAgent receipt revalidation", () => {
       verification: "rejected",
       rejectionReason: "stale_plan_revision",
     });
+    expect(guideNote(result.current.messages.at(-1)!.answer!, [], [])).toBeNull();
   });
 });

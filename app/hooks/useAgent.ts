@@ -55,6 +55,7 @@ const nextId = () => `message-${++idCounter}`;
 export function useAgent(args: UseAgentArgs) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
 
   // Keep live values in refs so tool executors always see current state.
   const offsetRef = useRef(args.mapUtcOffsetMin);
@@ -146,6 +147,7 @@ export function useAgent(args: UseAgentArgs) {
 
       setMessages((prev) => [...prev, { id: nextId(), role: "user", text: trimmed }]);
       setIsThinking(true);
+      setProgress(null);
 
       try {
         const { runAgent } = await import("../lib/agent/agentLoop");
@@ -159,8 +161,7 @@ export function useAgent(args: UseAgentArgs) {
           resultIdFactory: ({ toolName }) =>
             `agent-result-${++resultIdSequenceRef.current}-${toolName}`,
           onToolEvent: (e) => {
-            const label = TOOL_LABELS[e.name] ?? e.name;
-            setMessages((prev) => [...prev, { id: nextId(), role: "tool", text: label }]);
+            setProgress(TOOL_LABELS[e.name] ?? "Working…");
           },
         });
         historyRef.current = result.history;
@@ -183,6 +184,7 @@ export function useAgent(args: UseAgentArgs) {
         ]);
       } finally {
         setIsThinking(false);
+        setProgress(null);
       }
     },
     [isThinking],
@@ -195,29 +197,36 @@ export function useAgent(args: UseAgentArgs) {
     receiptMapObjectsRef.current = [];
     args.registerMapObjects([]);
     setMessages([]);
+    setProgress(null);
   }, [args]);
 
-  const displayedMessages = messages.map((message) =>
-    message.role === "assistant" &&
-    message.answer &&
-    !message.answer.blocks.some((block) => block.kind === "notice")
-      ? {
-          ...message,
-          answer: verifyAnswer(
-            { receipts: message.answer.receipts },
-            {
-              evidence: evidenceRef.current,
-              mapObjects: currentMapObjects(),
-              currentPlanRevision: args.getCurrentPlanRevision(),
-              now: args.dateRef.current.toISOString(),
-            },
-          ),
-        }
-      : message,
-  );
+  const displayedMessages = messages.map((message) => {
+    if (message.role !== "assistant" || !message.answer?.receipts.length) return message;
+    const refreshed = verifyAnswer(
+      { receipts: message.answer.receipts },
+      {
+        evidence: evidenceRef.current,
+        mapObjects: currentMapObjects(),
+        currentPlanRevision: args.getCurrentPlanRevision(),
+        now: args.dateRef.current.toISOString(),
+      },
+    );
+    return {
+      ...message,
+      answer: {
+        ...refreshed,
+        // Application-owned terminal notices remain beside fresh receipts.
+        blocks: [
+          ...refreshed.blocks,
+          ...message.answer.blocks.filter((block) => block.kind === "notice"),
+        ],
+      },
+    };
+  });
   return {
     messages: displayedMessages,
     isThinking,
+    progress,
     sendMessage,
     reset,
     focusMapObject: args.focusMapObject,

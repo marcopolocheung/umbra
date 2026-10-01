@@ -1565,10 +1565,12 @@ export default function Home() {
         onClose={() => setAssistantOpen(false)}
         messages={agent.messages}
         isThinking={agent.isThinking}
+        progress={agent.progress}
         onSend={agent.sendMessage}
         onReset={agent.reset}
         onFocusMapObject={agent.focusMapObject}
         stopIds={assistantPins.map((pin) => pin.objectId ?? assistantPinId(pin.lat, pin.lng))}
+        routeIds={getRouteReceiptMapObjects().map((route) => route.id)}
       />
     </>
   );
