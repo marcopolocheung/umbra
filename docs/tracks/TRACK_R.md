@@ -24,7 +24,22 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R7a (#172), the first slice of R7 (search, place detail,
+- **Active checkpoint:** R7b (#173), PlaceDetail as a guidebook entry, stacked on R7a
+  (PR #176). The entry is an `article`: a 44px Back row, the category on a tilted ink
+  `Kicker` plate (fallback "Place"), the name as an `h2` in Grenze, then the square
+  Directions start button directly under it (inside the first snap point), then a `dl`
+  between 2px ink rules with one ruled line per fact the entry holds: Address always
+  (with a 44px "Copy address" that says Copied / Copy failed, or "No address on file"),
+  and Hours, Phone (`tel:`), Website, Rating ("9.1/10 · Foursquare") and Price only
+  when present. Then one caption names what is missing ("Not shown here: hours, phone,
+  website."), then the photo and an About `h3` when present. Removed: a fabricated "$$"
+  price fallback, four "Photo" placeholders, four no-op action buttons, an empty
+  accessibility row, empty review/description boxes and dead "People also search for"
+  chips. In the app today only name, category, address and coordinates arrive
+  (`handleSearchSelect`), so the fuller lines render only in tests; #178 carries the
+  search row's hours, rating and photo through. Shots: `docs/design/shots/r7b/`
+  (forced UI theme, because picking a place resets the time to now).
+- **R7a (open, #176):** the first slice of R7 (search, place detail,
   assistant), split into R7a search (#172), R7b PlaceDetail (#173) and R7c assistant
   leaflet (#174). The search pill is one solid panel pill with a 2px ink rule and the hard
   offset shadow (no blur or translucency); while its field has focus a solid panel band and an ink ring wrap it (owner request: no map showing through); each icon in it
@@ -159,7 +174,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R7a (this checkpoint). R7a follow-ups: #179 (fix for #171, merged into R7a), #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). Still R7: #173 (R7b), #174 (R7c). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R7b (this checkpoint, base R7a), R7a #176. R7b follow-ups: #177 (typeahead re-opens after a pick), #178 (place entry drops the row's hours/rating/photo; Directory distances freeze while panning). R7a follow-ups: #179 (fix for #171, merged into R7a), #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). Still R7: #174 (R7c). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -172,7 +187,12 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** owner review of R7a, then R7b (#173, PlaceDetail as a guidebook entry) and R7c (#174). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of R7a and R7b (merge #176 first, or #179 then #176), then R7c (#174, assistant leaflet with numbered pins). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (R7b):** 2026-10-01 on Node 24; lint (0 errors, 79 baseline warnings),
+  typecheck, 1,833 unit tests, build and e2e 11/11. design:check
+  reports the 9 findings already on main (#165), none new. Day and night 390×844 and
+  desktop shots on the fixture basemap; a real-phone look and an `npm run dev` check of
+  Copy are outstanding.
 - **Last verified (R7a):** 2026-10-01 on Node 24; lint (0 errors, 80 baseline warnings),
   typecheck, 1,825 unit tests, build and e2e 11/11 (smoke and nav-smoke; no MapTiler key,
   so smoke-live did not run). design:check reports the 9 findings already on main (#165),

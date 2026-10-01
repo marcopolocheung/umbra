@@ -1,12 +1,14 @@
 /* @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PlaceDetail from "../PlaceDetail";
 
 /**
- * The claim under test is an honesty one: a search result carries only a name,
- * category and address, so the entry must not draw a price, rating, hours or
- * photos it was never given, and must say which facts are missing.
+ * The claim under test is an honesty one: a selected place arrives with only a
+ * name, category and address (page.tsx handleSearchSelect), so the entry must
+ * not draw a price, rating, hours or photos it was never given, and must say
+ * which facts are missing. The fuller fixture below is not reachable from the
+ * app today; it pins how each line renders once those facts are passed on.
  */
 afterEach(cleanup);
 
@@ -18,17 +20,17 @@ const SEARCHED = {
 };
 
 describe("PlaceDetail", () => {
-  it("shows only what the search returned and names the missing facts", () => {
+  it("shows only the facts it was given and names the missing ones", () => {
     render(<PlaceDetail place={SEARCHED} onDirections={() => {}} onBack={() => {}} />);
 
     expect(screen.getByRole("heading", { name: "Mid-Manhattan Library" })).toBeTruthy();
     expect(screen.getByText("Library")).toBeTruthy();
     expect(screen.getByText("455 5th Ave, New York")).toBeTruthy();
-    expect(screen.getByText(/Not listed: hours, phone, website\./)).toBeTruthy();
+    expect(screen.getByText(/Not shown here: hours, phone, website\./)).toBeTruthy();
     // The old fallbacks: an invented price, placeholder photos, a rating row.
     expect(screen.queryByText("$$")).toBeNull();
     expect(screen.queryByText("Photo")).toBeNull();
-    expect(screen.queryByText("Rating")).toBeNull();
+    for (const term of ["Hours", "Phone", "Website", "Rating", "Price"]) expect(screen.queryByText(term)).toBeNull();
     expect(screen.queryByRole("img")).toBeNull();
   });
 
@@ -42,19 +44,32 @@ describe("PlaceDetail", () => {
     );
 
     expect(screen.getByText("Open until 8 PM")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "212 555 0100" }).getAttribute("href")).toBe("tel:212 555 0100");
+    expect(screen.getByRole("link", { name: "212 555 0100" }).getAttribute("href")).toBe("tel:2125550100");
     expect(screen.getByRole("link", { name: "https://example.org" })).toBeTruthy();
     expect(screen.getByText("9.1/10")).toBeTruthy();
     expect(screen.getByText("$")).toBeTruthy();
-    expect(screen.queryByText(/Not listed/)).toBeNull();
+    expect(screen.queryByText(/Not shown here/)).toBeNull();
   });
 
   it("says the address is missing rather than inventing one", () => {
     render(<PlaceDetail place={{ ...SEARCHED, address: null, category: null }} onDirections={() => {}} onBack={() => {}} />);
 
-    expect(screen.getByText("Not in the search result")).toBeTruthy();
+    expect(screen.getByText("No address on file")).toBeTruthy();
     expect(screen.getByText("Place")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy address" })).toBeNull();
+  });
+
+  it("says whether the address was copied", async () => {
+    const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<PlaceDetail place={SEARCHED} onDirections={() => {}} onBack={() => {}} />);
+    const copy = screen.getByRole("button", { name: "Copy address" });
+
+    fireEvent.click(copy);
+    await waitFor(() => expect(copy.textContent).toBe("Copied"));
+    expect(writeText).toHaveBeenCalledWith("455 5th Ave, New York");
+    fireEvent.click(copy);
+    await waitFor(() => expect(copy.textContent).toBe("Copy failed"));
   });
 
   it("wires Directions and Back", () => {
