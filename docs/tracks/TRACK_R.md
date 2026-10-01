@@ -24,7 +24,7 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R7c (#174), AssistantPanel as a numbered day-trip leaflet,
+- **Active checkpoint:** R7c (#174, PR #182), AssistantPanel as a numbered day-trip leaflet,
   stacked on R7b (PR #180). Verified place receipts receive the current map pin's
   number only while that pin is plotted; its 44px number focuses the exact map
   object. Ruled receipt lines preserve the source, age and confidence caption.
@@ -180,7 +180,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R7b #180 (base R7a), R7a #176; #179 fixes #171 and is included in the R7a branch, but remains open and unmerged. R7b follow-ups: #177 (typeahead re-opens after a pick), #178 (place entry drops the row's hours/rating/photo; Directory distances freeze while panning), #181 (selected place pin and sheet offset, photo sizing, website scheme, shot coverage). R7a follow-up: #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). R7c is active for #174. R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R7c #182 (base R7b), R7b #180 (base R7a), R7a #176; #179 fixes #171 and is included in the R7a branch, but remains open and unmerged. R7b follow-ups: #177 (typeahead re-opens after a pick), #178 (place entry drops the row's hours/rating/photo; Directory distances freeze while panning), #181 (selected place pin and sheet offset, photo sizing, website scheme, shot coverage). R7a follow-up: #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -193,7 +193,7 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** owner review of R7a #176 and R7b #180, then R7c #174 in stack order. #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of R7a #176, R7b #180 and R7c #182 in stack order. #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (R7c):** 2026-10-01 on Node 24; lint (0 errors, 79 baseline warnings),
   typecheck, 1,834 unit tests, build and e2e 11/11. design:check reports the 9
   findings already on main (#165), none new. The `interface-reviewer`,
