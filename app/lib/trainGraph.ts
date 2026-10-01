@@ -168,7 +168,8 @@ export type TrainSegment = TrainRouteSegment | TransferSegment;
 
 export interface TrainDrawData {
   polylines: { coords: [number, number][]; color: string; line: string }[];
-  stops: { id: string; lat: number; lon: number; name: string }[];
+  /** In ride order; `color` is the line that first serves the stop, for its map ring. */
+  stops: { id: string; lat: number; lon: number; name: string; color: string }[];
   transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
 }
 
@@ -1391,17 +1392,18 @@ export function buildTrainDrawData(
 
   for (const seg of segments) {
     if (seg.type === "train") {
+      const color = lineColors.get(seg.line) ?? "#888888";
       polylines.push({
         // The sliced track where the edge published one, else the chord.
         coords: seg.geometry ?? [
           [seg.from.lon, seg.from.lat],
           [seg.to.lon, seg.to.lat],
         ],
-        color: lineColors.get(seg.line) ?? "#888888",
+        color,
         line: seg.line,
       });
-      stops.push({ id: seg.from.id, lat: seg.from.lat, lon: seg.from.lon, name: seg.from.name });
-      stops.push({ id: seg.to.id, lat: seg.to.lat, lon: seg.to.lon, name: seg.to.name });
+      stops.push({ id: seg.from.id, lat: seg.from.lat, lon: seg.from.lon, name: seg.from.name, color });
+      stops.push({ id: seg.to.id, lat: seg.to.lat, lon: seg.to.lon, name: seg.to.name, color });
     }
 
     if (seg.type === "transfer") {

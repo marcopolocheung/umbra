@@ -7,6 +7,7 @@ type LayerOrderMap = Pick<maplibregl.Map, "getLayersOrder" | "moveLayer">;
 const NAVIGATION_LINES = [
   "nav-route-casing",
   "nav-route-line",
+  "train-route-lines-casing",
   "train-route-lines-layer",
   "mrt-entrance-connector-casing",
   "mrt-entrance-connector-line",

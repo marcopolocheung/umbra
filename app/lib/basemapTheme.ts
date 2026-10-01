@@ -205,8 +205,9 @@ export function mapColor(theme: UiTheme, role: MapRole): string {
 }
 
 /**
- * Umbra's own GL layers and the role each colour property takes. Transit lines keep
- * their feature colour — it is the line's identity — so they are not listed.
+ * Umbra's own GL layers and the role each colour property takes. Transit lines and
+ * the rings of their stops keep their feature colour — it is the line's identity —
+ * so they are not listed.
  */
 const OVERLAY_ROLES: ReadonlyArray<[layerId: string, property: string, role: MapRole]> = [
   ["nav-route-casing", "line-color", "casing"],
@@ -216,8 +217,8 @@ const OVERLAY_ROLES: ReadonlyArray<[layerId: string, property: string, role: Map
   ["sketch-preview-layer", "line-color", "route"],
   ["mrt-entrance-connector-casing", "line-color", "casing"],
   ["mrt-entrance-connector-line", "line-color", "route"],
+  ["train-route-lines-casing", "line-color", "casing"],
   ["train-route-stops-layer", "circle-color", "casing"],
-  ["train-route-stops-layer", "circle-stroke-color", "muted"],
   ["train-route-transfers-outer", "circle-color", "casing"],
   ["train-route-transfers-outer", "circle-stroke-color", "route"],
   ["train-route-transfers-inner", "circle-color", "route"],

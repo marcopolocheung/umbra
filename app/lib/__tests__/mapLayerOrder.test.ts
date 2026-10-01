@@ -46,6 +46,7 @@ describe("map layer order", () => {
   it("restores order after late transit and connector layers arrive", () => {
     const fake = fakeMap(["land", "local-shadow-layer", "nav-route-casing", "nav-route-line", ...symbols]);
     fake.add("train-route-lines-layer");
+    fake.add("train-route-lines-casing");
     fake.add("train-route-stops-layer");
     fake.add("train-route-transfers-outer");
     fake.add("train-route-transfers-inner");
@@ -55,7 +56,7 @@ describe("map layer order", () => {
     reconcileMapLayerOrder(fake.map, symbols, "local-shadow-layer");
     expect(fake.order).toEqual([
       "land", "local-shadow-layer", "nav-route-casing", "nav-route-line",
-      "train-route-lines-layer", "mrt-entrance-connector-casing", "mrt-entrance-connector-line",
+      "train-route-lines-casing", "train-route-lines-layer", "mrt-entrance-connector-casing", "mrt-entrance-connector-line",
       ...symbols, "train-route-stops-layer", "train-route-transfers-outer", "train-route-transfers-inner",
     ]);
   });

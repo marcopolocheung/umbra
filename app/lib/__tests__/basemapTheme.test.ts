@@ -253,6 +253,14 @@ describe("map overlays (R4b)", () => {
     }
   });
 
+  it("leaves transit lines and their stop rings in the line's own colour", () => {
+    for (const theme of THEMES) {
+      const painted = overlayPaint(theme).map(([id, property]) => `${id} ${property}`);
+      expect(painted).not.toContain("train-route-stops-layer circle-stroke-color");
+      expect(painted.some((p) => p.startsWith("train-route-lines-layer"))).toBe(false);
+    }
+  });
+
   it("recolours the overlay layers that exist and skips the rest", () => {
     const calls: string[] = [];
     const map = {

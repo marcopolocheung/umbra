@@ -14,7 +14,9 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { mapPinElement } from "./mapPins";
+import { mapPinElement, stopLabelElement } from "./mapPins";
+import { attachLineCoin } from "./lineCoinMarker";
+import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
 import { DebugFieldLayer } from "../lib/shadowV2Debug/DebugFieldLayer";
 import { isShadowV2DebugEnabled, RemoteTileService } from "../lib/shadowV2Debug/RemoteTileService";
@@ -302,6 +304,10 @@ export default function MapView({
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
   const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
   const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
+  const lineCoinRefs       = useRef<{ remove: () => void }[]>([]);
+  const stopLabelRefs      = useRef<maplibregl.Marker[]>([]);
+  // Where each ride's coin last rested (0–1 along it), so a recalculation keeps it put.
+  const lineCoinFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
   const assistantPinRefs      = useRef<maplibregl.Marker[]>([]);
   const userLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -804,6 +810,10 @@ export default function MapView({
       markerBRef.current?.remove();     markerBRef.current = null;
       markerBoardRef.current?.remove(); markerBoardRef.current = null;
       markerAlightRef.current?.remove();markerAlightRef.current = null;
+      for (const coin of lineCoinRefs.current) coin.remove();
+      lineCoinRefs.current = [];
+      for (const label of stopLabelRefs.current) label.remove();
+      stopLabelRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1263,6 +1273,7 @@ export default function MapView({
     if (!map) return;
 
     const LAYERS = [
+      "train-route-lines-casing",
       "train-route-lines-layer",
       "train-route-stops-layer",
       "train-route-transfers-inner",
@@ -1275,7 +1286,11 @@ export default function MapView({
     ] as const;
 
     const apply = () => {
+      for (const coin of lineCoinRefs.current) coin.remove();
+      lineCoinRefs.current = [];
       if (!navTrainDrawData) {
+        for (const label of stopLabelRefs.current) label.remove();
+        stopLabelRefs.current = [];
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
         for (const s of SOURCES) if (map.getSource(s)) map.removeSource(s);
@@ -1284,6 +1299,45 @@ export default function MapView({
 
       const { polylines, stops, transfers } = navTrainDrawData;
       const transferIds = new Set(transfers.map((t) => t.at.id));
+
+      // Each ride's line identifier as a draggable coin threaded on its track (#149):
+      // DOM markers, so the shadow sampler's canvas readback never sees them.
+      // Remembered per ride — its line and end stations — so the same trip
+      // recalculated at another time keeps its place, and a new trip starts fresh.
+      // Board and exit names sit beside the ride, never on it: off along its
+      // perpendicular, on the side that points down and right, since entrance pins
+      // grow upward from their doors. Added before the coins so a coin draws above.
+      for (const label of stopLabelRefs.current) label.remove();
+      stopLabelRefs.current = [0, stops.length - 1]
+        .filter((i, n, all) => stops[i] && all.indexOf(i) === n)
+        .map((i) => {
+          const st = stops[i];
+          const next = stops[i === 0 ? 1 : i - 1] ?? st;
+          const a = map.project([st.lon, st.lat]);
+          const b = map.project([next.lon, next.lat]);
+          const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          let [px, py] = [-(b.y - a.y) / len, (b.x - a.x) / len];
+          if (px + py < 0) [px, py] = [-px, -py];
+          const anchor = py > 0.38 ? (px > 0.38 ? "top-left" : px < -0.38 ? "top-right" : "top") : "left";
+          return new maplibregl.Marker({ element: stopLabelElement(st.name), anchor, offset: [px * 14, py * 14] })
+            .setLngLat([st.lon, st.lat])
+            .addTo(map);
+        });
+
+      // Each stop's drawn radius, ring included (stop and transfer layers below), so the
+      // coin's weld is cut away to exactly the dot it would otherwise paint over.
+      const stopPoints = stops.map((st, i) => ({
+        at: [st.lon, st.lat] as [number, number],
+        radius: transferIds.has(st.id) ? 15 : i === 0 || i === stops.length - 1 ? 10 : 8,
+      }));
+      lineCoinRefs.current = lineBadgePlacements(polylines).map((placement) => {
+        const key = `${placement.line}:${placement.coords[0]}:${placement.coords[placement.coords.length - 1]}`;
+        return attachLineCoin(map, placement, {
+          stops: stopPoints,
+          fraction: lineCoinFractions.current.get(key),
+          onRest: (fraction) => lineCoinFractions.current.set(key, fraction),
+        });
+      });
 
       // Line polylines — one color per train line segment
       const linesFC: GeoJSON.FeatureCollection = {
@@ -1298,6 +1352,16 @@ export default function MapView({
         (map.getSource("train-route-lines") as maplibregl.GeoJSONSource).setData(linesFC);
       } else if (polylines.length > 0) {
         map.addSource("train-route-lines", { type: "geojson", data: linesFC });
+        // The ride on a paper casing (warm black at night), like the walking route: the
+        // casing the line's coin is welded into continues the whole length of the ride.
+        map.addLayer({
+          id: "train-route-lines-casing",
+          type: "line",
+          source: "train-route-lines",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": mapColor(basemapThemeRef.current, "casing"), "line-width": 8 },
+        });
+        // Opaque, so the coin's weld (drawn in the same colour above it) meets it seamlessly.
         map.addLayer({
           id: "train-route-lines-layer",
           type: "line",
@@ -1306,17 +1370,20 @@ export default function MapView({
           paint: {
             "line-color": ["get", "color"],
             "line-width": 5,
-            "line-opacity": 0.9,
           },
         });
       }
 
-      // Station stop dots (exclude transfer stations — they get distinct markers)
+      // Station stop dots, ringed in the colour of the line that serves them so the
+      // stops can be counted along the ride (transfer stations get their own marker).
+      // The board and exit stops are a size up, and named beside the dot.
+      const boardId = stops[0]?.id;
+      const exitId = stops[stops.length - 1]?.id;
       const stopFeatures = stops
         .filter((s) => !transferIds.has(s.id))
         .map((s) => ({
           type: "Feature" as const,
-          properties: { name: s.name },
+          properties: { name: s.name, color: s.color, end: s.id === boardId || s.id === exitId },
           geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
         }));
       const stopsFC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: stopFeatures };
@@ -1329,10 +1396,11 @@ export default function MapView({
           type: "circle",
           source: "train-route-stops",
           paint: {
-            "circle-radius": 6,
+            "circle-radius": ["case", ["get", "end"], 7, 5],
             "circle-color": mapColor(basemapThemeRef.current, "casing"),
-            "circle-stroke-width": 2,
-            "circle-stroke-color": mapColor(basemapThemeRef.current, "muted"),
+            "circle-stroke-width": 3,
+            // The line's identity, like the ride itself: not re-themed (basemapTheme OVERLAY_ROLES).
+            "circle-stroke-color": ["get", "color"],
           },
         });
       }

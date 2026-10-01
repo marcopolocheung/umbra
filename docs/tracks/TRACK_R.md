@@ -24,22 +24,43 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R5b (#143) — directions chrome and navigation status, stacked on
-  R5a (#148); both await owner review. R5a is the cards (`RouteCard`, `FloatingRouteCards`,
-  the stack in `DirectionsPanel`); R5b is `DirectionsPanel`'s planning chrome and
-  `NavigationStatusPanel`. R5b adds `app/components/ui/Segmented.tsx` (`.umbra-segmented*`:
-  square, 2px ink rule, selected = full ink inversion, ≥44px rows, inset focus, disabled on
-  the 75% role with a strike), used by Walk/Transit, Sun/Rain, travel mode, wind source and
-  Search/Draw; the Transit-off reason is a visible caption (#126's directions half). Every
-  directions control is ≥44px; Find and ARRIVED share `.umbra-start-button` (uppercase).
-  `NavigationStatusPanel` is a ticket: the route on a kicker plate, ruled cells that follow
-  the card's rules exactly (`routeDurationLabel`; shade from `routeShadowShare`, "Unknown"
-  where the card withholds it, "After sunset", a rain card only for a rain-priced route),
-  and one itinerary replacing the leg list and the start/destination block (owner request,
-  modelled on a transit app's trip view): start pin, round dots on foot through each walk
-  step, the line's bullet heading a solid bar in its colour that ends in a ring at the exit
-  stop, dots on to the destination pin; the ride step names its wait so steps sum to Time.
-- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139) and R4b (#141) merged.
+- **Active checkpoint:** #149 — transit line coins on the map, awaiting owner review.
+  Owner's final pick, after four rounds (studies: swelling, shields, the coin, then six
+  "line weld" studies in the artifact "Umbra Line Welds" with a research report): the
+  **pressure bulb with a keyline**. The coin (31px, the line's published colour) is welded
+  into its 5px line: one outline runs along the line's edges and turns into the coin through
+  concave CAD fillets (`lib/lineBadges.weldOutline`), 4px at rest, swelling to 8 when gripped
+  and drawn out toward the pull, up to 12 ahead and 3 behind (`bulbFillets`); a paper casing
+  (warm black at night, `--color-map-casing`) strokes only the weld's two long edges and
+  continues as a new GL casing under the whole ride (`train-route-lines-casing`, themed and
+  ordered like the walking route's), so line and coin read as one cut-out shape. The ride is
+  now opaque, so the weld meets it without a colour step. `components/lineCoinMarker.ts`
+  redraws the weld each frame in the line's on-screen direction (rotation and tilt
+  included); the marker is a zero-size anchor on the line with `subpixelPositioning` (no
+  half-pixel seam) and a 44px grip riding on the coin. Because the map's stops and line lie
+  under any DOM overlay, the weld is masked to the ride as drawn on screen (`rideWindow`, a
+  wide band cut square at the ride's real ends, tilt included) and away from this ride's
+  nearby stops (their drawn radius from `MapView`); the coin's disc stays unmasked so a
+  dragged coin passes in front of a stop. Scale is measured on screen at the coin, and a
+  resting coin keeps clear of sharp turns (`sharpTurns`) as of stops, since the weld is laid
+  straight along the line. Motion is unchanged from the coin round except friction: the
+  time slider's 0.009/ms plus 5% (`COIN_FRICTION` 0.00945, owner's tuning). Stops are ringed
+  in their line's colour, board/exit a size up and named beside the ride; a resting coin slides
+  clear of any stop; the terminus is not shown. DOM only for coin and names, never the canvas
+  (#5); the stop rings and the new casing are canvas paint. The transit smoke test drags the
+  coin off the line and proves by readback that it slid and still sits on the track.
+- **R5 (merged):** R5a (#148) and R5b (#152). R5b adds `app/components/ui/Segmented.tsx`
+  (`.umbra-segmented*`: square, 2px ink rule, selected = full ink inversion, ≥44px rows,
+  inset focus, disabled on the 75% role with a strike), used by Walk/Transit, Sun/Rain,
+  travel mode, wind source and Search/Draw; the Transit-off reason is a visible caption
+  (#126's directions half). Every directions control is ≥44px; Find and ARRIVED share
+  `.umbra-start-button` (uppercase). `NavigationStatusPanel` is a ticket: the route on a
+  kicker plate, ruled cells that follow the card's rules exactly, and one itinerary (owner
+  request): start pin, round dots on foot through each walk step, the line's bullet heading
+  a solid bar in its colour that ends in a ring at the exit stop, dots on to the destination
+  pin; the ride step names its wait so steps sum to Time.
+- **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139), R4b (#141), R5a (#148) and
+  R5b (#152) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
   `Plate` now takes `button`/`a` (#128; a focused ink plate also takes the page-ink outline,
@@ -74,9 +95,9 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R5a — #148 (fixes #142, #128); R5b — #152, stacked on #148 (fixes #143). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** #153 (fixes #149, transit line coins on the map). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
-  SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); filed elsewhere from R5a: #144, #145 (E), #146 (A).
+  SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
   `docs/design/language.md` is binding. The route casing is paper by day, not dark
   (owner, R4b; `language.md` amended). Overlays follow the basemap theme, popups and
@@ -87,8 +108,10 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** #149 (transit line badges on the map) after R5a/R5b review, then R6 —
-  timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,785 unit tests,
+  build, design:check and e2e 16/16. The weld was checked on the live day and night maps at rest
+  and mid-pull; a real-phone feel check is outstanding.
 - **Last verified (R5b):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,753 unit
   tests (one run hit the #140 `useNavigation` A4b flake; it passes alone and on re-run),
   build, design:check and e2e 16/16. Shots in `docs/design/shots/r5b/`.
