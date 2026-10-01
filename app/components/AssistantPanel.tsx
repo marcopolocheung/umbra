@@ -10,6 +10,8 @@ interface AssistantPanelProps {
   onSend: (text: string) => void;
   onReset: () => void;
   onFocusMapObject: (objectId: string) => void;
+  /** Current map pin identities in their plotted order. */
+  stopIds: string[];
 }
 
 const SUGGESTIONS = [
@@ -17,15 +19,10 @@ const SUGGESTIONS = [
   "Where's a shady spot to sit at 2pm?",
   "Plan a 3-stop day trip that stays out of the sun",
 ];
+const focusClass = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
 
 export default function AssistantPanel({
-  open,
-  onClose,
-  messages,
-  isThinking,
-  onSend,
-  onReset,
-  onFocusMapObject,
+  open, onClose, messages, isThinking, onSend, onReset, onFocusMapObject, stopIds,
 }: AssistantPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,217 +42,133 @@ export default function AssistantPanel({
   }
 
   return (
-    <div
-      // `umbra-rise-in` (globals.css) plays only under prefers-reduced-motion:
-      // no-preference, and rises from the blob's bottom-right corner.
-      className="umbra-rise-in fixed z-50 flex flex-col overflow-hidden rounded-2xl border shadow-2xl"
+    <section
+      aria-label="Umbra Assistant"
+      className="umbra-rise-in fixed z-50 flex flex-col overflow-hidden border-2 shadow-hard-2"
       style={{
-        bottom: "1rem",
-        right: "1rem",
-        width: "min(380px, calc(100vw - 2rem))",
-        height: "min(560px, calc(100vh - 2rem))",
-        background: "var(--color-panel)",
-        borderColor: "var(--color-rule)",
-        fontFamily: "var(--font-sans)",
+        bottom: "1rem", right: "1rem", width: "min(380px, calc(100vw - 2rem))",
+        height: "min(560px, calc(100vh - 2rem))", background: "var(--color-panel)",
+        borderColor: "var(--color-ink)", color: "var(--color-ink)", fontFamily: "var(--font-sans)",
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center gap-2 px-4 py-3 border-b"
-        style={{ borderColor: "var(--color-rule)" }}
+      <header
+        className="flex min-h-14 items-center gap-1 border-b-2 px-2"
+        style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", borderColor: "var(--color-panel)" }}
       >
-        <span
-          className="material-symbols-outlined text-ink"
-          style={{ fontVariationSettings: "'FILL' 1" }}
-        >
-          wb_sunny
-        </span>
-        <div className="flex-1">
-          <div className="text-sm font-bold" style={{ color: "var(--color-ink)" }}>
-            Umbra Assistant
-          </div>
-          <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
-            Plans shadow-aware outings
-          </div>
+        <div className="min-w-0 flex-1 px-2">
+          <h2 className="font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}>Umbra Assistant</h2>
+          <p className="truncate" style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }}>Plans shadow-aware outings</p>
         </div>
-        <button
-          type="button"
-          onClick={onReset}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
-          title="New conversation"
-          style={{ color: "var(--color-ink-muted)" }}
-        >
-          <span className="material-symbols-outlined text-lg">refresh</span>
+        <button type="button" onClick={onReset} aria-label="New conversation" title="New conversation" className={`flex h-11 w-11 shrink-0 items-center justify-center ${focusClass}`}>
+          <span className="material-symbols-outlined text-xl" aria-hidden="true">refresh</span>
         </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
-          title="Close"
-          style={{ color: "var(--color-ink-muted)" }}
-        >
-          <span className="material-symbols-outlined text-lg">close</span>
+        <button type="button" onClick={onClose} aria-label="Close assistant" title="Close" className={`flex h-11 w-11 shrink-0 items-center justify-center ${focusClass}`}>
+          <span className="material-symbols-outlined text-xl" aria-hidden="true">close</span>
         </button>
-      </div>
+      </header>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
         {messages.length === 0 && (
-          <div className="flex flex-col gap-2 mt-2">
-            <p className="text-xs px-1" style={{ color: "var(--color-ink-muted)" }}>
-              Ask me to plan around the sun. I can read the live shadows, check whether a spot is
-              shadowed at a given hour, and draw shadow-aware routes.
-            </p>
-            {SUGGESTIONS.map((s) => (
-              <button
-                type="button"
-                key={s}
-                onClick={() => onSend(s)}
-                className="text-left text-xs px-3 py-2 rounded-xl border hover:bg-ground transition-colors"
-                style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
-              >
-                {s}
-              </button>
-            ))}
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}>Field notes</p>
+              <p className="font-display text-2xl font-semibold leading-tight">A little less sun.</p>
+              <p className="mt-2 text-sm" style={{ color: "var(--color-ink-muted)" }}>
+                Ask me to plan around the sun. I can read the live shadows, check whether a spot is
+                shadowed at a given hour, and draw shadow-aware routes.
+              </p>
+            </div>
+            <div className="border-y-2" style={{ borderColor: "var(--color-ink)" }}>
+              {SUGGESTIONS.map((suggestion) => (
+                <button type="button" key={suggestion} onClick={() => onSend(suggestion)}
+                  className={`flex min-h-11 w-full items-center border-b px-2 py-2 text-left text-sm last:border-b-0 hover:bg-ground ${focusClass}`}
+                  style={{ borderColor: "var(--color-rule)" }}>
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {messages.map((m) => {
-          if (m.role === "tool") {
-            return (
-              <div key={m.id} className="flex items-center gap-2 px-2 py-1 self-start">
-                <span
-                  className="material-symbols-outlined text-sm animate-pulse"
-                  style={{ color: "var(--color-ink-muted)" }}
-                >
-                  bolt
-                </span>
-                <span
-                  className="text-[11px] italic"
-                  style={{ color: "var(--color-ink-muted)" }}
-                >
-                  {m.text}
-                </span>
-              </div>
-            );
-          }
-          const isUser = m.role === "user";
+        {messages.map((message) => {
+          if (message.role === "tool") return (
+            <p key={message.id} className="border-l-2 px-2 py-1" style={{ borderColor: "var(--color-ink)", color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }}>
+              {message.text}
+            </p>
+          );
+          if (message.role === "user") return (
+            <p key={message.id} className="max-w-[88%] self-end whitespace-pre-wrap break-words border-2 px-3 py-2 text-sm" style={{ background: "var(--color-ink)", borderColor: "var(--color-ink)", color: "var(--color-on-ink)" }}>
+              {message.text}
+            </p>
+          );
           return (
-            <div
-              key={m.id}
-              className="max-w-[88%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words"
-              style={{
-                alignSelf: isUser ? "flex-end" : "flex-start",
-                background: isUser
-                  ? "var(--color-ink)"
-                  : "var(--color-ground)",
-                color: isUser ? "var(--color-on-ink)" : "var(--color-ink)",
-                borderBottomRightRadius: isUser ? 4 : undefined,
-                borderBottomLeftRadius: isUser ? undefined : 4,
-              }}
-            >
-              {m.answer ? (
-                <div className="flex flex-col gap-1.5">
-                  {m.answer.blocks.map((block) => {
-                    if (block.kind === "unknown")
-                      return (
-                        <span key={`unknown:${block.claimKind}`}>
-                          {unknownLabel(block.claimKind)}
-                        </span>
-                      );
-                    if (block.kind === "notice")
-                      return <span key={`notice:${block.code}`}>{noticeLabel(block)}</span>;
-                    const receipt = m.answer!.receipts.find(
-                      (candidate) => candidate.claimId === block.claimId,
+            <article key={message.id} className="w-full break-words">
+              {message.answer ? (
+                <div className="border-y-2" style={{ borderColor: "var(--color-ink)" }}>
+                  {message.answer.blocks.map((block) => {
+                    if (block.kind === "unknown") return (
+                      <p key={`unknown:${block.claimKind}`} className="border-b px-2 py-3 text-sm last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>{unknownLabel(block.claimKind)}</p>
                     );
+                    if (block.kind === "notice") return (
+                      <p key={`notice:${block.code}`} className="border-b px-2 py-3 text-sm last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>{noticeLabel(block)}</p>
+                    );
+                    const receipt = message.answer!.receipts.find((candidate) => candidate.claimId === block.claimId);
                     if (!receipt) return null;
                     const mapObjectId = "mapObjectId" in receipt ? receipt.mapObjectId : undefined;
+                    const stopIndex = receipt.kind === "place" && receipt.verification === "verified" && mapObjectId ? stopIds.indexOf(mapObjectId) : -1;
+                    const canFocus = Boolean(mapObjectId && receipt.verification === "verified" && (receipt.kind !== "place" || stopIndex >= 0));
+                    const label = receiptLabel(receipt);
+                    const detail = receiptDetail(receipt);
                     return (
-                      <div
-                        key={receipt.claimId}
-                        className="rounded-lg border px-2 py-1.5"
-                        style={{ borderColor: "var(--color-rule)" }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (mapObjectId && receipt.verification === "verified")
+                      <div key={receipt.claimId} className="border-b py-2 last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>
+                        <div className="flex items-center gap-2">
+                          {stopIndex >= 0 && mapObjectId && (
+                            <button type="button" onClick={() => {
                               onFocusMapObject(mapObjectId);
-                          }}
-                          disabled={!mapObjectId || receipt.verification !== "verified"}
-                          className="w-full text-left text-xs font-semibold disabled:cursor-default"
-                          aria-label={`${receiptLabel(receipt)}. ${receiptDetail(receipt)}`}
-                        >
-                          {receiptLabel(receipt)}
-                        </button>
-                        <p
-                          className="mt-0.5 text-[11px]"
-                          style={{ color: "var(--color-ink-muted)" }}
-                        >
-                          {receiptDetail(receipt)}
-                        </p>
+                              if (window.innerWidth < 640) onClose();
+                            }}
+                              aria-label={`Focus stop ${stopIndex + 1} on map: ${label}`}
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center ${focusClass}`}>
+                              <span className="flex items-center justify-center border-2 text-[11px] font-extrabold tabular-nums"
+                                style={{ width: 26, height: 26, borderRadius: "var(--radius-pin)", transform: "rotate(var(--angle-marker))", background: "var(--color-map-route)", borderColor: "var(--color-map-casing)", color: "var(--color-map-casing)", fontFamily: "var(--font-numeric)" }}>
+                                <span style={{ transform: "rotate(var(--angle-marker-inner))" }}>{stopIndex + 1}</span>
+                              </span>
+                            </button>
+                          )}
+                          {canFocus && stopIndex < 0 ? (
+                            <button type="button" onClick={() => onFocusMapObject(mapObjectId!)}
+                              className={`min-h-11 flex-1 px-2 text-left text-sm font-semibold ${focusClass}`}
+                              aria-label={`${label}. ${detail}`}>{label}</button>
+                          ) : (
+                            <p className="min-w-0 flex-1 px-2 text-sm font-semibold">{label}</p>
+                          )}
+                        </div>
+                        <p className="text-[11px]" style={{ color: "var(--color-ink-muted)", paddingLeft: stopIndex >= 0 ? 60 : 8, paddingRight: 8 }}>{detail}</p>
                       </div>
                     );
                   })}
                 </div>
-              ) : (
-                m.text
-              )}
-            </div>
+              ) : <p className="whitespace-pre-wrap text-sm">{message.text}</p>}
+            </article>
           );
         })}
-
-        {isThinking && (
-          <div className="flex items-center gap-1.5 px-3 py-2 self-start">
-            <span
-              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
-              style={{ animationDelay: "0ms" }}
-            />
-            <span
-              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
-              style={{ animationDelay: "120ms" }}
-            />
-            <span
-              className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce"
-              style={{ animationDelay: "240ms" }}
-            />
-          </div>
-        )}
+        {isThinking && <p className="px-2 py-1" style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)" }}>Working…</p>}
       </div>
 
-      {/* Input */}
-      <div className="p-2 border-t" style={{ borderColor: "var(--color-rule)" }}>
+      <div className="border-t-2 p-2" style={{ borderColor: "var(--color-ink)" }}>
         <div className="flex items-end gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={1}
-            placeholder="Ask about shadow, routes, or a day trip…"
-            className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm focus:outline-none"
-            style={{
-              borderColor: "var(--color-rule)",
-              color: "var(--color-ink)",
-              maxHeight: 96,
-            }}
-          />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isThinking || !input.trim()}
-            className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors disabled:opacity-40"
-            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
-            title="Send"
-          >
-            <span className="material-symbols-outlined text-lg">send</span>
+          <textarea value={input} onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }}
+            rows={1} aria-label="Message to Umbra Assistant" placeholder="Ask about shadow, routes, or a day trip…"
+            className={`min-h-11 flex-1 resize-none border-2 px-3 py-2 text-sm ${focusClass}`}
+            style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", color: "var(--color-ink)", maxHeight: 96 }} />
+          <button type="button" onClick={submit} disabled={isThinking || !input.trim()} aria-label="Send message" title="Send"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40 ${focusClass}`}
+            style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}>
+            <span className="material-symbols-outlined text-xl" aria-hidden="true">send</span>
           </button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
