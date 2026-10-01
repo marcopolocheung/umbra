@@ -492,7 +492,7 @@ body {
     border-radius: var(--radius-sm);
     background: var(--color-ink);
     color: var(--color-on-ink);
-    box-shadow: var(--shadow-hard-2);
+    box-shadow: 4px 4px 0 var(--color-on-ink), 4px 4px 0 2px var(--color-ink);
     font-family: var(--font-label);
     font-weight: 800;
     font-size: var(--text-small);
