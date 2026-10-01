@@ -1,6 +1,7 @@
-import { useRef, useEffect, useCallback, memo } from "react";
+import { useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { toMapLocal } from "../lib/timezone";
 import { sunriseSunset } from "../lib/sunTimes";
+import { altitudeAt, nightSpans, SUN_PATH_STEP_MIN, sunAltitudeTrace } from "../lib/sunPath";
 
 interface Props {
   minutes: number; // 0–1439
@@ -58,6 +59,15 @@ function fmtMin(m: number): string {
   return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
 }
 
+// Timetable ruler geometry (R6a). Ticks stand on a 2px ink rule; hour labels
+// sit under it, so the needle — which stops at the rule — never covers one. The
+// band above the rule is the sun-path diagram: 0° on the rule, 90° near the top.
+const RULER_H = 44;
+const RULE_Y = 28;
+const RULE_W = 2;
+const LABEL_Y = RULE_Y + RULE_W + 2;
+const PX_PER_DEG = (RULE_Y - 4) / 90;
+
 // Static tick data — computed once at module load, never changes
 const TICKS = (() => {
   const out: { x: number; h: number; label?: string }[] = [];
@@ -68,7 +78,7 @@ const TICKS = (() => {
     const isQuarter = !isHour && min % 15 === 0;
     out.push({
       x: m * PX_PER_MIN,
-      h: isHour ? 20 : isQuarter ? 12 : 5,
+      h: isHour ? 10 : isQuarter ? 6 : 3,
       label: isHour && hr < 24 ? hourLabel(hr) : undefined,
     });
   }
@@ -83,35 +93,40 @@ const TOTAL_PX = 1440 * PX_PER_MIN;
 const Ruler = memo(function Ruler() {
   return (
     <>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: RULE_Y,
+          height: RULE_W,
+          backgroundColor: "var(--color-ink)",
+        }}
+      />
       {TICKS.map(({ x, h, label }) => (
-        <div key={x} style={{ position: "absolute", left: x, bottom: 0, top: 0 }}>
+        <div key={x} style={{ position: "absolute", left: x, top: 0, bottom: 0 }}>
           <div
             style={{
               position: "absolute",
-              bottom: 0,
+              top: RULE_Y - h,
               left: 0,
-              width: 1,
+              width: label ? 2 : 1,
               height: h,
-              backgroundColor: label
-                ? "color-mix(in srgb, var(--color-ink) 35%, transparent)"
-                : h === 12
-                ? "color-mix(in srgb, var(--color-ink) 18%, transparent)"
-                : "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+              backgroundColor: label ? "var(--color-ink)" : "var(--color-ink-muted)",
             }}
           />
           {label && (
             <span
               style={{
                 position: "absolute",
-                bottom: h + 4,
-                left: 0,
+                top: LABEL_Y,
+                left: 1,
                 transform: "translateX(-50%)",
                 whiteSpace: "nowrap",
                 fontSize: 11,
                 lineHeight: 1,
                 color: "var(--color-ink-muted)",
-                fontFamily: "var(--font-sans)",
-                fontVariantNumeric: "tabular-nums",
+                fontFamily: "var(--font-mono)",
                 userSelect: "none",
                 pointerEvents: "none",
               }}
@@ -125,36 +140,28 @@ const Ruler = memo(function Ruler() {
   );
 });
 
-// ---------------------------------------------------------------------------
-// Sun-arc glyph (U4)
-// ---------------------------------------------------------------------------
-
-// The ruler's height (h-11). The arc's horizon sits at its midline and the
-// apex just under the sunrise/sunset labels, so neither collides with the
-// hour ticks at the bottom.
-const RULER_H = 44;
-const HORIZON_Y = 22;
-const APEX_Y = 7;
-
-/**
- * The sun's height on the arc at `minutes`, in ruler pixels — the SunCalc
- * pattern: a thin sun-path curve over the horizon with the sun dot at the
- * slider's time. The curve is a stylised path, not an ephemeris: the glyph's
- * job is "morning vs afternoon" at a glance.
- */
-export function sunArcPoint(
-  minutes: number,
-  riseMin: number,
-  setMin: number
-): { x: number; y: number } | null {
-  if (minutes < riseMin || minutes > setMin) return null; // sun below the horizon
-  const u = (minutes - riseMin) / (setMin - riseMin);
-  // The parabola through (rise, horizon), (midday, apex), (set, horizon) — the
-  // same curve the quadratic Bézier path below draws.
-  return {
-    x: minutes * PX_PER_MIN,
-    y: HORIZON_Y - 4 * (HORIZON_Y - APEX_Y) * u * (1 - u),
-  };
+/** A sunrise/sunset time, printed on the night side of the horizon crossing. */
+function SunEventLabel({ minutes, side, text }: { minutes: number; side: "left" | "right"; text: string }) {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: 2,
+        ...(side === "left"
+          ? { right: TOTAL_PX - minutes * PX_PER_MIN + 4 }
+          : { left: minutes * PX_PER_MIN + 4 }),
+        whiteSpace: "nowrap",
+        fontSize: 11,
+        lineHeight: 1,
+        color: "var(--color-sun)",
+        fontFamily: "var(--font-mono)",
+        userSelect: "none",
+        pointerEvents: "none",
+      }}
+    >
+      {text}
+    </span>
+  );
 }
 
 const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, latDeg, lngDeg, utcOffsetMin: utcOffsetMinProp }: Props) {
@@ -165,6 +172,17 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
       : null;
   const sunriseMin = sunRiseSet?.riseMin;
   const sunsetMin  = sunRiseSet?.setMin;
+  // Re-sampled per map-local day and place, never per drag frame.
+  const local = date ? toMapLocal(date, effectiveOffset) : null;
+  const dayKey = local ? `${local.year}-${local.month}-${local.day}` : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dayKey stands in for date
+  const trace = useMemo(
+    () =>
+      date && latDeg !== undefined && lngDeg !== undefined
+        ? sunAltitudeTrace(date, latDeg, lngDeg, effectiveOffset)
+        : null,
+    [dayKey, latDeg, lngDeg, effectiveOffset],
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -308,12 +326,11 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
       startInertia(lastVelocity.current);
   }, [onChange, startInertia]);
 
-  const hasRise = sunriseMin !== undefined;
-  const hasSet  = sunsetMin  !== undefined;
-  const sunDot =
-    hasRise && hasSet
-      ? sunArcPoint(minutes, sunriseMin!, sunsetMin!)
-      : null;
+  const altitude = trace ? altitudeAt(trace, minutes) : 0;
+  const sunDot = altitude > 0 ? { x: minutes * PX_PER_MIN, y: RULE_Y - altitude * PX_PER_DEG } : null;
+  // Orange is the sun (D1): the needle is sun-signal while the sun is up at the
+  // selected time and plain ink once it is down.
+  const needleColor = sunDot ? "var(--color-sun-signal)" : "var(--color-ink)";
 
   return (
     <div
@@ -337,200 +354,75 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
         className="absolute inset-y-0"
         style={{ width: TOTAL_PX, willChange: "transform" }}
       >
-        {/* ── Night before sunrise ─────────────────────────────────────── */}
-        {hasRise && (
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              width: sunriseMin! * PX_PER_MIN,
-              top: 0, bottom: 0,
-              backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-            }}
-          />
-        )}
-
-        {/* ── Daytime gradient: dawn warm → pale noon → dusk warm */}
-        {hasRise && hasSet && (
-          <div
-            style={{
-              position: "absolute",
-              left: sunriseMin! * PX_PER_MIN,
-              width: (sunsetMin! - sunriseMin!) * PX_PER_MIN,
-              top: 0, bottom: 0,
-              background: "linear-gradient(to right, var(--color-sun-soft), color-mix(in srgb, var(--color-sun) 6%, transparent) 50%, var(--color-shade-soft))",
-            }}
-          />
-        )}
-
-        {/* ── Night after sunset ───────────────────────────────────────── */}
-        {hasSet && (
-          <div
-            style={{
-              position: "absolute",
-              left: sunsetMin! * PX_PER_MIN,
-              width: TOTAL_PX - sunsetMin! * PX_PER_MIN,
-              top: 0, bottom: 0,
-              backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
-            }}
-          />
-        )}
-
-        {/* ── Sunrise marker + label (label inside slider at top) ──────── */}
-        {hasRise && (
-          <div
-            style={{
-              position: "absolute",
-              left: sunriseMin! * PX_PER_MIN,
-              top: 0, bottom: 0,
-              width: 0,
-            }}
-          >
+        {/* ── Night: flat bands wherever the sun is at or below 0° ─────── */}
+        {trace &&
+          nightSpans(trace).map(([from, to]) => (
             <div
+              key={from}
+              data-testid="timeline-night"
               style={{
                 position: "absolute",
-                top: 0, bottom: 0,
-                left: 0, width: 2,
-                backgroundColor: "var(--color-sun-signal)",
-                boxShadow: "var(--shadow-hard-1)",
+                left: from * PX_PER_MIN,
+                width: (to - from) * PX_PER_MIN,
+                top: 0,
+                bottom: 0,
+                backgroundColor: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
               }}
             />
-            <span
-              style={{
-                position: "absolute",
-                top: 3,
-                left: 5,
-                fontSize: 11,
-                lineHeight: 1.2,
-                color: "var(--color-sun)",
-                whiteSpace: "nowrap",
-                userSelect: "none",
-                pointerEvents: "none",
-                backgroundColor: "var(--color-panel)",
-                borderRadius: "var(--radius-lg)",
-                padding: "1px 4px",
-              }}
-            >
-              ↑ {fmtMin(sunriseMin!)}
-            </span>
-          </div>
-        )}
+          ))}
 
-        {/* ── Sunset marker + label (label inside slider at top) ───────── */}
-        {hasSet && (
-          <div
-            style={{
-              position: "absolute",
-              left: sunsetMin! * PX_PER_MIN,
-              top: 0, bottom: 0,
-              width: 0,
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: 0, bottom: 0,
-                left: 0, width: 2,
-                backgroundColor: "var(--color-sun-signal)",
-                boxShadow: "var(--shadow-hard-1)",
-              }}
-            />
-            <span
-              style={{
-                position: "absolute",
-                top: 3,
-                left: 5,
-                fontSize: 11,
-                lineHeight: 1.2,
-                color: "var(--color-sun)",
-                whiteSpace: "nowrap",
-                userSelect: "none",
-                pointerEvents: "none",
-                backgroundColor: "var(--color-panel)",
-                borderRadius: "var(--radius-lg)",
-                padding: "1px 4px",
-              }}
-            >
-              ↓ {fmtMin(sunsetMin!)}
-            </span>
-          </div>
-        )}
+        {sunriseMin !== undefined && <SunEventLabel minutes={sunriseMin} side="left" text={`↑ ${fmtMin(sunriseMin)}`} />}
+        {sunsetMin !== undefined && <SunEventLabel minutes={sunsetMin} side="right" text={`↓ ${fmtMin(sunsetMin)}`} />}
 
-        {/* ── Sun-arc glyph (U4): the SunCalc pattern — a thin sun-path curve
-            with the sun dot at the slider's time. Pure data (sun position),
-            so it is the sun hue; amber stays reserved for it per the law. */}
-        {hasRise && hasSet && (
+        {/* ── Sun-path diagram: the SunCalc altitude over the day, 0° on the
+            rule. Sun data, so the dot is the sun hue; the path stays ink. */}
+        {trace && (
           <svg
             width={TOTAL_PX}
             height={RULER_H}
             viewBox={`0 0 ${TOTAL_PX} ${RULER_H}`}
-            preserveAspectRatio="none"
             style={{ position: "absolute", inset: 0, pointerEvents: "none", userSelect: "none" }}
             aria-hidden="true"
           >
-            {/* horizon */}
-            <line
-              x1={sunriseMin! * PX_PER_MIN}
-              y1={HORIZON_Y}
-              x2={sunsetMin! * PX_PER_MIN}
-              y2={HORIZON_Y}
-              stroke="color-mix(in srgb, var(--color-ink) 14%, transparent)"
-              strokeWidth={1}
-            />
-            {/* the sun path: a quadratic from sunrise through the apex to sunset */}
-            <path
-              d={
-                `M ${sunriseMin! * PX_PER_MIN} ${HORIZON_Y} ` +
-                `Q ${((sunriseMin! + sunsetMin!) / 2) * PX_PER_MIN} ${2 * APEX_Y - HORIZON_Y} ` +
-                `${sunsetMin! * PX_PER_MIN} ${HORIZON_Y}`
-              }
+            <polyline
+              points={trace
+                .map((alt, i) => `${i * SUN_PATH_STEP_MIN * PX_PER_MIN},${RULE_Y - Math.max(0, alt) * PX_PER_DEG}`)
+                .join(" ")}
               fill="none"
-              stroke="color-mix(in srgb, var(--color-sun) 35%, transparent)"
+              stroke="var(--color-ink-muted)"
               strokeWidth={1.5}
             />
             {/* sun dot at the slider's time — the only element this component
                 re-renders for during a drag */}
             {sunDot && (
               <circle
+                data-testid="timeline-sun"
                 cx={sunDot.x}
                 cy={sunDot.y}
                 r={4}
                 fill="var(--color-sun-signal)"
-                stroke="var(--color-panel)"
+                stroke="var(--color-ink)"
                 strokeWidth={1.5}
               />
             )}
           </svg>
         )}
 
-        {/* ── Hour/minute ticks ────────────────────────────────────────── */}
+        {/* ── Rule, hour/minute ticks and hour labels ──────────────────── */}
         <Ruler />
       </div>
 
-      {/* Compass needle cursor — diamond cap + gradient shaft */}
+      {/* Needle: stands on the rule at the selected time, clear of the labels */}
       <div
+        data-testid="timeline-needle"
         className="absolute pointer-events-none z-10"
         style={{
           left: "50%",
           top: 0,
-          transform: "translateX(-4px)",
-          width: 8,
-          height: 8,
-          backgroundColor: "var(--color-sun-signal)",
-          rotate: "var(--angle-sun-pointer)",
-          boxShadow: "var(--shadow-hard-1)",
-        }}
-      />
-      <div
-        className="absolute pointer-events-none z-10"
-        style={{
-          left: "50%",
-          top: 8,
-          bottom: 0,
-          width: 2,
+          height: RULE_Y,
+          width: 3,
           transform: "translateX(-1px)",
-          background: "linear-gradient(to bottom, var(--color-sun-signal), color-mix(in srgb, var(--color-sun-signal) 30%, transparent))",
-          boxShadow: "var(--shadow-hard-1)",
+          backgroundColor: needleColor,
         }}
       />
     </div>

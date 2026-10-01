@@ -113,7 +113,7 @@ function TimeInput({
             setEditing(false);
           }
         }}
-        className="min-h-11 rounded px-2 py-1 text-xs border focus:outline-none w-24 text-center"
+        className="min-h-11 px-2 py-1 text-xs border focus:outline-none w-24 text-center"
         style={{
           background: "var(--color-ground)",
           color: "var(--color-ink)",
@@ -128,8 +128,8 @@ function TimeInput({
     <button
       type="button"
       onClick={startEdit}
-      className="min-h-11 text-xs tabular-nums w-24 text-center rounded px-2 py-1 hover:bg-ground transition-colors"
-      style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-sans)" }}
+      className="min-h-11 text-xs tabular-nums w-24 text-center border px-2 py-1 hover:bg-ground transition-colors"
+      style={{ color: "var(--color-ink)", borderColor: "var(--color-rule)", fontFamily: "var(--font-sans)" }}
       title="Click to type a time (e.g. 6:30 AM, 14:30)"
     >
       {formatTime12h(date, utcOffsetMin)}
@@ -148,7 +148,7 @@ function CloudCoverBadge({ pct }: { pct: number }) {
 
   return (
     <div
-      className="mx-3 mt-3 rounded-lg border px-3 py-1.5 text-center text-[11px] font-medium"
+      className="mx-3 mt-3 border px-3 py-1.5 text-center text-[11px] font-medium"
       style={{
         background: strongClouds
           ? "color-mix(in srgb, var(--color-ink) 10%, transparent)"
@@ -819,29 +819,44 @@ export default function Home() {
 
   // -- Timeline controls (floating card style) --
   const timelineControls = !accumulation.enabled ? (
+    // Timetable (R6a): square, with a 2px ink rule along the top that holds
+    // against either basemap in glare.
     <div
-      className="rounded-t-2xl md:rounded-2xl overflow-hidden"
+      className="overflow-hidden border-t-2 md:border-2"
       style={{
         background: "var(--color-panel)",
+        borderColor: "var(--color-ink)",
         boxShadow: "var(--shadow-hard-2)",
       }}
     >
-      {/* Floating tooltip */}
+      {/* Selected time: an ink ticket over the needle. Ink, not orange — the
+          time is not the sun; "Sun down" says why the ruler has no sun dot. */}
       <div
         className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20"
         style={{ bottom: "calc(100% + 6px)" }}
       >
         <div
-          className="text-[11px] font-bold px-2.5 py-0.5 rounded-md tabular-nums shadow-md whitespace-nowrap"
-          style={{ background: "var(--color-sun-signal)", color: "var(--color-on-sun-signal)", fontFamily: "var(--font-numeric)" }}
+          data-testid="timeline-readout"
+          className="flex items-stretch whitespace-nowrap"
+          style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
         >
-          {sliderMode === "time"
-            ? formatTime12h(date, mapUtcOffsetMin)
-            : new Date(date.getTime() + mapUtcOffsetMin * 60000).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                timeZone: "UTC",
-              })}
+          <span className="px-2.5 py-1 text-[13px] font-extrabold tabular-nums" style={{ fontFamily: "var(--font-numeric)" }}>
+            {sliderMode === "time"
+              ? formatTime12h(date, mapUtcOffsetMin)
+              : new Date(date.getTime() + mapUtcOffsetMin * 60000).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  timeZone: "UTC",
+                })}
+          </span>
+          {solar === "night" && (
+            <span
+              className="flex items-center border-l px-2 text-[11px] font-extrabold uppercase tracking-wider"
+              style={{ borderColor: "var(--color-on-ink)", fontFamily: "var(--font-label)" }}
+            >
+              Sun down
+            </span>
+          )}
         </div>
         <div
           style={{
@@ -849,7 +864,7 @@ export default function Home() {
             height: 0,
             borderLeft: "5px solid transparent",
             borderRight: "5px solid transparent",
-            borderTop: "5px solid var(--color-sun-signal)",
+            borderTop: "5px solid var(--color-ink)",
           }}
         />
       </div>
@@ -879,8 +894,8 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setIsPlaying((p) => !p)}
-          className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ground transition-colors"
-          style={{ color: "var(--color-ink-muted)" }}
+          className="flex items-center justify-center w-11 h-11 hover:bg-ground transition-colors"
+          style={{ color: "var(--color-ink)" }}
           title={isPlaying ? "Pause" : "Play"}
         >
           <span
@@ -894,7 +909,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setSliderMode((m) => (m === "time" ? "day" : "time"))}
-          className="flex min-h-11 items-center gap-1.5 px-3 rounded-lg hover:bg-ground transition-colors border"
+          className="flex min-h-11 items-center gap-1.5 px-3 hover:bg-ground transition-colors border"
           style={{ borderColor: "var(--color-rule)" }}
           title={sliderMode === "time" ? "Switch to day of year" : "Switch to time of day"}
         >
@@ -941,7 +956,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => adjustYear(-1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
+              className="w-11 h-11 flex items-center justify-center hover:bg-ground transition-colors"
               style={{ color: "var(--color-ink-muted)" }}
               aria-label="Previous year"
             >
@@ -956,7 +971,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => adjustYear(+1)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-ground transition-colors"
+              className="w-11 h-11 flex items-center justify-center hover:bg-ground transition-colors"
               style={{ color: "var(--color-ink-muted)" }}
               aria-label="Next year"
             >

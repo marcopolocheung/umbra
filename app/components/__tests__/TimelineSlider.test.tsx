@@ -1,47 +1,65 @@
 /* @vitest-environment jsdom */
-import { cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { sunArcPoint } from "../TimelineSlider";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import TimelineSlider from "../TimelineSlider";
 
 afterEach(cleanup);
 
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+// Midtown Manhattan on the June solstice, EDT (UTC−4): sun up 05:26–20:31.
+const at = (iso: string, minutes: number) => (
+  <TimelineSlider
+    minutes={minutes}
+    onChange={() => {}}
+    date={new Date(iso)}
+    latDeg={40.754}
+    lngDeg={-73.984}
+    utcOffsetMin={-240}
+  />
+);
+
 /**
- * The sun-arc glyph's geometry (U4). The claims are behavioural: the dot sits
- * on the horizon at sunrise and sunset, rides above it through the day, and
- * disappears at night — so a wrong curve breaks them.
+ * The timetable ruler (R6a): the sun dot and the orange needle are solar data,
+ * so they follow the sun's altitude at the selected time, and night is drawn
+ * as bands rather than an absent path.
  */
-describe("sunArcPoint", () => {
-  const rise = 6 * 60; // 06:00
-  const set = 20 * 60; // 20:00
-  const HORIZON_Y = 22;
-  const APEX_Y = 7;
-
-  it("sits on the horizon at sunrise and sunset", () => {
-    expect(sunArcPoint(rise, rise, set)?.y).toBe(HORIZON_Y);
-    expect(sunArcPoint(set, rise, set)?.y).toBe(HORIZON_Y);
+describe("TimelineSlider", () => {
+  it("rides the sun dot on the path and paints the needle orange while the sun is up", () => {
+    render(at("2026-06-21T13:00:00Z", 9 * 60));
+    const sun = screen.getByTestId("timeline-sun");
+    expect(Number(sun.getAttribute("cx"))).toBe(9 * 60 * 2);
+    // Higher in the sky at 1 PM than at 9 AM: SVG y grows downward.
+    const nineY = Number(sun.getAttribute("cy"));
+    cleanup();
+    render(at("2026-06-21T17:00:00Z", 13 * 60));
+    expect(Number(screen.getByTestId("timeline-sun").getAttribute("cy"))).toBeLessThan(nineY);
+    expect(screen.getByTestId("timeline-needle").style.backgroundColor).toBe("var(--color-sun-signal)");
   });
 
-  it("peaks at the apex at midday", () => {
-    const noon = (rise + set) / 2;
-    const p = sunArcPoint(noon, rise, set);
-    expect(p?.y).toBeCloseTo(APEX_Y, 5);
-    // And its x tracks the minutes → px scale the ruler uses.
-    expect(p?.x).toBe(noon * 2);
+  it("drops the sun dot and inks the needle after sunset", () => {
+    render(at("2026-06-22T02:00:00Z", 22 * 60));
+    expect(screen.queryByTestId("timeline-sun")).toBeNull();
+    expect(screen.getByTestId("timeline-needle").style.backgroundColor).toBe("var(--color-ink)");
   });
 
-  it("climbs monotonically to solar noon and descends after", () => {
-    // SVG y grows downward, so sun height is HORIZON_Y − y. Solar noon is the
-    // rise/set midpoint — 13:00 for this 06:00–20:00 day.
-    const heightAt = (m: number) => HORIZON_Y - sunArcPoint(m, rise, set)!.y;
-    expect(heightAt(9 * 60)).toBeGreaterThan(heightAt(8 * 60));
-    expect(heightAt(12 * 60)).toBeGreaterThan(heightAt(11 * 60));
-    expect(heightAt(14 * 60)).toBeLessThan(heightAt(13 * 60));
-    // Morning is the mirror of the afternoon two hours either side of noon.
-    expect(heightAt(11 * 60)).toBeCloseTo(heightAt(15 * 60), 5);
+  it("bands both nights and prints sunrise and sunset beside them", () => {
+    render(at("2026-06-21T13:00:00Z", 9 * 60));
+    expect(screen.getAllByTestId("timeline-night")).toHaveLength(2);
+    expect(screen.getByText("↑ 5:26 AM")).toBeTruthy();
+    expect(screen.getByText("↓ 8:31 PM")).toBeTruthy();
   });
 
-  it("is gone before sunrise and after sunset (night)", () => {
-    expect(sunArcPoint(rise - 1, rise, set)).toBeNull();
-    expect(sunArcPoint(set + 1, rise, set)).toBeNull();
+  it("draws no sun path without a map place", () => {
+    render(<TimelineSlider minutes={600} onChange={() => {}} />);
+    expect(screen.queryByTestId("timeline-sun")).toBeNull();
+    expect(screen.queryByTestId("timeline-night")).toBeNull();
+    expect(screen.getByText("10 AM")).toBeTruthy();
   });
 });
