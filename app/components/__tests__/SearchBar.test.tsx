@@ -325,3 +325,90 @@ describe("nominatimCategory", () => {
     expect(nominatimCategory({})).toBeNull();
   });
 });
+
+describe("SearchBar empty directory (R8c)", () => {
+  it("says nothing came back for a submit with no match, and clears on the next keystroke", async () => {
+    geocodeForward.mockResolvedValue([]);
+    const { input } = renderBar();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // The status region is always mounted, so the text is what a screen reader hears.
+    const status = screen.getByRole("status");
+    await waitFor(() => expect(status.textContent).toContain("Nothing came back for “zzqx”"));
+    expect(screen.getByText("Not in the guidebook").className).toContain("umbra-kicker");
+    // No map center, so only the address search ran, and the copy says only that.
+    expect(status.textContent).toContain("The address search returned no match, or could not be reached.");
+
+    fireEvent.change(input, { target: { value: "zzqxy" } });
+    expect(status.textContent).toBe("");
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
+  });
+
+  it("names both providers when the map center let nearby places run", async () => {
+    geocodeForward.mockResolvedValue([]);
+    render(<SearchBar onSelect={vi.fn()} mapCenter={[40.75, -73.98]} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain("Neither the address search nor nearby places returned a match"),
+    );
+  });
+
+  it("drops an empty answer that lands after Escape", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await act(async () => { resolve([]); });
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
+  });
+
+  it("drops an answer that lands after the search is cleared", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(screen.getByLabelText("Clear search"));
+
+    await act(async () => { resolve([RESULT]); });
+    expect(screen.queryByRole("option")).toBeNull();
+  });
+
+  it("hides a late empty answer after an outside tap, but still opens late matches", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.mouseDown(document.body);
+    await act(async () => { resolve([]); });
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.mouseDown(document.body);
+    await act(async () => { resolve([RESULT]); });
+    expect(screen.getByRole("option").textContent).toContain("Brooklyn Bridge");
+  });
+
+  it("shows no empty state when a submit finds matches", async () => {
+    const { input } = renderBar();
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await screen.findByRole("option");
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+});

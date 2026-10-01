@@ -2,6 +2,7 @@ import "../lib/storageMigration";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
 import { suggestPlaces, type FoursquareSuggestion } from "../services/foursquare";
+import Kicker from "./ui/Kicker";
 
 interface SearchBarProps {
   onSelect: (place: {
@@ -187,6 +188,16 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isActive, setIsActive] = useState(false);
+  // The query a submit came back empty for, and whether nearby places were
+  // searched too (only with a map center); null while there is nothing to report.
+  const [emptyFor, setEmptyFor] = useState<{ q: string; places: boolean } | null>(null);
+  // Escape, clear and a saved pick also drop a search still in flight, so its
+  // answer cannot surface after the user has moved on.
+  const dropInFlight = useCallback(() => {
+    searchGenRef.current++;
+    setIsSearching(false);
+    setEmptyFor(null);
+  }, []);
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [saved, setSaved] = useState<SavedItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -214,6 +225,9 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         setIsActive(false);
         // A tap on the map must close the typeahead like every other dropdown.
         setSuggestions([]);
+        // Only the empty card closes: a late answer with matches still opens,
+        // since a tap on the map is often just to put the keyboard away.
+        setEmptyFor(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -248,6 +262,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       // the next Enter, so dropping them is the whole point of the guard.
       if (gen !== searchGenRef.current) return [];
       setResults(merged);
+      setEmptyFor(merged.length === 0 ? { q: q.trim(), places: Boolean(ll) } : null);
       // Highlight the top match so a second Enter takes it.
       setHighlightIndex(merged.length > 0 ? 0 : -1);
       return merged;
@@ -364,11 +379,13 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     // typeahead effect above re-arms on the new value.
     searchGenRef.current++;
     setResults([]);
+    setEmptyFor(null);
     setHighlightIndex(-1);
   }
 
 
   function handleSelectSaved(item: SavedItem) {
+    dropInFlight();
     setQuery(item.label);
     setResults([]);
     setIsActive(false);
@@ -402,6 +419,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     } else if (e.key === "Escape") {
       setResults([]);
       setSuggestions([]);
+      dropInFlight();
       setIsActive(false);
       inputRef.current?.blur();
     }
@@ -415,6 +433,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     setQuery("");
     setResults([]);
     setSuggestions([]);
+    dropInFlight();
     onClearPanel?.();
     inputRef.current?.focus();
   }
@@ -429,7 +448,9 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   // While the user types, the Foursquare suggestions own the dropdown; the
   // submitted Nominatim results take it back on submit.
   const suggestionsOpen = !isOpen && suggestions.length > 0;
-  const showSections = isActive && !isOpen && !suggestionsOpen && (recent.length > 0 || saved.length > 0);
+  // Only while the search is in use: after an outside tap a late empty answer stays hidden.
+  const emptyOpen = isActive && emptyFor !== null && !isOpen && !suggestionsOpen;
+  const showSections = isActive && !isOpen && !suggestionsOpen && !emptyOpen && (recent.length > 0 || saved.length > 0);
 
   const distanceFrom = (c: [number, number]) => (mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), c)) : "");
   const distanceNote = mapCenter ? "from map center" : undefined;
@@ -550,6 +571,28 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         )}
       </div>
 
+      {/* A submit that came back empty says so, instead of closing on nothing.
+          Both providers' failures also read as empty, so the copy claims no
+          more than that nothing came back. */}
+      {/* Always mounted, so screen readers announce the text when it arrives. */}
+      <p role="status" className="sr-only">
+        {emptyOpen && emptyFor ? `Nothing came back for “${emptyFor.q}”. ${emptyCaption(emptyFor.places)}` : ""}
+      </p>
+      {emptyOpen && emptyFor && (
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE} aria-hidden="true">
+          <DirectoryHead title="Directory" />
+          <div className="flex flex-col items-start gap-1 px-3 py-3">
+            <Kicker>Not in the guidebook</Kicker>
+            <p className="font-display text-xl font-semibold leading-tight break-words" style={{ color: "var(--color-ink)", maxWidth: "100%" }}>
+              Nothing came back for “{emptyFor.q}”
+            </p>
+            <p className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+              {emptyCaption(emptyFor.places)}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Recent/Saved sections */}
       {showSections && (
         <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE}>
@@ -642,6 +685,15 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
 const PILL_BUTTON =
   "grid size-11 shrink-0 place-items-center text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
+
+/** What an empty submit can honestly say: which searches ran, and that failures read as empty too. */
+function emptyCaption(places: boolean): string {
+  return `${
+    places
+      ? "Neither the address search nor nearby places returned a match, or neither could be reached."
+      : "The address search returned no match, or could not be reached."
+  } Try a street address or a fuller name.`;
+}
 
 // Square and ruled like the departures board: a directory, not a floating card.
 const DIRECTORY_PANEL = "absolute top-full mt-2 w-full overflow-hidden border-2 z-20";

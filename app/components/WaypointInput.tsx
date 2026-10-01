@@ -20,6 +20,8 @@ const WaypointInput = memo(function WaypointInput({
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [highlight, setHighlight] = useState(-1);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  // An empty answer is not a failure: it reads in the caption tone, not danger.
+  const [noMatch, setNoMatch] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchGenRef = useRef(0);
   const focusedRef = useRef(false);
@@ -36,6 +38,7 @@ const WaypointInput = memo(function WaypointInput({
     setResults([]);
     setHighlight(-1);
     setInlineError(null);
+    setNoMatch(false);
   }
 
   // Runs only on an explicit submit (Enter). Nominatim's usage policy lists
@@ -49,16 +52,19 @@ const WaypointInput = memo(function WaypointInput({
       if (gen !== searchGenRef.current) return;
       if (res.length === 0) {
         setResults([]);
-        setInlineError(`No results found for "${q}". Try a different address.`);
+        setInlineError(`Nothing matches “${q.trim()}”. Try a street address or a place name.`);
+        setNoMatch(true);
       } else {
         setResults(res);
         setHighlight(0);
         setInlineError(null);
+        setNoMatch(false);
       }
     } catch {
       if (gen !== searchGenRef.current) return;
       setResults([]);
       setInlineError("Address search failed. Check your connection.");
+      setNoMatch(false);
     } finally {
       if (gen === searchGenRef.current) setSearching(false);
     }
@@ -148,7 +154,7 @@ const WaypointInput = memo(function WaypointInput({
         )}
       </div>
       {inlineError ? (
-        <p className="text-[11px] text-danger pl-8">{inlineError}</p>
+        <p className={`text-[11px] pl-8 ${noMatch ? "text-ink-muted" : "text-danger"}`}>{inlineError}</p>
       ) : searching ? (
         <p className="text-[11px] pl-8" style={{ color: "var(--color-ink-muted)" }}>Searching…</p>
       ) : results.length === 0 && query.trim().length >= 2 && label === null ? (

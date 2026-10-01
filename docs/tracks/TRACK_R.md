@@ -24,7 +24,22 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R8b (#189, PR #197), stacked on R8a (PR #194). Each saved route is a
+- **Active checkpoint:** R8c (#190, PR #200), stacked on R8b (PR #197). Every empty state that
+  renders gets a kicker/title pair, with the voice in the kicker only. The idle sheet
+  (`QuickActions`) drops Canopy's pulsing "Device Idle" / "Quick Entry" for a square 2px
+  panel: "Before you set out" / "Where to?" (a Grenze `h2`; it asks rather than claims
+  "nothing planned", because idle is reached with a route still drawn), then square
+  44px Directions and Draw route (`aria-pressed`, ink when on). A submitted search that comes
+  back empty used to close on nothing; it now shows a Directory card, "Not in the
+  guidebook" / "Nothing came back for “q”", announced through an always-mounted status
+  region, with a caption that claims only what ran (both providers swallow failures as
+  empty, #199, so it says "returned no match, or could not be reached", naming nearby
+  places only when that search ran). Escape, clear or a saved pick drop a search still
+  in flight; an outside tap only hides the empty card, so late matches still open. The address field's no-match line ("Nothing matches “q”")
+  leaves the danger colour; a failed search keeps it. The assistant's hand-rolled "Field notes" becomes `Kicker`. The dead desktop
+  Saved Routes / Shadow History tabs and the saved-routes empty state are R8d (#198).
+  Shots: `docs/design/shots/r8c/`.
+- **R8b (open, PR #197):** Each saved route is a
   square 2px ink ticket: name (Jost 600, `title` for truncation), the figure in the
   numeric face in full ink, then past a dashed perforation the date and time the
   figure was computed for, printed from `trip.departAt` in the departure stop's own
@@ -202,7 +217,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R8b #197 (base R8a; #189 minus its empty state), R8a #194 (fixes #191). R8b follow-ups: #195 (delete beside rename, focus loss, list height), #196 (a save during playback pairs a stale figure with the new time); #190 notes that Saved routes has no empty state yet and the desktop Saved Routes tab is a dead control. R8a follow-ups: #192 (rain transit sheltered share is walk-only, unstated), #193 (arrival not announced; bar basis hidden from screen readers). R7b follow-ups: #177 (typeahead re-opens after a pick), #178 (place entry drops the row's hours/rating/photo; Directory distances freeze while panning), #181 (selected place pin and sheet offset, photo sizing, website scheme, shot coverage). R7a follow-up: #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R8c #200 (base R8b, #190; follow-ups #198 R8d, #199), R8b #197 (base R8a; #189 minus its empty state), R8a #194 (fixes #191). R8b follow-ups: #195 (delete beside rename, focus loss, list height), #196 (a save during playback pairs a stale figure with the new time); #190 notes that Saved routes has no empty state yet and the desktop Saved Routes tab is a dead control. R8a follow-ups: #192 (rain transit sheltered share is walk-only, unstated), #193 (arrival not announced; bar basis hidden from screen readers). R7b follow-ups: #177 (typeahead re-opens after a pick), #178 (place entry drops the row's hours/rating/photo; Directory distances freeze while panning), #181 (selected place pin and sheet offset, photo sizing, website scheme, shot coverage). R7a follow-up: #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -215,7 +230,7 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** owner review of R8a #194 and R8b in stack order, then R8c (#190). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of R8a #194, R8b #197 and R8c #200 in stack order, then R8d (#198). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (R8b):** 2026-10-01 on Node 24; lint (0 errors, 79 baseline warnings),
   typecheck, 1,857 unit tests (the stub suite also passes under TZ=UTC, Los Angeles and
   Tokyo), build and e2e 12/12 (the rebrand spec's saved-routes locators follow the

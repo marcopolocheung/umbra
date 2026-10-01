@@ -1,33 +1,42 @@
+import Kicker from "./ui/Kicker";
+
 interface QuickActionsProps {
   onNavigate: () => void;
   onDrawRoute: () => void;
   drawMode: boolean;
 }
 
+const ACTION =
+  "flex min-h-11 items-center justify-center gap-2 border-2 border-ink px-3 py-2 font-extrabold uppercase tracking-wider focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current";
+
+/**
+ * The idle sheet's empty state: a kicker/title pair and the two ways to start.
+ * The title asks rather than asserts — idle is reached with a route still on
+ * the map (after Back, Done, a sketch or an assistant plan), so "nothing
+ * planned" would be false.
+ */
 export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: QuickActionsProps) {
   return (
-    <div className="p-4 rounded-xl" style={{ background: "var(--color-panel)", border: "1px solid var(--color-rule)" }}>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="w-2 h-2 rounded-full bg-ink-muted animate-pulse" />
-        <span className="text-[11px] uppercase tracking-widest font-bold text-ink-muted">Device Idle</span>
+    <div className="flex flex-col gap-3 border-2 border-ink bg-panel p-4">
+      <div className="flex flex-col items-start gap-1">
+        <Kicker>Before you set out</Kicker>
+        <h2 className="font-display text-xl font-semibold leading-tight" style={{ color: "var(--color-ink)" }}>
+          Where to?
+        </h2>
       </div>
-      <h3 className="text-sm font-bold mb-2" style={{ color: "var(--color-ink)" }}>Quick Entry</h3>
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button"
-          onClick={onNavigate}
-          className="flex flex-col items-center justify-center p-3 bg-panel shadow-hard-1 rounded-xl hover:bg-ground transition-colors"
-        >
-          <span className="material-symbols-outlined text-ink mb-1">route</span>
-          <span className="text-[11px] font-bold" style={{ color: "var(--color-ink)" }}>Directions</span>
+      <div className="grid grid-cols-2 gap-2" style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}>
+        <button type="button" onClick={onNavigate} className={`${ACTION} bg-panel text-ink hover:bg-ground`}>
+          <span className="material-symbols-outlined text-lg" aria-hidden="true">route</span>
+          Directions
         </button>
-        <button type="button"
+        <button
+          type="button"
           onClick={onDrawRoute}
-          className={`flex flex-col items-center justify-center p-3 shadow-sm rounded-xl transition-colors ${
-            drawMode ? "bg-ground ring-1 ring-rule-strong" : "bg-panel hover:bg-ground"
-          }`}
+          aria-pressed={drawMode}
+          className={`${ACTION} ${drawMode ? "bg-ink text-on-ink" : "bg-panel text-ink hover:bg-ground"}`}
         >
-          <span className="material-symbols-outlined text-ink mb-1">draw</span>
-          <span className="text-[11px] font-bold" style={{ color: "var(--color-ink)" }}>Draw Route</span>
+          <span className="material-symbols-outlined text-lg" aria-hidden="true">draw</span>
+          Draw route
         </button>
       </div>
     </div>
