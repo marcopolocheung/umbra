@@ -972,6 +972,34 @@ describe("trainDijkstra: per-edge track geometry", () => {
   });
 });
 
+describe("buildTrainDrawData transfer flags", () => {
+  const stop = (id: string, lon: number) => ({ id, name: `Stop ${id}`, lat: 40.7, lon });
+  const hop = (from: ReturnType<typeof stop>, to: ReturnType<typeof stop>, line: string): TrainSegment => ({
+    type: "train", from, to, line,
+  });
+  const colors = new Map([["4", "#00933C"], ["7", "#B933AD"]]);
+
+  it("marks a same-station line change even without a transfer edge", () => {
+    const [a, middle, z] = [stop("A", -74), stop("Middle", -73.99), stop("Z", -73.98)];
+    const data = buildTrainDrawData([hop(a, middle, "4"), hop(middle, z, "7")], colors);
+    expect(data.changes).toEqual([{
+      from: { ...middle, line: "4", color: "#00933C" },
+      to: { ...middle, line: "7", color: "#B933AD" },
+    }]);
+  });
+
+  it("names both ends of a change between different stops, once", () => {
+    const [a, west, east, z] = [stop("A", -74), stop("West", -73.99), stop("East", -73.988), stop("Z", -73.98)];
+    const data = buildTrainDrawData([
+      hop(a, west, "4"), { type: "transfer", at: west, fromLine: "4", toLine: "7" }, hop(east, z, "7"),
+    ], colors);
+    expect(data.changes).toEqual([{
+      from: { ...west, line: "4", color: "#00933C" },
+      to: { ...east, line: "7", color: "#B933AD" },
+    }]);
+  });
+});
+
 describe("stationConnectors", () => {
   const BOARD_DOOR: [number, number] = [-74.0017, 40.7556];
   const EXIT_DOOR: [number, number] = [-73.976, 40.7517];
@@ -979,6 +1007,7 @@ describe("stationConnectors", () => {
     polylines: polylines.map((coords) => ({ coords, color: "#B933AD", line: "7" })),
     stops: [],
     transfers: [],
+    changes: [],
   });
 
   it("links each door to its own end of the ride, not the doors to each other", () => {

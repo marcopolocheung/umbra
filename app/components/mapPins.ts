@@ -128,6 +128,35 @@ export function lineCoinElement(line: string, color: string): LineCoinParts {
 /** How far the dotted leader runs from a board or exit point to its flag, in px. */
 export const STOP_FLAG_LEADER_PX = 34;
 
+function flagShield(line: string, color: string, name: string): HTMLDivElement {
+  const css = lineCssColor(color);
+  const ink = lineBulletInk(css);
+  const shield = document.createElement("div");
+  shield.dataset.part = "shield";
+  shield.style.cssText = `
+    display:flex;align-items:center;gap:6px;height:28px;padding:0 11px 0 3px;white-space:nowrap;
+    background:var(--color-line-ink-dark);border:3px solid ${css};border-radius:var(--radius-full);
+    box-shadow:var(--shadow-map-marker);
+  `;
+  const coin = document.createElement("span");
+  coin.dataset.part = "line";
+  coin.textContent = line;
+  coin.style.cssText = `
+    display:grid;place-items:center;min-width:20px;height:20px;padding:0 3px;border-radius:var(--radius-full);
+    font-family:var(--font-label);font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;
+    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
+  `;
+  const label = document.createElement("span");
+  label.dataset.part = "stop-name";
+  label.textContent = name;
+  label.style.cssText = `
+    max-width:190px;overflow:hidden;text-overflow:ellipsis;
+    font-family:var(--font-display);font-size:14px;font-weight:700;line-height:1;color:var(--color-line-ink-light);
+  `;
+  shield.append(coin, label);
+  return shield;
+}
+
 /**
  * A ride's board or exit point as a kicker flag: a dotted leader in the
  * line's colour runs from the door (or stop when no door is known) to a shield — an ink pill ringed in that
@@ -205,31 +234,79 @@ export function stopFlagElement(
     text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
     ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
   `;
-  const shield = document.createElement("div");
+  const shield = flagShield(line, color, name);
   shield.dataset.part = "shield";
-  shield.style.cssText = `
-    display:flex;align-items:center;gap:6px;height:28px;padding:0 11px 0 3px;white-space:nowrap;
-    background:var(--color-line-ink-dark);border:3px solid ${css};border-radius:var(--radius-full);
-    box-shadow:var(--shadow-map-marker);
-  `;
-  const coin = document.createElement("span");
-  coin.dataset.part = "line";
-  coin.textContent = line;
-  coin.style.cssText = `
-    display:grid;place-items:center;min-width:20px;height:20px;padding:0 3px;border-radius:var(--radius-full);
-    font-family:var(--font-label);font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;
-    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
-  `;
-  const label = document.createElement("span");
-  label.dataset.part = "stop-name";
-  label.textContent = name;
-  label.style.cssText = `
-    max-width:190px;overflow:hidden;text-overflow:ellipsis;
-    font-family:var(--font-display);font-size:14px;font-weight:700;line-height:1;color:var(--color-line-ink-light);
-  `;
-  shield.append(coin, label);
   flag.append(plate, shield);
   host.appendChild(flag);
+  return host;
+}
+
+/** A transfer instruction at the last stop of one ride, with both boarding names. */
+export function transferFlagElement(
+  from: { line: string; color: string; name: string },
+  to: { line: string; color: string; name: string },
+  toward: [number, number],
+): HTMLDivElement {
+  const [px, py] = toward;
+  const host = document.createElement("div");
+  host.dataset.part = "transfer-flag";
+  host.setAttribute("role", "img");
+  host.setAttribute("aria-label", `Transfer: ${from.line}, ${from.name} to ${to.line}, ${to.name}`);
+  host.style.cssText = "width:0;height:0;position:relative;pointer-events:none;";
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "1");
+  svg.setAttribute("height", "1");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:absolute;left:0;top:0;overflow:visible;";
+  const leader = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  leader.dataset.part = "leader";
+  leader.setAttribute("d", `M${(px * 12).toFixed(2)},${(py * 12).toFixed(2)}L${(px * STOP_FLAG_LEADER_PX).toFixed(2)},${(py * STOP_FLAG_LEADER_PX).toFixed(2)}`);
+  leader.setAttribute("stroke", lineCssColor(from.color));
+  leader.setAttribute("stroke-width", "3");
+  leader.setAttribute("stroke-linecap", "round");
+  leader.setAttribute("stroke-dasharray", "0 6");
+  svg.appendChild(leader);
+
+  const shift = (d: number) => (d > 0.38 ? 0 : d < -0.38 ? -100 : -50);
+  const flag = document.createElement("div");
+  flag.dataset.part = "flag-body";
+  flag.style.cssText = `
+    position:absolute;left:${(px * STOP_FLAG_LEADER_PX).toFixed(2)}px;top:${(py * STOP_FLAG_LEADER_PX).toFixed(2)}px;
+    transform:translate(${shift(px)}%, ${shift(py)}%);
+    display:flex;flex-direction:column;align-items:flex-start;
+  `;
+  const plate = document.createElement("span");
+  plate.dataset.part = "kicker";
+  plate.textContent = "Transfer";
+  plate.style.cssText = `
+    position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 7px;white-space:nowrap;
+    font-family:var(--font-label);font-size:11px;font-weight:800;letter-spacing:0.06em;
+    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
+    background:var(--color-line-ink-light);color:var(--color-line-ink-dark);
+    border-left:3px solid ${lineCssColor(from.color)};border-right:3px solid ${lineCssColor(to.color)};
+  `;
+  const shields = document.createElement("div");
+  shields.dataset.part = "shield";
+  shields.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;";
+  const fromShield = flagShield(from.line, from.color, from.name);
+  fromShield.dataset.part = "from-shield";
+  const toShield = flagShield(to.line, to.color, to.name);
+  toShield.dataset.part = "to-shield";
+  toShield.style.marginLeft = "18px";
+  const arrow = document.createElement("span");
+  arrow.dataset.part = "transfer-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.textContent = "↘";
+  arrow.style.cssText = `
+    margin:-3px 0 -5px 27px;position:relative;z-index:1;
+    font-family:var(--font-label);font-size:18px;font-weight:800;line-height:1;
+    color:var(--color-line-ink-light);background:var(--color-line-ink-dark);
+    border-radius:var(--radius-circle);padding:0 4px;
+  `;
+  shields.append(fromShield, arrow, toShield);
+  flag.append(plate, shields);
+  host.append(svg, flag);
   return host;
 }
 

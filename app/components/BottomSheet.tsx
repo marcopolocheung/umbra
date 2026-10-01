@@ -6,6 +6,8 @@ interface BottomSheetProps {
   snap: SnapPoint;
   onSnapChange: (snap: SnapPoint) => void;
   children: ReactNode;
+  /** Reset content to its first instruction when the panel changes purpose. */
+  contentKey?: string;
   /** Height in px for collapsed state */
   collapsedHeight?: number;
 }
@@ -40,7 +42,7 @@ function nearestSnap(heightPx: number, viewportHeight: number, collapsedHeight: 
   return best;
 }
 
-export default function BottomSheet({ snap, onSnapChange, children, collapsedHeight = 80 }: BottomSheetProps) {
+export default function BottomSheet({ snap, onSnapChange, children, contentKey, collapsedHeight = 80 }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
   const draggingRef = useRef(false);
@@ -50,6 +52,11 @@ export default function BottomSheet({ snap, onSnapChange, children, collapsedHei
   const lastYRef = useRef(0);
   const lastTRef = useRef(0);
   const animRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const content = sheetRef.current?.querySelector<HTMLDivElement>("div.flex-1");
+    if (content && contentKey !== undefined) content.scrollTop = 0;
+  }, [contentKey]);
 
   // Drive height from snap prop when not dragging
   useEffect(() => {

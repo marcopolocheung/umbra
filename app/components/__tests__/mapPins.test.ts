@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { COIN_RADIUS } from "../../lib/lineBadges";
-import { lineCoinElement, placeStopFlagElement, STOP_FLAG_LEADER_PX, stopFlagElement } from "../mapPins";
+import { lineCoinElement, placeStopFlagElement, STOP_FLAG_LEADER_PX, stopFlagElement, transferFlagElement } from "../mapPins";
 
 
 describe("lineCoinElement", () => {
@@ -123,5 +123,23 @@ describe("stopFlagElement", () => {
 
   it("never takes the pointer", () => {
     expect(stopFlagElement("enter", "A", "#0039A6", "Fulton St", [0, 1]).style.pointerEvents).toBe("none");
+  });
+});
+
+describe("transferFlagElement", () => {
+  it("names both boardings and keeps their own line colours", () => {
+    const flag = transferFlagElement(
+      { line: "4", color: "#00933C", name: "Grid Middle" },
+      { line: "7", color: "#B933AD", name: "Grid Middle" },
+      [1, 0],
+    );
+    expect(flag.getAttribute("aria-label")).toBe("Transfer: 4, Grid Middle to 7, Grid Middle");
+    expect(flag.querySelector("[data-part='kicker']")?.textContent).toBe("Transfer");
+    expect([...flag.querySelectorAll("[data-part='line']")].map((part) => part.textContent)).toEqual(["4", "7"]);
+    expect([...flag.querySelectorAll("[data-part='stop-name']")].map((part) => part.textContent)).toEqual(["Grid Middle", "Grid Middle"]);
+    expect((flag.querySelector("[data-part='from-shield']") as HTMLElement).style.border).toContain("rgb(0, 147, 60)");
+    expect((flag.querySelector("[data-part='to-shield']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
+    expect((flag.querySelector("[data-part='to-shield'] [data-part='line']") as HTMLElement).style.border).toContain("rgb(185, 51, 173)");
+    expect(flag.style.pointerEvents).toBe("none");
   });
 });

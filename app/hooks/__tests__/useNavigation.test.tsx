@@ -230,6 +230,7 @@ describe("useNavigation", () => {
       polylines: [],
       stops: [],
       transfers: [],
+      changes: [],
     };
 
     const { result } = renderUseNavigation();

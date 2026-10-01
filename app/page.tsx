@@ -1353,7 +1353,7 @@ export default function Home() {
         </button>
       )}
       {!uiHidden && menuOpen && (
-        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap}>
+        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap} contentKey={phase}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
               place={selectedPlace}

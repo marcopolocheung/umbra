@@ -29,11 +29,19 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     ), { timeout: 60_000 }).toContain("Via Subway");
     await page.evaluate(async () => { await document.fonts.ready; });
     await raiseSheet(page);
+    if (stage === "after") await expect(page.getByRole("button", { name: "START NAVIGATING" }).filter({ visible: true }).first()).toBeInViewport({ ratio: 1 });
     fs.mkdirSync(out, { recursive: true });
     await page.screenshot({ path: path.join(out, `card-${theme}.png`) });
+    const hideSheet = await page.addStyleTag({ content: '[data-testid="bottom-sheet"] { display: none !important; }' });
+    await page.screenshot({ path: path.join(out, `map-${theme}.png`) });
+    await hideSheet.evaluate((element) => element.parentNode?.removeChild(element));
     await page.getByRole("button", { name: "START NAVIGATING" }).filter({ visible: true }).first().click();
     await expect(page.getByRole("list", { name: "Route steps" }).first()).toBeVisible();
     await raiseSheet(page);
+    if (stage === "after") {
+      await expect(page.getByRole("button", { name: "Back to route options" }).filter({ visible: true }).first()).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole("button", { name: "End navigation" }).filter({ visible: true }).first()).toBeInViewport({ ratio: 1 });
+    }
     await page.screenshot({ path: path.join(out, `navigating-${theme}.png`) });
   });
 }

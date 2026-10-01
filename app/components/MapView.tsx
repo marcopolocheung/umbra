@@ -14,7 +14,7 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { mapPinElement, placeStopFlagElement, stopFlagElement } from "./mapPins";
+import { mapPinElement, placeStopFlagElement, stopFlagElement, transferFlagElement } from "./mapPins";
 import { attachLineCoin } from "./lineCoinMarker";
 import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
@@ -304,6 +304,7 @@ export default function MapView({
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
   const lineCoinRefs       = useRef<{ remove: () => void }[]>([]);
   const stopFlagRefs       = useRef<maplibregl.Marker[]>([]);
+  const transferFlagRefs   = useRef<maplibregl.Marker[]>([]);
   // Where each ride's coin last rested (0–1 along it), so a recalculation keeps it put.
   const lineCoinFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
@@ -810,6 +811,8 @@ export default function MapView({
       lineCoinRefs.current = [];
       for (const flag of stopFlagRefs.current) flag.remove();
       stopFlagRefs.current = [];
+      for (const flag of transferFlagRefs.current) flag.remove();
+      transferFlagRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1290,6 +1293,8 @@ export default function MapView({
       if (!navTrainDrawData) {
         for (const flag of stopFlagRefs.current) flag.remove();
         stopFlagRefs.current = [];
+        for (const flag of transferFlagRefs.current) flag.remove();
+        transferFlagRefs.current = [];
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
         for (const s of SOURCES) if (map.getSource(s)) map.removeSource(s);
@@ -1297,6 +1302,8 @@ export default function MapView({
       }
 
       const { polylines, stops, transfers } = navTrainDrawData;
+      // Saved routes from earlier builds have no display-only transfer flags.
+      const changes = navTrainDrawData.changes ?? [];
       const transferIds = new Set(transfers.map((t) => t.at.id));
 
       // Each ride's line identifier as a draggable coin threaded on its track (#149):
@@ -1318,6 +1325,11 @@ export default function MapView({
             .setLngLat(door ?? [st.lon, st.lat])
             .addTo(map);
         });
+      for (const flag of transferFlagRefs.current) flag.remove();
+      transferFlagRefs.current = changes.map((change) =>
+        new maplibregl.Marker({ element: transferFlagElement(change.from, change.to, [1, 0]), anchor: "center" })
+          .setLngLat([change.from.lon, change.from.lat])
+          .addTo(map));
       updateFlags = () => {
         const canvas = map.getCanvas();
         const canvasBox = canvas.getBoundingClientRect();
@@ -1341,6 +1353,27 @@ export default function MapView({
           }
           const origin = door ? map.project(door) : a;
           placeStopFlagElement(stopFlagRefs.current[n].getElement(), [px, py], origin, viewport, !!door);
+        });
+        changes.forEach((change, n) => {
+          const origin = map.project([change.from.lon, change.from.lat]);
+          const destination = map.project([change.to.lon, change.to.lat]);
+          const distance = Math.hypot(destination.x - origin.x, destination.y - origin.y);
+          let [px, py] = distance >= 4
+            ? [(destination.x - origin.x) / distance, (destination.y - origin.y) / distance]
+            : [1, 1];
+          if (distance < 4) {
+            const index = stops.findIndex((stop) => stop.id === change.from.id);
+            const previous = stops[index - 1];
+            if (previous) {
+              const a = map.project([previous.lon, previous.lat]);
+              const length = Math.hypot(origin.x - a.x, origin.y - a.y) || 1;
+              [px, py] = [-(origin.y - a.y) / length, (origin.x - a.x) / length];
+              if (px + py < 0) [px, py] = [-px, -py];
+            } else {
+              [px, py] = [Math.SQRT1_2, Math.SQRT1_2];
+            }
+          }
+          placeStopFlagElement(transferFlagRefs.current[n].getElement(), [px, py], origin, viewport);
         });
       };
       updateFlags();

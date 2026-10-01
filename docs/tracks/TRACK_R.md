@@ -28,9 +28,14 @@ inspiration; the public mirror publishes everything here.
   and navigation itinerary. The path already carries each line; the card had collapsed it
   to the first one. Walking turns now come from the access and exit routes rather than a
   fixed zero. The rail time, wait and exposure remain whole-trip figures; no per-line
-  minutes are inferred. Before/after phone shots in both themes are in
-  `docs/design/shots/transit-transfer/`. A check of the supplied live route is outstanding
-  after the local street-data request returned 503.
+  minutes are inferred. Each new boarding now flies a Transfer kicker flag from the
+  change stop, with separate line-coloured shields for the arriving and departing stops
+  and an arrow between them; same-station changes need no explicit transfer edge. The
+  flag is a pointer-free DOM overlay and clamps inside the map. The longer itinerary keeps
+  Start Navigating at the phone sheet foot and resets the sheet to its top on phase changes.
+  Before/after phone shots
+  in both themes are in `docs/design/shots/transit-transfer/`. A check of the supplied
+  live route is outstanding after the local street-data request returned 503.
 - **#155 (merged):** kicker flags at transit station doors.
   Each ride's board and exit door now has a compact dot and a dotted leader in the line's
   colour, leading to a ringed ink shield with the line coin and station name under a tilted
@@ -125,9 +130,10 @@ inspiration; the public mirror publishes everything here.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
 - **Next action:** independent reviews of #158 when agent quota permits, then owner review and R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (#157):** 2026-10-01 on Node 24; lint (0 errors, 81 baseline warnings),
-  typecheck, 1,799 unit tests, build, design:check and e2e 18/18. Day and night phone shots
-  show both line bullets and the change station. The supplied live route could not be checked
-  locally because its street-data request returned 503; a real-phone feel check is outstanding.
+  typecheck, 1,802 unit tests, build, design:check and e2e 18/18. Day and night phone shots
+  show both line bullets, the change station, and the Transfer flag on the map. The supplied
+  live route could not be checked locally because its street-data request returned 503;
+  a real-phone feel check is outstanding.
 - **Last verified (#155):** 2026-09-30 on Node 24; lint (0 errors, 81 baseline warnings),
   typecheck, 1,791 unit tests, build, design:check and e2e 16/16. Day and night shots show
   the station-door flags fully on screen; a real-phone feel check is outstanding.

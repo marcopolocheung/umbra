@@ -216,6 +216,11 @@ export interface TrainDrawData {
    */
   stops: { id: string; lat: number; lon: number; name: string; color: string; line: string }[];
   transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
+  /** Every new boarding after the first, including a change inside one station node. */
+  changes: {
+    from: { id: string; lat: number; lon: number; name: string; line: string; color: string };
+    to: { id: string; lat: number; lon: number; name: string; line: string; color: string };
+  }[];
 }
 
 /**
@@ -1434,10 +1439,21 @@ export function buildTrainDrawData(
   const polylines: TrainDrawData["polylines"] = [];
   const stops: TrainDrawData["stops"] = [];
   const transfers: TrainDrawData["transfers"] = [];
+  const changes: TrainDrawData["changes"] = [];
+  let previousRide: TrainRouteSegment | null = null;
+  let afterTransfer = false;
 
   for (const seg of segments) {
     if (seg.type === "train") {
       const color = lineColors.get(seg.line) ?? "#888888";
+      if (previousRide && (afterTransfer || previousRide.line !== seg.line)) {
+        changes.push({
+          from: { ...previousRide.to, line: previousRide.line, color: lineColors.get(previousRide.line) ?? "#888888" },
+          to: { ...seg.from, line: seg.line, color },
+        });
+      }
+      previousRide = seg;
+      afterTransfer = false;
       polylines.push({
         // The sliced track where the edge published one, else the chord.
         coords: seg.geometry ?? [
@@ -1452,6 +1468,7 @@ export function buildTrainDrawData(
     }
 
     if (seg.type === "transfer") {
+      afterTransfer = true;
       transfers.push({
         at: { id: seg.at.id, lat: seg.at.lat, lon: seg.at.lon },
         fromLine: seg.fromLine,
@@ -1468,7 +1485,7 @@ export function buildTrainDrawData(
     return true;
   });
 
-  return { polylines, stops: uniqueStops, transfers };
+  return { polylines, stops: uniqueStops, transfers, changes };
 }
 
 /**
