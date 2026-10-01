@@ -110,7 +110,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** #157 transfer itinerary fix (see issue for the review PR). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** #158 (draft; fixes #157, transfer itinerary). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -123,7 +123,7 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** owner review of the #157 fix, then R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** independent reviews of #158 when agent quota permits, then owner review and R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
 - **Last verified (#157):** 2026-10-01 on Node 24; lint (0 errors, 81 baseline warnings),
   typecheck, 1,799 unit tests, build, design:check and e2e 18/18. Day and night phone shots
   show both line bullets and the change station. The supplied live route could not be checked
