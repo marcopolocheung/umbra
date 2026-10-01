@@ -283,8 +283,13 @@ test("routes on the published transit data and draws the line", async ({ page },
   expect(Math.hypot(after.x - before.x, after.y - before.y), "the coin did not move when dragged").toBeGreaterThan(5);
   expect(await transitLineNear(page, after.x, after.y), "the dragged coin left its line").toBe(true);
 
-  // The two stops a rider acts on are named beside their dots on the map.
-  await expect(page.locator("[data-part='stop-label']")).toHaveText(["Grid South", "Grid North"]);
+  // Published station doors carry flags with a compact door dot; no entrance pin remains.
+  await expect(page.locator("[data-part='stop-flag']")).toHaveCount(2);
+  await expect(page.locator("[data-part='stop-flag'] [data-part='door']")).toHaveCount(2);
+  await expect(page.locator("[aria-label='Station entrance']")).toHaveCount(0);
+  await expect(page.locator("[data-part='stop-flag'] [data-part='stop-name']")).toHaveText(["Grid South", "Grid North"]);
+  await expect(page.locator("[data-part='stop-flag'] [data-part='kicker']")).toHaveText(["Enter here", "Exit here"]);
+  await expect(page.locator("[data-part='stop-flag'] [data-part='line']")).toHaveText(["E", "E"]);
 
   // Half the published headway, on the day type the clock is actually set to.
   // The fixture ships 600 s for Sunday hour 9 and 300 s for the weekday, and

@@ -24,7 +24,15 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** #149 — transit line coins on the map, awaiting owner review.
+- **Active checkpoint:** #155 — kicker flags at transit station doors, awaiting owner review.
+  Each ride's board and exit door now has a compact dot and a dotted leader in the line's
+  colour, leading to a ringed ink shield with the line coin and station name under a tilted
+  Enter here / Exit here plate. The leader opens away from the train stop; the shield turns
+  inward at a viewport edge so the instruction remains readable on a phone. Missing door
+  data puts the flags on the board and exit stop dots. These are DOM overlays and never
+  intercept map gestures. Day and night review shots are in `docs/design/shots/transit-badges/`.
+  A real-phone feel check is outstanding.
+- **R transit coin (merged):** #149, via PR #153.
   Owner's final pick, after four rounds (studies: swelling, shields, the coin, then six
   "line weld" studies in the artifact "Umbra Line Welds" with a research report): the
   **pressure bulb with a keyline**. The coin (31px, the line's published colour) is welded
@@ -95,7 +103,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** #153 (fixes #149, transit line coins on the map). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** #156 (fixes #155, kicker flags at station doors). Follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -108,7 +116,10 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** R6 — timeline and sheet (#138), after #149's review. #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of #155, then R6 — timeline and sheet (#138). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (#155):** 2026-09-30 on Node 24; lint (0 errors, 81 baseline warnings),
+  typecheck, 1,791 unit tests, build, design:check and e2e 16/16. Day and night shots show
+  the station-door flags fully on screen; a real-phone feel check is outstanding.
 - **Last verified (#149):** 2026-09-30 on Node 24; lint (0 errors), typecheck, 1,785 unit tests,
   build, design:check and e2e 16/16. The weld was checked on the live day and night maps at rest
   and mid-pull; a real-phone feel check is outstanding.

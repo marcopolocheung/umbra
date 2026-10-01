@@ -168,8 +168,11 @@ export type TrainSegment = TrainRouteSegment | TransferSegment;
 
 export interface TrainDrawData {
   polylines: { coords: [number, number][]; color: string; line: string }[];
-  /** In ride order; `color` is the line that first serves the stop, for its map ring. */
-  stops: { id: string; lat: number; lon: number; name: string; color: string }[];
+  /**
+   * In ride order; `line` and `color` are the line that first serves the stop, for
+   * its map ring and, at the board and exit stops, the shield that names it.
+   */
+  stops: { id: string; lat: number; lon: number; name: string; color: string; line: string }[];
   transfers: { at: { id: string; lat: number; lon: number }; fromLine: string; toLine: string }[];
 }
 
@@ -1402,8 +1405,8 @@ export function buildTrainDrawData(
         color,
         line: seg.line,
       });
-      stops.push({ id: seg.from.id, lat: seg.from.lat, lon: seg.from.lon, name: seg.from.name, color });
-      stops.push({ id: seg.to.id, lat: seg.to.lat, lon: seg.to.lon, name: seg.to.name, color });
+      stops.push({ id: seg.from.id, lat: seg.from.lat, lon: seg.from.lon, name: seg.from.name, color, line: seg.line });
+      stops.push({ id: seg.to.id, lat: seg.to.lat, lon: seg.to.lon, name: seg.to.name, color, line: seg.line });
     }
 
     if (seg.type === "transfer") {

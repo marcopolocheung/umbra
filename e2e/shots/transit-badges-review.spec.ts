@@ -27,6 +27,34 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
       })
       .toBe(true);
     await page.waitForTimeout(2500);
+    if (stage === "after") {
+      const view = page.viewportSize()!;
+      for (const part of await page.locator("[data-part='stop-flag'] [data-part='kicker'], [data-part='stop-flag'] [data-part='shield']").all()) {
+        const box = await part.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(view.width);
+        expect(box!.y).toBeGreaterThanOrEqual(0);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(view.height);
+      }
+      const connections = await page.locator("[data-part='stop-flag']").evaluateAll((hosts) => hosts.map((host) => {
+        const anchor = host.getBoundingClientRect();
+        const shield = host.querySelector("[data-part='shield']")!.getBoundingClientRect();
+        const path = host.querySelector("[data-part='leader']")!.getAttribute("d")!;
+        const match = path.match(/L(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)!;
+        const x = anchor.left + Number(match[1]);
+        const y = anchor.top + Number(match[2]);
+        return {
+          gap: Math.hypot(Math.max(shield.left - x, 0, x - shield.right), Math.max(shield.top - y, 0, y - shield.bottom)),
+          doorClear: shield.left > anchor.left + 5 || shield.right < anchor.left - 5 ||
+            shield.top > anchor.top + 5 || shield.bottom < anchor.top - 5,
+        };
+      }));
+      for (const connection of connections) {
+        expect(connection.gap).toBeLessThanOrEqual(1);
+        expect(connection.doorClear).toBe(true);
+      }
+    }
     fs.mkdirSync(out, { recursive: true });
     await page.addStyleTag({ content: "[data-testid='bottom-sheet'] { visibility: hidden !important; }" });
     await page.waitForTimeout(300);

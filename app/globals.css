@@ -192,6 +192,8 @@
   --radius-pin: 50% 50% 50% 0;
   --angle-label: -1deg;
   --angle-stamp: 1deg;
+  /* The Enter here / Exit here plate on a station-door kicker flag: a clear lean at map size. */
+  --angle-flag: -3deg;
   --angle-marker: -45deg;
   --angle-marker-inner: 45deg;
   --angle-disclosure: 90deg;
