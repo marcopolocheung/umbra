@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, memo } from "react";
 import type { SavedRoute, SavedFolder } from "../lib/savedRoutes";
+import { routeShadowLabel } from "../lib/routeTradeoff";
+import Kicker from "./ui/Kicker";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The date and time a saved figure was computed for, as a ticket stub prints it. */
+function stubDate(dateIso: string, minutes: number): [string, string] {
+  const [, month, day] = dateIso.split("-").map(Number);
+  const h = Math.floor(minutes / 60);
+  const time = `${h % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  return [`${MONTHS[month - 1] ?? ""} ${day}`, time];
+}
 
 interface SavedRoutesSectionProps {
   routes: SavedRoute[];
@@ -40,6 +52,11 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
     setRenamingId(null);
   }
 
+  // Each saved route is a ticket stub: name and figure on the ticket, the date
+  // and time the figure was computed for on the stub past the perforation (a
+  // shadow share is only true of its hour), then rename and delete as square
+  // 44px controls that are always shown — they used to appear on hover only,
+  // which a phone never has (R8b).
   function renderRoute(r: SavedRoute) {
     const rain = r.routeOption.objective === "rain"
       || r.routeOption.dryCoverage !== undefined
@@ -47,17 +64,21 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
     const shelteredPct = r.routeOption.exposure?.shelteredDistancePct ?? r.routeOption.dryCoverage;
     const exposureUnknown = (r.routeOption.exposure?.unknownDistanceM ?? 0) > 0
       || (r.routeOption.exposure?.unknownDurationSec ?? 0) > 0;
+    // A sun route says what its card said: "after sunset" at night, "on foot"
+    // on transit, never a bare share the route card would not show.
     const protectionLabel = rain
       ? shelteredPct == null || exposureUnknown ? "shelter unknown" : `${Math.round(shelteredPct * 100)}% sheltered`
-      : `${Math.round(r.routeOption.shadowCoverage * 100)}% shadow`;
+      : routeShadowLabel(r.routeOption);
     const distKm = r.routeOption.distanceM >= 1000
       ? `${(r.routeOption.distanceM / 1000).toFixed(1)} km`
       : `${Math.round(r.routeOption.distanceM)} m`;
+    const [day, time] = stubDate(r.dateIso, r.timeOfDayMinutes);
     return (
-      <div key={r.id} className="flex items-center gap-1 group">
+      <li key={r.id} className="flex min-w-0 border-2 border-ink bg-panel">
         {renamingId === r.id ? (
           <input
             ref={renameInputRef}
+            aria-label={`Rename ${r.name}`}
             value={renameValue}
             onChange={e => setRenameValue(e.target.value)}
             onKeyDown={e => {
@@ -65,39 +86,44 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
               if (e.key === "Escape") setRenamingId(null);
             }}
             onBlur={() => commitRename(r.id)}
-            className="flex-1 border rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
-            style={{
-              background: "var(--color-ground)",
-              color: "var(--color-ink)",
-              borderColor: "var(--color-route-soft)",
-            }}
+            className="min-h-11 min-w-0 flex-1 px-3 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
+            style={{ background: "var(--color-ground)", color: "var(--color-ink)", fontSize: "var(--text-small)" }}
           />
         ) : (
           <button type="button"
             onClick={() => onLoad(r)}
-            className="flex-1 text-left px-1.5 py-1 rounded hover:bg-ground transition-colors min-w-0"
+            className="flex min-h-11 min-w-0 flex-1 items-stretch text-left hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
           >
-            <div className="text-[11px] truncate" style={{ color: "var(--color-ink)" }}>{r.name}</div>
-            <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</div>
+            <span className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
+              <span className="truncate font-semibold" style={{ color: "var(--color-ink)", fontSize: "var(--text-small)" }}>{r.name}</span>
+              <span className="text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>{distKm} · {protectionLabel}</span>
+            </span>
+            <span
+              className="flex shrink-0 flex-col items-end justify-center border-l-2 border-dashed border-ink px-2 font-mono text-[11px] uppercase tabular-nums"
+              style={{ color: "var(--color-ink)" }}
+            >
+              <span>{day}</span>
+              <span>{time}</span>
+            </span>
           </button>
         )}
-        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-          <button type="button"
-            onClick={() => { setRenamingId(r.id); setRenameValue(r.name); }}
-            title="Rename"
-            className="p-0.5 text-ink-muted hover:text-ink-muted transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">edit</span>
-          </button>
-          <button type="button"
-            onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
-            title="Delete"
-            className="p-0.5 text-ink-muted hover:text-danger transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">close</span>
-          </button>
-        </div>
-      </div>
+        <button type="button"
+          onClick={() => { setRenamingId(r.id); setRenameValue(r.name); }}
+          aria-label={`Rename ${r.name}`}
+          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
+          style={{ color: "var(--color-ink)" }}
+        >
+          <span className="material-symbols-outlined text-lg" aria-hidden="true">edit</span>
+        </button>
+        <button type="button"
+          onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
+          aria-label={`Delete ${r.name}`}
+          className="flex w-11 shrink-0 items-center justify-center border-l-2 border-ink hover:text-danger focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current"
+          style={{ color: "var(--color-ink)" }}
+        >
+          <span className="material-symbols-outlined text-lg" aria-hidden="true">delete</span>
+        </button>
+      </li>
     );
   }
 
@@ -107,32 +133,28 @@ const SavedRoutesSection = memo(function SavedRoutesSection({
     <div className="border-b pb-2 mb-1" style={{ borderColor: "var(--color-rule-strong)" }}>
       <button type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full text-left text-[11px] hover:text-ink transition-colors py-0.5"
-        style={{ color: "var(--color-ink-muted)" }}
+        aria-expanded={open}
+        className="flex min-h-11 w-full items-center gap-1.5 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+        style={{ color: "var(--color-ink)" }}
       >
         <span
-          className={`material-symbols-outlined text-xs transition-transform ${open ? 'umbra-disclosure-open' : ''}`}
-          style={{ fontSize: 12 }}
+          className={`material-symbols-outlined text-base ${open ? 'umbra-disclosure-open' : ''}`}
+          aria-hidden="true"
         >
           chevron_right
         </span>
-        Saved Routes
-        <span className="ml-auto" style={{ color: "var(--color-ink-muted)", opacity: 0.5 }}>{routes.length}</span>
+        <Kicker>Saved routes</Kicker>
+        <span className="ml-auto font-mono text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>{routes.length}</span>
       </button>
 
       {open && (
-        <div className="flex flex-col mt-1 gap-0">
-          {uncategorised.map(renderRoute)}
+        <div className="mt-1 flex flex-col gap-2">
+          {uncategorised.length > 0 && <ul className="flex flex-col gap-2">{uncategorised.map(renderRoute)}</ul>}
           {byFolder.map(({ folder, routes: fr }) => (
-            <div key={folder.id}>
-              <div
-                className="text-[11px] px-1.5 pt-1.5 pb-0.5 uppercase tracking-wide"
-                style={{ color: "var(--color-ink-muted)", opacity: 0.6 }}
-              >
-                {folder.name}
-              </div>
-              {fr.map(renderRoute)}
-            </div>
+            <section key={folder.id} aria-label={folder.name} className="flex flex-col gap-1">
+              <Kicker>{folder.name}</Kicker>
+              <ul className="flex flex-col gap-2">{fr.map(renderRoute)}</ul>
+            </section>
           ))}
         </div>
       )}
