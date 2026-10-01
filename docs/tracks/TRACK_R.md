@@ -24,8 +24,20 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R6a — the timetable ruler (first slice of R6; R6b is #159: sheet
-  edge #138, SolarPill night wording #147, the hourly strip as a departures board). Ticks
+- **Active checkpoint:** R6b (#159), the rest of R6. The phone sheet is square, with
+  the timeline card's 2px ink top edge and an ink grip; drag, snaps and spring are
+  unchanged. `SolarPill` is a square `Tag` and says "Sun down — no direct sun" on the
+  route card's 0° rule (`routeAfterSunset`). It no longer calls night "low sun". It claims
+  nothing about routing weight, because a direct walk's Pareto search never reads the
+  intensity (#167). `HourlyExposureStrip` is a departures board: an ink header row, one
+  button per hour column on a 2px ink rule, IBM Plex Mono 12-hour keys with an AM/PM row,
+  the timeline's hour as an ink ticket key, and bars stepped by fifths through
+  `--color-{sun,rain}-step-1..5`. Those tokens run light→darker by day and reverse at
+  night, so the larger share is always the higher-contrast fill. A dash marks any hour
+  without a reading, and "no reading" follows once sampling ends. The phone sheet now
+  renders the board; it never had (umbrapriv #197, Track D). DaySlider was already
+  redrawn in R6a. Shots: `docs/design/shots/r6b/`.
+- **R6a (merged, #164):** the timetable ruler (first slice of R6). Ticks
   stand on a 2px ink rule with IBM Plex Mono hour labels in full ink under it, so the
   needle, which stops at the rule, never covers one. The band above is the real SunCalc
   altitude across the map-local day (`lib/sunPath.ts`, 0° on the rule, 90° at the top,
@@ -93,7 +105,7 @@ inspiration; the public mirror publishes everything here.
   a solid bar in its colour that ends in a ring at the exit stop, dots on to the destination
   pin; the ride step names its wait so steps sum to Time.
 - **Done:** R0 (#120), R1 (#122), R2 (#127), R3 (#132), R4a (#139), R4b (#141), R5a (#148),
-  R5b (#152) and the transfer itinerary (#158) merged.
+  R5b (#152), the transfer itinerary (#158) and R6a (#164) merged.
   R5a is the first consumer of R3's primitives: the option on a `Kicker plated`, `Tag` for
   Recommended (shade, or rain on rain cards; never orange), `LineBullet` per transit leg, and
   `Plate` now takes `button`/`a` (#128; a focused ink plate also takes the page-ink outline,
@@ -128,7 +140,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R6a (this checkpoint). R6a follow-ups: #159 (R6b), #160 (sunrise label vs 0° rule, owner call), #161 (drag readout goes stale; DaySlider touch-action), #162 (map controls overlap the card), #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R6b (this checkpoint). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
@@ -141,7 +153,12 @@ inspiration; the public mirror publishes everything here.
   start action is a square ink button with the hard shadow, not a clipped plate (D4); transit
   bullets keep each line's published colour (N yellow, L grey) so cards match the map.
   Still open from R4b: hollow A/filled B swap at night; the opaque night route covers labels.
-- **Next action:** owner review of R6a, then R6b (#159). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Next action:** owner review of R6b, then R7 (search, place detail, assistant). #126 keeps its SettingsPanel/SaveRouteModal half.
+- **Last verified (R6b):** 2026-10-01 on Node 24; lint (0 errors, 80 baseline warnings),
+  typecheck, 1,824 unit tests, build and e2e 11/11 (smoke and nav-smoke; no MapTiler key,
+  so smoke-live did not run). design:check reports the 9 findings already on main (#165),
+  none new. Day and night 390×844 shots on the fixture basemap; a real-phone look in sun,
+  rain-mode and desktop board shots are outstanding.
 - **Last verified (R6a):** 2026-10-01 on Node 24; lint (0 errors, 80 baseline warnings),
   typecheck, 1,810 unit tests, build, design:check and e2e 11/11 (smoke and nav-smoke; no
   MapTiler key in the worktree, so smoke-live did not run). Day and night 390×844 shots on

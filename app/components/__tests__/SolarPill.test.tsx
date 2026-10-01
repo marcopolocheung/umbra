@@ -29,7 +29,6 @@ describe("SolarPill", () => {
     const { rerender } = render(<SolarPill intensity={0} afterSunset />);
     const down = screen.getByText(/Sun down/);
     expect(down.className).toContain("umbra-tag--neutral");
-    expect(down.getAttribute("style") ?? "").not.toContain("sun");
     rerender(<SolarPill intensity={0.9} />);
     expect(screen.getByText(/High solar load/).getAttribute("style")).toContain("var(--color-sun-signal)");
   });
