@@ -916,7 +916,7 @@ describe("trainDijkstra: per-edge track geometry", () => {
     expect(drawData.polylines[2]?.coords).toHaveLength(3);
   });
 
-  it("lists every stop once, in ride order, ringed in the line that serves it", () => {
+  it("lists every stop once, in ride order, with the line that serves it", () => {
     const path = trainDijkstra(
       toyGraph(
         [...stations, toyStation("W", 40.718)],
@@ -932,6 +932,7 @@ describe("trainDijkstra: per-edge track geometry", () => {
     const drawData = buildTrainDrawData(path.segments, new Map([["G", "#6CBE45"]]));
     expect(drawData.stops.map((s) => s.id)).toEqual(["X", "M", "Z", "W"]);
     expect(drawData.stops.every((s) => s.color === "#6CBE45")).toBe(true);
+    expect(drawData.stops.every((s) => s.line === "G")).toBe(true);
   });
 });
 

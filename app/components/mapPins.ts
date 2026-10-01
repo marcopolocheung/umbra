@@ -125,21 +125,186 @@ export function lineCoinElement(line: string, color: string): LineCoinParts {
   return { host, defs, joint, casing, fill, disc, grip };
 }
 
+/** How far the dotted leader runs from a board or exit point to its flag, in px. */
+export const STOP_FLAG_LEADER_PX = 34;
+
 /**
- * The name beside a ride's board or exit stop: a small paper plate in the map's
- * overlay inks (it follows the basemap theme), the two stops a rider acts on.
- * Not a control, so it lets the map keep its gestures.
+ * A ride's board or exit point as a kicker flag: a dotted leader in the
+ * line's colour runs from the door (or stop when no door is known) to a shield — an ink pill ringed in that
+ * colour, holding the line's letter coin and the stop's name — under a small
+ * tilted plate in the line's colour reading Enter here or Exit here. `toward` is
+ * the unit direction (screen px) the flag opens in, away from the ride.
+ *
+ * The shield's inks are theme-fixed like the line bullets', so it reads the same
+ * on both maps; the plate and coin take whichever ink reads at 4.5:1 on the
+ * line's colour, or a cream ground ringed in it where neither does. A zero-size
+ * anchor at the door or stop that never takes the pointer; DOM only, never the canvas.
  */
-export function stopLabelElement(name: string): HTMLDivElement {
-  const label = document.createElement("div");
-  label.dataset.part = "stop-label";
-  label.textContent = name;
-  label.style.cssText = `
-    pointer-events:none;white-space:nowrap;padding:2px 6px;
-    font-family:var(--font-body);font-size:11px;font-weight:600;line-height:1.3;
-    background:var(--color-map-casing);color:var(--color-map-route);
-    border:1.5px solid var(--color-map-route);border-radius:var(--radius-sm);
+export function stopFlagElement(
+  kind: "enter" | "exit",
+  line: string,
+  color: string,
+  name: string,
+  toward: [number, number],
+  door = false,
+): HTMLDivElement {
+  const css = lineCssColor(color);
+  const ink = lineBulletInk(css);
+  const kicker = kind === "enter" ? "Enter here" : "Exit here";
+  const [px, py] = toward;
+  const host = document.createElement("div");
+  host.dataset.part = "stop-flag";
+  host.setAttribute("role", "img");
+  host.setAttribute("aria-label", `${kicker}: ${line}, ${name}`);
+  host.style.cssText = "width:0;height:0;position:relative;pointer-events:none;";
+
+  if (door) {
+  const dot = document.createElement("span");
+    dot.dataset.part = "door";
+    dot.style.cssText = `
+      position:absolute;z-index:2;left:-5px;top:-5px;width:10px;height:10px;box-sizing:border-box;
+      background:var(--color-line-ink-dark);border:2px solid ${css};border-radius:var(--radius-circle);
+      box-shadow:var(--shadow-map-marker);
+    `;
+    host.appendChild(dot);
+  }
+
+  // The leader: round dots from just outside the door dot or stop ring to the flag.
+  const svgNs = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("width", "1");
+  svg.setAttribute("height", "1");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:absolute;left:0;top:0;overflow:visible;";
+  const leader = document.createElementNS(svgNs, "path");
+  const [from, to] = [door ? 6 : 12, STOP_FLAG_LEADER_PX];
+  leader.setAttribute("d", `M${(px * from).toFixed(2)},${(py * from).toFixed(2)}L${(px * to).toFixed(2)},${(py * to).toFixed(2)}`);
+  leader.setAttribute("stroke", css);
+  leader.setAttribute("stroke-width", "3");
+  leader.setAttribute("stroke-linecap", "round");
+  leader.setAttribute("stroke-dasharray", "0 6");
+  leader.dataset.part = "leader";
+  svg.appendChild(leader);
+  host.appendChild(svg);
+
+  // The flag opens away from the ride: its nearest corner meets the leader's end.
+  const shift = (d: number) => (d > 0.38 ? 0 : d < -0.38 ? -100 : -50);
+  const flag = document.createElement("div");
+  flag.dataset.part = "flag-body";
+  flag.style.cssText = `
+    position:absolute;left:${(px * to).toFixed(2)}px;top:${(py * to).toFixed(2)}px;
+    transform:translate(${shift(px)}%, ${shift(py)}%);
+    display:flex;flex-direction:column;align-items:flex-start;
+  `;
+  const plate = document.createElement("span");
+  plate.dataset.part = "kicker";
+  plate.textContent = kicker;
+  plate.style.cssText = `
+    position:relative;z-index:1;margin:0 0 -3px 10px;padding:2px 7px;white-space:nowrap;
+    font-family:var(--font-label);font-size:11px;font-weight:800;letter-spacing:0.06em;
+    text-transform:uppercase;line-height:1.3;rotate:var(--angle-flag);clip-path:var(--plate-clip);
+    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
+  `;
+  const shield = document.createElement("div");
+  shield.dataset.part = "shield";
+  shield.style.cssText = `
+    display:flex;align-items:center;gap:6px;height:28px;padding:0 11px 0 3px;white-space:nowrap;
+    background:var(--color-line-ink-dark);border:3px solid ${css};border-radius:var(--radius-full);
     box-shadow:var(--shadow-map-marker);
   `;
-  return label;
+  const coin = document.createElement("span");
+  coin.dataset.part = "line";
+  coin.textContent = line;
+  coin.style.cssText = `
+    display:grid;place-items:center;min-width:20px;height:20px;padding:0 3px;border-radius:var(--radius-full);
+    font-family:var(--font-label);font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;
+    ${ink ? `background:${css};color:var(--color-line-ink-${ink});` : `background:var(--color-line-ink-light);color:var(--color-line-ink-dark);border:2px solid ${css};`}
+  `;
+  const label = document.createElement("span");
+  label.dataset.part = "stop-name";
+  label.textContent = name;
+  label.style.cssText = `
+    max-width:190px;overflow:hidden;text-overflow:ellipsis;
+    font-family:var(--font-display);font-size:14px;font-weight:700;line-height:1;color:var(--color-line-ink-light);
+  `;
+  shield.append(coin, label);
+  flag.append(plate, shield);
+  host.appendChild(flag);
+  return host;
+}
+
+/** Keep a flag readable inside the map as its door moves on screen. */
+export function placeStopFlagElement(
+  host: HTMLElement,
+  toward: [number, number],
+  origin: { x: number; y: number },
+  viewport: { width: number; height: number },
+  door = false,
+): void {
+  const [px, py] = toward;
+  const offscreen = origin.x < 0 || origin.x > viewport.width || origin.y < 0 || origin.y > viewport.height;
+  host.style.display = offscreen ? "none" : "";
+  if (offscreen) return;
+  const leader = host.querySelector<SVGPathElement>("[data-part='leader']");
+  const flag = host.querySelector<HTMLElement>("[data-part='flag-body']");
+  if (!leader || !flag) return;
+  const shift = (d: number) => (d > 0.38 ? 0 : d < -0.38 ? -1 : -0.5);
+  // Flex children can overflow the wrapper's measured width. Clamp their full visual
+  // extent, including the plate's tilt, rather than the wrapper's box alone.
+  const box = flag.getBoundingClientRect();
+  const childBoxes = [...flag.children].map((child) => child.getBoundingClientRect());
+  const minX = Math.min(0, ...childBoxes.map((child) => child.left - box.left));
+  const maxX = Math.max(flag.offsetWidth, ...childBoxes.map((child) => child.right - box.left));
+  const minY = Math.min(0, ...childBoxes.map((child) => child.top - box.top));
+  const maxY = Math.max(flag.offsetHeight, ...childBoxes.map((child) => child.bottom - box.top));
+  const clamp = (value: number, coordinate: number, extent: number, min: number, max: number) =>
+    Math.max(8 - coordinate - min, Math.min(value, extent - 8 - coordinate - max));
+  const left = clamp(px * STOP_FLAG_LEADER_PX + shift(px) * (maxX - minX) - minX, origin.x, viewport.width, minX, maxX);
+  const top = clamp(py * STOP_FLAG_LEADER_PX + shift(py) * (maxY - minY) - minY, origin.y, viewport.height, minY, maxY);
+  flag.style.left = `${left.toFixed(2)}px`;
+  flag.style.top = `${top.toFixed(2)}px`;
+  flag.style.transform = "none";
+
+  // Aim the dots at the placed shield, even when its body had to turn inward.
+  const shield = host.querySelector<HTMLElement>("[data-part='shield']");
+  if (!shield) return;
+  const anchor = host.getBoundingClientRect();
+  let target = shield.getBoundingClientRect();
+  // A constrained horizontal placement can put the shield over its own door.
+  // Move it above or below the dot before drawing the connection.
+  if (target.left - 6 <= anchor.left && anchor.left <= target.right + 6 &&
+      target.top - 6 <= anchor.top && anchor.top <= target.bottom + 6) {
+    const topLimit = 8 - origin.y - minY;
+    const bottomLimit = viewport.height - 8 - origin.y - maxY;
+    const above = -8 - (target.bottom - anchor.top);
+    const below = 8 - (target.top - anchor.top);
+    const moves = py > 0 ? [below, above] : py < 0 ? [above, below] : origin.y < viewport.height / 2 ? [below, above] : [above, below];
+    for (const move of moves) {
+      const candidate = top + move;
+      if (candidate >= topLimit && candidate <= bottomLimit) {
+        flag.style.top = `${candidate.toFixed(2)}px`;
+        target = shield.getBoundingClientRect();
+        break;
+      }
+    }
+  }
+  const x0 = target.left - anchor.left;
+  const x1 = target.right - anchor.left;
+  const y0 = target.top - anchor.top;
+  const y1 = target.bottom - anchor.top;
+  const hits: number[] = [];
+  if (px !== 0) for (const x of [x0, x1]) {
+    const t = x / px;
+    if (t > 0 && t * py >= y0 && t * py <= y1) hits.push(t);
+  }
+  if (py !== 0) for (const y of [y0, y1]) {
+    const t = y / py;
+    if (t > 0 && t * px >= x0 && t * px <= x1) hits.push(t);
+  }
+  const distance = Math.min(...hits);
+  const end: [number, number] = Number.isFinite(distance)
+    ? [px * distance, py * distance]
+    : [Math.max(x0, Math.min(0, x1)), Math.max(y0, Math.min(0, y1))];
+  const from = door ? 6 : 12;
+  leader.setAttribute("d", `M${(px * from).toFixed(2)},${(py * from).toFixed(2)}L${end[0].toFixed(2)},${end[1].toFixed(2)}`);
 }

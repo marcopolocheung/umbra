@@ -14,7 +14,7 @@ import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
-import { mapPinElement, stopLabelElement } from "./mapPins";
+import { mapPinElement, placeStopFlagElement, stopFlagElement } from "./mapPins";
 import { attachLineCoin } from "./lineCoinMarker";
 import { lineBadgePlacements } from "../lib/lineBadges";
 import type { UiTheme } from "../lib/uiTheme";
@@ -302,10 +302,8 @@ export default function MapView({
   const onMarkerDragEndRef = useRef(onMarkerDragEnd);
   const markerARef         = useRef<maplibregl.Marker | null>(null);
   const markerBRef         = useRef<maplibregl.Marker | null>(null);
-  const markerBoardRef     = useRef<maplibregl.Marker | null>(null);
-  const markerAlightRef    = useRef<maplibregl.Marker | null>(null);
   const lineCoinRefs       = useRef<{ remove: () => void }[]>([]);
-  const stopLabelRefs      = useRef<maplibregl.Marker[]>([]);
+  const stopFlagRefs       = useRef<maplibregl.Marker[]>([]);
   // Where each ride's coin last rested (0–1 along it), so a recalculation keeps it put.
   const lineCoinFractions  = useRef(new Map<string, number>());
   const markerWpRefs          = useRef<maplibregl.Marker[]>([]);
@@ -808,12 +806,10 @@ export default function MapView({
       onShadowLayerReady?.(null);
       markerARef.current?.remove();      markerARef.current = null;
       markerBRef.current?.remove();     markerBRef.current = null;
-      markerBoardRef.current?.remove(); markerBoardRef.current = null;
-      markerAlightRef.current?.remove();markerAlightRef.current = null;
       for (const coin of lineCoinRefs.current) coin.remove();
       lineCoinRefs.current = [];
-      for (const label of stopLabelRefs.current) label.remove();
-      stopLabelRefs.current = [];
+      for (const flag of stopFlagRefs.current) flag.remove();
+      stopFlagRefs.current = [];
       map.off("rotate", rotateHandler);
       map.off("pitch", pitchHandler);
       map.off("moveend", refreshSunViz);
@@ -1285,12 +1281,15 @@ export default function MapView({
       "train-route-transfers",
     ] as const;
 
+    let updateFlags = () => {};
     const apply = () => {
+      map.off("move", updateFlags);
+      map.off("resize", updateFlags);
       for (const coin of lineCoinRefs.current) coin.remove();
       lineCoinRefs.current = [];
       if (!navTrainDrawData) {
-        for (const label of stopLabelRefs.current) label.remove();
-        stopLabelRefs.current = [];
+        for (const flag of stopFlagRefs.current) flag.remove();
+        stopFlagRefs.current = [];
         // Remove all layers and sources when no train data
         for (const l of LAYERS) if (map.getLayer(l)) map.removeLayer(l);
         for (const s of SOURCES) if (map.getSource(s)) map.removeSource(s);
@@ -1304,25 +1303,49 @@ export default function MapView({
       // DOM markers, so the shadow sampler's canvas readback never sees them.
       // Remembered per ride — its line and end stations — so the same trip
       // recalculated at another time keeps its place, and a new trip starts fresh.
-      // Board and exit names sit beside the ride, never on it: off along its
-      // perpendicular, on the side that points down and right, since entrance pins
-      // grow upward from their doors. Added before the coins so a coin draws above.
-      for (const label of stopLabelRefs.current) label.remove();
-      stopLabelRefs.current = [0, stops.length - 1]
-        .filter((i, n, all) => stops[i] && all.indexOf(i) === n)
+      // Board and exit doors fly kicker flags with a small dot at each door.
+      // Without door data, the flags fly from the train stop dots instead.
+      // Add them before the coins so a coin draws above them.
+      for (const flag of stopFlagRefs.current) flag.remove();
+      const ends = [0, stops.length - 1]
+        .filter((i, n, all) => stops[i] && all.indexOf(i) === n);
+      stopFlagRefs.current = ends
         .map((i) => {
           const st = stops[i];
+          const door = navMrtEntrances?.[i === 0 ? 0 : 1];
+          const flag = stopFlagElement(i === 0 ? "enter" : "exit", st.line, st.color, st.name, [1, 0], !!door);
+          return new maplibregl.Marker({ element: flag, anchor: "center" })
+            .setLngLat(door ?? [st.lon, st.lat])
+            .addTo(map);
+        });
+      updateFlags = () => {
+        const canvas = map.getCanvas();
+        const canvasBox = canvas.getBoundingClientRect();
+        const viewport = {
+          width: Math.min(canvas.clientWidth, window.innerWidth - canvasBox.left),
+          height: Math.min(canvas.clientHeight, window.innerHeight - canvasBox.top),
+        };
+        ends.forEach((i, n) => {
+          const st = stops[i];
+          const door = navMrtEntrances?.[i === 0 ? 0 : 1];
           const next = stops[i === 0 ? 1 : i - 1] ?? st;
           const a = map.project([st.lon, st.lat]);
           const b = map.project([next.lon, next.lat]);
           const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
           let [px, py] = [-(b.y - a.y) / len, (b.x - a.x) / len];
           if (px + py < 0) [px, py] = [-px, -py];
-          const anchor = py > 0.38 ? (px > 0.38 ? "top-left" : px < -0.38 ? "top-right" : "top") : "left";
-          return new maplibregl.Marker({ element: stopLabelElement(st.name), anchor, offset: [px * 14, py * 14] })
-            .setLngLat([st.lon, st.lat])
-            .addTo(map);
+          if (door) {
+            const d = map.project(door);
+            const doorDistance = Math.hypot(d.x - a.x, d.y - a.y);
+            if (doorDistance >= 4) [px, py] = [(d.x - a.x) / doorDistance, (d.y - a.y) / doorDistance];
+          }
+          const origin = door ? map.project(door) : a;
+          placeStopFlagElement(stopFlagRefs.current[n].getElement(), [px, py], origin, viewport, !!door);
         });
+      };
+      updateFlags();
+      map.on("move", updateFlags);
+      map.on("resize", updateFlags);
 
       // Each stop's drawn radius, ring included (stop and transfer layers below), so the
       // coin's weld is cut away to exactly the dot it would otherwise paint over.
@@ -1450,47 +1473,27 @@ export default function MapView({
       apply();
     } else {
       map.once("load", apply);
-      return () => { map.off("load", apply); };
     }
-  }, [navTrainDrawData]);
+    return () => {
+      map.off("load", apply);
+      map.off("move", updateFlags);
+      map.off("resize", updateFlags);
+    };
+  }, [navTrainDrawData, navMrtEntrances]);
 
   // -------------------------------------------------------------------------
-  // MRT entrance pins (DOM markers) + dotted connector (GeoJSON layer)
+  // MRT entrance-to-train dotted connector (GeoJSON layer)
   // -------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove previous markers and connector
-    markerBoardRef.current?.remove();  markerBoardRef.current = null;
-    markerAlightRef.current?.remove(); markerAlightRef.current = null;
+    // Remove previous connector
     if (map.getLayer("mrt-entrance-connector-line")) map.removeLayer("mrt-entrance-connector-line");
     if (map.getLayer("mrt-entrance-connector-casing")) map.removeLayer("mrt-entrance-connector-casing");
     if (map.getSource("mrt-entrance-connector"))     map.removeSource("mrt-entrance-connector");
 
     if (!navMrtEntrances) return;
-
-    const makeMEl = () => {
-      const el = document.createElement("div");
-      el.style.cssText = [
-        "width:26px", "height:26px", "border-radius:var(--radius-circle)",
-        "background:var(--color-map-casing)", "border:3px solid var(--color-map-route)",
-        "box-shadow:var(--shadow-map-marker)",
-        "display:flex", "align-items:center", "justify-content:center",
-        "font-size:11px", "font-weight:800", "color:var(--color-map-route)",
-        "font-family:var(--font-label)", "cursor:default",
-      ].join(";");
-      el.textContent = "M";
-      el.setAttribute("aria-label", "Station entrance");
-      return el;
-    };
-
-    markerBoardRef.current = new maplibregl.Marker({ element: makeMEl(), anchor: "center" })
-      .setLngLat(navMrtEntrances[0])
-      .addTo(map);
-    markerAlightRef.current = new maplibregl.Marker({ element: makeMEl(), anchor: "center" })
-      .setLngLat(navMrtEntrances[1])
-      .addTo(map);
 
     // Dotted door-to-train links — only add once style is loaded (decorative, not critical)
     const connectors = navTrainDrawData ? stationConnectors(navMrtEntrances, navTrainDrawData) : [];
