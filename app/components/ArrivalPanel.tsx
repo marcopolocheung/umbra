@@ -38,7 +38,7 @@ export default function ArrivalPanel({
   const afterSunset = !!route && !rainMode && routeAfterSunset(route);
   // Where the shadow (or shelter) figure came from, as the route card states it.
   // Absent on sketch and transit routes, which were not sampled per sidewalk.
-  const sourceLine = route && !afterSunset
+  const sourceLine = route && !afterSunset && !(rainMode && route.exposureUpdating)
     ? (() => {
         const source = rainMode ? route.shelterSource : route.shadowSource;
         return source ? describeShadowProvenance(source) : null;
@@ -60,6 +60,7 @@ export default function ArrivalPanel({
             (route.exposure?.unknownDistanceM ?? 0) > 0 || (route.exposure?.unknownDurationSec ?? 0) > 0;
           // The headline above already states the shelter figure; the caption
           // keeps only what the headline leaves out (U5: no number twice).
+          if (route.exposureUpdating) return `${formatDistance(route.distanceM)} route — updating shelter…`;
           const shelterText =
             unknown ? "with shelter partly unknown" : shelter == null ? "with shelter unknown" : "";
           return `${formatDistance(route.distanceM)} route${shelterText ? ` ${shelterText}` : ""}`;
@@ -109,23 +110,19 @@ export default function ArrivalPanel({
           exposure.sunMinutes < 1
             ? "under a minute in sun"
             : `${Math.round(exposure.sunMinutes)} of ${total} min in sun`;
-        return { headline: sun, pct: Math.round((exposure.shadowMinutes / total) * 100) };
+        // The bar takes the exact ratio: a rounded minute total skews a short
+        // walk's share by up to half (a 120 m walk read 43% for its 30%).
+        return {
+          headline: sun,
+          pct: Math.round((exposure.shadowMinutes / (exposure.sunMinutes + exposure.shadowMinutes)) * 100),
+        };
       })()
     : null;
 
+  const sunVerdict = !rainMode && shadeStory?.pct != null;
+
   return (
     <div className="flex flex-col gap-3 p-3">
-      <button
-        type="button"
-        onClick={onDone}
-        className="flex h-11 w-11 items-center justify-center self-end focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
-        style={{ color: "var(--color-ink)" }}
-        title="Close"
-        aria-label="Close"
-      >
-        <span className="material-symbols-outlined text-xl" aria-hidden="true">close</span>
-      </button>
-
       {/* Arrival as a postcard (R8a): the greeting on a kicker plate, the place
           as its title, the umbra disc as the postmark, then the trip's one
           sun-time verdict told once in square numbers with the split bar the
@@ -139,7 +136,7 @@ export default function ArrivalPanel({
           <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
             <Kicker plated>Greetings from</Kicker>
             <h2 id={`${biteId}-title`} className="font-display text-verdict font-semibold leading-tight">
-              {destination}
+              <span className="sr-only">Arrived at</span> {destination}
             </h2>
             {coordinates && (
               <div className="font-mono text-[11px] tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
@@ -148,13 +145,15 @@ export default function ArrivalPanel({
             )}
           </div>
           {/* The umbra disc — a sun with its own shadow's bite — postmarks the card. */}
-          <StampBadge tone="sun" className="shrink-0">
+          {/* Orange only beside a sun figure: the disc is the sun, not decoration.
+              The heading already says Arrived to a screen reader. */}
+          <StampBadge tone={sunVerdict ? "sun" : "ink"} className="shrink-0" aria-hidden="true">
             {/* Side padding widens the ring so the word sits inside it below centre. */}
-            <span className="flex flex-col items-center gap-0.5 px-2">
-              <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+            <span className="flex flex-col items-center px-1">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
                 <mask id={biteId}>
                   <rect width="24" height="24" fill="white" />
-                  <circle cx="16" cy="9" r="7.5" fill="black" />
+                  <circle cx="19" cy="5" r="5" fill="black" />
                 </mask>
                 <circle cx="12" cy="12" r="9" fill="currentColor" mask={`url(#${biteId})`} />
               </svg>
@@ -227,7 +226,7 @@ export default function ArrivalPanel({
         <button
           type="button"
           onClick={onDone}
-          className="min-h-11 border-2 border-ink px-4 font-extrabold uppercase tracking-wider focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+          className="min-h-11 border-2 border-ink px-4 font-extrabold uppercase tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
           style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-small)", color: "var(--color-ink)" }}
         >
           Done

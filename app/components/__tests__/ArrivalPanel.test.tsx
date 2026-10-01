@@ -52,9 +52,10 @@ describe("ArrivalPanel as a postcard (R8a)", () => {
     arrive(walk(500, 0.6));
 
     expect(screen.getByText("Greetings from").className).toContain("umbra-kicker");
-    expect(screen.getByRole("heading", { name: "Bryant Park" }).className).toContain("font-display");
-    expect(screen.getByRole("article", { name: "Bryant Park" })).toBeTruthy();
-    expect(screen.getByText("Arrived").closest(".umbra-stamp-badge--sun")).not.toBeNull();
+    // The stamp is decorative; the heading says Arrived to a screen reader.
+    expect(screen.getByRole("heading", { name: "Arrived at Bryant Park" }).className).toContain("font-display");
+    expect(screen.getByRole("article", { name: "Arrived at Bryant Park" })).toBeTruthy();
+    expect(screen.getByText("Arrived").closest(".umbra-stamp-badge--sun")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("tells the sun time once, with the split bar's basis and the fixed pace", () => {
@@ -63,6 +64,16 @@ describe("ArrivalPanel as a postcard (R8a)", () => {
     expect(screen.getByText(/^\d+ of 6 min in sun$/)).toBeTruthy();
     expect(screen.getByText("distance share")).toBeTruthy();
     expect(screen.getByText("500 m route — at a fixed 5.0 km/h pace")).toBeTruthy();
+  });
+
+  it("fills the bar with the exact share, not one skewed by a rounded minute total", () => {
+    // 1.00 min sun + 0.43 min shade: the total rounds to 1, which drew a 43% bar.
+    const { container } = render(
+      <ArrivalPanel route={walk(120, 0.3)} waypointBLabel="Bryant Park" waypointB={null} onPlanAnother={() => {}} onDone={() => {}} />,
+    );
+
+    const fill = container.querySelector<HTMLElement>("[aria-hidden='true'].border-ink > div");
+    expect(fill?.style.width).toBe("30%");
   });
 
   it("names where the shadow figure came from when the route recorded it", () => {
@@ -86,6 +97,8 @@ describe("ArrivalPanel as a postcard (R8a)", () => {
     expect(screen.queryByText(/min in sun/)).toBeNull();
     expect(screen.queryByText("distance share")).toBeNull();
     expect(screen.getByText(/no sun minutes: the sun was down at the route's time/)).toBeTruthy();
+    // No sun figure, so the postmark is ink, not the sun's orange.
+    expect(screen.getByText("Arrived").closest(".umbra-stamp-badge--sun")).toBeNull();
   });
 
   it("draws no bar and invents no sun minutes when the exposure is unknown", () => {
@@ -109,20 +122,29 @@ describe("ArrivalPanel as a postcard (R8a)", () => {
     expect(screen.queryByText(/min in sun/)).toBeNull();
   });
 
+  it("says shelter is updating, with no stale figure or source, while it recomputes", () => {
+    const route: RouteOption = { ...walk(500, 0), objective: "rain", dryCoverage: 0.42, exposureUpdating: true };
+    route.shelterSource = { bySource: { tiles: 1 }, dominant: "tiles", sampledFraction: 1, minConfidence: 1, meanConfidence: 1 };
+    arrive(route, { rainMode: true });
+
+    expect(screen.getByText("500 m route — updating shelter…")).toBeTruthy();
+    expect(screen.queryByText(/sheltered/)).toBeNull();
+    expect(screen.queryByText(/Shelter estimate/)).toBeNull();
+  });
+
   it("keeps an unnamed destination's coordinates out of the display face", () => {
     arrive(walk(500, 0.6), { waypointBLabel: null });
 
-    expect(screen.getByRole("heading", { name: "Your destination" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Arrived at Your destination" })).toBeTruthy();
     expect(screen.getByText("40.75360, -73.98320").className).toContain("tabular-nums");
   });
 
-  it("plans another trip or closes", () => {
+  it("plans another trip or is done", () => {
     const props = arrive(walk(500, 0.6));
 
     fireEvent.click(screen.getByRole("button", { name: "PLAN ANOTHER" }));
     expect(props.onPlanAnother).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(props.onDone).toHaveBeenCalledTimes(2);
+    expect(props.onDone).toHaveBeenCalledTimes(1);
   });
 });
