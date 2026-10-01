@@ -564,6 +564,32 @@ body {
   }
   .umbra-start-button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
+  /* A printed grip on both route-preview surfaces. The full 44px strip is the
+     grab target; focus stays square and visible in day and night themes. */
+  .umbra-route-preview-grip {
+    display: flex;
+    width: 100%;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--color-rule-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-ground);
+    color: var(--color-ink);
+    box-shadow: var(--shadow-hard-1);
+    font-family: var(--font-label);
+    font-size: var(--text-eyebrow);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .umbra-route-preview-grip:active,
+  .umbra-route-preview-grip[data-dragging="true"] { cursor: grabbing; }
+  .umbra-route-preview-grip:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+
   /* The search pill: solid panel, 2px ink rule, hard offset shadow. While its field has
      focus a solid panel band and an ink ring wrap it, with the shadow pushed past the ring,
      so the map never shows between pill and ring. */
