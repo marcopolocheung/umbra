@@ -325,3 +325,42 @@ describe("nominatimCategory", () => {
     expect(nominatimCategory({})).toBeNull();
   });
 });
+
+describe("SearchBar empty directory (R8c)", () => {
+  it("says nothing came back for a submit with no match, and clears on the next keystroke", async () => {
+    geocodeForward.mockResolvedValue([]);
+    const { input } = renderBar();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("Nothing came back for “zzqx”");
+    expect(screen.getByText("Not in the guidebook").className).toContain("umbra-kicker");
+    // No map center, so only the address search ran, and the copy says only that.
+    expect(status.textContent).toContain("The address search returned no match, or could not be reached.");
+
+    fireEvent.change(input, { target: { value: "zzqxy" } });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("names both providers when the map center let nearby places run", async () => {
+    geocodeForward.mockResolvedValue([]);
+    render(<SearchBar onSelect={vi.fn()} mapCenter={[40.75, -73.98]} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Neither the address search nor nearby places returned a match",
+    );
+  });
+
+  it("shows no empty state when a submit finds matches", async () => {
+    const { input } = renderBar();
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await screen.findByRole("option");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});

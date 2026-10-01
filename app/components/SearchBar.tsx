@@ -2,6 +2,7 @@ import "../lib/storageMigration";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
 import { suggestPlaces, type FoursquareSuggestion } from "../services/foursquare";
+import Kicker from "./ui/Kicker";
 
 interface SearchBarProps {
   onSelect: (place: {
@@ -187,6 +188,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isActive, setIsActive] = useState(false);
+  // The query a submit came back empty for; null while there is nothing to report.
+  const [emptyFor, setEmptyFor] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [saved, setSaved] = useState<SavedItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -214,6 +217,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         setIsActive(false);
         // A tap on the map must close the typeahead like every other dropdown.
         setSuggestions([]);
+        setEmptyFor(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -248,6 +252,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       // the next Enter, so dropping them is the whole point of the guard.
       if (gen !== searchGenRef.current) return [];
       setResults(merged);
+      setEmptyFor(merged.length === 0 ? q.trim() : null);
       // Highlight the top match so a second Enter takes it.
       setHighlightIndex(merged.length > 0 ? 0 : -1);
       return merged;
@@ -364,6 +369,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     // typeahead effect above re-arms on the new value.
     searchGenRef.current++;
     setResults([]);
+    setEmptyFor(null);
     setHighlightIndex(-1);
   }
 
@@ -402,6 +408,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     } else if (e.key === "Escape") {
       setResults([]);
       setSuggestions([]);
+      setEmptyFor(null);
       setIsActive(false);
       inputRef.current?.blur();
     }
@@ -415,6 +422,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     setQuery("");
     setResults([]);
     setSuggestions([]);
+    setEmptyFor(null);
     onClearPanel?.();
     inputRef.current?.focus();
   }
@@ -429,7 +437,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   // While the user types, the Foursquare suggestions own the dropdown; the
   // submitted Nominatim results take it back on submit.
   const suggestionsOpen = !isOpen && suggestions.length > 0;
-  const showSections = isActive && !isOpen && !suggestionsOpen && (recent.length > 0 || saved.length > 0);
+  const emptyOpen = emptyFor !== null && !isOpen && !suggestionsOpen;
+  const showSections = isActive && !isOpen && !suggestionsOpen && !emptyOpen && (recent.length > 0 || saved.length > 0);
 
   const distanceFrom = (c: [number, number]) => (mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), c)) : "");
   const distanceNote = mapCenter ? "from map center" : undefined;
@@ -549,6 +558,27 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
           </button>
         )}
       </div>
+
+      {/* A submit that came back empty says so, instead of closing on nothing.
+          Both providers' failures also read as empty, so the copy claims no
+          more than that nothing came back. */}
+      {emptyOpen && (
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE} role="status">
+          <DirectoryHead title="Directory" />
+          <div className="flex flex-col items-start gap-1 px-3 py-3">
+            <Kicker>Not in the guidebook</Kicker>
+            <p className="font-display text-xl font-semibold leading-tight" style={{ color: "var(--color-ink)" }}>
+              Nothing came back for “{emptyFor}”
+            </p>
+            <p className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+              {mapCenter
+                ? "Neither the address search nor nearby places returned a match, or neither could be reached."
+                : "The address search returned no match, or could not be reached."}{" "}
+              Try a street address or a fuller name.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Recent/Saved sections */}
       {showSections && (

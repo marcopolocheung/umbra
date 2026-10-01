@@ -84,3 +84,25 @@ describe("WaypointInput", () => {
     expect(onSet).not.toHaveBeenCalled();
   });
 });
+
+describe("WaypointInput empty answers (R8c)", () => {
+  it("reads a no-match answer in the caption tone, not as an error", async () => {
+    geocodeForward.mockResolvedValue([]);
+    const { input } = renderInput();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const line = await screen.findByText("No address matches “zzqx”. Try a street and number.");
+    expect(line.className).toContain("text-ink-muted");
+    expect(line.className).not.toContain("text-danger");
+  });
+
+  it("keeps a failed search in the danger tone", async () => {
+    geocodeForward.mockRejectedValue(new Error("offline"));
+    const { input } = renderInput();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect((await screen.findByText("Address search failed. Check your connection.")).className).toContain("text-danger");
+  });
+});

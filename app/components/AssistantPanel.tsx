@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useAgent";
 import { guideNote } from "../lib/agent/guideNote";
 import { noticeLabel, receiptDetail, receiptLabel, unknownLabel } from "../lib/agent/receipts";
+import Kicker from "./ui/Kicker";
 
 interface AssistantPanelProps {
   open: boolean;
@@ -74,8 +75,8 @@ export default function AssistantPanel({
       <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
         {messages.length === 0 && (
           <div className="flex flex-col gap-3">
-            <div>
-              <p className="font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}>Field notes</p>
+            <div className="flex flex-col items-start gap-1">
+              <Kicker>Field notes</Kicker>
               <p className="font-display text-2xl font-semibold leading-tight">A little less sun.</p>
               <p className="mt-2 text-sm" style={{ color: "var(--color-ink-muted)" }}>
                 Ask me to plan around the sun. I can read the live shadows, check whether a spot is
