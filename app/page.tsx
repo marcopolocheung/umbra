@@ -12,6 +12,7 @@ import BottomSheet, { type SnapPoint } from "./components/BottomSheet";
 import SearchBar from "./components/SearchBar";
 import FloatingMapControls, { Tilt3DButton } from "./components/FloatingMapControls";
 import FloatingRouteCards from "./components/FloatingRouteCards";
+import RoutePreviewGrip from "./components/RoutePreviewGrip";
 import HourlyExposureStrip from "./components/HourlyExposureStrip";
 import QuickActions from "./components/QuickActions";
 import DirectionsPanel from "./components/DirectionsPanel";
@@ -33,6 +34,7 @@ import { parseShareState, shareUrlFromState } from "./lib/shareState";
 import { useShadowTime, formatTime12h, parseTime, dateToDayOfYear } from "./hooks/useShadowTime";
 import { useShadowFieldPrewarm } from "./hooks/useShadowFieldPrewarm";
 import { useNavigation } from "./hooks/useNavigation";
+import { useRoutePreviewDrag } from "./hooks/useRoutePreviewDrag";
 import { useHourlyExposure } from "./hooks/useHourlyExposure";
 import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
@@ -216,26 +218,29 @@ export default function Home() {
   // Sidewalk sheds from the last route, on the map (#85). Off by default.
   const [showSheds, setShowSheds] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [wideDesktop, setWideDesktop] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia("(min-width: 1200px)").matches,
-  );
-  const [preferDockedOnWideDesktop, setPreferDockedOnWideDesktop] = useState(false);
+  const [viewport, setViewport] = useState(() => ({
+    x: typeof window === "undefined" ? 1280 : window.innerWidth,
+    y: typeof window === "undefined" ? 900 : window.innerHeight,
+  }));
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 1200px)");
-    const update = () => setWideDesktop(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    const update = () => setViewport({ x: window.innerWidth, y: window.innerHeight });
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
-  // Closing the sidebar always leaves the route choices accessible on the map.
-  const routeCardsDocked = sidebarOpen && (!wideDesktop || preferDockedOnWideDesktop);
+  const {
+    docked: routeCardsDocked,
+    floatingPosition,
+    dragging: routePreviewDragging,
+    beginDrag: beginRoutePreviewDrag,
+    activateGrip: activateRoutePreviewGrip,
+  } = useRoutePreviewDrag({ sidebarOpen, setSidebarOpen, viewport });
   const routeFitPaddingRef = useRef<
     number | { top: number; right: number; bottom: number; left: number }
   >(80);
   // The insets match the 408px sidebar and the floating card's 320px width
   // plus its 24px edge gap. The route is framed for whichever surface is open
   // when calculation finishes; later placement changes leave the camera alone.
-  routeFitPaddingRef.current = typeof window === "undefined" || window.innerWidth < 768
+  routeFitPaddingRef.current = viewport.x < 768
     ? 80
     : {
         top: 80,
@@ -244,14 +249,6 @@ export default function Home() {
         left: sidebarOpen ? 432 : 32,
       };
   const getRouteFitPadding = useCallback(() => routeFitPaddingRef.current, []);
-  const handleDockRouteCards = useCallback(() => {
-    if (wideDesktop) setPreferDockedOnWideDesktop(true);
-    setSidebarOpen(true);
-  }, [wideDesktop]);
-  const handleUndockRouteCards = useCallback(() => {
-    if (wideDesktop) setPreferDockedOnWideDesktop(false);
-    else setSidebarOpen(false);
-  }, [wideDesktop]);
   const shadow = useShadowTime();
   const {
     date,
@@ -1138,7 +1135,14 @@ export default function Home() {
             onBack={() => dispatch({ type: "BACK" })}
             onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
             hideRouteCards={!routeCardsDocked}
-            onUndockRouteCards={routeCardsDocked ? handleUndockRouteCards : undefined}
+            routePreviewGrip={routeCardsDocked ? (
+              <RoutePreviewGrip
+                docked
+                dragging={routePreviewDragging}
+                onPointerDown={(event) => beginRoutePreviewDrag(event, "dock")}
+                onToggle={() => activateRoutePreviewGrip("dock")}
+              />
+            ) : undefined}
             routeMode={routeMode}
             onRouteModeChange={handleRouteModeChange}
             canTransit={canTransit}
@@ -1262,7 +1266,16 @@ export default function Home() {
           rainWind={routeWind}
           exposureSlot={exposureSlot}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
-          onDock={handleDockRouteCards}
+          grip={
+            <RoutePreviewGrip
+              docked={false}
+              dragging={routePreviewDragging}
+              onPointerDown={(event) => beginRoutePreviewDrag(event, "float")}
+              onToggle={() => activateRoutePreviewGrip("float")}
+            />
+          }
+          position={floatingPosition}
+          dragging={routePreviewDragging}
           rainMode={rainMode}
           rainIntensity={rainIntensity}
         />

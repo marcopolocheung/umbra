@@ -15,7 +15,9 @@ interface FloatingRouteCardsProps {
   weather?: WeatherHour | null;
   solarIntensity?: number | null;
   onStartNavigation?: () => void;
-  onDock?: () => void;
+  grip?: ReactNode;
+  position?: { x: number; y: number } | null;
+  dragging?: boolean;
   /** The dose line and hourly exposure strip, rendered in the selected card. */
   exposureSlot?: ReactNode;
   /** Rain objective: cards present shelter, and the solar pill steps aside. */
@@ -42,7 +44,9 @@ export default function FloatingRouteCards({
   weather = null,
   solarIntensity,
   onStartNavigation,
-  onDock,
+  grip,
+  position = null,
+  dragging = false,
   exposureSlot,
   rainMode = false,
   rainIntensity = 5,
@@ -54,7 +58,12 @@ export default function FloatingRouteCards({
   const selectedRoute = routes[selectedRouteIndex];
 
   return (
-    <div data-testid="route-preview-floating" className="hidden md:flex absolute right-6 top-20 bottom-24 w-80 z-30 pointer-events-none">
+    <div
+      data-testid="route-preview-floating"
+      data-route-preview-surface="float"
+      className={`hidden md:flex absolute bottom-24 w-80 pointer-events-none ${position ? "" : "right-6 top-20"} ${dragging ? "z-50" : "z-30"}`}
+      style={position ? { left: position.x, top: position.y } : undefined}
+    >
       <div
         className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-hard-2"
         style={{
@@ -62,16 +71,7 @@ export default function FloatingRouteCards({
           borderColor: "var(--color-rule)",
         }}
       >
-        {onDock && (
-          <button
-            type="button"
-            onClick={onDock}
-            className="self-end min-h-11 rounded-lg px-2 text-xs font-medium hover:bg-canvas"
-            style={{ color: "var(--color-ink-muted)" }}
-          >
-            Move to trip panel
-          </button>
-        )}
+        {grip}
         {/* Solar pill — sun semantics, so it yields to a rain objective. The
             recommended option needs no header here: the card says it. */}
         {!rainMode && solarIntensity != null && (
