@@ -104,8 +104,8 @@ function computeSolarAzimuth(date: Date, latDeg: number, lngDeg: number): number
 /**
  * Compass bearings of sunrise and sunset, for the sun compass.
  *
- * Both instants come from `app/lib/sunTimes.ts`, so the compass and the timeline
- * markers can no longer disagree. This was a private copy of the same orbital
+ * Both instants come from `app/lib/sunTimes.ts` (published sunrise, −0.833°; the
+ * timeline labels the 0° crossings instead, a few minutes apart). This was a private copy of the same orbital
  * math anchored on `noon.setHours(12, 0, 0, 0)` — the *browser's* local noon, not
  * the map's — which slipped a solar day whenever the map was far from the viewer
  * (issue 225). The error was small, at most ~0.5° near an equinox, but it was real and

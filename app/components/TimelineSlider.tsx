@@ -1,6 +1,5 @@
-import { useRef, useEffect, useCallback, useMemo, memo } from "react";
+import { Fragment, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { toMapLocal } from "../lib/timezone";
-import { sunriseSunset } from "../lib/sunTimes";
 import { altitudeAt, nightSpans, SUN_PATH_STEP_MIN, sunAltitudeTrace } from "../lib/sunPath";
 
 interface Props {
@@ -10,34 +9,6 @@ interface Props {
   latDeg?: number;       // map center latitude
   lngDeg?: number;       // map center longitude
   utcOffsetMin?: number; // map location's UTC offset (positive = ahead of UTC); defaults to browser's offset
-}
-
-// ---------------------------------------------------------------------------
-// Sunrise / sunset
-// ---------------------------------------------------------------------------
-
-/**
- * Sunrise and sunset as minutes after map-local midnight, for the day/night
- * bands and their markers.
- *
- * The solar model is `app/lib/sunTimes.ts` — the same one the shadow layer uses.
- * This used to be a private copy of that orbital math carrying a flat `+ 12`
- * minute constant, which put the New York solstice marker at 5:40 AM against a
- * real 5:26 (issue 225).
- */
-function sunriseSunsetMinutes(
-  date: Date,
-  latDeg: number,
-  lngDeg: number,
-  utcOffsetMin: number
-): { riseMin: number; setMin: number } | null {
-  const t = sunriseSunset(date, latDeg, lngDeg);
-  if (!t) return null; // polar day or polar night
-  const asMinutes = (d: Date) => {
-    const { hours, minutes } = toMapLocal(d, utcOffsetMin);
-    return hours * 60 + minutes;
-  };
-  return { riseMin: asMinutes(t.sunrise), setMin: asMinutes(t.sunset) };
 }
 
 const PX_PER_MIN = 2;
@@ -166,12 +137,6 @@ function SunEventLabel({ minutes, side, text }: { minutes: number; side: "left" 
 
 const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, latDeg, lngDeg, utcOffsetMin: utcOffsetMinProp }: Props) {
   const effectiveOffset = utcOffsetMinProp ?? (date ? -date.getTimezoneOffset() : 0);
-  const sunRiseSet =
-    date !== undefined && latDeg !== undefined && lngDeg !== undefined
-      ? sunriseSunsetMinutes(date, latDeg, lngDeg, effectiveOffset)
-      : null;
-  const sunriseMin = sunRiseSet?.riseMin;
-  const sunsetMin  = sunRiseSet?.setMin;
   // Re-sampled per map-local day and place, never per drag frame.
   const local = date ? toMapLocal(date, effectiveOffset) : null;
   const dayKey = local ? `${local.year}-${local.month}-${local.day}` : null;
@@ -209,6 +174,15 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
   // Throttle: only call onChange at most every ~16 ms (≈60 fps) to avoid
   // overwhelming React with rapid state updates during drag/inertia.
   const lastOnChangeMs = useRef(0);
+  // A move that lands inside the throttle window schedules one trailing update,
+  // so a drag that pauses never leaves the readout and map on a stale time (#161).
+  const trailingTimer = useRef<number | null>(null);
+  const cancelTrailing = useCallback(() => {
+    if (trailingTimer.current !== null) {
+      clearTimeout(trailingTimer.current);
+      trailingTimer.current = null;
+    }
+  }, []);
 
   const getTranslateX = useCallback((m: number): number => {
     const half = (containerRef.current?.clientWidth ?? 0) / 2;
@@ -285,7 +259,10 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
   }, [minutes, applyTranslate]);
 
   // Cleanup on unmount
-  useEffect(() => () => cancelInertia(), [cancelInertia]);
+  useEffect(() => () => {
+    cancelInertia();
+    cancelTrailing();
+  }, [cancelInertia, cancelTrailing]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -316,15 +293,24 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
       fracMin.current = Math.max(0, Math.min(1439, fracMin.current - dx / PX_PER_MIN));
       applyTranslate(fracMin.current);
       if (now - lastOnChangeMs.current >= 30) {
+        cancelTrailing();
         lastOnChangeMs.current = now;
         onChange(Math.round(fracMin.current));
+      } else if (trailingTimer.current === null) {
+        trailingTimer.current = window.setTimeout(() => {
+          trailingTimer.current = null;
+          if (!isDragging.current) return;
+          lastOnChangeMs.current = performance.now();
+          onChange(Math.round(fracMin.current));
+        }, 30 - (now - lastOnChangeMs.current));
       }
     },
-    [applyTranslate, onChange]
+    [applyTranslate, onChange, cancelTrailing]
   );
 
   const onPointerUp = useCallback(() => {
     isDragging.current = false;
+    cancelTrailing();
     // Always flush the final drag position to React state
     lastOnChangeMs.current = 0;
     onChange(Math.round(fracMin.current));
@@ -332,7 +318,7 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
     // Only launch inertia if the pointer was still moving when released
     if (stale < 80 && Math.abs(lastVelocity.current) > 0.08)
       startInertia(lastVelocity.current);
-  }, [onChange, startInertia]);
+  }, [onChange, startInertia, cancelTrailing]);
 
   const altitude = trace ? altitudeAt(trace, minutes) : 0;
   const sunDot = altitude > 0 ? { x: minutes * PX_PER_MIN, y: RULE_Y - altitude * PX_PER_DEG } : null;
@@ -378,8 +364,15 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           />
         ))}
 
-        {sunriseMin !== undefined && <SunEventLabel minutes={sunriseMin} side="left" text={`↑ ${fmtMin(sunriseMin)}`} />}
-        {sunsetMin !== undefined && <SunEventLabel minutes={sunsetMin} side="right" text={`↓ ${fmtMin(sunsetMin)}`} />}
+        {/* Sunrise/sunset at the night bands' edges — the 0° crossings, so the
+            labels agree with the needle, the Sun down ticket and the theme (#160).
+            They run a few minutes off published times, which use −0.833°. */}
+        {nights.map(([from, to]) => (
+          <Fragment key={from}>
+            {from > 0 && <SunEventLabel minutes={from} side="right" text={`↓ ${fmtMin(Math.min(1439, Math.round(from)))}`} />}
+            {to < 1440 && <SunEventLabel minutes={to} side="left" text={`↑ ${fmtMin(Math.min(1439, Math.round(to)))}`} />}
+          </Fragment>
+        ))}
 
         {/* ── Sun-path diagram: the SunCalc altitude over the day, 0° on the
             rule. Sun data, so the dot is the sun hue; the path stays ink. */}

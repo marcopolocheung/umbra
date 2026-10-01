@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { nightSpans, sunAltitudeTrace } from "../../lib/sunPath";
 import TimelineSlider from "../TimelineSlider";
 
 afterEach(cleanup);
@@ -13,7 +14,7 @@ beforeAll(() => {
   } as unknown as typeof ResizeObserver;
 });
 
-// Midtown Manhattan on the June solstice, EDT (UTC−4): sun up 05:26–20:31.
+// Midtown Manhattan on the June solstice, EDT (UTC−4): published sun times 05:26–20:31.
 const at = (iso: string, minutes: number) => (
   <TimelineSlider
     minutes={minutes}
@@ -49,11 +50,37 @@ describe("TimelineSlider", () => {
     expect(screen.getByTestId("timeline-needle").style.backgroundColor).toBe("var(--color-ink)");
   });
 
-  it("bands both nights and prints sunrise and sunset beside them", () => {
+  it("bands both nights and labels sunrise and sunset at the bands' 0° edges (#160)", () => {
     render(at("2026-06-21T13:00:00Z", 9 * 60));
     expect(screen.getAllByTestId("timeline-night")).toHaveLength(2);
-    expect(screen.getByText("↑ 5:26 AM")).toBeTruthy();
-    expect(screen.getByText("↓ 8:31 PM")).toBeTruthy();
+    // The labels sit where the needle turns orange, a few minutes inside the
+    // published 5:26 / 8:31, which use the −0.833° refraction convention.
+    const [[, dawn], [dusk]] = nightSpans(sunAltitudeTrace(new Date("2026-06-21T13:00:00Z"), 40.754, -73.984, -240));
+    expect(Math.round(dawn)).toBeGreaterThan(5 * 60 + 26);
+    expect(Math.round(dusk)).toBeLessThan(20 * 60 + 31);
+    const clock = (m: number) => `${Math.floor(m / 60) % 12 || 12}:${String(m % 60).padStart(2, "0")}`;
+    expect(screen.getByText(`↑ ${clock(Math.round(dawn))} AM`)).toBeTruthy();
+    expect(screen.getByText(`↓ ${clock(Math.round(dusk))} PM`)).toBeTruthy();
+  });
+
+  it("lands the last drag position even when the drag pauses inside the throttle window (#161)", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const onChange = vi.fn();
+      render(<TimelineSlider minutes={600} onChange={onChange} />);
+      const ruler = screen.getByTestId("timeline-slider");
+      ruler.setPointerCapture = () => {};
+      vi.advanceTimersByTime(1000); // a real clock is never at 0
+      fireEvent.pointerDown(ruler, { clientX: 200, pointerId: 1 });
+      fireEvent.pointerMove(ruler, { clientX: 180, pointerId: 1 }); // −20px = +10 min, sent at once
+      vi.advanceTimersByTime(5);
+      fireEvent.pointerMove(ruler, { clientX: 160, pointerId: 1 }); // throttled
+      expect(onChange).toHaveBeenLastCalledWith(610);
+      vi.advanceTimersByTime(30); // the thumb has stopped; no further move arrives
+      expect(onChange).toHaveBeenLastCalledWith(620);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says there is no sun path without a map place, rather than drawing none", () => {

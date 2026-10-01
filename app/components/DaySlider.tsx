@@ -155,6 +155,9 @@ const DaySlider = memo(function DaySlider({ dayOfYear, year, onChange }: Props) 
     <div
       ref={containerRef}
       className="relative h-11 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      // Same as TimelineSlider: a slightly diagonal thumb drag must stay a scrub,
+      // not become a browser pan that cancels the pointer (#161).
+      style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
