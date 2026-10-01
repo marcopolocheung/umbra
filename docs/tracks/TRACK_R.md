@@ -37,8 +37,9 @@ inspiration; the public mirror publishes everything here.
   2px panel foot so a highlighted first row never merges into it. Search logic, handlers,
   option ids and the provider policy are byte-for-byte unchanged; the generic pin/bookmark
   icon tiles are gone (they carried no information). Shots: `docs/design/shots/r7a/`.
-  Found and not fixed: #171 (Nominatim rows show ~15,000 km from a lat/lng swap and sink
-  to the bottom; their category is a house number). For R7b: `PlaceDetail` only ever
+  #171's fix (PR #179: Nominatim rows measured from the map center, not ~15,000 km away,
+  and named by their OSM tag instead of a house number) is merged into this branch so
+  the two PRs merge in either order. For R7b: `PlaceDetail` only ever
   receives name, category, address and coordinates (`handleSearchSelect`), yet renders
   a "$$" price fallback, four "Photo" placeholders, four no-op action buttons, an
   empty accessibility row and dead "People also search for" chips.
@@ -158,7 +159,7 @@ inspiration; the public mirror publishes everything here.
   (`app/components/mapPins.ts`, 44px square host, letter or number always shown); a
   reticle user dot; orange only on the sun diagram's daylight marks. No overlay colour is
   blue-dominant, so a drawn route no longer reads as shade (the old `#1d6ee0` did).
-- **Open PRs:** R7a (this checkpoint). R7a follow-ups: #171 (search distances, lat/lng swap), #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). Still R7: #173 (R7b), #174 (R7c). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
+- **Open PRs:** R7a (this checkpoint). R7a follow-ups: #179 (fix for #171, merged into R7a), #175 (row alignment, hours truncation, hover, focus vs highlight, grouping). Still R7: #173 (R7b), #174 (R7c). R6b follow-ups: #165 (design:check red on main: issue refs read as colours, three arbitrary offsets), #166 (Track D: night hours count as most shadowed), #167 (Track E: night Pareto detours), #168 (pill tiers stale after a time change), #169 (board column width, placement, desktop keys). R6a follow-up still open: #163 (ruler keyboard access). Older follow-ups: #140 (Track G: unit flakes under load); #124, #125, #126 (R2);
   #130 (R3); #137 (labels in shade ~2:1), #138 (R6 sheet edge); #147 (night wording left in
   SolarPill, leg rows, route labels); #150 (waypoint × under 44px), #151 (segmented as radio); #154 (Track G: refresh timer after jsdom teardown); filed elsewhere from R5a: #144, #145 (E), #146 (A).
 - **Decisions made:** D1–D5 in `docs/design/decision.md` are owner-approved and
