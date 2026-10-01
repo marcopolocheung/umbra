@@ -27,7 +27,7 @@ inspiration; the public mirror publishes everything here.
 - **Active checkpoint:** R7a (#172), the first slice of R7 (search, place detail,
   assistant), split into R7a search (#172), R7b PlaceDetail (#173) and R7c assistant
   leaflet (#174). The search pill is one solid panel pill with a 2px ink rule and the hard
-  offset shadow (no blur or translucency), ringed while its field has focus; each icon in it
+  offset shadow (no blur or translucency); while its field has focus a solid panel band and an ink ring wrap it (owner request: no map showing through); each icon in it
   is a square 44px target. Recent/Saved, the Foursquare typeahead and the merged submit
   results are one square directory: an ink header band (Archivo kicker: Recent, Saved,
   Places nearby or Directory, with an IBM Plex Mono "from map center" note when the row

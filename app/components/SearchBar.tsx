@@ -429,8 +429,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       {/* The one search pill: solid panel, 2px ink rule, hard offset shadow, ringed
           while the field has focus; every control in it is a 44px square target. */}
       <div
-        className="w-full flex items-center rounded-full h-14 px-1.5 gap-0.5 border-2 has-[input:focus]:outline-2 has-[input:focus]:outline-offset-2 has-[input:focus]:outline-ink"
-        style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)", boxShadow: "var(--shadow-hard-2)" }}
+        className="umbra-search-pill w-full flex items-center rounded-full h-14 px-1.5 gap-0.5"
       >
         {/* Hamburger — toggles desktop sidebar */}
         {onMenuToggle && (

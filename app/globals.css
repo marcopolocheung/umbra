@@ -524,6 +524,18 @@ body {
   }
   .umbra-start-button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
+  /* The search pill: solid panel, 2px ink rule, hard offset shadow. While its field has
+     focus a solid panel band and an ink ring wrap it, with the shadow pushed past the ring,
+     so the map never shows between pill and ring. */
+  .umbra-search-pill {
+    border: 2px solid var(--color-ink);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-hard-2);
+  }
+  .umbra-search-pill:has(input:focus) {
+    box-shadow: 0 0 0 2px var(--color-panel), 0 0 0 4px var(--color-ink), 4px 4px 0 4px var(--color-ink);
+  }
+
   /* Segmented control (ui/Segmented): square, ≥44px rows, selected = full ink
      inversion, inset focus ring, disabled text stays at the readable 75% role. */
   .umbra-segmented {
