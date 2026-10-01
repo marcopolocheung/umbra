@@ -330,6 +330,7 @@ describe("SearchBar empty directory (R8c)", () => {
   it("says nothing came back for a submit with no match, and clears on the next keystroke", async () => {
     geocodeForward.mockResolvedValue([]);
     const { input } = renderBar();
+    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "zzqx" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -349,6 +350,7 @@ describe("SearchBar empty directory (R8c)", () => {
     geocodeForward.mockResolvedValue([]);
     render(<SearchBar onSelect={vi.fn()} mapCenter={[40.75, -73.98]} />);
     const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "zzqx" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -367,6 +369,38 @@ describe("SearchBar empty directory (R8c)", () => {
 
     await act(async () => { resolve([]); });
     expect(screen.queryByText("Not in the guidebook")).toBeNull();
+  });
+
+  it("drops an answer that lands after the search is cleared", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(screen.getByLabelText("Clear search"));
+
+    await act(async () => { resolve([RESULT]); });
+    expect(screen.queryByRole("option")).toBeNull();
+  });
+
+  it("hides a late empty answer after an outside tap, but still opens late matches", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.mouseDown(document.body);
+    await act(async () => { resolve([]); });
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "brooklyn bridge" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.mouseDown(document.body);
+    await act(async () => { resolve([RESULT]); });
+    expect(screen.getByRole("option").textContent).toContain("Brooklyn Bridge");
   });
 
   it("shows no empty state when a submit finds matches", async () => {

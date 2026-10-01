@@ -97,6 +97,17 @@ describe("WaypointInput empty answers (R8c)", () => {
     expect(line.className).not.toContain("text-danger");
   });
 
+  it("returns to the danger tone when a retry after no match fails", async () => {
+    geocodeForward.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error("offline"));
+    const { input } = renderInput();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByText(/Nothing matches/);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect((await screen.findByText("Address search failed. Check your connection.")).className).toContain("text-danger");
+  });
+
   it("keeps a failed search in the danger tone", async () => {
     geocodeForward.mockRejectedValue(new Error("offline"));
     const { input } = renderInput();

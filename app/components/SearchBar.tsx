@@ -191,7 +191,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   // The query a submit came back empty for, and whether nearby places were
   // searched too (only with a map center); null while there is nothing to report.
   const [emptyFor, setEmptyFor] = useState<{ q: string; places: boolean } | null>(null);
-  // Dismissing the dropdown also drops a search still in flight, so its empty
+  // Escape, clear and a saved pick also drop a search still in flight, so its
   // answer cannot surface after the user has moved on.
   const dropInFlight = useCallback(() => {
     searchGenRef.current++;
@@ -225,12 +225,14 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         setIsActive(false);
         // A tap on the map must close the typeahead like every other dropdown.
         setSuggestions([]);
-        dropInFlight();
+        // Only the empty card closes: a late answer with matches still opens,
+        // since a tap on the map is often just to put the keyboard away.
+        setEmptyFor(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropInFlight]);
+  }, []);
 
   // Only ever called from an explicit submit. Nominatim's usage policy lists
   // autocomplete under unacceptable use, so no Nominatim request may fire from
@@ -446,7 +448,8 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   // While the user types, the Foursquare suggestions own the dropdown; the
   // submitted Nominatim results take it back on submit.
   const suggestionsOpen = !isOpen && suggestions.length > 0;
-  const emptyOpen = emptyFor !== null && !isOpen && !suggestionsOpen;
+  // Only while the search is in use: after an outside tap a late empty answer stays hidden.
+  const emptyOpen = isActive && emptyFor !== null && !isOpen && !suggestionsOpen;
   const showSections = isActive && !isOpen && !suggestionsOpen && !emptyOpen && (recent.length > 0 || saved.length > 0);
 
   const distanceFrom = (c: [number, number]) => (mapCenter ? formatDistance(haversineM(toLngLat(mapCenter), c)) : "");
