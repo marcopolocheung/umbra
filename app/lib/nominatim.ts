@@ -5,6 +5,9 @@ export interface NominatimResult {
   lon: string;
   /** [south, north, west, east] as strings. Nominatim omits it for some results. */
   boundingbox?: [string, string, string, string];
+  /** The OSM key and value the result matched (`amenity`/`library`, `highway`/`residential`). */
+  class?: string;
+  type?: string;
 }
 
 // Requests go through a same-origin proxy, never directly to

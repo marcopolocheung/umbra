@@ -51,11 +51,15 @@ const NOMINATIM = [
     lat: "40.7532",
     lon: "-73.9822",
     boundingbox: ["40.7525", "40.7539", "-73.9830", "-73.9813"],
+    class: "amenity",
+    type: "library",
   },
   {
     display_name: "Library Way, Manhattan, New York, 10016, United States",
     lat: "40.7526",
     lon: "-73.9800",
+    class: "highway",
+    type: "residential",
   },
 ];
 

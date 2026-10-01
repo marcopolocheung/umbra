@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import SearchBar from "../SearchBar";
+import SearchBar, { nominatimCategory } from "../SearchBar";
 
 /**
  * The claim under test is a provider-policy one, not a rendering one: the OSMF
@@ -262,6 +262,26 @@ describe("SearchBar Foursquare typeahead", () => {
     expect(await screen.findByRole("listbox", { name: /Directory/ })).toBeTruthy();
   });
 
+  it("measures a Nominatim row from the map center and ranks it by that distance", async () => {
+    // ~167 m north of the map center: nearer than the 420 m POI. With the
+    // center passed as [lat, lng] it read ~15,000 km and sank to the bottom.
+    geocodeForward.mockResolvedValue([
+      { ...RESULT, display_name: "Near Library, Brooklyn", lat: "40.7035", lon: "-73.989", class: "amenity", type: "library" },
+    ]);
+    suggestPlaces.mockResolvedValue([SUGGESTION]);
+    const { input } = renderBarWithCenter();
+
+    fireEvent.change(input, { target: { value: "library" } });
+    await vi.waitFor(() => expect(suggestPlaces).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Search"));
+
+    const options = await screen.findAllByRole("option", { name: /Near Library|Brooklyn Roasting/ });
+    expect(options[0].textContent).toContain("Near Library");
+    expect(options[0].textContent).toContain("167 m");
+    expect(options[0].textContent).toContain("Library");
+    expect(options[1].textContent).toContain("Brooklyn Roasting");
+  });
+
   it("drops a Foursquare duplicate of a Nominatim result instead of listing it twice", async () => {
     suggestPlaces.mockResolvedValue([
       { ...SUGGESTION, name: "Brooklyn Bridge", lat: 40.7061, lng: -73.9969 },
@@ -289,5 +309,19 @@ describe("SearchBar Foursquare typeahead", () => {
 
     const option = await screen.findByRole("option");
     expect(option.textContent).toContain("Brooklyn Roasting");
+  });
+});
+
+describe("nominatimCategory", () => {
+  it("names the kind of place from the OSM tag, not from display_name", () => {
+    expect(nominatimCategory({ class: "amenity", type: "library" })).toBe("Library");
+    expect(nominatimCategory({ class: "tourism", type: "theme_park" })).toBe("Theme park");
+    expect(nominatimCategory({ class: "highway", type: "residential" })).toBe("Street");
+    expect(nominatimCategory({ class: "place", type: "house" })).toBe("Address");
+    expect(nominatimCategory({ class: "building", type: "yes" })).toBe("Building");
+  });
+
+  it("says nothing when the result carries no tag", () => {
+    expect(nominatimCategory({})).toBeNull();
   });
 });
