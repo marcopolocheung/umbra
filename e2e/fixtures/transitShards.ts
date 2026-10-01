@@ -159,6 +159,45 @@ export const transitPointerJson = JSON.stringify({
   manifestSha256: sha256(transitManifestJson),
 });
 
+// Same corridor as the one-line smoke fixture, but the rider must change from
+// the 4 to the 7 at Grid Middle. Keep the published byte contract intact.
+const transferGeneration = "nyc-2026-09-16-fedcba654321";
+const transferShard = {
+  ...shard,
+  edges: [
+    { ...edge("subway:E1", "subway:E2", 0), route: "4" },
+    { ...edge("subway:E2", "subway:E1", 1), route: "4" },
+    { ...edge("subway:E2", "subway:E3", 0), route: "7" },
+    { ...edge("subway:E3", "subway:E2", 1), route: "7" },
+  ],
+  routes: [
+    { id: "4", shortName: "4", longName: "Lexington Avenue Express", type: 1, color: "00933C", textColor: "FFFFFF" },
+    { id: "7", shortName: "7", longName: "Flushing Local", type: 1, color: "B933AD", textColor: "FFFFFF" },
+  ],
+  headways: ["4", "7"].flatMap((route) => [0, 1].flatMap((direction) => [9, 22].map((hour) => ({
+    route, direction, dayType: "sunday", hour, medianSec: 120, trips: 30, services: 1,
+  })))),
+};
+const transferShardJson = JSON.stringify(transferShard);
+const transferManifestJson = JSON.stringify({
+  ...manifest,
+  generation: transferGeneration,
+  shards: [{
+    ...manifest.shards[0],
+    bytes: Buffer.byteLength(transferShardJson, "utf8"),
+    sha256: sha256(transferShardJson),
+    edges: transferShard.edges.length,
+    routes: transferShard.routes.length,
+  }],
+});
+const transferPointerJson = JSON.stringify({
+  version: 1,
+  dataset: "nyc-transit",
+  generation: transferGeneration,
+  manifestPath: `transit/nyc/${transferGeneration}/manifest.json`,
+  manifestSha256: sha256(transferManifestJson),
+});
+
 // ─── Phase-0 scale fixture generator ────────────────────────────────────────
 //
 // The three-station fixture above pins the smoke tests. The route benchmark
@@ -635,7 +674,7 @@ export function buildTransitShardFixture(
 }
 
 /** Which dataset the benchmark's transit stub serves. */
-export type TransitFixtureKind = "fixture" | "scale" | "scale-bus-only";
+export type TransitFixtureKind = "fixture" | "transfer" | "scale" | "scale-bus-only";
 
 /** The three-hop artifacts for a fixture kind, ready for `stubNetwork` to serve. */
 export function transitFixtureArtifacts(kind: TransitFixtureKind): TransitShardFixtureArtifacts {
@@ -646,6 +685,11 @@ export function transitFixtureArtifacts(kind: TransitFixtureKind): TransitShardF
       shards: new Map([["subway.json", transitShardJson]]),
     };
   }
+  if (kind === "transfer") return {
+    pointer: transferPointerJson,
+    manifest: transferManifestJson,
+    shards: new Map([["subway.json", transferShardJson]]),
+  };
   if (kind === "scale") return buildTransitShardFixture({});
   return buildTransitShardFixture({ subwayStations: 0, busStops: TRANSIT_SCALE_COUNTS.busStops });
 }

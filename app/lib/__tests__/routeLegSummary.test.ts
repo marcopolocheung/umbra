@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   routeLegSummary,
+  transitRides,
   transitSunLabel,
   transitSunCardLabel,
   transitSunCaveat,
@@ -17,6 +18,12 @@ const line: GeoJSON.Feature<GeoJSON.LineString> = {
 };
 
 describe("routeLegSummary", () => {
+  it("keeps the legacy single-ride fallback for saved transit routes", () => {
+    expect(transitRides({ type: "transit", geojson: line, line: "N", lineName: "Broadway Express" })).toEqual([
+      { line: "N", lineName: "Broadway Express", lineColor: undefined,
+        board: { id: "", name: "" }, exit: { id: "", name: "" }, stopCount: 1 },
+    ]);
+  });
   it("summarizes walking legs with distance and shadow", () => {
     const leg: RouteLeg = {
       type: "walk",
@@ -44,6 +51,21 @@ describe("routeLegSummary", () => {
     expect(routeLegSummary(leg, 1)).toEqual({
       title: "Leg 2: Red Line",
       detail: "11 min - 2 stops - assumed underground",
+    });
+  });
+
+  it("counts ridden stops across changes without counting the transfer walk", () => {
+    const leg: RouteLeg = {
+      type: "transit", geojson: line, line: "4", lineName: "Lexington Avenue Express",
+      travelTimeSec: 1200, waitSec: 420, stops: ["A", "B", "C", "D", "E"],
+      rides: [
+        { line: "4", lineName: "Lexington Avenue Express", board: { id: "A", name: "A" }, exit: { id: "B", name: "B" }, stopCount: 2 },
+        { line: "7", lineName: "Flushing Local", board: { id: "C", name: "C" }, exit: { id: "E", name: "E" }, stopCount: 1 },
+      ],
+    };
+    expect(routeLegSummary(leg, 1)).toEqual({
+      title: "Leg 2: Transit",
+      detail: "20 min - incl. ~7 min wait - 3 stops",
     });
   });
 

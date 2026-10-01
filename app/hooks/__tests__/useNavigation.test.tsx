@@ -230,6 +230,7 @@ describe("useNavigation", () => {
       polylines: [],
       stops: [],
       transfers: [],
+      changes: [],
     };
 
     const { result } = renderUseNavigation();
@@ -903,7 +904,7 @@ describe("routing reads the shadow field (A4b)", () => {
  * looks for a transit option at all (it skips under 500 m).
  */
 function transitCorridorGraph() {
-  const node = (id: number, lon: number) => [id, { id, lat: 1.3, lon }] as const;
+  const node = (id: number, lon: number, lat = 1.3) => [id, { id, lat, lon }] as const;
   const hop = (toId: number, distanceM: number) => ({ toId, distanceM });
   return {
     nodes: new Map([node(1, 103.8), node(2, 103.803), node(3, 103.807), node(4, 103.81)]),
@@ -1003,6 +1004,56 @@ describe("a route index from the panel resolves against the list the panel shows
         ?.filter((l) => l.type === "walk")
         .map((l) => l.geojson),
     });
+  });
+
+  it("keeps each boarding from the chosen train path on the transit leg", async () => {
+    const graph = corridorTrainGraph();
+    graph.adj.set("subway:1", [{ to: "subway:2", weightSec: 60, type: "rail", line: "4" }]);
+    graph.adj.set("subway:2", [
+      { to: "subway:1", weightSec: 60, type: "rail", line: "4" },
+      { to: "subway:3", weightSec: 60, type: "rail", line: "7" },
+    ]);
+    graph.adj.set("subway:3", [{ to: "subway:2", weightSec: 60, type: "rail", line: "7" }]);
+    graph.lineNames.clear();
+    graph.lineNames.set("4", "Lexington Avenue Express");
+    graph.lineNames.set("7", "Flushing Local");
+    graph.lineColors.clear();
+    graph.lineColors.set("4", token("color-route"));
+    graph.lineColors.set("7", token("color-route"));
+    graph.lineModes.clear();
+    graph.lineModes.set("4", "subway");
+    graph.lineModes.set("7", "subway");
+    graph.stations.get("subway:1")!.lines = ["4"];
+    graph.stations.get("subway:2")!.lines = ["4", "7"];
+    graph.stations.get("subway:3")!.lines = ["7"];
+    vi.mocked(fetchBestTrainGraph).mockResolvedValue(graph as never);
+
+    const result = await calculateInTransitMode();
+    const route = result.current.filteredRoutes.find((option) => option.label === "Via Subway");
+    const transit = route?.legs?.find((leg) => leg.type === "transit");
+    expect(transit?.rides?.map(({ line, board, exit, stopCount }) => ({ line, board: board.name, exit: exit.name, stopCount }))).toEqual([
+      { line: "4", board: "Alpha", exit: "Beta", stopCount: 1 },
+      { line: "7", board: "Beta", exit: "Gamma", stopCount: 1 },
+    ]);
+    expect(transit?.travelTimeSec).toBe(120);
+    expect(transit?.waitSec).toBe(0);
+    expect(route?.trainDrawData?.polylines.map((line) => line.line)).toEqual(["4", "7"]);
+  });
+
+  it("reports turns from the access and exit walks on a transit route", async () => {
+    const street = transitCorridorGraph();
+    street.nodes.set(5, { id: 5, lat: 1.301, lon: 103.8 });
+    street.nodes.set(6, { id: 6, lat: 1.301, lon: 103.803 });
+    street.adj.set(1, [{ toId: 5, distanceM: 111 }]);
+    street.adj.set(5, [{ toId: 1, distanceM: 111 }, { toId: 6, distanceM: 334 }]);
+    street.adj.set(6, [{ toId: 5, distanceM: 334 }, { toId: 2, distanceM: 111 }]);
+    street.adj.set(2, [{ toId: 6, distanceM: 111 }, { toId: 3, distanceM: 445 }]);
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(street as never);
+
+    const result = await calculateInTransitMode();
+    const route = result.current.filteredRoutes.find((option) => option.label === "Via Subway");
+    expect(route?.turnCount).toBeGreaterThan(0);
+    expect(route?.legs?.filter((leg) => leg.type === "transit")).toHaveLength(1);
   });
 
   it("exports the transit route the card describes", async () => {

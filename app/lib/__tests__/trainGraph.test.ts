@@ -3,6 +3,7 @@ import {
   buildTrainDrawData,
   fetchTrainGraph,
   stationConnectors,
+  summarizeTrainRides,
   type TrainDrawData,
   findBestTrainRoute,
   headwayKey,
@@ -30,6 +31,41 @@ import { haversineMeters } from "../routing";
 function station(id: string, name: string, lat: number, lon: number): TrainStation {
   return { id, name, lat, lon, lines: [] };
 }
+
+describe("summarizeTrainRides", () => {
+  const stop = (id: string) => ({ id, name: `Stop ${id}`, lat: 40.7, lon: -73.9 });
+  const hop = (from: string, to: string, line: string): TrainSegment => ({
+    type: "train", from: stop(from), to: stop(to), line,
+  });
+  const change = (at: string, fromLine: string, toLine: string): TrainSegment => ({
+    type: "transfer", at: stop(at), fromLine, toLine,
+  });
+  const names = new Map([["4", "Lexington Avenue Express"], ["7", "Flushing Local"]]);
+  const colors = new Map([["4", "00933C"], ["7", "B933AD"]]);
+
+  it("retains both boardings at a same-station line change", () => {
+    expect(summarizeTrainRides([
+      hop("A", "B", "4"), hop("B", "C", "4"), hop("C", "D", "7"),
+    ], names, colors)).toEqual([
+      { line: "4", lineName: "Lexington Avenue Express", lineColor: "00933C", board: { id: "A", name: "Stop A" }, exit: { id: "C", name: "Stop C" }, stopCount: 2 },
+      { line: "7", lineName: "Flushing Local", lineColor: "B933AD", board: { id: "C", name: "Stop C" }, exit: { id: "D", name: "Stop D" }, stopCount: 1 },
+    ]);
+  });
+
+  it("splits a walked transfer, including a later boarding of the same line", () => {
+    expect(summarizeTrainRides([
+      hop("A", "B", "4"), change("B", "4", "7"), hop("C", "D", "7"),
+      change("D", "7", "4"), hop("E", "F", "4"),
+    ], names, colors).map(({ line, board, exit, stopCount }) => ({ line, board, exit, stopCount }))).toEqual([
+      { line: "4", board: { id: "A", name: "Stop A" }, exit: { id: "B", name: "Stop B" }, stopCount: 1 },
+      { line: "7", board: { id: "C", name: "Stop C" }, exit: { id: "D", name: "Stop D" }, stopCount: 1 },
+      { line: "4", board: { id: "E", name: "Stop E" }, exit: { id: "F", name: "Stop F" }, stopCount: 1 },
+    ]);
+    expect(summarizeTrainRides([
+      hop("A", "B", "4"), change("B", "4", "4"), hop("C", "D", "4"),
+    ], names, colors)).toHaveLength(2);
+  });
+});
 
 /**
  * Two real traps from the published NYC data, both of which the unbounded
@@ -936,6 +972,34 @@ describe("trainDijkstra: per-edge track geometry", () => {
   });
 });
 
+describe("buildTrainDrawData transfer flags", () => {
+  const stop = (id: string, lon: number) => ({ id, name: `Stop ${id}`, lat: 40.7, lon });
+  const hop = (from: ReturnType<typeof stop>, to: ReturnType<typeof stop>, line: string): TrainSegment => ({
+    type: "train", from, to, line,
+  });
+  const colors = new Map([["4", "#00933C"], ["7", "#B933AD"]]);
+
+  it("marks a same-station line change even without a transfer edge", () => {
+    const [a, middle, z] = [stop("A", -74), stop("Middle", -73.99), stop("Z", -73.98)];
+    const data = buildTrainDrawData([hop(a, middle, "4"), hop(middle, z, "7")], colors);
+    expect(data.changes).toEqual([{
+      from: { ...middle, line: "4", color: "#00933C" },
+      to: { ...middle, line: "7", color: "#B933AD" },
+    }]);
+  });
+
+  it("names both ends of a change between different stops, once", () => {
+    const [a, west, east, z] = [stop("A", -74), stop("West", -73.99), stop("East", -73.988), stop("Z", -73.98)];
+    const data = buildTrainDrawData([
+      hop(a, west, "4"), { type: "transfer", at: west, fromLine: "4", toLine: "7" }, hop(east, z, "7"),
+    ], colors);
+    expect(data.changes).toEqual([{
+      from: { ...west, line: "4", color: "#00933C" },
+      to: { ...east, line: "7", color: "#B933AD" },
+    }]);
+  });
+});
+
 describe("stationConnectors", () => {
   const BOARD_DOOR: [number, number] = [-74.0017, 40.7556];
   const EXIT_DOOR: [number, number] = [-73.976, 40.7517];
@@ -943,6 +1007,7 @@ describe("stationConnectors", () => {
     polylines: polylines.map((coords) => ({ coords, color: "#B933AD", line: "7" })),
     stops: [],
     transfers: [],
+    changes: [],
   });
 
   it("links each door to its own end of the ride, not the doors to each other", () => {

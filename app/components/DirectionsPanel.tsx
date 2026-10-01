@@ -597,9 +597,11 @@ export default function DirectionsPanel({
           </div>
 
           {onStartNavigation && routes.length > 0 && !selectedRoute?.partial && (
-            <button type="button" onClick={onStartNavigation} className="umbra-start-button mt-2">
-              START NAVIGATING
-            </button>
+            <div className="sticky bottom-0 z-10 -mx-3 px-3 py-2 md:static md:mx-0 md:px-0" style={{ background: "var(--color-panel)" }}>
+              <button type="button" onClick={onStartNavigation} className="umbra-start-button">
+                START NAVIGATING
+              </button>
+            </div>
           )}
         </div>
       )}

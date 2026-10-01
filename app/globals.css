@@ -115,10 +115,11 @@
   --color-line-yellow-on: #0b0b0b;
   --color-line-yellow-ground: #1f1c0c;
   --color-line-yellow-plate: #3c361a;
-  /* A line's own published colour fills its bullet; its identifier takes the ink
-     `lineBulletInk` measures higher. Theme-fixed: the fill does not flip. */
+  /* A line's own published colour fills its bullet; its identifier takes a
+     contrasting dark, cream, or white ink. Theme-fixed: the fill does not flip. */
   --color-line-ink-dark: #0b0b0b;
   --color-line-ink-light: #f8efdf;
+  --color-line-ink-white: #ffffff;
 
   /* Renderer-facing values stay fixed through R4. */
   /* Map overlays (R4b) — route, casing, pins, stops, sun diagram — follow the basemap
@@ -180,6 +181,8 @@
   --shadow-xl: 4px 4px 0 #1b1512;
   --shadow-2xl: 4px 4px 0 #1b1512;
   --shadow-map-marker: 2px 2px 0 var(--color-map-route);
+  /* The same hard shadow for a clipped map marker, which a box-shadow would lose. */
+  --filter-map-marker: drop-shadow(var(--shadow-map-marker));
   --radius: 4px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -489,7 +492,7 @@ body {
     border-radius: var(--radius-sm);
     background: var(--color-ink);
     color: var(--color-on-ink);
-    box-shadow: var(--shadow-hard-2);
+    box-shadow: 4px 4px 0 var(--color-on-ink), 4px 4px 0 2px var(--color-ink);
     font-family: var(--font-label);
     font-weight: 800;
     font-size: var(--text-small);

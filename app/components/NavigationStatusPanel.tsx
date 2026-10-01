@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { lineCssColor } from "../lib/lineBulletInk";
+import { transitChangeLabel, transitRides } from "../lib/routeLegSummary";
 import type { RouteLeg, RouteOption } from "../lib/routing";
 import { routeAfterSunset, routeDurationLabel, routeExposureMinutes, routeShadowShare } from "../lib/routeTradeoff";
 import { getTravelModePolicy, type TravelModeId } from "../lib/travelMode";
@@ -78,48 +79,58 @@ function Itinerary({
   ];
   steps.forEach((leg, n) => {
     if (leg.type === "transit") {
-      const board = leg.stops?.[0];
-      const exit = leg.stops?.[leg.stops.length - 1];
-      const color = leg.lineColor ? lineCssColor(leg.lineColor) : undefined;
+      const rides = transitRides(leg);
       const first = n === 0;
       const last = n === steps.length - 1;
-      const boardName = board ?? (first ? startLabel : undefined);
-      rows.push({
-        id: `board-${n}`,
-        node: <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} aria-hidden="true" />,
-        rail: "ride",
-        color,
-        body: (
-          <>
-            {first && <div className="umbra-kicker">Start</div>}
-            {boardName && <div className="text-xs font-semibold" style={ink}>{boardName}</div>}
-            <div className="text-xs font-medium" style={ink}>
-              Ride {leg.lineName || leg.line || "Transit"}
-              {leg.travelTimeSec != null && (
-                <span style={muted}>
-                  {/* The whole leg, wait included, so the steps add up to Time. */}
-                  {" "}· {formatDuration(leg.travelTimeSec)}
+      rides.forEach((ride, rideIndex) => {
+        const color = ride.lineColor ? lineCssColor(ride.lineColor) : undefined;
+        const firstRide = rideIndex === 0;
+        const lastRide = rideIndex === rides.length - 1;
+        const boardName = ride.board.name || (first && firstRide ? startLabel : undefined);
+        rows.push({
+          id: `board-${n}-${rideIndex}`,
+          node: <LineBullet accent={ride.lineColor} code={ride.line} aria-hidden="true" />,
+          rail: "ride",
+          color,
+          body: (
+            <>
+              {first && firstRide && <div className="umbra-kicker">Start</div>}
+              {boardName && <div className="text-xs font-semibold" style={ink}>{boardName}</div>}
+              {firstRide && rides.length > 1 && leg.travelTimeSec != null && (
+                <div className="text-xs" style={muted}>
+                  Rail total {formatDuration(leg.travelTimeSec)}
                   {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
-                </span>
+                </div>
               )}
-            </div>
-          </>
-        ),
-      });
-      rows.push({
-        id: `exit-${n}`,
-        node: <span className="umbra-leg-stop" style={color ? ({ "--leg-color": color } as CSSProperties) : undefined} aria-hidden="true" />,
-        // Off the train, the rider is on foot again until the next boarding or
-        // the end — unless the exit is the end.
-        rail: last ? null : "foot",
-        body: (
-          <>
-            {last && <div className="umbra-kicker">Destination</div>}
-            <div className="text-xs font-semibold" style={ink}>
-              {exit && exit !== board ? `Exit at ${exit}` : last ? destinationLabel : "Exit"}
-            </div>
-          </>
-        ),
+              <div className="text-xs font-medium" style={ink}>
+                Ride {ride.lineName}
+                {firstRide && rides.length === 1 && leg.travelTimeSec != null && (
+                  <span style={muted}>
+                    {" · "}{formatDuration(leg.travelTimeSec)}
+                    {leg.waitSec ? ` incl. ~${formatDuration(leg.waitSec)} wait` : ""}
+                  </span>
+                )}
+              </div>
+            </>
+          ),
+        });
+        rows.push({
+          id: `exit-${n}-${rideIndex}`,
+          node: <span className="umbra-leg-stop" style={color ? ({ "--leg-color": color } as CSSProperties) : undefined} aria-hidden="true" />,
+          rail: last && lastRide ? null : "foot",
+          body: (
+            <>
+              {last && lastRide && <div className="umbra-kicker">Destination</div>}
+              <div className="text-xs font-semibold" style={ink}>
+                {!lastRide
+                  ? transitChangeLabel(ride, rides[rideIndex + 1])
+                  : ride.exit.name && ride.exit.name !== ride.board.name
+                    ? `Exit at ${ride.exit.name}`
+                    : last ? destinationLabel : "Exit"}
+              </div>
+            </>
+          ),
+        });
       });
       return;
     }
@@ -221,7 +232,7 @@ export default function NavigationStatusPanel({
         ["Time", duration ?? ""],
         ["Distance", formatDistance(route.distanceM)],
         [rainCard ? "Shelter" : route.legs?.some((l) => l.type === "transit") ? "Shadow on foot" : "Shadow", shadeValue ?? ""],
-        ["Turns", String(route.turnCount)],
+        [route.legs?.some((leg) => leg.type === "transit") ? "Walking turns" : "Turns", String(route.turnCount)],
       ]
     : [];
 

@@ -309,3 +309,37 @@ test("routes on the published transit data and draws the line", async ({ page },
     )
     .toContain("incl. ~5 min wait");
 });
+
+test("shows both lines and the transfer before and during navigation", async ({ page }, testInfo) => {
+  const basemap: Basemap = testInfo.project.name === "smoke-live" ? "live" : "fixture";
+  await stubNetwork(page, { basemap, transit: "transfer" });
+  await page.goto(TRANSIT_SHARE_URL);
+  await page.getByRole("button", { name: "Transit", exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+
+  const routeText = () => page.evaluate(() =>
+    document.querySelector('[role="radiogroup"][aria-label="Route options"]')?.textContent ?? "",
+  );
+  await expect.poll(routeText, { timeout: 60_000 }).toContain("Change at Grid Middle");
+  const card = await routeText();
+  expect(card).toContain("Lexington Avenue Express");
+  expect(card).toContain("Flushing Local");
+  expect(card).toContain("Walking turns");
+  expect(card).toContain("2 stops");
+  await expect(page.locator(".umbra-line-bullet--data .umbra-line-bullet__id").filter({ hasText: "7" }).first()).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(page.locator("[data-part='stop-flag'] [data-part='line']")).toHaveText(["4", "7"]);
+  const transferFlag = page.locator("[data-part='transfer-flag']");
+  await expect(transferFlag).toHaveCount(1);
+  await expect(transferFlag).toHaveAttribute("aria-label", "Transfer: 4, Grid Middle to 7, Grid Middle");
+  await expect(transferFlag.locator("[data-part='kicker']")).toHaveText("Transfer");
+  await expect(transferFlag.locator("[data-part='transfer-to']")).toHaveCSS("background-color", "rgb(185, 51, 173)");
+  await expect(transferFlag.locator("[data-part='line']")).toHaveText(["4", "7"]);
+  await expect(transferFlag.locator("[data-part='to-shield'] [data-part='line']")).toHaveCSS("color", "rgb(255, 255, 255)");
+
+  await page.getByRole("button", { name: "START NAVIGATING" }).filter({ visible: true }).first().click();
+  await expect.poll(() => page.locator('ol[aria-label="Route steps"]').first().textContent()).toContain("Change at Grid Middle");
+  const itinerary = await page.locator('ol[aria-label="Route steps"]').first().textContent();
+  expect(itinerary).toContain("Ride Lexington Avenue Express");
+  expect(itinerary).toContain("Ride Flushing Local");
+  expect(itinerary).toContain("Rail total");
+});

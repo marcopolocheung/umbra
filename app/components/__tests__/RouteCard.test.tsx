@@ -186,6 +186,31 @@ describe("RouteCard as a transit strip (R5)", () => {
 
     expect(screen.queryByText("Shadow breaks")).toBeNull();
     expect(screen.queryByText("continuous")).toBeNull();
-    expect(screen.getByText("Turns")).toBeTruthy();
+    expect(screen.getByText("Walking turns")).toBeTruthy();
+  });
+
+  it("shows both boardings and the change without charging the whole rail time to the first line", () => {
+    const route = busRoute(840, 1, 1);
+    route.label = "Via Subway";
+    route.turnCount = 3;
+    route.legs![1] = {
+      ...route.legs![1], line: "4", lineName: "Lexington Avenue Express", travelTimeSec: 1200,
+      waitSec: 420, waitExposure: undefined, stops: ["Astor Pl", "Grand Central", "Vernon Blvd"],
+      rides: [
+        { line: "4", lineName: "Lexington Avenue Express", lineColor: "var(--color-route)", board: { id: "A", name: "Astor Pl" }, exit: { id: "B", name: "Grand Central" }, stopCount: 2 },
+        { line: "7", lineName: "Flushing Local", lineColor: "var(--color-route)", board: { id: "B", name: "Grand Central" }, exit: { id: "C", name: "Vernon Blvd" }, stopCount: 1 },
+      ],
+    };
+    const { container } = render(<RouteCard route={route} selected onSelect={() => {}} />);
+
+    const header = container.querySelector("button");
+    expect([...header!.querySelectorAll(".umbra-line-bullet__id")].map((el) => el.textContent)).toEqual(["4", "7"]);
+    expect(screen.getByText("Change at Grand Central")).toBeTruthy();
+    expect(screen.getByText("Leg 2: Transit")).toBeTruthy();
+    expect(screen.getByText(/20 min - incl\. ~7 min wait - 3 stops/)).toBeTruthy();
+    expect(screen.getByText(/Astor Pl → Grand Central · 2 stops/)).toBeTruthy();
+    expect(screen.getByText(/Grand Central → Vernon Blvd · 1 stop/)).toBeTruthy();
+    expect(screen.getByText("Walking turns").parentElement?.textContent).toContain("3");
+    expect(screen.queryByText("Leg 2: Lexington Avenue Express")).toBeNull();
   });
 });

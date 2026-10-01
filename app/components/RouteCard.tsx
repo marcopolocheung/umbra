@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import type { WeatherHour } from "../lib/heat/types";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
 import {
   routeLegSummary,
+  transitChangeLabel,
+  transitRides,
   transitSunCardLabel,
   transitSunCaveat,
   transitSunTone,
@@ -157,6 +159,7 @@ export default function RouteCard({
   const afterSunset = !rainCard && routeAfterSunset(r);
   const showBar = shadowKnown && !afterSunset;
   const transitLegs = r.legs?.filter((l: RouteLeg) => l.type === "transit") ?? [];
+  const transitBoardings = transitLegs.flatMap(transitRides);
   const verdictLabel = rainCard
     ? exposureUpdating
       ? "updating shelter…"
@@ -184,12 +187,11 @@ export default function RouteCard({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Kicker plated>{r.label}</Kicker>
           {isPartial && <Tag>Partial</Tag>}
-          {transitLegs.map((leg) => (
+          {transitBoardings.map((ride) => (
             <LineBullet
-              // One boarding per leg: the line and where it is boarded name it.
-              key={`${leg.line ?? leg.lineName}-${leg.stops?.[0]}`}
-              accent={leg.lineColor}
-              code={leg.line || leg.lineName || "?"}
+              key={`${ride.line}-${ride.board.id}-${ride.exit.id}`}
+              accent={ride.lineColor}
+              code={ride.line}
             />
           ))}
           {recommended && !exposureUpdating && (
@@ -316,7 +318,7 @@ export default function RouteCard({
               ...(streak && !afterSunset && !isTransit ? [[rainCard ? "Continuous shelter" : "Continuous shadow", streak]] : []),
               ...(detour ? [["Detour ratio", detour]] : []),
               ...(afterSunset || isTransit ? [] : [[rainCard ? "Shelter breaks" : "Shadow breaks", transitions]]),
-              ["Turns", String(r.turnCount)],
+              [isTransit ? "Walking turns" : "Turns", String(r.turnCount)],
             ].map(([key, value], i) => (
               <div
                 key={key}
@@ -335,6 +337,36 @@ export default function RouteCard({
               <ol className="mt-1 flex flex-col gap-1.5">
                 {r.legs.map((leg, index) => {
                   const summary = routeLegSummary(leg, index, r.travelMode ?? "walk", afterSunset);
+                  const rides = leg.type === "transit" ? transitRides(leg) : [];
+                  if (rides.length > 1) return (
+                    <li key={`transit-${rides[0].board.id}-${rides[rides.length - 1].exit.id}`} className="text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined shrink-0 text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">train</span>
+                        <span className="min-w-0">
+                          <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>
+                          <span style={{ color: "var(--color-ink-muted)" }}> · {summary.detail}</span>
+                        </span>
+                      </div>
+                      <ol className="ml-6 mt-1 flex flex-col gap-1">
+                        {rides.map((ride, rideIndex) => (
+                          <Fragment key={`${ride.line}-${ride.board.id}-${ride.exit.id}`}>
+                            {rideIndex > 0 && (
+                              <li style={{ color: "var(--color-ink-muted)" }}>
+                                {transitChangeLabel(rides[rideIndex - 1], ride)}
+                              </li>
+                            )}
+                            <li className="flex items-center gap-2">
+                              <LineBullet accent={ride.lineColor} code={ride.line} className="shrink-0" />
+                              <span>
+                                <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{ride.lineName}</span>
+                                <span style={{ color: "var(--color-ink-muted)" }}> · {ride.board.name} → {ride.exit.name} · {ride.stopCount} stop{ride.stopCount === 1 ? "" : "s"}</span>
+                              </span>
+                            </li>
+                          </Fragment>
+                        ))}
+                      </ol>
+                    </li>
+                  );
                   return (
                     <li key={`${leg.type}-${index}`} className="flex items-center gap-2 text-[11px]">
                       {leg.type === "transit" ? (
@@ -358,8 +390,8 @@ export default function RouteCard({
           {/* Transit info */}
           {r.legs?.find((l: RouteLeg) => l.type === 'transit') && (() => {
             const tLeg = r.legs!.find((l: RouteLeg) => l.type === 'transit')!;
-            const lineName = tLeg.lineName ?? tLeg.line ?? 'Transit';
-            const stopCount = (tLeg.stops?.length ?? 2) - 1;
+            const rides = transitRides(tLeg);
+            const stopCount = rides.reduce((sum, ride) => sum + ride.stopCount, 0);
             const sunExposure = tLeg.sunExposure ?? 0;
             const sunCoverage = tLeg.sunExposureCoverage;
             const aboveGround = tLeg.aboveGroundShare;
@@ -379,8 +411,10 @@ export default function RouteCard({
               : `${Math.round(tLeg.waitExposure.shelter * 100)}% sheltered at stops`;
             return (
               <div className="text-[11px] flex flex-col gap-0.5" style={{ color: "var(--color-ink-muted)" }}>
-                <div className="flex items-center gap-1.5">
-                  <LineBullet accent={tLeg.lineColor} code={tLeg.line || lineName} label={lineName} />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {rides.map((ride) => (
+                    <LineBullet key={`${ride.line}-${ride.board.id}-${ride.exit.id}`} accent={ride.lineColor} code={ride.line} label={ride.lineName} />
+                  ))}
                   <span>{stopCount} stop{stopCount !== 1 ? 's' : ''}</span>
                 </div>
                 <div className="flex gap-x-2 flex-wrap">
