@@ -188,8 +188,16 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
   const [suggestions, setSuggestions] = useState<FoursquareSuggestion[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isActive, setIsActive] = useState(false);
-  // The query a submit came back empty for; null while there is nothing to report.
-  const [emptyFor, setEmptyFor] = useState<string | null>(null);
+  // The query a submit came back empty for, and whether nearby places were
+  // searched too (only with a map center); null while there is nothing to report.
+  const [emptyFor, setEmptyFor] = useState<{ q: string; places: boolean } | null>(null);
+  // Dismissing the dropdown also drops a search still in flight, so its empty
+  // answer cannot surface after the user has moved on.
+  const dropInFlight = useCallback(() => {
+    searchGenRef.current++;
+    setIsSearching(false);
+    setEmptyFor(null);
+  }, []);
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [saved, setSaved] = useState<SavedItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -217,12 +225,12 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
         setIsActive(false);
         // A tap on the map must close the typeahead like every other dropdown.
         setSuggestions([]);
-        setEmptyFor(null);
+        dropInFlight();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [dropInFlight]);
 
   // Only ever called from an explicit submit. Nominatim's usage policy lists
   // autocomplete under unacceptable use, so no Nominatim request may fire from
@@ -252,7 +260,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       // the next Enter, so dropping them is the whole point of the guard.
       if (gen !== searchGenRef.current) return [];
       setResults(merged);
-      setEmptyFor(merged.length === 0 ? q.trim() : null);
+      setEmptyFor(merged.length === 0 ? { q: q.trim(), places: Boolean(ll) } : null);
       // Highlight the top match so a second Enter takes it.
       setHighlightIndex(merged.length > 0 ? 0 : -1);
       return merged;
@@ -375,6 +383,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
 
   function handleSelectSaved(item: SavedItem) {
+    dropInFlight();
     setQuery(item.label);
     setResults([]);
     setIsActive(false);
@@ -408,7 +417,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     } else if (e.key === "Escape") {
       setResults([]);
       setSuggestions([]);
-      setEmptyFor(null);
+      dropInFlight();
       setIsActive(false);
       inputRef.current?.blur();
     }
@@ -422,7 +431,7 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
     setQuery("");
     setResults([]);
     setSuggestions([]);
-    setEmptyFor(null);
+    dropInFlight();
     onClearPanel?.();
     inputRef.current?.focus();
   }
@@ -562,19 +571,20 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
       {/* A submit that came back empty says so, instead of closing on nothing.
           Both providers' failures also read as empty, so the copy claims no
           more than that nothing came back. */}
-      {emptyOpen && (
-        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE} role="status">
+      {/* Always mounted, so screen readers announce the text when it arrives. */}
+      <p role="status" className="sr-only">
+        {emptyOpen && emptyFor ? `Nothing came back for “${emptyFor.q}”. ${emptyCaption(emptyFor.places)}` : ""}
+      </p>
+      {emptyOpen && emptyFor && (
+        <div className={DIRECTORY_PANEL} style={DIRECTORY_PANEL_STYLE} aria-hidden="true">
           <DirectoryHead title="Directory" />
           <div className="flex flex-col items-start gap-1 px-3 py-3">
             <Kicker>Not in the guidebook</Kicker>
-            <p className="font-display text-xl font-semibold leading-tight" style={{ color: "var(--color-ink)" }}>
-              Nothing came back for “{emptyFor}”
+            <p className="font-display text-xl font-semibold leading-tight break-words" style={{ color: "var(--color-ink)", maxWidth: "100%" }}>
+              Nothing came back for “{emptyFor.q}”
             </p>
             <p className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
-              {mapCenter
-                ? "Neither the address search nor nearby places returned a match, or neither could be reached."
-                : "The address search returned no match, or could not be reached."}{" "}
-              Try a street address or a fuller name.
+              {emptyCaption(emptyFor.places)}
             </p>
           </div>
         </div>
@@ -672,6 +682,15 @@ export default function SearchBar({ onSelect, mapCenter, onClearPanel, onMenuTog
 
 const PILL_BUTTON =
   "grid size-11 shrink-0 place-items-center text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
+
+/** What an empty submit can honestly say: which searches ran, and that failures read as empty too. */
+function emptyCaption(places: boolean): string {
+  return `${
+    places
+      ? "Neither the address search nor nearby places returned a match, or neither could be reached."
+      : "The address search returned no match, or could not be reached."
+  } Try a street address or a fuller name.`;
+}
 
 // Square and ruled like the departures board: a directory, not a floating card.
 const DIRECTORY_PANEL = "absolute top-full mt-2 w-full overflow-hidden border-2 z-20";

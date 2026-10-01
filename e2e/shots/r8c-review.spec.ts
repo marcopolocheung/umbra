@@ -54,6 +54,8 @@ for (const theme of ["day", "night"] as const) {
     await page.goto(URL);
     await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
     await page.waitForTimeout(2000);
+    await page.getByRole("button", { name: "Toggle menu" }).click();
+    await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(out, `desktop-idle-${theme}.png`), clip: { x: 0, y: 0, width: 640, height: 800 } });
   });
 }

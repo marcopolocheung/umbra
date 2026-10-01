@@ -52,7 +52,7 @@ const WaypointInput = memo(function WaypointInput({
       if (gen !== searchGenRef.current) return;
       if (res.length === 0) {
         setResults([]);
-        setInlineError(`No address matches “${q}”. Try a street and number.`);
+        setInlineError(`Nothing matches “${q.trim()}”. Try a street address or a place name.`);
         setNoMatch(true);
       } else {
         setResults(res);

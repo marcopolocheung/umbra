@@ -92,7 +92,7 @@ describe("WaypointInput empty answers (R8c)", () => {
     fireEvent.change(input, { target: { value: "zzqx" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const line = await screen.findByText("No address matches “zzqx”. Try a street and number.");
+    const line = await screen.findByText("Nothing matches “zzqx”. Try a street address or a place name.");
     expect(line.className).toContain("text-ink-muted");
     expect(line.className).not.toContain("text-danger");
   });

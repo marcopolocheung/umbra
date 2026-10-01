@@ -6,11 +6,11 @@ import QuickActions from "../QuickActions";
 afterEach(cleanup);
 
 describe("QuickActions as the idle empty state (R8c)", () => {
-  it("pairs a kicker with a title that says nothing is planned", () => {
+  it("pairs a kicker with a title that claims nothing about the trip", () => {
     render(<QuickActions onNavigate={vi.fn()} onDrawRoute={vi.fn()} drawMode={false} />);
 
     expect(screen.getByText("Before you set out").className).toContain("umbra-kicker");
-    expect(screen.getByRole("heading", { name: "Nothing planned yet" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Where to?" })).toBeTruthy();
   });
 
   it("starts directions or draw mode, and says whether draw mode is on", () => {

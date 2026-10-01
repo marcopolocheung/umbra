@@ -27,14 +27,16 @@ inspiration; the public mirror publishes everything here.
 - **Active checkpoint:** R8c (#190), stacked on R8b (PR #197). Every empty state that
   renders gets a kicker/title pair, with the voice in the kicker only. The idle sheet
   (`QuickActions`) drops Canopy's pulsing "Device Idle" / "Quick Entry" for a square 2px
-  panel: "Before you set out" / "Nothing planned yet" (Grenze), then square 44px
-  Directions and Draw route (`aria-pressed`, ink when on). A submitted search that comes
-  back empty used to close on nothing; it now shows a Directory card with role
-  `status`: "Not in the guidebook" / "Nothing came back for “q”", and a caption that
-  claims only what ran (both providers swallow failures as empty, so it says "returned no
-  match, or could not be reached", naming nearby places only when a map center let them
-  run). The address field's no-match line leaves the danger colour; a failed search
-  keeps it. The assistant's hand-rolled "Field notes" becomes `Kicker`. The dead desktop
+  panel: "Before you set out" / "Where to?" (a Grenze `h2`; it asks rather than claims
+  "nothing planned", because idle is reached with a route still drawn), then square
+  44px Directions and Draw route (`aria-pressed`, ink when on). A submitted search that comes
+  back empty used to close on nothing; it now shows a Directory card, "Not in the
+  guidebook" / "Nothing came back for “q”", announced through an always-mounted status
+  region, with a caption that claims only what ran (both providers swallow failures as
+  empty, #199, so it says "returned no match, or could not be reached", naming nearby
+  places only when that search ran). Escape, clear, an outside tap or a saved pick drop
+  a search still in flight. The address field's no-match line ("Nothing matches “q”")
+  leaves the danger colour; a failed search keeps it. The assistant's hand-rolled "Field notes" becomes `Kicker`. The dead desktop
   Saved Routes / Shadow History tabs and the saved-routes empty state are R8d (#198).
   Shots: `docs/design/shots/r8c/`.
 - **R8b (open, PR #197):** Each saved route is a

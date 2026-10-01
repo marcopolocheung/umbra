@@ -333,14 +333,16 @@ describe("SearchBar empty directory (R8c)", () => {
     fireEvent.change(input, { target: { value: "zzqx" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("Nothing came back for “zzqx”");
+    // The status region is always mounted, so the text is what a screen reader hears.
+    const status = screen.getByRole("status");
+    await waitFor(() => expect(status.textContent).toContain("Nothing came back for “zzqx”"));
     expect(screen.getByText("Not in the guidebook").className).toContain("umbra-kicker");
     // No map center, so only the address search ran, and the copy says only that.
     expect(status.textContent).toContain("The address search returned no match, or could not be reached.");
 
     fireEvent.change(input, { target: { value: "zzqxy" } });
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(status.textContent).toBe("");
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
   });
 
   it("names both providers when the map center let nearby places run", async () => {
@@ -350,9 +352,21 @@ describe("SearchBar empty directory (R8c)", () => {
     fireEvent.change(input, { target: { value: "zzqx" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect((await screen.findByRole("status")).textContent).toContain(
-      "Neither the address search nor nearby places returned a match",
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain("Neither the address search nor nearby places returned a match"),
     );
+  });
+
+  it("drops an empty answer that lands after Escape", async () => {
+    let resolve: (v: unknown[]) => void = () => {};
+    geocodeForward.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { input } = renderBar();
+    fireEvent.change(input, { target: { value: "zzqx" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await act(async () => { resolve([]); });
+    expect(screen.queryByText("Not in the guidebook")).toBeNull();
   });
 
   it("shows no empty state when a submit finds matches", async () => {
@@ -361,6 +375,6 @@ describe("SearchBar empty directory (R8c)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await screen.findByRole("option");
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 });
