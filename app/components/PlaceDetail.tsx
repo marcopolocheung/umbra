@@ -1,4 +1,6 @@
+import { type ReactNode, useState } from "react";
 import type { PlaceInfo } from "../hooks/useAppState";
+import Kicker from "./ui/Kicker";
 
 interface PlaceDetailProps {
   place: PlaceInfo;
@@ -6,299 +8,130 @@ interface PlaceDetailProps {
   onBack: () => void;
 }
 
+/**
+ * A place as a guidebook entry: category plate, the name as its heading, then
+ * ruled lines for only the facts this entry holds. A fact it does not hold is
+ * named as missing once, never drawn as an empty row or a fallback value (a
+ * "$$" price, placeholder photos and no-op actions used to stand in for data
+ * nobody had). The caption says "not shown here", not "not returned": the
+ * search can carry hours and a rating that the selection does not pass on yet.
+ */
 export default function PlaceDetail({ place, onDirections, onBack }: PlaceDetailProps) {
-  const reviewCount = place.reviewCount ?? 0;
-  const price = place.priceLevel ?? "$$";
-
-  const photos: string[] = place.photo ? [place.photo] : [];
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const missing = [
+    !place.hours && "hours",
+    !place.phone && "phone",
+    !place.website && "website",
+  ].filter((fact): fact is string => Boolean(fact));
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Back */}
-      <button type="button"
+    <article className="flex flex-col gap-4 p-4" style={{ color: "var(--color-ink)" }}>
+      <button
+        type="button"
         onClick={onBack}
-        className="flex items-center gap-2 text-[13px] hover:underline self-start"
-        style={{ color: "var(--color-ink-muted)" }}
+        className="-ml-2 flex min-h-11 items-center gap-1 self-start px-2 font-semibold hover:underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+        style={{ fontSize: "var(--text-small)" }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
+        <span className="material-symbols-outlined text-lg" aria-hidden="true">chevron_left</span>
         Back
       </button>
 
-      {/* Hero */}
-      <div>
-        <div className="font-display text-verdict font-semibold leading-tight tracking-[-0.02em]" style={{ color: "var(--color-ink)" }}>
-          {place.name}
-        </div>
-        <div className="text-[13px] mt-1" style={{ color: "var(--color-ink-muted)" }}>
-          {place.category ?? "Place"}
-        </div>
+      <header className="flex flex-col items-start gap-2">
+        <Kicker plated>{place.category || "Place"}</Kicker>
+        <h2 className="font-display text-verdict font-semibold leading-tight">{place.name}</h2>
+      </header>
 
-        {/* A rating that does not exist is never shown as one (U5): the
-            fallback "4.4" was a fabricated number, so the row renders only
-            from real Foursquare data, and absent parts are named as absent. */}
-        <div className="flex items-center gap-2 mt-2 text-[13px]" style={{ color: "var(--color-ink)" }}>
-          {place.rating != null && (
-            <>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold">{place.rating.toFixed(1)}</span>
-                <span style={{ color: "var(--color-ink)" }}>★</span>
-              </div>
-              <span style={{ color: "var(--color-ink-muted)" }}>·</span>
-              {reviewCount > 0 && (
-                <>
-                  <span style={{ color: "var(--color-ink-muted)" }}>{reviewCount} reviews</span>
-                  <span style={{ color: "var(--color-ink-muted)" }}>·</span>
-                </>
-              )}
-            </>
+      {/* Directly under the heading, so the action sits inside the sheet's first snap
+          point however many lines the entry grows. */}
+      <button type="button" onClick={onDirections} className="umbra-start-button">
+        Directions
+      </button>
+
+      <dl className="m-0 border-y-2" style={{ borderColor: "var(--color-ink)" }}>
+        <EntryLine term="Address">
+          {place.address ? (
+            <span className="flex items-center justify-between gap-2">
+              <span className="min-w-0">{place.address}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(place.address ?? "");
+                    setCopyState("copied");
+                  } catch {
+                    setCopyState("failed");
+                  }
+                }}
+                aria-label="Copy address"
+                className="min-h-11 shrink-0 px-2 font-extrabold uppercase tracking-wider underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+                style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}
+              >
+                <span aria-live="polite">{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}</span>
+              </button>
+            </span>
+          ) : (
+            <span style={{ color: "var(--color-ink-muted)" }}>No address on file</span>
           )}
-          <span style={{ color: "var(--color-ink-muted)" }}>{price}</span>
-        </div>
-      </div>
-
-      {/* Action buttons row (FEATURE.md) */}
-      <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
-        <ActionPill label="Directions" onClick={onDirections} icon="directions" />
-        <ActionPill label="Start" onClick={() => {}} icon="start" />
-        <ActionPill label="Save" onClick={() => {}} icon="save" />
-        <ActionPill label="Nearby" onClick={() => {}} icon="nearby" />
-        <ActionPill label="Share" onClick={() => {}} icon="share" />
-      </div>
-
-      {/* Photo strip */}
-      <div className="flex gap-2 overflow-x-auto">
-        {photos.length > 0 ? (
-          photos.map((src, i) => (
-            <img
-              key={i}
-              src={src}
-              alt={place.name}
-              className="h-20 w-28 object-cover rounded-xl border"
-              style={{ borderColor: "var(--color-rule)" }}
-            />
-          ))
-        ) : (
-          [0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-20 w-28 rounded-xl border flex items-center justify-center text-[11px]"
-              style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)", background: "var(--color-ground)" }}
-            >
-              Photo
-            </div>
-          ))
+        </EntryLine>
+        {place.hours && <EntryLine term="Hours">{place.hours}</EntryLine>}
+        {place.phone && (
+          <EntryLine term="Phone">
+            <a href={`tel:${place.phone.replace(/\s+/g, "")}`} className="inline-flex min-h-11 items-center underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current">
+              {place.phone}
+            </a>
+          </EntryLine>
         )}
-      </div>
+        {place.website && (
+          <EntryLine term="Website">
+            <a href={place.website} target="_blank" rel="noopener noreferrer" className="break-all inline-flex min-h-11 items-center underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current">
+              {place.website}
+            </a>
+          </EntryLine>
+        )}
+        {place.rating != null && (
+          <EntryLine term="Rating">
+            <span className="tabular-nums font-extrabold" style={{ fontFamily: "var(--font-numeric)" }}>
+              {place.rating.toFixed(1)}/10
+            </span>
+            <span style={{ color: "var(--color-ink-muted)" }}>
+              {(place.reviewCount ?? 0) > 0 && ` · ${place.reviewCount} reviews`} · Foursquare
+            </span>
+          </EntryLine>
+        )}
+        {place.priceLevel && <EntryLine term="Price">{place.priceLevel}</EntryLine>}
+      </dl>
 
-      {/* Info rows */}
-      <div className="flex flex-col border rounded-2xl overflow-hidden" style={{ borderColor: "var(--color-rule)" }}>
-        <InfoRow
-          icon="pin"
-          label={place.address ?? "Address unavailable"}
-          rightAction={place.address ? (
-            <button type="button"
-              onClick={async () => {
-                try { await navigator.clipboard.writeText(place.address ?? ""); } catch { /* ignore */ }
-              }}
-              className="text-[12px] px-2 py-1 rounded-lg"
-              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-            >
-              Copy
-            </button>
-          ) : undefined}
-        />
-        <Divider />
-        <InfoRow icon="clock" label={place.hours ?? "Hours unavailable"} rightText="" />
-        <Divider />
-        <InfoRow icon="phone" label={place.phone ?? "Phone unavailable"} rightText={place.phone ? "Call" : ""} />
-        <Divider />
-        <InfoRow icon="link" label={place.website ?? "Website unavailable"} rightText={place.website ? "Open" : ""} />
-        <Divider />
-        <InfoRow icon="wheelchair" label="Accessibility info" rightText="" />
-      </div>
-
-      {/* Reviews: no source ships review text, so the section says that in
-          one line. The old placeholder showed a fabricated histogram and
-          invented reviews as data — the honesty guardrail bans both (U5). */}
-      <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>Reviews</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-rule)", background: "var(--color-panel)" }}>
-          <div className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>
-            No reviews from the current data source.
-          </div>
-        </div>
-      </section>
-
-      {/* About / From the owner */}
-      <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>About</h3>
-        <div className="mt-2 border rounded-2xl p-3" style={{ borderColor: "var(--color-rule)" }}>
-          <div className="text-[12px] leading-relaxed" style={{ color: "var(--color-ink-muted)" }}>
-            {place.description ?? "No description from the current data source."}
-          </div>
-        </div>
-      </section>
-
-      {/* People also search for */}
-      <section>
-        <h3 className="text-[14px] font-semibold" style={{ color: "var(--color-ink)" }}>People also search for</h3>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-          {["Coffee", "Lunch", "Bars", "Parks", "Museums"].map((t) => (
-            <button type="button"
-              key={t}
-              className="px-3 py-2 rounded-full text-[12px] whitespace-nowrap"
-              style={{ background: "var(--color-ground)", color: "var(--color-ink-muted)" }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Divider() {
-  return <div className="h-px" style={{ background: "var(--color-rule)" }} />;
-}
-
-function ActionPill({
-  label,
-  icon,
-  onClick,
-}: {
-  label: string;
-  icon: "directions" | "start" | "save" | "nearby" | "share";
-  onClick: () => void;
-}) {
-  const Icon = () => {
-    const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-    switch (icon) {
-      case "directions":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M12 2l8 10-8 10L4 12 12 2z" />
-            <path d="M12 8v8" />
-            <path d="M9 11h3" />
-          </svg>
-        );
-      case "start":
-        return (
-          <svg {...common} aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M10 8l6 4-6 4V8z" />
-          </svg>
-        );
-      case "save":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M6 3h12v18l-6-4-6 4V3z" />
-          </svg>
-        );
-      case "nearby":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 0 1 18 0z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
-        );
-      case "share":
-        return (
-          <svg {...common} aria-hidden="true">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <line x1="8.7" y1="11" x2="15.3" y2="6.8" />
-            <line x1="8.7" y1="13" x2="15.3" y2="17.2" />
-          </svg>
-        );
-    }
-  };
-
-  return (
-    <button type="button"
-      onClick={onClick}
-      className="flex flex-col items-center justify-center shrink-0 px-3 py-2 rounded-2xl"
-      style={{ background: "var(--color-ground)", color: "var(--color-ink)", minWidth: 74 }}
-    >
-      <Icon />
-      <div className="mt-1 text-[11px]">{label}</div>
-    </button>
-  );
-}
-
-function InfoRow({
-  icon,
-  label,
-  rightText,
-  rightAction,
-}: {
-  icon: "pin" | "clock" | "phone" | "link" | "wheelchair";
-  label: string;
-  rightText?: string;
-  rightAction?: React.ReactNode;
-}) {
-  const Icon = () => {
-    const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-    switch (icon) {
-      case "pin":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z" />
-            <circle cx="12" cy="10" r="2.5" />
-          </svg>
-        );
-      case "clock":
-        return (
-          <svg {...common} aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v6l4 2" />
-          </svg>
-        );
-      case "phone":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 3.1 5.2 2 2 0 0 1 5.1 3h3a2 2 0 0 1 2 1.7c.1.8.3 1.6.6 2.4a2 2 0 0 1-.5 2.1L9 10.4a16 16 0 0 0 4.6 4.6l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.6.5 2.4.6a2 2 0 0 1 1.7 2z" />
-          </svg>
-        );
-      case "link":
-        return (
-          <svg {...common} aria-hidden="true">
-            <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1" />
-            <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1" />
-          </svg>
-        );
-      case "wheelchair":
-        return (
-          <svg {...common} aria-hidden="true">
-            <circle cx="8" cy="8" r="2" />
-            <path d="M8 10v6a4 4 0 0 0 4 4" />
-            <path d="M12 14h6l-1 4" />
-            <circle cx="12" cy="20" r="2" />
-          </svg>
-        );
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <div className="shrink-0" style={{ color: "var(--color-ink-muted)" }}>
-        <Icon />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] truncate" style={{ color: "var(--color-ink)" }}>{label}</div>
-      </div>
-      {rightAction ? (
-        <div className="shrink-0">{rightAction}</div>
-      ) : rightText ? (
-        <div className="shrink-0 text-[12px]" style={{ color: "var(--color-route)" }}>{rightText}</div>
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+      {missing.length > 0 && (
+        <p className="m-0" style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
+          Not shown here: {missing.join(", ")}.
+        </p>
       )}
+
+      {place.photo && (
+        <img
+          src={place.photo}
+          alt=""
+          className="aspect-video w-full border-2 object-cover"
+          style={{ borderColor: "var(--color-ink)" }}
+        />
+      )}
+
+      {place.description && (
+        <section>
+          <h3 className="umbra-kicker m-0">About</h3>
+          <p className="mt-1 leading-relaxed" style={{ fontSize: "var(--text-small)" }}>{place.description}</p>
+        </section>
+      )}
+    </article>
+  );
+}
+
+/** One ruled guidebook line: a stamped term over or beside its value. */
+function EntryLine({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_1fr] items-baseline gap-2 border-b py-2 last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>
+      <dt className="umbra-kicker">{term}</dt>
+      <dd className="m-0 min-w-0" style={{ fontSize: "var(--text-body)" }}>{children}</dd>
     </div>
   );
 }
