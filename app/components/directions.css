@@ -130,9 +130,12 @@
 .directions-swap .material-symbols-outlined { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--color-ink); border-radius: var(--radius-circle); background: var(--color-directions-ground); font-size: 18px; }
 .directions-add { justify-self: start; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px; color: var(--color-ink-muted); font: 800 11px/1 var(--font-label); letter-spacing: .06em; text-transform: uppercase; }
 .directions-add .material-symbols-outlined { font-size: 16px; }
-.directions-extra-stops { display: grid; gap: 6px; margin: 4px 44px; }
-.directions-extra-stop { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
-.directions-extra-stop button { width: 44px; height: 44px; font-size: 24px; }
+.directions-node-via { width: 14px; height: 14px; border: 3px solid var(--color-directions-sun); border-radius: var(--radius-circle); }
+.directions-stop-plate { display: flex; flex-direction: column; gap: 3px; }
+.directions-stop-plate .directions-label { padding-left: 8px; }
+.directions-stop-name { padding: 0 8px; overflow: hidden; color: var(--color-ink); font: 500 16px/1.25 var(--font-body); white-space: nowrap; text-overflow: ellipsis; }
+.directions-stop-delete { display: grid; place-items: center; width: 44px; height: 44px; color: var(--color-ink-muted); }
+.directions-stop-delete:hover { color: var(--color-ink); }
 .directions-draw { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: -8px; color: var(--color-sun-dark); font: 500 15px/1 var(--font-body); }
 .directions-planning[data-objective="rain"] .directions-draw { color: var(--color-shade-dark); }
 .directions-sketch-count { display: flex; justify-content: space-between; align-items: center; min-height: 44px; font-size: 13px; }

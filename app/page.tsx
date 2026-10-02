@@ -315,6 +315,7 @@ export default function Home() {
     pendingSlot,
     saveModalRouteIndex,
     additionalWaypoints,
+    additionalWaypointLabels,
     savedRoutes,
     savedFolders,
     userLocation,
@@ -1154,6 +1155,7 @@ export default function Home() {
             onDeleteSavedRoute={handleDeleteSavedRoute}
             onRenameSavedRoute={handleRenameSavedRoute}
             additionalWaypoints={additionalWaypoints}
+            additionalWaypointLabels={additionalWaypointLabels}
             onAddAdditionalWaypoint={handleAddAdditionalWaypoint}
             onRemoveAdditionalWaypoint={handleRemoveAdditionalWaypoint}
             onExportRoute={handleExportRoute}
@@ -1484,6 +1486,7 @@ export default function Home() {
               onDeleteSavedRoute={handleDeleteSavedRoute}
               onRenameSavedRoute={handleRenameSavedRoute}
               additionalWaypoints={additionalWaypoints}
+              additionalWaypointLabels={additionalWaypointLabels}
               onAddAdditionalWaypoint={handleAddAdditionalWaypoint}
               onRemoveAdditionalWaypoint={handleRemoveAdditionalWaypoint}
               onExportRoute={handleExportRoute}

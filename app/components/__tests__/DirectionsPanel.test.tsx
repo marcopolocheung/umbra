@@ -344,3 +344,29 @@ describe("DirectionsPanel — solar pill after sunset (R6b)", () => {
     expect(screen.getByText("Low sun — shadow routing minimal")).toBeTruthy();
   });
 });
+
+describe("DirectionsPanel — stops between the ends", () => {
+  it("adds any number of empty stops and removes one before it has an address", () => {
+    renderPanel({ onAddAdditionalWaypoint: vi.fn() });
+    const add = screen.getByRole("button", { name: "Add a stop" });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(screen.getByLabelText("Stop 1")).toBeTruthy();
+    expect(screen.getByLabelText("Stop 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove stop 1" }));
+    expect(screen.getByLabelText("Stop 1")).toBeTruthy();
+    expect(screen.queryByLabelText("Stop 2")).toBeNull();
+  });
+
+  it("shows a placed stop by name, between From and To, and removes it", () => {
+    const onRemoveAdditionalWaypoint = vi.fn();
+    renderPanel({ additionalWaypoints: [[-73.98, 40.75]], additionalWaypointLabels: ["Bryant Park"], onAddAdditionalWaypoint: vi.fn(), onRemoveAdditionalWaypoint });
+    const name = screen.getByText("Bryant Park");
+    const from = screen.getByLabelText("From");
+    const to = screen.getByLabelText("To");
+    expect(from.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(name.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove stop 1: Bryant Park" }));
+    expect(onRemoveAdditionalWaypoint).toHaveBeenCalledWith(0);
+  });
+});
