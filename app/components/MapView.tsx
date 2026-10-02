@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, memo } from "react";
+import { UMBRA_DISC_PATH } from "./ui/Sigil";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { stationConnectors, type TrainDrawData } from "../lib/trainGraph";
@@ -1003,7 +1004,7 @@ export default function MapView({
   }, [assistantPins]);
 
   // -------------------------------------------------------------------------
-  // User location dot (pulsing blue) — reuse marker via setLngLat
+  // User location disc — reuse marker via setLngLat
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!mapRef.current || !userLocation) {
@@ -1032,13 +1033,15 @@ export default function MapView({
       animation: userLocationPulse 1.8s ease-out infinite;
     `;
 
-    const dot = document.createElement("div");
-    dot.style.cssText = `
-      width: 18px; height: 18px; border-radius: var(--radius-circle); box-sizing: border-box;
-      background: radial-gradient(circle, var(--color-map-route) 0 3px, var(--color-map-casing) 3.5px);
-      border: 3px solid var(--color-map-route); box-shadow: var(--shadow-map-marker);
-      position: relative; z-index: 1;
-    `;
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    dot.setAttribute("viewBox", "0 0 32 32");
+    dot.setAttribute("aria-hidden", "true");
+    dot.style.cssText = "width:22px;height:22px;position:relative;z-index:1;color:var(--color-map-route);filter:var(--filter-map-marker);";
+    const disc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    disc.setAttribute("d", UMBRA_DISC_PATH);
+    disc.setAttribute("fill", "currentColor");
+    disc.setAttribute("fill-rule", "evenodd");
+    dot.appendChild(disc);
 
     if (!document.getElementById("user-location-keyframes")) {
       const style = document.createElement("style");

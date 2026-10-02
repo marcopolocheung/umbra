@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Umbra redesign 2.0 / R9 review</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0e0c0b; color: #f4e6d1; }
+    * { box-sizing: border-box; }
+    body { max-width: 1340px; margin: auto; padding: 24px; }
+    header { display: flex; align-items: center; gap: 24px; border-bottom: 2px solid #f4e6d1; padding-bottom: 20px; }
+    header img { width: 76px; height: 76px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 56px); line-height: 1; }
+    p { line-height: 1.5; }
+    .eyebrow { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #f08a5d; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 24px 0; }
+    fieldset { display: flex; gap: 4px; border: 1px solid #786d61; padding: 4px; }
+    legend { padding: 0 4px; font-size: 12px; font-weight: 700; }
+    button { min-height: 44px; border: 0; padding: 8px 18px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    button[aria-pressed=true] { background: #f4e6d1; color: #0e0c0b; font-weight: 800; }
+    button:disabled { opacity: .4; cursor: default; }
+    button:focus-visible, a:focus-visible { outline: 2px solid #f08a5d; outline-offset: 3px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    figure { min-width: 0; margin: 0; border: 2px solid #786d61; background: #171412; }
+    figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 2px solid #786d61; font-weight: 800; }
+    .frame { height: min(78vh, 900px); overflow: auto; display: flex; justify-content: center; }
+    .frame img { width: 100%; height: auto; align-self: flex-start; object-fit: contain; }
+    .comparison[data-device=phone] .frame img { max-width: 390px; }
+    .notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 24px 0; }
+    .notes article { padding: 18px; border: 1px solid #786d61; }
+    .notes h2 { margin: 0 0 10px; font-size: 16px; }
+    .notes p { margin: 0; color: #cfc1ae; }
+    .links { padding: 16px 0; border-top: 1px solid #786d61; }
+    a { color: #f08a5d; }
+    @media (max-width: 750px) { body { padding: 14px; } .comparison { grid-template-columns: 1fr; } .notes { grid-template-columns: 1fr; } header img { width: 56px; height: 56px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="../../../public/pwa-icon.svg" alt="Umbra disc app icon">
+    <div><div class="eyebrow">Review artifact / checkpoint R9</div><h1>Umbra redesign 2.0</h1><p>Original sigils, recurring disc, verdict motion and the About poster. Switch theme and viewport below to compare the current main branch with this R9 branch.</p></div>
+  </header>
+  <div class="controls">
+    <fieldset><legend>Surface</legend><button type="button" data-view="about" aria-pressed="true">About poster</button><button type="button" data-view="planning" aria-pressed="false">Planning controls</button></fieldset>
+    <fieldset><legend>Theme</legend><button type="button" data-theme="day" aria-pressed="true">Day</button><button type="button" data-theme="night" aria-pressed="false">Night</button></fieldset>
+    <fieldset><legend>Viewport</legend><button type="button" data-device="phone" aria-pressed="true">Phone · 390 × 844</button><button type="button" data-device="desktop" aria-pressed="false">Desktop · 1280 × 900</button></fieldset>
+  </div>
+  <div class="comparison" data-device="phone">
+    <figure><figcaption><span>Before / umbra main</span><span id="before-label">Phone · day</span></figcaption><div class="frame"><img id="before" src="../shots/r9/before/phone-day.png" alt="About page before R9 in the day theme on a phone"></div></figure>
+    <figure><figcaption><span>After / R9 branch</span><span id="after-label">Phone · day</span></figcaption><div class="frame"><img id="after" src="../shots/r9/after/phone-day.png" alt="About poster after R9 in the day theme on a phone"></div></figure>
+  </div>
+  <div class="notes">
+    <article><h2>One mark</h2><p>The sun with its shadow bite is shared by the app icon, selected-time marker, user-location marker and arrival stamp. The six field-key glyphs are original vector drawings.</p></article>
+    <article><h2>Motion</h2><p>Route verdicts and the arrival verdict reveal in ink; the arrival badge stamps in. The existing motion registry runs these only when reduced motion is off.</p></article>
+    <article><h2>Reading</h2><p>The poster scrolls as a document on phones, reflows to one column, and keeps controls and data square. The page was captured in both themes at the sizes above.</p></article>
+  </div>
+  <p class="links">For a live check after starting <code>npm run dev</code> in the R9 worktree, open <a href="http://localhost:5173/about">/about</a>. The screen captures are committed with this page so the artifact also works offline.</p>
+  <script>
+    let view = 'about'; let theme = 'day'; let device = 'phone';
+    function show() {
+      document.querySelector('.comparison').dataset.device = device;
+      for (const kind of ['before', 'after']) {
+        const image = document.getElementById(kind);
+        image.src = `../shots/r9/${kind}/${view === 'about' ? `${device}-${theme}` : `planning-${theme}`}.png`;
+        image.alt = `${view === 'about' ? 'About poster' : 'Planning controls'} ${kind} R9 in the ${theme} theme at ${device} size`;
+        document.getElementById(`${kind}-label`).textContent = `${view === 'about' ? 'About' : 'Planning'} · ${device === 'phone' ? 'Phone' : 'Desktop'} · ${theme}`;
+      }
+      document.querySelector('button[data-device="desktop"]').disabled = view === 'planning';
+      document.querySelectorAll('button[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+      document.querySelectorAll('button[data-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.theme === theme)));
+      document.querySelectorAll('button[data-device]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.device === device)));
+    }
+    document.querySelectorAll('button[data-view]').forEach(button => button.addEventListener('click', () => { view = button.dataset.view; if (view === 'planning') device = 'phone'; show(); }));
+    document.querySelectorAll('button[data-theme]').forEach(button => button.addEventListener('click', () => { theme = button.dataset.theme; show(); }));
+    document.querySelectorAll('button[data-device]').forEach(button => button.addEventListener('click', () => { device = button.dataset.device; show(); }));
+  </script>
+</body>
+</html>

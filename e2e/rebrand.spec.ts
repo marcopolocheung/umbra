@@ -45,8 +45,8 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     expect(await page.evaluate(() => localStorage.getItem("shademapnav:routes"))).toBeNull();
     await page.screenshot({ path: `test-results/umbra-${viewport.width}.png` });
     await page.goto("/about");
-    await expect(page.getByRole("heading", { name: "Umbra", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "mapbox-gl-shadow-simulator" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Umbra.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "The field key" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("unaffiliated");
     await page.screenshot({ path: `test-results/umbra-about-${viewport.width}.png` });
   });
@@ -64,8 +64,8 @@ test.describe("service-worker compatibility", () => {
       await navigator.serviceWorker.register("/sw.js");
       await navigator.serviceWorker.ready;
     });
-    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["umbra-shell-v3"]);
-    const shell = await page.evaluate(async () => (await (await caches.open("umbra-shell-v3")).match("/"))?.text());
+    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["umbra-shell-v4"]);
+    const shell = await page.evaluate(async () => (await (await caches.open("umbra-shell-v4")).match("/"))?.text());
     expect(shell).toContain("Umbra");
     expect(await page.evaluate(async () => !!(await caches.match("/fonts/jost-variable.woff2")))).toBe(true);
     expect(await page.evaluate(async () => !!(await caches.match("/obsolete.js")))).toBe(false);

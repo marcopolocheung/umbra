@@ -1,4 +1,5 @@
 import type maplibregl from "maplibre-gl";
+import Sigil from "./ui/Sigil";
 
 /** Pitch the 3D view tilts to. Enough to read building height without losing the street. */
 const TILTED_PITCH_DEG = 55;
@@ -34,7 +35,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomIn()}
-        className="hidden md:flex w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="hidden md:flex w-12 h-12 bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom in"
         title="Zoom in"
       >
@@ -45,7 +46,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={() => mapRef.current?.zoomOut()}
-        className="hidden md:flex w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="hidden md:flex w-12 h-12 bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="Zoom out"
         title="Zoom out"
       >
@@ -59,7 +60,7 @@ export default function FloatingMapControls({
           the route card. The directions sheet shows the same switch. */}
       {onRainModeChange && (
           <fieldset
-            className="flex flex-col md:flex-row rounded-2xl overflow-hidden shadow-xl self-center border-0 p-0 m-0"
+            className="flex flex-col md:flex-row overflow-hidden shadow-xl self-center border-0 p-0 m-0"
             aria-label="Route objective"
           >
             <button
@@ -71,7 +72,7 @@ export default function FloatingMapControls({
                 !rainMode ? "bg-ink text-on-ink" : "bg-panel text-ink-muted hover:text-ink"
               }`}
             >
-              <span className="material-symbols-outlined text-[20px]">light_mode</span>
+              <Sigil name="sun" />
             </button>
             <button
               type="button"
@@ -82,7 +83,7 @@ export default function FloatingMapControls({
                 rainMode ? "bg-rain text-on-rain" : "bg-panel text-ink-muted hover:text-route"
               }`}
             >
-              <span className="material-symbols-outlined text-[20px]">rainy</span>
+              <Sigil name="rain" />
             </button>
           </fieldset>
       )}
@@ -91,7 +92,7 @@ export default function FloatingMapControls({
         <button
           type="button"
           onClick={onShare}
-          className="hidden md:flex w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+          className="hidden md:flex w-12 h-12 bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
           aria-label={shareStatus === "copied" ? "Share link copied" : "Copy share link"}
           title={shareStatus === "copied" ? "Copied" : shareStatus === "error" ? "Copy failed" : "Copy share link"}
         >
@@ -108,7 +109,7 @@ export default function FloatingMapControls({
       <button
         type="button"
         onClick={onLocateMe}
-        className="hidden md:flex w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+        className="hidden md:flex w-12 h-12 bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
         aria-label="My location"
         title="My location"
         disabled={isLocating}
@@ -151,7 +152,7 @@ export function Tilt3DButton({
         if (reduceMotion) map.jumpTo(camera);
         else map.easeTo({ ...camera, duration: 400 });
       }}
-      className={`w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center transition-colors ${
+      className={`w-12 h-12 shadow-xl flex items-center justify-center transition-colors ${
         is3D ? "bg-ink text-on-ink" : "bg-panel text-ink-muted hover:text-ink"
       }`}
       aria-pressed={is3D}

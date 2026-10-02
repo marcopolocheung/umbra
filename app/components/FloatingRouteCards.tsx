@@ -65,7 +65,7 @@ export default function FloatingRouteCards({
       style={position ? { left: position.x, top: position.y } : undefined}
     >
       <div
-        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 rounded-xl border p-3 shadow-hard-2"
+        className="pointer-events-auto flex max-h-full w-full flex-col gap-3 border p-3 shadow-hard-2"
         style={{
           background: "var(--color-panel)",
           borderColor: "var(--color-rule)",

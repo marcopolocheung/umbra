@@ -1,4 +1,6 @@
 import { Fragment, type ReactNode } from "react";
+import { INK_REVEAL } from "./ui/motion";
+import Sigil from "./ui/Sigil";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import type { WeatherHour } from "../lib/heat/types";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
@@ -211,7 +213,7 @@ export default function RouteCard({
             {duration}
           </span>
           <span
-            className={`min-w-0 truncate font-numeric text-[13px] font-extrabold ${showBar ? "" : "italic"}`}
+            className={`${INK_REVEAL} min-w-0 truncate font-numeric text-[13px] font-extrabold ${showBar ? "" : "italic"}`}
             style={{
               color: showBar ? (rainCard ? "var(--color-rain)" : "var(--color-shade)") : "var(--color-ink-muted)",
             }}
@@ -341,7 +343,7 @@ export default function RouteCard({
                   if (rides.length > 1) return (
                     <li key={`transit-${rides[0].board.id}-${rides[rides.length - 1].exit.id}`} className="text-[11px]">
                       <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined shrink-0 text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">train</span>
+                        <Sigil name="transit" size={18} className="shrink-0 text-ink-muted" />
                         <span className="min-w-0">
                           <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>
                           <span style={{ color: "var(--color-ink-muted)" }}> · {summary.detail}</span>
@@ -372,9 +374,7 @@ export default function RouteCard({
                       {leg.type === "transit" ? (
                         <LineBullet accent={leg.lineColor} code={leg.line || leg.lineName || "?"} className="shrink-0" />
                       ) : (
-                        <span className="material-symbols-outlined shrink-0 text-base" style={{ color: "var(--color-ink-muted)" }} aria-hidden="true">
-                          directions_walk
-                        </span>
+                        <Sigil name="walk" size={18} className="shrink-0 text-ink-muted" />
                       )}
                       <span className="min-w-0">
                         <span className="font-semibold" style={{ color: "var(--color-ink)" }}>{summary.title}</span>

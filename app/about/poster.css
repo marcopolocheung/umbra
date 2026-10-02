@@ -1,0 +1,7 @@
+/* The map shell locks document scrolling. The poster is a document and must
+   scroll normally, including on a phone and with a keyboard. */
+html:has(.about-poster), body:has(.about-poster) {
+  height: auto;
+  overflow: auto;
+  overscroll-behavior: auto;
+}

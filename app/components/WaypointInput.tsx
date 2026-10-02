@@ -171,7 +171,7 @@ const WaypointInput = memo(function WaypointInput({
       ) : null}
       {results.length > 0 && (
         <div
-          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-panel border rounded-xl overflow-hidden"
+          className="absolute top-full left-8 right-0 mt-0.5 z-50 bg-panel border overflow-hidden"
           style={{ borderColor: "var(--color-rule)", boxShadow: "var(--shadow-hard-2)" }}
         >
           {results.map((r, i) => {

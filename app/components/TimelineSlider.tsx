@@ -1,6 +1,7 @@
 import { Fragment, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { toMapLocal } from "../lib/timezone";
 import { altitudeAt, nightSpans, SUN_PATH_STEP_MIN, sunAltitudeTrace } from "../lib/sunPath";
+import Sigil from "./ui/Sigil";
 
 interface Props {
   minutes: number; // 0–1439
@@ -424,6 +425,12 @@ const TimelineSlider = memo(function TimelineSlider({ minutes, onChange, date, l
           borderInline: "1px solid var(--color-ink)",
         }}
       />
+      <span
+        className="absolute pointer-events-none z-20 flex h-4 w-4 items-center justify-center rounded-full bg-panel"
+        style={{ left: "50%", top: 2, transform: "translateX(-50%)", color: needleColor }}
+      >
+        <Sigil name="disc" size={14} />
+      </span>
       {!trace && (
         <span
           className="absolute left-3 pointer-events-none select-none"
