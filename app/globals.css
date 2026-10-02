@@ -237,6 +237,8 @@
   --text-caption: 11px;
 
   --spacing-sidebar: 408px;
+  --spacing-phone-controls-upper: 232px;
+  --spacing-phone-controls-lower: 172px;
   --spacing-legend: 15rem;
   --spacing-panel-min: 15rem;
 }

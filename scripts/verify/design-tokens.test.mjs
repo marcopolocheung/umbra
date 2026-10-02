@@ -27,6 +27,19 @@ test("off-registry colours, radii, rotations, and shadows fail", () => {
   assert.match(check('filter:drop-shadow(0 2px 4px black)')[0], /drop-shadow/);
 });
 
+test("issue references in line and multiline JSX comments are ignored", () => {
+  const state = { block: false };
+  for (const line of [
+    'const label = "route"; // issue #160',
+    '{/* Map controls (#162)',
+    '    issue #161 should never be a colour',
+    '*/} <div style={{ color: "#1b1512" }} />',
+  ]) assert.deepEqual(scanLine(line, allowed, true, state), []);
+  assert.deepEqual(check('it("sunrise edges (#160)", () => {})'), []);
+  assert.deepEqual(check('const value = "https://example.com/#160"'), ['off-registry colour #160']);
+  assert.match(check('const value = "#f08a5d" // issue #162')[0], /colour #f08a5d/);
+});
+
 test("day and night text and essential rules pass on both surfaces", () => {
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
   const values = (block) => new Map([...block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6});/g)].map((m) => [m[1], m[2]]));

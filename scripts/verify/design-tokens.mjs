@@ -22,8 +22,28 @@ export function registryLiterals(css) {
   return allowed;
 }
 
-function stripComments(line) {
-  return line.replace(/\/\*.*?\*\//g, " ").replace(/(^|\s)\/\/.*$/, " ");
+function stripComments(line, state = { block: false }) {
+  let output = "";
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (state.block) {
+      if (char === "*" && next === "/") { state.block = false; i++; }
+      continue;
+    }
+    if (quote) {
+      output += char;
+      if (char === "\\") { output += next ?? ""; i++; }
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") { quote = char; output += char; continue; }
+    if (char === "/" && next === "*") { state.block = true; i++; continue; }
+    if (char === "/" && next === "/") break;
+    output += char;
+  }
+  return output;
 }
 
 function validRegistryValue(value, allowZero = true) {
@@ -31,12 +51,16 @@ function validRegistryValue(value, allowZero = true) {
   return v.startsWith("var(") || (allowZero && /^(?:0|none)$/.test(v));
 }
 
-export function scanLine(source, allowed, scanColors = true) {
-  if (/^\s*\*/.test(source)) return []; // Interior of a block comment.
-  const line = stripComments(source);
+export function scanLine(source, allowed, scanColors = true, commentState) {
+  if (!commentState?.block && /^\s*\*(?:\s|\/)/.test(source)) return [];
+  const line = stripComments(source, commentState);
   const findings = [];
   if (scanColors) {
-    for (const match of line.matchAll(COLOR_RE)) {
+    // Issue references in prose and test descriptions use the same three
+    // characters as short CSS hex colours. The surrounding parentheses mark
+    // them as references rather than applied styles.
+    const colourSource = line.replace(/\(#[0-9]{3}\)/g, " ");
+    for (const match of colourSource.matchAll(COLOR_RE)) {
       if (!allowed.has(match[0].toLowerCase())) findings.push(`off-registry colour ${match[0]}`);
     }
   }
@@ -107,9 +131,13 @@ function run() {
       rel === "app/hooks/useRouting.ts"
     );
     const lines = all ? null : addedLines(root, rel);
-    const rows = lines ?? readFileSync(file, "utf8").split("\n").map((text, i) => ({ number: i + 1, text }));
+    const added = lines && new Set(lines.map(({ number }) => number));
+    const rows = readFileSync(file, "utf8").split("\n").map((text, i) => ({ number: i + 1, text }));
+    const commentState = { block: false };
     for (const row of rows) {
-      for (const message of scanLine(row.text, allowed, scanColors)) findings.push(`${rel}:${row.number}: ${message}`);
+      const messages = scanLine(row.text, allowed, scanColors, commentState);
+      if (added && !added.has(row.number)) continue;
+      for (const message of messages) findings.push(`${rel}:${row.number}: ${message}`);
     }
   }
   if (findings.length) {

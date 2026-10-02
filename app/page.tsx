@@ -1287,7 +1287,7 @@ export default function Home() {
           the search pill. An open sheet covers the stack. Desktop keeps its
           top-right column. */}
       {!uiHidden && (
-        <div className="absolute bottom-[232px] right-3 z-10 md:top-24 md:bottom-auto">
+        <div className="absolute bottom-phone-controls-upper right-3 z-10 md:top-24 md:bottom-auto">
           <FloatingMapControls
             mapRef={mapRef}
             onLocateMe={handleLocateMe}
@@ -1303,7 +1303,7 @@ export default function Home() {
       {/* 2D/3D tilt — in the phone's right stack; desktop parks it under the
           shadow legend (top-20 left-6), so it doesn't collide with the legend plate. */}
       {!uiHidden && (
-        <div className="absolute bottom-[172px] right-3 z-10 md:left-6 md:right-auto md:top-44 md:bottom-auto">
+        <div className="absolute bottom-phone-controls-lower right-3 z-10 md:left-6 md:right-auto md:top-44 md:bottom-auto">
           <Tilt3DButton mapRef={mapRef} pitch={mapPitch} />
         </div>
       )}
