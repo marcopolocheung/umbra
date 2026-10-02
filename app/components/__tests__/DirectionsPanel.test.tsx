@@ -23,6 +23,8 @@ function renderPanel(
     onCalculate, isCalculating: false, routes: [], selectedRouteIndex: 0,
     onSelectRoute: vi.fn(), error: null, pendingSlot: null, onSetPendingSlot: vi.fn(),
     onBack: vi.fn(), onTravelModeChange,
+    selectedTime: new Date("2026-06-21T18:20:00Z"), mapUtcOffsetMin: -240,
+    solarPosition: null, sunset: null, weather: null, onOpenTimeline: vi.fn(),
   };
   const view = render(<DirectionsPanel {...base} {...props} />);
   return { onTravelModeChange, onCalculate, rerender: (next: Partial<DirectionsPanelProps>) => view.rerender(<DirectionsPanel {...base} {...props} {...next} />) };
@@ -106,6 +108,8 @@ describe("DirectionsPanel — planning collapse (U3)", () => {
       onCalculate, isCalculating: false, routes: [ROUTE], selectedRouteIndex: 0,
       onSelectRoute: vi.fn(), error: null, pendingSlot: null,
       onSetPendingSlot: vi.fn(), onBack: vi.fn(), onTravelModeChange: vi.fn(),
+      selectedTime: new Date("2026-06-21T18:20:00Z"), mapUtcOffsetMin: -240,
+      solarPosition: null, sunset: null, weather: null, onOpenTimeline: vi.fn(),
     };
     const view = render(<DirectionsPanel {...base} {...extra} />);
     return { onCalculate, rerender: (next: Partial<DirectionsPanelProps>) => view.rerender(<DirectionsPanel {...base} {...extra} {...next} />) };
@@ -186,6 +190,12 @@ describe("DirectionsPanel — warning placement (U4 serial position)", () => {
         pendingSlot={null}
         onSetPendingSlot={vi.fn()}
         onBack={vi.fn()}
+        selectedTime={new Date("2026-06-21T18:20:00Z")}
+        mapUtcOffsetMin={-240}
+        solarPosition={null}
+        sunset={null}
+        weather={null}
+        onOpenTimeline={vi.fn()}
         warning={NOTICE}
       />,
     );
@@ -273,6 +283,13 @@ describe("DirectionsPanel — Find readiness", () => {
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
   });
+
+  it("opens the timeline when the rubber stamp is tapped", () => {
+    const onOpenTimeline = vi.fn();
+    renderPanel({ onOpenTimeline });
+    fireEvent.click(screen.getByRole("button", { name: /Leaves at 2:20 PM. Change time/ }));
+    expect(onOpenTimeline).toHaveBeenCalledOnce();
+  });
 });
 
 describe("DirectionsPanel — solar pill after sunset (R6b)", () => {
@@ -304,6 +321,12 @@ describe("DirectionsPanel — solar pill after sunset (R6b)", () => {
         pendingSlot={null}
         onSetPendingSlot={vi.fn()}
         onBack={vi.fn()}
+        selectedTime={new Date("2026-06-21T18:20:00Z")}
+        mapUtcOffsetMin={-240}
+        solarPosition={null}
+        sunset={null}
+        weather={null}
+        onOpenTimeline={vi.fn()}
         onTravelModeChange={vi.fn()}
         solarIntensity={solarIntensity}
       />,

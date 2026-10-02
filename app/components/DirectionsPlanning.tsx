@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { TravelModeId } from "../lib/travelMode";
 import type { ManualWind, WindSource } from "../lib/exposure";
+import type { WeatherHour } from "../lib/heat/types";
 import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";
+import { formatTime12h } from "../hooks/useShadowTime";
 import WaypointInput from "./WaypointInput";
+import DirectionsConditions from "./DirectionsConditions";
 import Segmented from "./ui/Segmented";
 import "./directions.css";
 
@@ -42,6 +45,12 @@ export interface DirectionsPlanningProps {
   onCalculate: () => void;
   isCalculating: boolean;
   onBack: () => void;
+  selectedTime: Date;
+  mapUtcOffsetMin: number;
+  solarPosition: { altitudeDeg: number; azimuthDeg: number } | null;
+  sunset: Date | null;
+  weather: WeatherHour | null;
+  onOpenTimeline: () => void;
 }
 
 const modes = [
@@ -74,6 +83,7 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
     canTransit, travelMode, onTravelModeChange, shadowPreference, onShadowPreferenceChange,
     rainMode, onRainModeChange, windSource, manualWind, onWindSourceChange, onManualWindChange,
     onCalculate, isCalculating, onBack,
+    selectedTime, mapUtcOffsetMin, solarPosition, sunset, weather, onOpenTimeline,
   } = props;
   const [addingStop, setAddingStop] = useState(false);
   const [misting, setMisting] = useState(false);
@@ -119,6 +129,7 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
       <button type="button" className="directions-back" aria-label="Back to map" onClick={onBack}>
         <svg viewBox="0 0 28 20" aria-hidden="true"><path fill="currentColor" d="M1.5 10 L11.6 1.2 L13.6 3.2 L9.6 7.7 L21.8 7.3 L26.6 4.4 L25 10 L26.6 15.6 L21.8 12.7 L9.6 12.3 L13.6 16.8 L11.6 18.8 Z" /></svg>Back
       </button>
+      <button key={selectedTime.getTime()} type="button" className="directions-stamp" aria-label={`Leaves at ${formatTime12h(selectedTime, mapUtcOffsetMin)}. Change time`} onClick={onOpenTimeline}><span className="material-symbols-outlined" aria-hidden="true">schedule</span>Leaves {formatTime12h(selectedTime, mapUtcOffsetMin)}</button>
     </div>
     <div className="directions-titles">
       <span className="directions-kicker">{rainMode ? "Plan a walk" : "Plan a walk on"}</span>
@@ -166,6 +177,7 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
       <Segmented label="Wind source" value={windSource} onChange={onWindSourceChange} options={[{ value: "forecast", label: "Forecast wind" }, { value: "manual", label: "Manual wind" }]} />
       {windSource === "manual" && onManualWindChange && <div><label>From ° <input type="number" min={0} max={360} value={manualWind.directionDeg} onChange={(event) => onManualWindChange({ directionDeg: Number(event.target.value) })} /></label><label>m/s <input type="number" min={0} step={0.1} value={manualWind.speedMps} onChange={(event) => onManualWindChange({ speedMps: Number(event.target.value) })} /></label></div>}
     </div>}
+    <DirectionsConditions selectedTime={selectedTime} mapUtcOffsetMin={mapUtcOffsetMin} solarPosition={solarPosition} sunset={sunset} weather={weather} />
     {ready && <div className="directions-dock" data-directions-section="Find">
       <div className="directions-blur" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="directions-stage" style={misting ? { filter: `url(#${filterId})` } : undefined}>
