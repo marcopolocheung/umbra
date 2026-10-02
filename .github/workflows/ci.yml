@@ -32,6 +32,7 @@ jobs:
       - run: npm --prefix server/navigation-prep ci
 
       - run: npm run lint
+      - run: npm run design:check
 
       # Fixture mode records the actual Node version. Node 24 is the supported
       # application runtime; see scripts/preflight-shadow-v2.mjs for the narrow
