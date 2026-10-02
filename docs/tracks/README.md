@@ -37,7 +37,10 @@ unblocked and owns the cheapest work on the board — see `docs/ROADMAP.md` §3.
 Design Language) is the design wave: strictly sequential, mobile-first, every PR visually
 reviewed by the owner — read `docs/handoffs/DESIGN_LANGUAGE.md` before starting it.
 `r` (Umbra Redesign 2.0) succeeds U's design wave under the same sequential rules; U and R
-never run at the same time.
+never run at the same time. `s` (Hiring Signal) is the 2026-10-02 sprint track: its first four
+checkpoints own new directories and **may fan out as parallel `builder` worktrees** — the one
+sanctioned exception to rule 3, spelled out in `TRACK_S.md` § "Running the sprint", which also
+carries the lane plan for running H, A, C, B, S and P at the same time.
 
 …or to resume a specific checkpoint:
 
@@ -157,6 +160,10 @@ shared file first, and let the second session rebase after the first PR opens.
 **G6 (the seam splits) runs alone.** It rewrites the three contested files by definition.
 Pause other tracks' work on those files while it's in flight — it is the one piece of work
 worth blocking on, because it removes the ⚠️s from this table permanently.
+
+**Track S is safe alongside B, D, G and P.** Its first wave (S1, S2a, S3a, S4a) owns only new
+paths. Its integration slices are ⚠️ with C (S3b edits `app/lib/agent/**`) and with H and E
+(S2b reads the route objective H2 changes).
 
 **Track C is the friendliest to run alongside anything** — it owns `app/lib/agent/**` outright
 and consumes everyone else through tool wrappers.
