@@ -24,7 +24,13 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R8c (#190, PR #200), stacked on R8b (PR #197). Every empty state that
+- **Active checkpoint: R9 (PR pending).** The six core categories use one MIT-licensed icon set,
+  including a clear walking figure and a cloud with rain; the original Umbra disc appears in
+  the app icon, selected-time marker, user dot and arrival stamp. Verdicts reveal in ink and
+  arrival stamps in, both respecting reduced motion. The About page is a responsive poster
+  with color plates and an interactive field key. Review shots in both themes are under
+  `docs/design/shots/r9/`.
+- **R8c (open, #190, PR #200), stacked on R8b (PR #197):** Every empty state that
   renders gets a kicker/title pair, with the voice in the kicker only. The idle sheet
   (`QuickActions`) drops Canopy's pulsing "Device Idle" / "Quick Entry" for a square 2px
   panel: "Before you set out" / "Where to?" (a Grenze `h2`; it asks rather than claims
