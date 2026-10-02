@@ -72,6 +72,7 @@
   --color-directions-rain-drop: rgba(77, 117, 195, 0.55);
   --color-directions-rain-splash: rgba(77, 117, 195, 0.80);
   --focus-directions-inset: inset 0 0 0 2px var(--color-ink);
+  --focus-directions-rule: inset 0 -1px 0 var(--color-ink);
   --focus-directions-stamp-inset: inset 0 0 0 2px currentColor;
 
   /* Five steps per meaning: light, bright, base, dark, darker. */
@@ -269,6 +270,8 @@
 
   --spacing-sidebar: 408px;
   --spacing-directions-button: 56px;
+  --spacing-directions-gutter: 16px;
+  --spacing-directions-rail: 44px;
   --spacing-directions-blur: 156px;
   --spacing-phone-controls-upper: 232px;
   --spacing-phone-controls-lower: 172px;

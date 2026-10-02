@@ -276,12 +276,12 @@ describe("DirectionsPanel — Find readiness", () => {
     expect(button.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("gives two mounted panels distinct mist filters", () => {
+  it("gives two mounted panels distinct mist and stamp filters", () => {
     renderPanel();
     renderPanel();
     const ids = [...document.querySelectorAll(".directions-filter filter")].map((element) => element.id);
-    expect(ids).toHaveLength(2);
-    expect(new Set(ids).size).toBe(2);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
   });
 
   it("opens the timeline when the rubber stamp is tapped", () => {

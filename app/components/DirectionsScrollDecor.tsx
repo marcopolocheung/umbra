@@ -15,6 +15,8 @@ interface RailPosition {
   hasFind: boolean;
 }
 
+const TAG_LINGER_MS = 600;
+
 const initialPosition: RailPosition = { height: 0, progress: 0, section: "Start", hasFind: false };
 
 function clamp(value: number): number { return Math.max(0, Math.min(1, value)); }
@@ -22,6 +24,14 @@ function clamp(value: number): number { return Math.max(0, Math.min(1, value)); 
 export default function DirectionsScrollDecor({ scrollRef, rainMode, windFromDeg, windSpeedMs }: DirectionsScrollDecorProps) {
   const [position, setPosition] = useState(initialPosition);
   const [dragging, setDragging] = useState(false);
+  // The station tag shows while you scroll and fades soon after the last scroll.
+  const [live, setLive] = useState(false);
+  const liveTimer = useRef<number | null>(null);
+  const flashTag = useCallback(() => {
+    setLive(true);
+    if (liveTimer.current !== null) window.clearTimeout(liveTimer.current);
+    liveTimer.current = window.setTimeout(() => { setLive(false); liveTimer.current = null; }, TAG_LINGER_MS);
+  }, []);
   const railRef = useRef<HTMLDivElement>(null);
   const previousUserSelect = useRef<string | null>(null);
 
@@ -51,22 +61,24 @@ export default function DirectionsScrollDecor({ scrollRef, rainMode, windFromDeg
     const scroll = scrollRef.current;
     if (!scroll) return;
     update();
-    scroll.addEventListener("scroll", update, { passive: true });
+    const onScroll = () => { update(); flashTag(); };
+    scroll.addEventListener("scroll", onScroll, { passive: true });
     const resize = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     resize?.observe(scroll);
     const mutations = new MutationObserver(update);
     mutations.observe(scroll, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-ready", "data-directions-section"] });
     window.addEventListener("resize", update);
     return () => {
-      scroll.removeEventListener("scroll", update);
+      scroll.removeEventListener("scroll", onScroll);
       resize?.disconnect();
       mutations.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [scrollRef, update]);
+  }, [scrollRef, update, flashTag]);
 
   useEffect(() => () => {
     if (previousUserSelect.current !== null) document.body.style.userSelect = previousUserSelect.current;
+    if (liveTimer.current !== null) window.clearTimeout(liveTimer.current);
   }, []);
 
   function scrollToPointer(clientY: number) {
@@ -125,7 +137,7 @@ export default function DirectionsScrollDecor({ scrollRef, rainMode, windFromDeg
       ref={railRef}
       className="directions-rail"
       data-testid="directions-rail"
-      data-live={dragging || position.progress > 0}
+      data-live={dragging || live}
       data-dragging={dragging}
       role="scrollbar"
       aria-label="Directions sections"

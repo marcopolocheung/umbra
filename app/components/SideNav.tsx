@@ -51,7 +51,7 @@ export default function SideNav({ activeTab, onTabChange, children, rainMode = f
       </nav>
 
       {/* Phase-dependent content */}
-      <div ref={scrollRef} id="directions-desktop-scroll" className={`relative mt-6 flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${activeTab === "directions" ? "directions-scroll" : "umbra-scrollbar"}`}>
+      <div ref={scrollRef} id="directions-desktop-scroll" className={`relative mt-6 flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${activeTab === "directions" ? "-mx-4 directions-scroll" : "umbra-scrollbar"}`}>
         {activeTab === "directions" && <DirectionsScrollDecor scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} />}
         {children}
       </div>
