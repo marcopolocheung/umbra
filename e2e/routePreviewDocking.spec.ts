@@ -16,7 +16,7 @@ test("route preview moves freely and pops into and out of the trip panel", async
   await stubNetwork(page, { basemap: "fixture" });
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto(SHARE_URL);
-  await page.getByRole("button", { name: "Find Shadowed Route" }).filter({ visible: true }).click();
+  await page.getByRole("button", { name: "Find the shade" }).filter({ visible: true }).click();
 
   const docked = page.getByTestId("route-preview-docked");
   const floating = page.getByTestId("route-preview-floating");

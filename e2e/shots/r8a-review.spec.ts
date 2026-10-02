@@ -21,7 +21,7 @@ const visible = (page: Page, name: string) =>
   page.getByRole("button", { name }).filter({ visible: true }).first();
 
 async function arrive(page: Page) {
-  await visible(page, "Find Shadowed Route").click();
+  await visible(page, "Find the shade").click();
   await expect
     .poll(
       () => page.evaluate(() => Boolean((window as unknown as { __umbraMetrics?: { latest?: unknown } }).__umbraMetrics?.latest)),

@@ -196,7 +196,7 @@ test("NYC walking route: static streets and buildings, Overpass routing refused"
   // the route path. Scope the no-Overpass assertions to the clicks that start
   // a calculation.
   const preClick = traffic().overpass;
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
   await waitForRun(page);
 
   const metrics = await readNavigationMetrics(page);
@@ -257,7 +257,7 @@ test("NYC transit: subway access/egress walks on the static graph", async ({ pag
     .first()
     .click();
   const preClick = traffic().overpass;
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
   await waitForRun(page);
 
   const metrics = await readNavigationMetrics(page);
@@ -323,7 +323,7 @@ test("NYC transit: bus access/egress walks on the static graph", async ({ page }
     .click();
   const routeLinePixelsBefore = await countRouteLinePixels(page);
   const preClick = traffic().overpass;
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
   await waitForRun(page);
 
   const metrics = await readNavigationMetrics(page);
@@ -381,7 +381,7 @@ test("outside the verified support area, routing falls back to Overpass", async 
   // The page-load prewarm fetches the in-viewport building shard (it is inside
   // support); scope the shard assertion to the calculation itself.
   const preClick = traffic();
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
 
   // The static selection declines (bbox outside the manifest's support), the
   // Overpass fallback fires and fails (it is refused in this scenario), and

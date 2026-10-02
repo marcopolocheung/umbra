@@ -331,7 +331,7 @@ async function loadAndSettle(
     .toBeLessThan(0.005);
 }
 
-/** Click Find Shadowed Route and wait for the run count to advance by one. */
+/** Click Find the shade and wait for the run count to advance by one. */
 async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootprint> {
   const before = await page.evaluate(() => {
     const mem = (
@@ -346,7 +346,7 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootpri
       ),
     };
   });
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
   await expect
     .poll(
       () =>

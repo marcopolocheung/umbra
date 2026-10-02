@@ -26,7 +26,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     if (viewport.width < 768) {
       // A shared trip opens Directions on phones, which hides the search pill.
       await expect(page.getByRole("button", { name: "Hide interface" })).toBeHidden();
-      await page.getByTitle("Back", { exact: true }).filter({ visible: true }).click();
+      await page.getByRole("button", { name: "Back to map" }).filter({ visible: true }).click();
     }
     await page.getByRole("button", { name: "Open Umbra Assistant" }).click();
     await expect(page.getByText("Umbra Assistant", { exact: true })).toBeVisible();

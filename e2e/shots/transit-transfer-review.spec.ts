@@ -23,7 +23,7 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     await page.goto(TRANSIT_SHARE_URL.replace(`time=${START_TIME}`, `time=${time}`));
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await page.getByRole("button", { name: "Transit", exact: true }).filter({ visible: true }).first().click();
-    await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+    await page.getByRole("button", { name: "Find the shade" }).click();
     await expect.poll(() => page.evaluate(() =>
       document.querySelector('[role="radiogroup"][aria-label="Route options"]')?.textContent ?? "",
     ), { timeout: 60_000 }).toContain("Via Subway");

@@ -48,6 +48,17 @@
   --color-cream-50: rgba(244, 230, 209, 0.50);
   --color-cream-30: rgba(244, 230, 209, 0.30);
   --color-cream-20: rgba(244, 230, 209, 0.20);
+  /* Directions planning, matched to the approved transit strip frames. */
+  --color-directions-ground: #efe4d2;
+  --color-directions-panel: #e4d5bc;
+  --color-directions-sun: #d2592b;
+  --color-directions-cool: #4d75c3;
+  --color-directions-cool-dark: #243265;
+  --color-directions-on-sun: #1a0f09;
+  --color-directions-on-kicker: #10130d;
+  --color-directions-hard: rgba(40, 25, 15, 0.26);
+  --color-directions-rule-soft: rgba(27, 21, 18, 0.36);
+  --focus-directions-inset: inset 0 0 0 2px var(--color-ink);
 
   /* Five steps per meaning: light, bright, base, dark, darker. */
   --color-sun-light: #ffd18d;
@@ -189,6 +200,8 @@
   /* Print geometry. Shadows have an offset and no blur. */
   --shadow-hard-1: 2px 2px 0 #1b1512;
   --shadow-hard-2: 4px 4px 0 #1b1512;
+  --shadow-directions-hard: 3px 3px 0 rgba(40, 25, 15, 0.26);
+  --filter-directions-arrow: drop-shadow(1.5px 1.5px 0 rgba(77, 117, 195, 0.60));
   --shadow-sm: 2px 2px 0 #1b1512;
   --shadow-md: 2px 2px 0 #1b1512;
   --shadow-lg: 4px 4px 0 #1b1512;
@@ -208,6 +221,9 @@
   --radius-circle: 50%;
   --radius-pin: 50% 50% 50% 0;
   --angle-label: -1deg;
+  --angle-directions-kicker: -1.2deg;
+  --angle-directions-disc: -24deg;
+  --angle-zero: 0deg;
   --angle-stamp: 1deg;
   /* The Enter here / Exit here plate on a station-door kicker flag: a clear lean at map size. */
   --angle-flag: -3deg;
@@ -237,6 +253,8 @@
   --text-caption: 11px;
 
   --spacing-sidebar: 408px;
+  --spacing-directions-button: 56px;
+  --spacing-directions-blur: 156px;
   --spacing-phone-controls-upper: 232px;
   --spacing-phone-controls-lower: 172px;
   --spacing-legend: 15rem;
@@ -253,6 +271,13 @@ html[data-theme="night"] {
   /* Native controls (checkboxes, selects, date pickers, scrollbars) follow the theme. */
   color-scheme: dark;
   --color-ground: #0e0c0b;
+  --color-directions-ground: #100e0d;
+  --color-directions-panel: #1f1a17;
+  --color-directions-sun: #dd6638;
+  --color-directions-cool-dark: #2c3d7c;
+  --color-directions-on-sun: #120d0a;
+  --color-directions-hard: rgba(0, 0, 0, 0.60);
+  --color-directions-rule-soft: rgba(244, 230, 209, 0.34);
   --color-panel: #171412;
   --color-ink: #f4e6d1;
   --color-ink-muted: #bab0a0;
@@ -295,6 +320,7 @@ html[data-theme="night"] {
   --color-rain-step-5: var(--color-rain-light);
   --shadow-hard-1: 2px 2px 0 #f4e6d1;
   --shadow-hard-2: 4px 4px 0 #f4e6d1;
+  --shadow-directions-hard: 3px 3px 0 rgba(0, 0, 0, 0.60);
   --shadow-sm: 2px 2px 0 #f4e6d1;
   --shadow-md: 2px 2px 0 #f4e6d1;
   --shadow-lg: 4px 4px 0 #f4e6d1;

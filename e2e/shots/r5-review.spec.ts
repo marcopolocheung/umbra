@@ -15,7 +15,7 @@ const out = path.join(process.cwd(), "docs/design/shots/r5", stage ?? "");
 const live = Boolean(loadEnv("production", process.cwd(), "VITE_").VITE_MAPTILER_API_KEY);
 
 async function calculate(page: Page) {
-  await page.getByRole("button", { name: "Find Shadowed Route" }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Find the shade" }).filter({ visible: true }).first().click();
   await expect
     .poll(() => page.evaluate(() => Boolean((window as unknown as { __umbraMetrics?: { latest?: unknown } }).__umbraMetrics?.latest)), {
       timeout: 60_000,

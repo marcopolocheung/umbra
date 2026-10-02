@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, memo } from "react";
+import { useState, useRef, useEffect, useId, memo } from "react";
 import { geocodeForward, type NominatimResult } from "../lib/nominatim";
 
 interface WaypointInputProps {
@@ -7,6 +7,8 @@ interface WaypointInputProps {
   dotColor: "green" | "red" | "amber";
   onSet: (coord: [number, number], label: string) => void;
   onClear: () => void;
+  variant?: "default" | "strip";
+  fieldLabel?: string;
 }
 
 const WaypointInput = memo(function WaypointInput({
@@ -15,8 +17,11 @@ const WaypointInput = memo(function WaypointInput({
   dotColor,
   onSet,
   onClear,
+  variant = "default",
+  fieldLabel,
 }: WaypointInputProps) {
   const [query, setQuery] = useState(label ?? "");
+  const inputId = useId();
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [highlight, setHighlight] = useState(-1);
   const [inlineError, setInlineError] = useState<string | null>(null);
@@ -109,9 +114,9 @@ const WaypointInput = memo(function WaypointInput({
   }
 
   return (
-    <div className="relative flex flex-col gap-0.5">
+    <div className={`relative flex flex-col gap-0.5 ${variant === "strip" ? "directions-waypoint" : ""}`}>
       <div className="flex items-center gap-3 relative z-10">
-        {dotColor === "green" ? (
+        {variant === "strip" ? null : dotColor === "green" ? (
           <span className="material-symbols-outlined text-ink bg-ground rounded-full p-0.5 text-sm shrink-0">
             radio_button_checked
           </span>
@@ -124,7 +129,10 @@ const WaypointInput = memo(function WaypointInput({
             add_location
           </span>
         )}
+        <div className="min-w-0 flex-1">
+          {fieldLabel && <label className="directions-label" htmlFor={inputId}>{fieldLabel}</label>}
         <input
+          id={inputId}
           type="text"
           value={query}
           placeholder={placeholder}
@@ -139,9 +147,10 @@ const WaypointInput = memo(function WaypointInput({
             setQuery(labelRef.current ?? "");
             closeDropdown();
           }}
-          className="flex-1 min-w-0 rounded px-2 py-1 text-xs placeholder-ink-muted border-none focus:outline-none transition-colors bg-transparent"
+          className={`w-full min-w-0 border-none bg-transparent px-2 py-1 placeholder-ink-muted focus:outline-none ${variant === "strip" ? "directions-waypoint-input" : "text-xs"}`}
           style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
+        </div>
         {label && (
           <button type="button"
             onMouseDown={(e) => e.preventDefault()}
