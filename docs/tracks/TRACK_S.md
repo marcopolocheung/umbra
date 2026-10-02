@@ -16,13 +16,14 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR. Not started.
+- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR. Not started. S2a is
+  implemented and in review (PR below); the state block below carries its outcome.
 - **Done:** S0, both halves — the 2026-10-02 desk research, then the hands-on recheck on
   2026-10-02: five fixed NYC pairs × three departure times through shadewalker.nyc and Umbra,
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
   observation or a dated source.
-- **Open PRs:** #213 (S0).
+- **Open PRs:** #213 (S0); S2a's PR (feat/s2a-shade-preference-prior, against main).
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
@@ -32,7 +33,14 @@ prior art comes from it, with links.
   route's shade at 09:00 is tree shade — A8's gap, field-quantified.
 - **Blocked on:** nothing for S1, S2a, S3a, S4a. S2b waits for H2 (the objective it plugs into).
   S3b coordinates with Track C's active checkpoint. S4b needs a free mount point in the shell.
-- **Next action:** S1, and in parallel S2a and S3a.
+- **Next action:** S1, and in parallel S3a and S4a (S2a landed its module, prior and
+  note; its baseline verdict is carried in the S2a bullet). S2a outcome (2026-10-02):
+  refit reproduces β̄ = 1.205 (paper ≈ 1.16), ρ = 0.414 (≈ 0.5); beats population-mean
+  and the fixed ladder online at every k; **does not beat the non-hierarchical pooled
+  logit on held-out LL** (9 picks/person is too few — reported as a partial negative
+  result; module ships as prior + note, nothing in the product calls it yet — see
+  `docs/notes/shade-preference.md`). OSF data is unlicensed individual-level — downloaded
+  to cache, never committed.
 - **Last verified:** 2026-10-02 — S0 observations against the deployed products; gates green on
   this branch.
 
