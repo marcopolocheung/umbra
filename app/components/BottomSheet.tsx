@@ -187,7 +187,7 @@ export default function BottomSheet({ snap, onSnapChange, children, contentKey, 
         <div className="w-8 h-1" style={{ background: "var(--color-ink)" }} />
       </div>
 
-      <div ref={scrollRef} id="directions-phone-scroll" className={`relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 ${contentKey === "DIRECTIONS" ? "directions-scroll" : "umbra-scrollbar"}`}>
+      <div ref={scrollRef} id="directions-phone-scroll" className={`relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-3 ${contentKey === "DIRECTIONS" ? "directions-scroll" : "px-3 umbra-scrollbar"}`}>
         {contentKey === "DIRECTIONS" && <DirectionsScrollDecor scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} />}
         {children}
       </div>

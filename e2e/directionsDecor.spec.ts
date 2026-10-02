@@ -14,6 +14,28 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
 
     const box = await rail.boundingBox();
     if (!box) throw new Error("Directions rail has no layout box");
+
+    // The rail owns its own gutter: no planning control reaches under it. The
+    // docked Find button spans the width below the rail's end, as designed.
+    const rightEdges = await page.locator(".directions-planning").filter({ visible: true })
+      .locator("button, input, .directions-waypoint").evaluateAll((elements) =>
+        elements.filter((element) => !element.closest(".directions-dock") && element.getBoundingClientRect().width > 0)
+          .map((element) => element.getBoundingClientRect().right));
+    for (const right of rightEdges) expect(right).toBeLessThanOrEqual(box.x + 1);
+
+    // Typing shows only the caret: no focus box around a waypoint field.
+    const field = scroll.locator(".directions-waypoint input").first();
+    await field.click();
+    await expect(field).toHaveCSS("outline-style", "none");
+    await page.keyboard.press("Escape");
+
+    // The station tag shows while scrolling and fades soon after.
+    const tag = rail.locator(".directions-rail-tag");
+    await scroll.evaluate((element) => { element.scrollTop = 40; });
+    await expect(tag).toHaveCSS("opacity", "1");
+    await page.mouse.move(0, 0);
+    await expect(tag).toHaveCSS("opacity", "0", { timeout: 2000 });
+    await scroll.evaluate((element) => { element.scrollTop = 0; });
     await page.mouse.click(box.x + box.width / 2, box.y + box.height * .8);
     await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await expect(rail).not.toHaveAttribute("aria-valuetext", "Start");

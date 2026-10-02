@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import type { TravelModeId } from "../lib/travelMode";
 import type { ManualWind, WindSource } from "../lib/exposure";
 import type { WeatherHour } from "../lib/heat/types";
@@ -119,7 +119,10 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
     onSetPendingSlot(pendingSlot === slot ? null : slot);
   }
 
-  return <div className="directions-planning" data-objective={rainMode ? "rain" : "sun"} data-filled={filled} data-ready={ready} data-sketch={drawMode}>
+  return <div className="directions-planning" data-objective={rainMode ? "rain" : "sun"} data-filled={filled} data-ready={ready} data-sketch={drawMode} style={{ "--directions-rough-filter": `url(#${filterId}-rough)` } as CSSProperties}>
+    <svg width="0" height="0" className="directions-filter" aria-hidden="true">
+      <filter id={`${filterId}-rough`} x="-10%" y="-20%" width="120%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="1" seed="2" result="noise" /><feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" /></filter>
+    </svg>
     <svg key={ready ? "ready" : "idle"} width="0" height="0" className="directions-filter" aria-hidden="true">
       <filter id={filterId}><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" result="noise" />
         <feDisplacementMap in="SourceGraphic" in2="noise" scale="2"><animate attributeName="scale" values="18;0" begin={drawMode ? "0s" : "0.95s"} dur="1.2s" fill="freeze" /></feDisplacementMap>

@@ -148,7 +148,7 @@ const WaypointInput = memo(function WaypointInput({
             closeDropdown();
           }}
           className={`w-full min-w-0 border-none bg-transparent px-2 py-1 placeholder-ink-muted focus:outline-none ${variant === "strip" ? "directions-waypoint-input" : "text-xs"}`}
-          style={{ color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
+          style={variant === "strip" ? undefined : { color: "var(--color-ink)", fontFamily: "var(--font-sans)" }}
         />
         </div>
         {label && (
