@@ -23,7 +23,7 @@ prior art comes from it, with links.
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
   observation or a dated source.
-- **Open PRs:** #213 (S0); S2a's PR (feat/s2a-shade-preference-prior, against main).
+- **Open PRs:** #213 (S0); #215 (S2a).
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
