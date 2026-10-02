@@ -105,7 +105,13 @@ export interface DirectionsPanelProps {
   shadowPreference?: number;
   onShadowPreferenceChange?: (v: number) => void;
   /** The forecast hour at the map's location, for the heat score. */
-  weather?: WeatherHour | null;
+  weather: WeatherHour | null;
+  selectedTime: Date;
+  mapUtcOffsetMin: number;
+  /** SunCalc position at the map centre; azimuth is a north-clockwise bearing. */
+  solarPosition: { altitudeDeg: number; azimuthDeg: number } | null;
+  sunset: Date | null;
+  onOpenTimeline: () => void;
   /** Rain objective: cards present shelter figures; sun-derived lines hide. */
   rainMode?: boolean;
   onRainModeChange?: (mode: boolean) => void;
@@ -148,7 +154,8 @@ export default function DirectionsPanel({
   canTransit = true,
   travelMode = 'walk', onTravelModeChange,
   shadowPreference = 0.5, onShadowPreferenceChange,
-  weather = null,
+  weather,
+  selectedTime, mapUtcOffsetMin, solarPosition, sunset, onOpenTimeline,
   rainMode = false, onRainModeChange,
   rainIntensity: _rainIntensity = 5, onRainIntensityChange: _onRainIntensityChange,
   rainWind = null,
@@ -203,6 +210,8 @@ export default function DirectionsPanel({
         windSource={windSource} manualWind={manualWind} onWindSourceChange={onWindSourceChange}
         onManualWindChange={onManualWindChange} onCalculate={onCalculate} isCalculating={isCalculating}
         onBack={onBack}
+        selectedTime={selectedTime} mapUtcOffsetMin={mapUtcOffsetMin} solarPosition={solarPosition}
+        sunset={sunset} weather={weather} onOpenTimeline={onOpenTimeline}
       />}
       {isCalculating && routeProgress && (
         <div role="status" aria-live="polite" className="mx-3 border-2 px-3 py-2 text-[11px]" style={{ background: "var(--color-ground)", borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}>

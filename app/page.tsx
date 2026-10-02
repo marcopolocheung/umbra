@@ -1,5 +1,6 @@
 import "./lib/storageMigration";
-import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from "react";
+import SunCalc from "suncalc";
 import TimelineSlider from "./components/TimelineSlider";
 import AccumulationPanel from "./components/AccumulationPanel";
 import SaveRouteModal from "./components/SaveRouteModal";
@@ -40,6 +41,7 @@ import { useAppState } from "./hooks/useAppState";
 import { useWeatherHour } from "./hooks/useWeatherHour";
 import { useUiTheme } from "./hooks/useUiTheme";
 import { contextConditionsLabel, resolveExposureContext } from "./lib/exposure";
+import { sunriseSunset } from "./lib/sunTimes";
 
 import { useAgent } from "./hooks/useAgent";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
@@ -58,17 +60,19 @@ function readShadowLegendDismissed(): boolean {
   }
 }
 
-function TimeInput({
-  date,
-  onChange,
-  utcOffsetMin,
-  zone,
-}: {
+interface TimeEditorHandle { open: () => void }
+
+const TimeInput = forwardRef<TimeEditorHandle, {
   date: Date;
   onChange: (d: Date) => void;
   utcOffsetMin: number;
   zone: string | null;
-}) {
+}>(function TimeInput({
+  date,
+  onChange,
+  utcOffsetMin,
+  zone,
+}, editorRef) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +87,7 @@ function TimeInput({
     setText(formatTime12h(date, utcOffsetMin));
     setEditing(true);
   }
+  useImperativeHandle(editorRef, () => ({ open: startEdit }));
 
   function commit(val: string) {
     if (!shouldCommitRef.current) {
@@ -105,6 +110,7 @@ function TimeInput({
     return (
       <input
         ref={inputRef}
+        aria-label="Departure time"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => commit(text)}
@@ -137,7 +143,7 @@ function TimeInput({
       {formatTime12h(date, utcOffsetMin)}
     </button>
   );
-}
+});
 
 function CloudCoverBadge({ pct }: { pct: number }) {
   const label =
@@ -277,6 +283,15 @@ export default function Home() {
     dateRef,
   } = shadow;
   const { solar, preference: themePreference, setPreference: setThemePreference } = useUiTheme(date, mapCenter);
+  const solarPosition = useMemo(() => {
+    if (!mapCenter) return null;
+    const position = SunCalc.getPosition(date, mapCenter[0], mapCenter[1]);
+    return {
+      altitudeDeg: position.altitude * 180 / Math.PI,
+      azimuthDeg: (position.azimuth * 180 / Math.PI + 180 + 360) % 360,
+    };
+  }, [date, mapCenter]);
+  const mapSunset = useMemo(() => mapCenter ? sunriseSunset(date, mapCenter[0], mapCenter[1])?.sunset ?? null : null, [date, mapCenter]);
 
   const shadowLayerRef = useRef<IShadowLayer | null>(null);
   const nav = useNavigation({ mapRef, getRouteFitPadding, shadowLayerRef, dateRef, setDate, date });
@@ -448,6 +463,15 @@ export default function Home() {
   ]);
 
   const [bottomSheetSnap, setBottomSheetSnap] = useState<SnapPoint>("hidden");
+  const desktopTimeEditorRef = useRef<TimeEditorHandle>(null);
+  const phoneTimeEditorRef = useRef<TimeEditorHandle>(null);
+  const openTimeline = useCallback((surface: "desktop" | "phone") => {
+    setSliderMode("time");
+    if (surface === "phone") setBottomSheetSnap("hidden");
+    window.requestAnimationFrame(() => {
+      (surface === "phone" ? phoneTimeEditorRef : desktopTimeEditorRef).current?.open();
+    });
+  }, [setSliderMode]);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const [cloudCoverPct, setCloudCoverPct] = useState<number | null>(null);
   const [shadowLegendDismissed, setShadowLegendDismissed] = useState(readShadowLegendDismissed);
@@ -851,7 +875,7 @@ export default function Home() {
   const mapLocalMins = _localH * 60 + _localM;
 
   // -- Timeline controls (floating card style) --
-  const timelineControls = !accumulation.enabled ? (
+  const timelineControls = (editorRef: typeof desktopTimeEditorRef) => !accumulation.enabled ? (
     // Timetable (R6a): square, with a 2px ink rule along the top that holds
     // against either basemap in glare.
     <div
@@ -980,6 +1004,7 @@ export default function Home() {
               zone={mapZone}
             />
             <TimeInput
+              ref={editorRef}
               date={date}
               onChange={setDate}
               utcOffsetMin={mapUtcOffsetMin}
@@ -1107,6 +1132,12 @@ export default function Home() {
             onClear={handleClear}
             onCalculate={handleCalculateRoute}
             isCalculating={isCalculating}
+            selectedTime={date}
+            mapUtcOffsetMin={mapUtcOffsetMin}
+            solarPosition={solarPosition}
+            sunset={mapSunset}
+            weather={heatWeather}
+            onOpenTimeline={() => openTimeline("desktop")}
             routeProgress={routeProgress}
             routes={filteredRoutes}
             exposureSlot={exposureSlot}
@@ -1367,7 +1398,7 @@ export default function Home() {
       {/* Desktop timeline — floating card at bottom */}
       {!accumulation.enabled && (
         <div className="hidden md:block absolute bottom-6 z-10" style={{ left: 24, right: 24 }}>
-          <div className="relative">{timelineControls}</div>
+          <div className="relative">{timelineControls(desktopTimeEditorRef)}</div>
         </div>
       )}
 
@@ -1382,7 +1413,7 @@ export default function Home() {
           // The iOS home-inset, matching the sheet.
           style={{ bottom: "env(safe-area-inset-bottom)" }}
         >
-          {timelineControls}
+          {timelineControls(phoneTimeEditorRef)}
         </div>
       )}
 
@@ -1430,6 +1461,11 @@ export default function Home() {
               onClear={handleClear}
               onCalculate={handleCalculateRoute}
               isCalculating={isCalculating}
+              selectedTime={date}
+              mapUtcOffsetMin={mapUtcOffsetMin}
+              solarPosition={solarPosition}
+              sunset={mapSunset}
+              onOpenTimeline={() => openTimeline("phone")}
               routeProgress={routeProgress}
               routes={filteredRoutes}
               exposureSlot={exposureSlot}

@@ -58,7 +58,19 @@
   --color-directions-on-kicker: #10130d;
   --color-directions-hard: rgba(40, 25, 15, 0.26);
   --color-directions-rule-soft: rgba(27, 21, 18, 0.36);
+  --color-directions-stamp-ink: #a8411a;
+  --color-directions-board: #17120f;
+  --color-directions-board-ink: #f4e6d1;
+  --color-directions-board-accent: #f08a5d;
+  --color-directions-board-rule: #dd6638;
+  --color-directions-board-tile: #2b231e;
+  --color-directions-board-value: #ffe2ad;
+  --color-directions-board-key: rgba(244, 230, 209, 0.62);
+  --color-directions-board-copy: rgba(244, 230, 209, 0.78);
+  --color-directions-board-border: rgba(244, 230, 209, 0.14);
+  --color-directions-board-divider: rgba(244, 230, 209, 0.22);
   --focus-directions-inset: inset 0 0 0 2px var(--color-ink);
+  --focus-directions-stamp-inset: inset 0 0 0 2px currentColor;
 
   /* Five steps per meaning: light, bright, base, dark, darker. */
   --color-sun-light: #ffd18d;
@@ -223,6 +235,7 @@
   --angle-label: -1deg;
   --angle-directions-kicker: -1.2deg;
   --angle-directions-disc: -24deg;
+  --angle-directions-stamp: -2.5deg;
   --angle-zero: 0deg;
   --angle-stamp: 1deg;
   /* The Enter here / Exit here plate on a station-door kicker flag: a clear lean at map size. */
@@ -278,6 +291,7 @@ html[data-theme="night"] {
   --color-directions-on-sun: #120d0a;
   --color-directions-hard: rgba(0, 0, 0, 0.60);
   --color-directions-rule-soft: rgba(244, 230, 209, 0.34);
+  --color-directions-stamp-ink: #f08a5d;
   --color-panel: #171412;
   --color-ink: #f4e6d1;
   --color-ink-muted: #bab0a0;
