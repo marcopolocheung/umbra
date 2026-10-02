@@ -418,6 +418,9 @@ export default function Home() {
     return mapCenter;
   }, [rainMode, waypointA, waypointB, mapCenter]);
   const rainWeather = useWeatherHour(rainWeatherCenter, date);
+  // The panel's rain leans with the wind the router prices: manual when set, else the forecast.
+  const rainWindFromDeg = windSource === "manual" ? manualWind.directionDeg : rainWeather?.windDirDeg ?? null;
+  const rainWindMs = windSource === "manual" ? manualWind.speedMps : rainWeather?.windMs ?? null;
   // Stable identity: MapView's marker effect keys on this object, and playback
   // re-renders the page on every tick.
   const navWaypoints = useMemo(
@@ -1232,7 +1235,7 @@ export default function Home() {
 
   // Desktop sidebar: SideNav wrapping phase content + footer
   const desktopSidebar = (
-    <SideNav activeTab={activeTab} onTabChange={handleTabChange} rainMode={rainMode} windFromDeg={rainWeather?.windDirDeg ?? null} windSpeedMs={rainWeather?.windMs ?? null}>
+    <SideNav activeTab={activeTab} onTabChange={handleTabChange} rainMode={rainMode} windFromDeg={rainWindFromDeg} windSpeedMs={rainWindMs}>
       <div className="flex flex-col min-h-full">
         <div className="flex-1">{sidebarContent}</div>
         <div className="mt-auto pt-3 border-t" style={{ borderColor: "var(--color-rule)" }}>
@@ -1442,7 +1445,7 @@ export default function Home() {
         </button>
       )}
       {!uiHidden && menuOpen && (
-        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap} contentKey={phase} rainMode={rainMode} windFromDeg={rainWeather?.windDirDeg ?? null} windSpeedMs={rainWeather?.windMs ?? null}>
+        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap} contentKey={phase} rainMode={rainMode} windFromDeg={rainWindFromDeg} windSpeedMs={rainWindMs}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
               place={selectedPlace}

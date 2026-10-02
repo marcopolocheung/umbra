@@ -14,14 +14,14 @@
 .directions-planning[data-objective="rain"] {
   --directions-objective: var(--color-directions-cool-dark);
   --directions-on-objective: var(--color-cream-100);
-  background: transparent;
 }
 .directions-panel { position: relative; z-index: 1; }
 /* The scroll box owns the gutters: 16px on the left, the rail's full hit area on the right. */
 .directions-scroll { scrollbar-width: none; padding-inline: var(--spacing-directions-gutter) var(--spacing-directions-rail); background: var(--color-directions-ground); }
 .directions-scroll::-webkit-scrollbar { display: none; }
 .directions-rain-host,.directions-rail-host { position: sticky; top: 0; margin-inline: calc(-1 * var(--spacing-directions-gutter)) calc(-1 * var(--spacing-directions-rail)); pointer-events: none; }
-.directions-rain-host { z-index: 0; }
+/* Rain falls over the whole panel, the docked button included; it never takes a tap. */
+.directions-rain-host { z-index: 9; }
 .directions-rail-host { z-index: 3; }
 .directions-rain-layer,.directions-rain-canvas { position: absolute; inset: 0; display: block; pointer-events: none; }
 .directions-rail { position: absolute; top: 14px; right: 0; width: var(--spacing-directions-rail); pointer-events: auto; cursor: pointer; touch-action: none; user-select: none; }
