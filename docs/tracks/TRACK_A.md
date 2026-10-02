@@ -626,6 +626,11 @@ component improves route decisions on unseen places and dates, and operate that 
 versioned, reversible dependency of the agent. This is the ML-system evidence C12 cannot earn by
 calling a hosted vision model.
 
+**Start from S1 *(added 2026-10-02)*.** Track S's S1 compares this field against a NYC LiDAR
+surface-model shade raster at city scale, with no fieldwork. Take its per-segment residuals as the
+geometric baseline A10 must improve on, and as the map of where field observations will be most
+informative. S1 measures data error; A10's field set is still the only physical truth.
+
 **Data contract.** Build an owned or explicitly licensed corpus with timestamp, coordinate and
 reported accuracy, IANA zone, observation method, local conditions, source/license, geometry and
 canopy data versions, and label confidence. Maintain two linked but distinct datasets:

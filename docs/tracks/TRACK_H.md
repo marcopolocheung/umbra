@@ -12,8 +12,11 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H1 — **not started, and correctly blocked.**
-- **Gate:** do not start until **A6 (time sweep)** and **G2 (route benchmark)** have landed.
+- **Active checkpoint:** H1 — **not started; the gate is met as of 2026-10-02.** A6 is landed
+  (Track A records one acceptance criterion unmet, with numbers; read it before relying on
+  sweep cost) and G2 is done (`npm run bench:route`, baseline in
+  `docs/notes/performance-baseline.md`). H1 is lane 1 of the hiring sprint (`docs/ROADMAP.md` §3).
+- **Gate (historical):** do not start until **A6 (time sweep)** and **G2 (route benchmark)** have landed.
   H1 without A6 costs one full shadow evaluation per time bucket per edge and will not run at
   interactive speed; H3 without G2 has no committed baseline, and this track's central claim is
   a *comparison* against the static method. Starting early produces a demo that cannot be
@@ -25,11 +28,13 @@ G's fixture and benchmark infrastructure).
 - **Open PRs:** none.
 - **Decisions made:** none yet. The design notes below are the starting position, not
   decisions — record real ones here as they are made.
-- **Blocked on:** A6, G2. Track A owns both; file against `track-a` / `track-g` rather than
-  building either here.
+- **Blocked on:** nothing as of 2026-10-02. A6 and G2 have landed. Prior art to cite beside
+  Fujiwara 2024: Li, Yoshimura, Tu & Ratti, arXiv 1910.04312 (5-minute time-aware Dijkstra over
+  1,000 simulated Tokyo trips, no static-vs-time-aware ablation). A direct NYC competitor,
+  shadewalker.nyc, prices whole routes at departure time, which is the static baseline H1 must beat.
 - **Next action:** H1 — traversal-time exposure, behind a flag, with the H4 oracle written in
   the same PR or the one immediately after.
-- **Last verified:** 2026-09-08 — #208 fixed; access tags now survive the sidewalk split.
+- **Last verified:** 2026-10-02 — gate re-checked against Track A and Track G briefs and `ShadowField.sweep`.
 
 ---
 

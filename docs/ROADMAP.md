@@ -26,7 +26,7 @@ an item passing one.
 | `docs/research/*.md` | the outside evidence this roadmap was reconciled against (§5) |
 | the code | anything factual. Always. |
 
-Last reconciliation: **2026-09-14** (§5d — agent/Geo hiring-evidence pass). **Current state lives in the briefs** — the session-start
+Last reconciliation: **2026-10-02** (§5e — ML prior art, competitors and the hiring sprint; Track S created). **Current state lives in the briefs** — the session-start
 hook prints every track's active checkpoint, and that is the only state worth trusting.
 
 ---
@@ -76,6 +76,9 @@ not enough. The completed artifact must expose these independent proofs:
 | Full learned-model lifecycle | A10 | Owned/licensed data, geographic/date holdouts, baselines, optional segmentation justified by data, versioned artifact, drift test and rollback |
 | Defensible Geo optimization | H1–H7, exposed by H6 | Time-dependent constrained search, brute-force oracle, integer reference, LP/convex relaxation, published gaps and agent-visible certificates |
 | Code-enforced safety and accessible use | C10, C15, G5 | Adversarial trust-boundary tests and a keyboard/screen-reader-complete plan/evidence journey |
+| A measured shade error bar *(added 2026-10-02)* | S1 | Umbra's shade vs a NYC LiDAR surface-model shade raster: mean, p90, worst case, building-only vs canopy. No shade router publishes one |
+| A model Umbra trains and evaluates itself *(added 2026-10-02)* | S2 | Hierarchical shade-preference model reproducing a published study, participant-blocked holdout, beating population-mean and fixed-ladder baselines, wired into route choice |
+| Memory that changes a decision, evaluated *(added 2026-10-02)* | S3 | Typed, time-valid, provenance-carrying memory; scripted update/contradiction/abstention/poisoning cases; beats no-memory and full-history-in-prompt baselines or reports the tie |
 
 This is intentionally a higher bar than “good personal project.” It does not pretend a repository
 proves years of employment, credentials, teamwork, adoption at Google scale, or interview
@@ -130,6 +133,29 @@ explicitly *"stationary PET … did not consider the dynamic thermal conditions 
 **Two of the three name it as their own future work.** Fujiwara remains the honest prior art; the
 frontier has not closed the clause since.
 
+**The competitive picture moved again by 2026-10-02 (§5e), and the claim above survives it only
+in part.** Basic shade routing is now crowded, and three entrants matter here:
+
+- **shadewalker.nyc** (AGPL-3.0, 2026) is a direct NYC competitor: 488,677 sidewalk edges across
+  all five boroughs, hourly building shadow, monthly leaf-on/off canopy, and four shade weights.
+  It prices the whole route at departure time and publishes no error figure.
+- **openrouteservice / HeiGIT** shipped shaded routing for 136 European cities in Sept 2026, from
+  four fixed daily slots, with no metrics.
+- **Google Maps** carries an unlaunched "Prefer shade" walking toggle (APK teardown, Nov 2025).
+  Its **Ask Maps** assistant already remembers saved places, past conversations and Gmail
+  reservations, so "the assistant remembers my hotel" is commodity.
+
+There is a second, thinner precedent for advancing the sun: Li, Yoshimura, Tu and Ratti (MIT,
+arXiv 1910.04312, 2019) recompute exposure every 5 minutes and run a time-aware Dijkstra over
+1,000 simulated Tokyo trips. They report 35.23% less exposure than shortest paths, but never
+compare against pricing at departure time. Cite it beside Fujiwara.
+
+**What still nobody publishes, and what therefore carries the claim:** a measured shade error
+(**S1**), a static-vs-traversal-time ablation over many trips (**H1/H4**), a learned per-walker
+shade preference (**S2**), and an assistant memory that changes the route under an eval (**S3**).
+**S0** replaces this paragraph's desk claims with observed ones. Until it lands, treat the
+competitor details as dated research, not verified fact.
+
 ### Anti-goals
 
 Impressive to a keyword filter, padding to a good engineer. Named so nobody adds them believing
@@ -151,6 +177,27 @@ they help:
 
 Every item below is a **real checkpoint in a real brief**. There is no separate roadmap ID
 namespace — if it is not a checkpoint someone can take with `/track`, it does not belong here.
+
+### NOW — the hiring sprint *(added 2026-10-02)*
+
+**The owner wants every lane below running at once, as parallel background sessions.** This is
+an overlay on the waves, not a replacement: each lane still takes its own track's checkpoints in
+brief order, one session per track, one PR per checkpoint, never merged by a session. The full
+lane table, the file-ownership rules that make it safe, and the launch prompts are in
+`docs/tracks/TRACK_S.md` § "Running the sprint".
+
+| Lane | Track | First checkpoints | Why now |
+|---|---|---|---|
+| 1 | **H** | H1 → H2 → H4 | **Wave 2's gate is met.** A6 is landed (one criterion unmet, in writing) and G2 is done. H is the algorithm a Maps interviewer digs into |
+| 2 | **A** | A8f → A5 → A10 | Trees close the consumer-parity gap. A10 waits for S1's residual |
+| 3 | **C** | C10 → C11 → C13 | The dependable agent core, then repeated held-out evaluation (report pass^k) |
+| 4 | **B** | B2 → B6 | "Cross to the shadowed side" is the instruction nobody else can generate |
+| 5 | **S** | S1 · S2a · S3a · S4a in parallel worktrees | The error bar, the owned model, the memory store and the photo solver, all in new paths |
+| 6 | **P** | Publish each number as it lands | A number on `main` that nobody can see is worth nothing |
+
+**Collision points, and nowhere else:** `routing.ts` (H, A, E: agree in an issue who goes
+first), `app/lib/agent/**` (C, and S3b), and the shell files `page.tsx` / `MapView.tsx` (any
+b-slice that mounts UI). Everything in lane 5's first wave is a new directory.
 
 ### NOW — Wave 0: truth · blocks new checkpoints
 
@@ -228,7 +275,7 @@ This wave adds almost no new ideas on purpose.
 | 5 | **D3, D4** + the mobile strip fix | Turns a unitless fraction into UV dose and a heat score, with ranges, documented assumptions and graceful degradation. **Not done until P1 lands.** #197 — the D1 strip never renders on mobile — is a shipped feature nobody on a phone can see. |
 | 6 | **E1**, then **E5** | E1 is the cheapest large win on the board: the policies, the edge tags and the Overpass ingest all exist and nothing is wired to cost. E5 (`Trip`) is the structural half of the Living Itinerary and H5 consumes it. |
 
-### NOW, gated — Wave 2: Track H, the differentiator
+### NOW, gated — Wave 2: Track H, the differentiator *(gate met 2026-10-02 — A6 landed, G2 done)*
 
 **Everything above is table stakes or catch-up. This is the part a hiring manager asks a second
 question about.** Gate: **A6 and G2 must land first** — H is unaffordable without A6 and
@@ -431,6 +478,10 @@ proposals that were considered and declined.
 | A native app | **Deferred** | PWA first; revisit only if background location or notifications block D7. |
 | A 50–100 task agent benchmark | **Rescoped** | Free-tier live runs with repeats take hours. C1 has grown from ~15 to 34 recorded, network-free scenarios; C13 adds a smaller leakage-safe holdout and repeated tiers rather than chasing a vanity task count. **Grow from real failures, not to a target number.** |
 | Chasing Google's feature list | **Declined** | The answer to "Prefer shadow" is not a better toggle. It is §2's five clauses. |
+| A learned replacement for the WebGL shadow renderer | **Declined** *(2026-10-02)* | Building shadow is exact geometry the renderer already computes in real time. A model would be slower and less accurate (§5e). |
+| Training a shadow detector, or a canopy-height, green-view or building-height model for NYC | **Declined** *(2026-10-02)* | Mature and open elsewhere, with error bars. NYC's own LiDAR products beat the global ML layers locally. Trees come in as data (A7/A8), not as a model. |
+| Planet-scale photo geolocation, learned walking ETA | **Declined** *(2026-10-02)* | PIGEON/GeoCLIP and Google's GNN ETA are mature, and public traffic data is freeway sensors. S4 (time from shadows, at a known place) is the narrow version worth doing. |
+| "The assistant remembers my hotel" as a feature on its own | **Declined** *(2026-10-02)* | Commodity: Ask Maps, ChatGPT, Gemini and Claude all remember. Only S3's evaluated, route-changing version earns a place. |
 
 ---
 
@@ -477,6 +528,14 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 - [ ] **A10 Reality Check** — data/model/deploy/drift/rollback lifecycle; selected 2026-09-14
 - Alternatives after the bar, not concurrent prerequisites: Option B City Capsules · Option C
   Shadow Design Studio *(optimization portion superseded by H7)* · Option D Comfort Engine
+
+**The hiring sprint — Track S** *(added 2026-10-02; runs beside every wave above)*
+- [ ] **S0** competitor recheck, hands-on · [ ] **S1** shade reality audit vs NYC LiDAR *(the error bar)*
+- [ ] **S2a** shade-preference prior + model · [ ] **S2b** learned preference wired into route choice *(after H2)*
+- [ ] **S3a** typed memory store · [ ] **S3b** memory in the assistant + panel · [ ] **S3c** memory cases in C13's harness
+- [ ] **S4a** shadow chronolocation solver · [ ] **S4b** photo panel
+- Gate notes, verified 2026-10-02 against the briefs: **G2 is done** and **A6 is landed** with one
+  acceptance criterion unmet, so Wave 2 may start. Tick those two in their own tracks' PRs.
 
 **Conditional** — not on a wave, but required the moment a precondition is met:
 - [ ] **C10** untrusted content and tool authority — **required before any tool returns
@@ -660,6 +719,30 @@ Experience duration, credentials, solo ownership, and final public packaging wer
 turned into implementation checkpoints: a repository cannot prove the first two, solo ownership is
 not a code defect, and Track P already owns publication after the underlying evidence exists.
 
+### 5e. The 2026-10-02 ML prior-art and hiring-signal pass
+
+Source: `docs/research/Umbra_ML_Prior_Art_and_Hiring_Signal_2026-10-02.md` (six parallel
+research strands, all claims linked). What it changed, so no session re-derives it:
+
+- **Most model ideas are already done well elsewhere.** Canopy and building heights, shadow
+  detection, heat-model emulators, photo geolocation, learned ETA, route-preference learning at
+  Google scale, and assistant memory all exist as mature, open work with error bars. They moved
+  into "Not doing" above.
+- **Shade routing itself is crowded,** including a direct NYC competitor (shadewalker.nyc). §2
+  now says which clauses still hold.
+- **Four things nobody publishes:** a measured shade error, a static-vs-traversal-time ablation,
+  a learned per-walker preference, and an evaluated memory that changes the route. Each became a
+  checkpoint: S1, H1/H4 (already planned), S2, S3.
+- **Hiring evidence is consistent on what earns trust:** a simple baseline the model must beat,
+  error analysis, self-collected data, held-out splits that respect geography, and measured
+  latency. Tree models are respected on tabular data when the choice is explained. Current Google
+  Maps/Geo postings also list GenAI experience as a minimum, so the assistant stays.
+- **The cheapest physical-ish truth needs no fieldwork.** NYC's LiDAR surface data gives a
+  geometric shade raster to compare against (S1). That is not physical accuracy, which still
+  needs A10's field calibration set, but it measures data error at city scale for weeks of work,
+  not months.
+- **Track H's gate was stale.** A6 and G2 had landed, and its brief still said "blocked".
+
 ---
 
 ## 6. The resume-line ledger
@@ -680,6 +763,11 @@ public mirror.
 | ⬜ | "Published a shadow-model agreement harness across [N] cases and 3 cities, reporting mean, p90 and worst-case error against committed regression ceilings." | **Already true (A3) — needs only P4** |
 | ⬜ | "Implemented offline neighborhood routing with atomic snapshot updates; [latency and size], verified online/offline parity on [device]." | Wave 4 Option B |
 | ⬜ | "Trained and calibrated a geospatial shadow-correction model with neighborhood and date holdouts; measured [metric] and [route impact], with versioned deployment, drift checks and rollback." | A10 |
+
+| ⬜ | "Measured a NYC shade model against a LiDAR surface-model raster across [N] blocks and [M] sun positions: mean [x], p90 [y], worst [z]; adding canopy cut segment error by [d]." | S1 |
+| ⬜ | "Trained a hierarchical Bayesian shade-preference model on a published choice study (reproduced β̄ = 1.16), beat population-mean and fixed-ladder baselines on participant-blocked holdouts, and wired it into route selection." | S2 |
+| ⬜ | "Built typed, time-valid assistant memory with provenance and a poisoning-resistant write policy; [latest-value accuracy] and [false-use rate] over [N] scripted cases vs no-memory and full-history baselines." | S3 |
+| ⬜ | "Dated photos from their shadows by inverting a sun and building-shadow model: median [m] min error on [N] self-collected NYC photos, abstaining on [k] overcast shots, vs a Gemini vision baseline." | S4 |
 
 **Two of six are already earned and merely unpublished.** That is the cheapest value available
 anywhere in this document.
