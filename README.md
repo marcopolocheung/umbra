@@ -6,20 +6,27 @@
 time; it puts the sun where it will actually be, casts every building's shadow, and finds a
 walking route that stays out of it.
 
-![Umbra's shadows sweeping across Midtown Manhattan as the sun rises from 5:44 to 9:00 AM](docs/hero.gif)
+![Umbra planning a subway trip from Astor Place to Long Island City, then dragging the afternoon across the walk to the 4 train while the trip's shade on foot moves from 90% to 45% and back to 99%](docs/hero.gif)
 
-*Midtown Manhattan, 21 June. Dragging the timeline from dawn to morning sweeps every building's
-shadow — rendered in WebGL from building geometry — across the map.*
+*Astor Place to Long Island City, 1 October. Umbra takes the 4, changes to the 7 at Grand
+Central, and scores only the minutes on foot. Dragging the timeline through the afternoon sweeps
+every building's shadow — rendered in WebGL from building geometry — across the walk to the
+train, and the trip's shade share moves with it.*
 
 | In 3D | In the rain |
 |---|---|
-| ![The same sunrise shadow sweep with the camera tilted over extruded buildings](docs/hero-3d.gif) | ![Rain shelter over Midtown changing hour by hour from 6 AM to 10 PM as the forecast wind shifts](docs/hero-rain.gif) |
-| Tilted, the shadows fall across extruded buildings and still land on the ground under them. | In Rain mode blue means sheltered, and the timeline moves the wind rather than the sun: each hour takes the forecast wind, which slants the rain and moves the dry side of the street. |
+| ![The Vernon Blvd–Jackson Av end of the same trip, tilted over Long Island City's extruded buildings as the afternoon shadows lengthen](docs/hero-3d.gif) | ![The same trip in Rain mode, shelter along the Astor Place walk changing from 6 AM to 10 PM as the forecast wind shifts and the interface turns from night to day and back](docs/hero-rain.gif) |
+| Tilted, the shadows fall across extruded buildings and still land on the ground under them. | In Rain mode blue means sheltered, and the timeline moves the wind rather than the sun: each hour takes the forecast wind, which slants the rain and moves the dry side of the street. The interface follows the sun too, dark before sunrise and after sunset. |
+
+[![Watch the 43-second tour: the same subway trip, its afternoon, the 3D view and the rain](docs/tour-poster.jpg)](docs/tour.mp4)
+
+*The 43-second tour ([MP4](docs/tour.mp4)): the subway trip and its afternoon, the far end in
+3D, then the same trip in the rain.*
 
 ## See it work
 
 **[shademapnav.vercel.app][live]** — or open [this exact scene][demo]: Midtown Manhattan,
-21 June, 09:00, two waypoints already placed. Press **Find Shadowed Route**, then drag the
+21 June, 09:00, two waypoints already placed. Press **Find the shade**, then drag the
 timeline and watch both the shadows and the route's shadow percentage move.
 
 That link is not a screenshot. It is the same URL [`e2e/smoke.spec.ts`][smoke] loads on every
