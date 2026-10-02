@@ -108,7 +108,7 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
   // 3. A two-point route calculates and its line reaches the canvas. The share
   //    link already seeded both waypoints and opened the directions panel.
   const routeLinePixelsBefore = await countRouteLinePixels(page);
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
 
   await expect
     .poll(
@@ -134,7 +134,7 @@ test("loads, paints shadows, retimes them, and renders a calculated route", asyn
   //    at this viewport. Options exist now, so the planning form has collapsed
   //    to the trip bar (U3) — reopen it before exercising the selector.
   await page.getByRole("button", { name: /Edit trip: / }).filter({ visible: true }).first().click();
-  const travelSelector = page.getByTestId("travel-mode-selector").filter({ visible: true });
+  const travelSelector = page.getByRole("group", { name: "Travel by" }).filter({ visible: true });
   await expect(travelSelector.getByRole("button", { name: "Bike" })).toBeVisible();
   await travelSelector.getByRole("button", { name: "Bike" }).click();
   await expect
@@ -212,7 +212,7 @@ test("routes on the published transit data and draws the line", async ({ page },
     .filter({ visible: true })
     .first()
     .click();
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
 
   await expect
     .poll(
@@ -315,7 +315,7 @@ test("shows both lines and the transfer before and during navigation", async ({ 
   await stubNetwork(page, { basemap, transit: "transfer" });
   await page.goto(TRANSIT_SHARE_URL);
   await page.getByRole("button", { name: "Transit", exact: true }).filter({ visible: true }).first().click();
-  await page.getByRole("button", { name: "Find Shadowed Route" }).click();
+  await page.getByRole("button", { name: "Find the shade" }).click();
 
   const routeText = () => page.evaluate(() =>
     document.querySelector('[role="radiogroup"][aria-label="Route options"]')?.textContent ?? "",

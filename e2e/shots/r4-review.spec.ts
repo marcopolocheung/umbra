@@ -43,7 +43,7 @@ test("R4 review night rain", async ({ page }) => {
   await stubNetwork(page, { basemap: live ? "live" : "fixture" });
   await page.goto(SHARE_URL.replace(`time=${START_TIME}`, "time=22:00"));
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
-  const rain = page.getByTestId("rain-mode-selector").filter({ visible: true }).getByRole("button", { name: "Rain" });
+  const rain = page.getByRole("group", { name: "Dodge" }).filter({ visible: true }).getByRole("button", { name: "Rain" });
   await rain.click();
   await expect(rain).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => shadowedFraction(shadowMask(await sampleMapCanvas(page, 4))), {

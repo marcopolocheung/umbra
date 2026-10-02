@@ -34,7 +34,7 @@ for (const [theme, time] of [["day", START_TIME], ["night", "22:00"]] as const) 
     await page.waitForTimeout(4000);
     fs.mkdirSync(out, { recursive: true });
 
-    await page.getByRole("button", { name: "Find Shadowed Route" }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Find the shade" }).filter({ visible: true }).first().click();
     await expect
       .poll(() => page.evaluate(() => Boolean((window as unknown as { __umbraMetrics?: { latest?: unknown } }).__umbraMetrics?.latest)), {
         timeout: 60_000,

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DirectionsPanel from "../DirectionsPanel";
+import type { DirectionsPanelProps } from "../DirectionsPanel";
 import type { ResolvedExposureContext } from "../../lib/exposure";
 import type { RouteOption } from "../../lib/routing";
 
@@ -11,39 +12,24 @@ import type { RouteOption } from "../../lib/routing";
 afterEach(cleanup);
 
 function renderPanel(
-  props: { travelMode?: "walk" | "bike" | "scoot"; routeMode?: "walk" | "transit"; canTransit?: boolean } = {},
+  props: Partial<DirectionsPanelProps> = {},
 ) {
   const onTravelModeChange = vi.fn();
-  render(
-    <DirectionsPanel
-      waypointA={null}
-      waypointB={null}
-      waypointALabel={null}
-      waypointBLabel={null}
-      onSetWaypointA={vi.fn()}
-      onSetWaypointB={vi.fn()}
-      onSwapWaypoints={vi.fn()}
-      onClearWaypointA={vi.fn()}
-      onClearWaypointB={vi.fn()}
-      onClear={vi.fn()}
-      onCalculate={vi.fn()}
-      isCalculating={false}
-      routes={[]}
-      selectedRouteIndex={0}
-      onSelectRoute={vi.fn()}
-      error={null}
-      pendingSlot={null}
-      onSetPendingSlot={vi.fn()}
-      onBack={vi.fn()}
-      onTravelModeChange={onTravelModeChange}
-      {...props}
-    />,
-  );
-  return { onTravelModeChange };
+  const onCalculate = vi.fn();
+  const base: DirectionsPanelProps = {
+    waypointA: null, waypointB: null, waypointALabel: null, waypointBLabel: null,
+    onSetWaypointA: vi.fn(), onSetWaypointB: vi.fn(), onSwapWaypoints: vi.fn(),
+    onClearWaypointA: vi.fn(), onClearWaypointB: vi.fn(), onClear: vi.fn(),
+    onCalculate, isCalculating: false, routes: [], selectedRouteIndex: 0,
+    onSelectRoute: vi.fn(), error: null, pendingSlot: null, onSetPendingSlot: vi.fn(),
+    onBack: vi.fn(), onTravelModeChange,
+  };
+  const view = render(<DirectionsPanel {...base} {...props} />);
+  return { onTravelModeChange, onCalculate, rerender: (next: Partial<DirectionsPanelProps>) => view.rerender(<DirectionsPanel {...base} {...props} {...next} />) };
 }
 
 function travelButtons() {
-  return within(screen.getByTestId("travel-mode-selector"));
+  return within(screen.getByRole("group", { name: "Travel by" }));
 }
 
 describe("DirectionsPanel — travel mode selector (E1)", () => {
@@ -84,10 +70,10 @@ describe("DirectionsPanel — travel mode selector (E1)", () => {
     expect(onTravelModeChange).toHaveBeenCalledWith("scoot");
   });
 
-  it("hides the selector on the transit tab", () => {
+  it("keeps one mode group when transit is selected", () => {
     renderPanel({ routeMode: "transit" });
 
-    expect(screen.queryByTestId("travel-mode-selector")).toBeNull();
+    expect(travelButtons().getByRole("button", { name: "Transit" }).getAttribute("aria-pressed")).toBe("true");
   });
 });
 
@@ -112,32 +98,17 @@ const ROUTE: RouteOption = {
 describe("DirectionsPanel — planning collapse (U3)", () => {
   function renderWithRoutes(extra: Record<string, unknown> = {}) {
     const onCalculate = vi.fn();
-    render(
-      <DirectionsPanel
-        waypointA={[-73.9855, 40.753]}
-        waypointB={[-73.9825, 40.755]}
-        waypointALabel="Start point"
-        waypointBLabel="End point"
-        onSetWaypointA={vi.fn()}
-        onSetWaypointB={vi.fn()}
-        onSwapWaypoints={vi.fn()}
-        onClearWaypointA={vi.fn()}
-        onClearWaypointB={vi.fn()}
-        onClear={vi.fn()}
-        onCalculate={onCalculate}
-        isCalculating={false}
-        routes={[ROUTE]}
-        selectedRouteIndex={0}
-        onSelectRoute={vi.fn()}
-        error={null}
-        pendingSlot={null}
-        onSetPendingSlot={vi.fn()}
-        onBack={vi.fn()}
-        onTravelModeChange={vi.fn()}
-        {...extra}
-      />,
-    );
-    return { onCalculate };
+    const base: DirectionsPanelProps = {
+      waypointA: [-73.9855, 40.753], waypointB: [-73.9825, 40.755],
+      waypointALabel: "Start point", waypointBLabel: "End point",
+      onSetWaypointA: vi.fn(), onSetWaypointB: vi.fn(), onSwapWaypoints: vi.fn(),
+      onClearWaypointA: vi.fn(), onClearWaypointB: vi.fn(), onClear: vi.fn(),
+      onCalculate, isCalculating: false, routes: [ROUTE], selectedRouteIndex: 0,
+      onSelectRoute: vi.fn(), error: null, pendingSlot: null,
+      onSetPendingSlot: vi.fn(), onBack: vi.fn(), onTravelModeChange: vi.fn(),
+    };
+    const view = render(<DirectionsPanel {...base} {...extra} />);
+    return { onCalculate, rerender: (next: Partial<DirectionsPanelProps>) => view.rerender(<DirectionsPanel {...base} {...extra} {...next} />) };
   }
 
   it("collapses the planning form to the trip bar once options exist", () => {
@@ -145,30 +116,40 @@ describe("DirectionsPanel — planning collapse (U3)", () => {
 
     // The route stack starts at the top of the sheet's first snap point, not
     // below the whole planning form.
-    expect(screen.queryByTestId("travel-mode-selector")).toBeNull();
-    expect(screen.queryByPlaceholderText("Start — type or click map")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Travel by" })).toBeNull();
+    expect(screen.queryByPlaceholderText("Choose a start")).toBeNull();
     expect(screen.getByRole("button", { name: /Edit trip: Start point to End point/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Edit trip: Start point to End point/ }).textContent).toContain("Start point");
     expect(screen.getByRole("button", { name: /Edit trip: Start point to End point/ }).textContent).toContain("End point");
     expect(screen.getByText("Shortest")).toBeTruthy();
   });
 
-  it("reopens the form on Edit; recalculating folds it away again", () => {
-    const { onCalculate } = renderWithRoutes();
+  it("reopens on Edit, keeps Find busy, then folds after recalculation", () => {
+    const { onCalculate, rerender } = renderWithRoutes();
 
     fireEvent.click(screen.getByRole("button", { name: /Edit trip: Start point to End point/ }));
-    expect(screen.getByTestId("travel-mode-selector")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Travel by" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Find Shadowed Route" }));
+    fireEvent.click(screen.getByRole("button", { name: "Find the shade" }));
     expect(onCalculate).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId("travel-mode-selector")).toBeNull();
+    rerender({ isCalculating: true });
+    expect((screen.getByRole("button", { name: /Calculating/ }) as HTMLButtonElement).disabled).toBe(true);
+    rerender({ isCalculating: false });
+    expect(screen.queryByRole("group", { name: "Travel by" })).toBeNull();
   });
 
   it("keeps the form open while a pin slot is pending on the map", () => {
     renderWithRoutes({ pendingSlot: "A" });
 
-    expect(screen.getByTestId("travel-mode-selector")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Travel by" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Edit trip: Start point to End point/ })).toBeNull();
+  });
+
+  it("keeps Dodge available beside results so the objective can change", () => {
+    const onRainModeChange = vi.fn();
+    renderWithRoutes({ onRainModeChange });
+    fireEvent.click(within(screen.getByRole("group", { name: "Dodge" })).getByRole("button", { name: "Rain" }));
+    expect(onRainModeChange).toHaveBeenCalledWith(true);
   });
 });
 
@@ -239,10 +220,58 @@ describe("DirectionsPanel chrome (R5b)", () => {
 
   it("names every segmented control as a group", () => {
     renderPanel();
-    for (const name of ["Route mode", "Travel mode", "Route input"]) {
+    for (const name of ["Travel by", "Dodge"]) {
       expect(screen.getByRole("group", { name })).toBeTruthy();
     }
     expect(screen.getByRole("button", { name: "Swap start and destination" })).toBeTruthy();
+  });
+});
+
+describe("DirectionsPanel — Find readiness", () => {
+  const start: [number, number] = [-73.9855, 40.753];
+  const end: [number, number] = [-73.9825, 40.755];
+
+  it("does not render Find until both endpoints are set", () => {
+    renderPanel({ waypointA: start });
+    expect(screen.queryByRole("button", { name: "Find the shade" })).toBeNull();
+  });
+
+  it("renders Find with two endpoints and invokes calculation", () => {
+    const { onCalculate } = renderPanel({ waypointA: start, waypointB: end });
+    fireEvent.click(screen.getByRole("button", { name: "Find the shade" }));
+    expect(onCalculate).toHaveBeenCalledOnce();
+  });
+
+  it("requires two sketch points even without endpoints", () => {
+    renderPanel({ drawMode: true, sketchPointCount: 1 });
+    expect(screen.queryByRole("button", { name: "Find the shade" })).toBeNull();
+    cleanup();
+    renderPanel({ drawMode: true, sketchPointCount: 2 });
+    expect(screen.getByRole("button", { name: "Find the shade" })).toBeTruthy();
+  });
+
+  it("keeps Find mounted, disabled, and busy during calculation", () => {
+    renderPanel({ waypointA: start, waypointB: end, isCalculating: true });
+    const button = screen.getByRole("button", { name: /Calculating/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("keeps a sketch Find mounted when calculation exits draw mode", () => {
+    const { rerender } = renderPanel({ drawMode: true, sketchPointCount: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Find the shade" }));
+    rerender({ drawMode: false, isCalculating: true });
+    const button = screen.getByRole("button", { name: /Calculating/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("gives two mounted panels distinct mist filters", () => {
+    renderPanel();
+    renderPanel();
+    const ids = [...document.querySelectorAll(".directions-filter filter")].map((element) => element.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
   });
 });
 

@@ -85,7 +85,7 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
 
   // Calculate the seeded trip so the sheet shows the trip bar + cards.
   await page
-    .getByRole("button", { name: "Find Shadowed Route" })
+    .getByRole("button", { name: "Find the shade" })
     .filter({ visible: true })
     .first()
     .click();
@@ -139,7 +139,7 @@ test(`Umbra mobile design states — ${theme}`, async ({ page }) => {
 
   // 3. Back out to IDLE — the search pill returns (the choreography closes
   // the loop; no ambiguous half-slid search over the card).
-  const back = page.getByTitle("Back", { exact: true }).filter({ visible: true }).first();
+  const back = page.getByRole("button", { name: "Back to map" }).filter({ visible: true }).first();
   await back.click();
   await page.waitForTimeout(800);
   await shot("03-idle-search-returned.png")();
