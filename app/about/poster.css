@@ -5,3 +5,117 @@ html:has(.about-poster), body:has(.about-poster) {
   overflow: auto;
   overscroll-behavior: auto;
 }
+
+.about-poster__kicker {
+  clip-path: var(--plate-clip);
+  rotate: var(--angle-label);
+  filter: var(--filter-plate);
+}
+
+.about-poster__wordmark {
+  /* The lead column narrows at tablet widths. Give the letters room in both
+     axes instead of letting the neighboring graphic mask the last letter. */
+  font-size: clamp(4.25rem, 10vw, 8.5rem);
+  line-height: 1.12;
+  white-space: nowrap;
+  padding-inline-end: 0.08em;
+}
+
+.about-poster__hero-mark {
+  min-width: 0;
+  background: var(--color-sun-signal);
+  color: var(--color-on-sun-signal);
+}
+
+.about-poster__disc {
+  width: min(56%, 180px);
+  height: auto;
+  overflow: visible;
+  filter: var(--filter-plate);
+}
+
+.about-poster__mark-label,
+.about-poster__mark-caption {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.about-poster__mark-label { border-bottom: 2px solid currentColor; padding-bottom: 0.75rem; }
+.about-poster__mark-caption { border-top: 2px solid currentColor; padding-top: 0.75rem; }
+
+.about-poster__plate-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1.25rem;
+  border-bottom: 2px solid var(--color-ink);
+}
+
+.about-poster__plate {
+  min-width: 0;
+  min-height: 7rem;
+  padding: 1rem 1.25rem;
+  clip-path: var(--plate-clip);
+  filter: var(--filter-plate);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.about-poster__plate span {
+  font-family: var(--font-label);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.about-poster__plate strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  line-height: 1.1;
+}
+
+.about-poster__plate--sun { background: var(--color-sun-signal); color: var(--color-on-sun-signal); }
+.about-poster__plate--shade { background: var(--color-shade); color: var(--color-on-shade); }
+.about-poster__plate--ink { background: var(--color-ink); color: var(--color-on-ink); }
+
+.about-poster__key-button { cursor: pointer; }
+.about-poster__key-button:hover,
+.about-poster__key-button[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+}
+.about-poster__key-note { color: var(--color-ink-muted); }
+.about-poster__key-button:hover .about-poster__key-note,
+.about-poster__key-button[aria-pressed="true"] .about-poster__key-note { color: inherit; }
+
+.about-poster__reading {
+  --reading-fill: var(--color-ink);
+  --reading-ink: var(--color-on-ink);
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 13rem;
+  padding: 1.75rem 2rem;
+  border-bottom: 2px solid var(--color-ink);
+  background: var(--reading-fill);
+  color: var(--reading-ink);
+}
+
+.about-poster__reading[data-tone="sun"] { --reading-fill: var(--color-sun-signal); --reading-ink: var(--color-on-sun-signal); }
+.about-poster__reading[data-tone="shade"] { --reading-fill: var(--color-shade); --reading-ink: var(--color-on-shade); }
+.about-poster__reading[data-tone="canopy"] { --reading-fill: var(--color-canopy); --reading-ink: var(--color-on-canopy); }
+.about-poster__reading[data-tone="rain"] { --reading-fill: var(--color-rain); --reading-ink: var(--color-on-rain); }
+
+.about-poster__reading-icon { display: grid; place-items: center; }
+.about-poster__reading-copy { min-width: 0; }
+
+@media (max-width: 640px) {
+  .about-poster__plate-row { grid-template-columns: 1fr; gap: 0.75rem; }
+  .about-poster__plate { min-height: 5.25rem; }
+  .about-poster__reading { grid-template-columns: 1fr; gap: 0.75rem; padding: 1.5rem; }
+  .about-poster__reading-icon { place-items: start; }
+}

@@ -13,6 +13,7 @@ for (const theme of ["day", "night"] as const) {
       await page.goto("/about");
       await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
       await page.evaluate(() => document.fonts.ready);
+      await page.locator(".about-poster__reading-copy").evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
       await expect(page.getByRole("heading", { level: 1, name: "Umbra." })).toBeVisible();
       await expect(page.getByRole("heading", { name: "The field key" })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -21,6 +22,27 @@ for (const theme of ["day", "night"] as const) {
     });
   }
 }
+
+test("R9 poster wordmark fits its panel and field key responds", async ({ page }) => {
+  for (const width of [320, 390, 768, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/about");
+    await page.evaluate(() => document.fonts.ready);
+    const title = page.getByRole("heading", { level: 1, name: "Umbra." });
+    const titleBox = await title.boundingBox();
+    const panelBox = await page.locator(".about-poster__hero-copy").boundingBox();
+    expect(titleBox).not.toBeNull();
+    expect(panelBox).not.toBeNull();
+    expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width + 1);
+    expect(await title.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  }
+
+  const rain = page.getByRole("button", { name: /Rain Shelter estimate/ });
+  await rain.click();
+  await expect(rain).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "Rain field note" })).toContainText("estimated shelter coverage");
+});
 
 // Opt-in capture for the live map surfaces. Run against main on port 4175 with
 // R9_MAP_STAGE=before, then this branch with R9_MAP_STAGE=after.
