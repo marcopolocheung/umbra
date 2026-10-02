@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState, type ReactNode } from "react";
+import DirectionsScrollDecor from "./DirectionsScrollDecor";
 
 // No peek band: the trip sheet is either hidden or open (#162). Hidden leaves
 // the map, the timeline and the Trip reopen button.
@@ -10,6 +11,9 @@ interface BottomSheetProps {
   children: ReactNode;
   /** Reset content to its first instruction when the panel changes purpose. */
   contentKey?: string;
+  rainMode?: boolean;
+  windFromDeg?: number | null;
+  windSpeedMs?: number | null;
 }
 
 const SNAP_HEIGHTS: Record<SnapPoint, number> = {
@@ -40,8 +44,9 @@ function nearestSnap(heightPx: number, viewportHeight: number): SnapPoint {
   return best;
 }
 
-export default function BottomSheet({ snap, onSnapChange, children, contentKey }: BottomSheetProps) {
+export default function BottomSheet({ snap, onSnapChange, children, contentKey, rainMode = false, windFromDeg = null, windSpeedMs = null }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
@@ -52,7 +57,7 @@ export default function BottomSheet({ snap, onSnapChange, children, contentKey }
   const animRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const content = sheetRef.current?.querySelector<HTMLDivElement>("div.flex-1");
+    const content = scrollRef.current;
     if (content && contentKey !== undefined) content.scrollTop = 0;
   }, [contentKey]);
 
@@ -182,7 +187,8 @@ export default function BottomSheet({ snap, onSnapChange, children, contentKey }
         <div className="w-8 h-1" style={{ background: "var(--color-ink)" }} />
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 umbra-scrollbar">
+      <div ref={scrollRef} id="directions-phone-scroll" className={`relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3 ${contentKey === "DIRECTIONS" ? "directions-scroll" : "umbra-scrollbar"}`}>
+        {contentKey === "DIRECTIONS" && <DirectionsScrollDecor scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} />}
         {children}
       </div>
     </div>

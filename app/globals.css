@@ -69,6 +69,8 @@
   --color-directions-board-copy: rgba(244, 230, 209, 0.78);
   --color-directions-board-border: rgba(244, 230, 209, 0.14);
   --color-directions-board-divider: rgba(244, 230, 209, 0.22);
+  --color-directions-rain-drop: rgba(77, 117, 195, 0.55);
+  --color-directions-rain-splash: rgba(77, 117, 195, 0.80);
   --focus-directions-inset: inset 0 0 0 2px var(--color-ink);
   --focus-directions-stamp-inset: inset 0 0 0 2px currentColor;
 
@@ -292,6 +294,8 @@ html[data-theme="night"] {
   --color-directions-hard: rgba(0, 0, 0, 0.60);
   --color-directions-rule-soft: rgba(244, 230, 209, 0.34);
   --color-directions-stamp-ink: #f08a5d;
+  --color-directions-rain-drop: rgba(189, 203, 255, 0.60);
+  --color-directions-rain-splash: rgba(189, 203, 255, 0.85);
   --color-panel: #171412;
   --color-ink: #f4e6d1;
   --color-ink-muted: #bab0a0;

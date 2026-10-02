@@ -22,6 +22,7 @@ function TripSummaryBar({ from, to, onEdit }: { from: string; to: string; onEdit
   return (
     <button
       type="button"
+      data-directions-section="Trip"
       onClick={onEdit}
       aria-label={`Edit trip: ${from} to ${to}`}
       title="Edit trip"
@@ -193,7 +194,7 @@ export default function DirectionsPanel({
         <DirectionsObjective rainMode={rainMode} onRainModeChange={onRainModeChange} />
       </div>}
       {savedRoutes && savedRoutes.length > 0 && savedFolders && onLoadRoute && onDeleteSavedRoute && onRenameSavedRoute && (
-        <SavedRoutesSection routes={savedRoutes} folders={savedFolders} onLoad={onLoadRoute} onDelete={onDeleteSavedRoute} onRename={onRenameSavedRoute} />
+        <div data-directions-section="Saved routes"><SavedRoutesSection routes={savedRoutes} folders={savedFolders} onLoad={onLoadRoute} onDelete={onDeleteSavedRoute} onRename={onRenameSavedRoute} /></div>
       )}
       {showForm && <DirectionsPlanning
         waypointA={waypointA} waypointB={waypointB} waypointALabel={waypointALabel} waypointBLabel={waypointBLabel}
@@ -230,6 +231,7 @@ export default function DirectionsPanel({
           puts it at end-position, where memory favours the weakest option. */}
       {!hideRouteCards && routes.length > 0 && (
         <div
+          data-directions-section="Routes"
           data-testid={routePreviewGrip ? "route-preview-docked" : undefined}
           className="flex flex-col gap-1.5 border-t pt-2"
           style={{ borderColor: "var(--color-rule)" }}

@@ -1230,7 +1230,7 @@ export default function Home() {
 
   // Desktop sidebar: SideNav wrapping phase content + footer
   const desktopSidebar = (
-    <SideNav activeTab={activeTab} onTabChange={handleTabChange}>
+    <SideNav activeTab={activeTab} onTabChange={handleTabChange} rainMode={rainMode} windFromDeg={rainWeather?.windDirDeg ?? null} windSpeedMs={rainWeather?.windMs ?? null}>
       <div className="flex flex-col min-h-full">
         <div className="flex-1">{sidebarContent}</div>
         <div className="mt-auto pt-3 border-t" style={{ borderColor: "var(--color-rule)" }}>
@@ -1440,7 +1440,7 @@ export default function Home() {
         </button>
       )}
       {!uiHidden && menuOpen && (
-        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap} contentKey={phase}>
+        <BottomSheet snap={bottomSheetSnap} onSnapChange={setBottomSheetSnap} contentKey={phase} rainMode={rainMode} windFromDeg={rainWeather?.windDirDeg ?? null} windSpeedMs={rainWeather?.windMs ?? null}>
           {phase === "PLACE_DETAIL" && selectedPlace ? (
             <PlaceDetail
               place={selectedPlace}
