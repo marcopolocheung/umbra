@@ -149,7 +149,9 @@ shadewalker's and Umbra's 5 km/h are close enough that minutes agree throughout)
 † Umbra's card read **0% shadow, "from the map view"** — the product fell back to sampling the
 rendered canvas instead of building geometry, reproducibly across every retry, while its own
 canvas visibly showed shadow along the route. Reported here because it is what the deployed
-product does; it is a fallback artefact, not a measurement of Umbra's model.
+product does; it is a fallback artefact, not a measurement of Umbra's model. This is the
+already-filed **#146** ("an all-unknown refresh reads 0% shadow") reproduced in the field — the
+observation is attached to that issue as a comment rather than filed anew.
 
 **What the comparison shows — read narrowly.** These are single-pair product observations, not
 benchmarks: the two products snap to different networks and geocode independently, and only
@@ -173,7 +175,8 @@ this table holds the endpoints identical. Within that, four things are worth kee
    alone shade the whole walk. The gap is an hour-and-place fact; A8's benchmark should be too.
 
 The Umbra † row is also a finding: the map-view fallback reporting 0% while the canvas shows
-shadow is a reproducible product bug, filed against Track A rather than fixed here.
+shadow is a reproducible product bug, already tracked as **#146** (Track A) — this checkpoint
+attached the field reproduction to that issue rather than filing a duplicate.
 
 ## openrouteservice "Shaded Edition" — reachable, Europe-only
 
