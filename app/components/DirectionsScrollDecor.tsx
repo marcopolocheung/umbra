@@ -131,7 +131,7 @@ export default function DirectionsScrollDecor({ scrollRef, rainMode, windFromDeg
   const railHeight = Math.max(44, position.height - (position.hasFind ? 138 : 34));
   return <>
     <div className="directions-rain-host" style={{ height: position.height, marginBottom: -position.height }}>
-      <RainCanvas scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} height={position.height} />
+      <RainCanvas scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} />
     </div>
     <div className="directions-rail-host" style={{ height: position.height, marginBottom: -position.height }}><div
       ref={railRef}
