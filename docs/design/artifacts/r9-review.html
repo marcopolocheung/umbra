@@ -24,7 +24,8 @@
     figure { min-width: 0; margin: 0; border: 2px solid #786d61; background: #171412; }
     figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 2px solid #786d61; font-weight: 800; }
     .frame { height: min(78vh, 900px); overflow: auto; display: flex; justify-content: center; }
-    .frame img { width: 100%; height: auto; align-self: flex-start; object-fit: contain; }
+    .frame a { display: block; width: 100%; text-align: center; }
+    .frame img { width: 100%; height: auto; object-fit: contain; }
     .comparison[data-device=phone] .frame img { max-width: 390px; }
     .notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 24px 0; }
     .notes article { padding: 18px; border: 1px solid #786d61; }
@@ -38,19 +39,19 @@
 <body>
   <header>
     <img src="../../../public/pwa-icon.svg" alt="Umbra disc app icon">
-    <div><div class="eyebrow">Review artifact / checkpoint R9</div><h1>Umbra redesign 2.0</h1><p>Original sigils, recurring disc, verdict motion and the About poster. Switch theme and viewport below to compare the current main branch with this R9 branch.</p></div>
+    <div><div class="eyebrow">Review artifact / checkpoint R9</div><h1>Umbra redesign 2.0</h1><p>A coherent category icon set, original recurring disc, verdict motion and the About poster. Switch theme and viewport below to compare the current main branch with this R9 branch.</p></div>
   </header>
   <div class="controls">
-    <fieldset><legend>Surface</legend><button type="button" data-view="about" aria-pressed="true">About poster</button><button type="button" data-view="planning" aria-pressed="false">Planning controls</button></fieldset>
+    <fieldset><legend>Surface</legend><button type="button" data-view="about" aria-pressed="true">About poster</button><button type="button" data-view="walk" aria-pressed="false">Walking figure</button><button type="button" data-view="planning" aria-pressed="false">Planning controls</button></fieldset>
     <fieldset><legend>Theme</legend><button type="button" data-theme="day" aria-pressed="true">Day</button><button type="button" data-theme="night" aria-pressed="false">Night</button></fieldset>
     <fieldset><legend>Viewport</legend><button type="button" data-device="phone" aria-pressed="true">Phone · 390 × 844</button><button type="button" data-device="desktop" aria-pressed="false">Desktop · 1280 × 900</button></fieldset>
   </div>
   <div class="comparison" data-device="phone">
-    <figure><figcaption><span>Before / umbra main</span><span id="before-label">Phone · day</span></figcaption><div class="frame"><img id="before" src="../shots/r9/before/phone-day.png" alt="About page before R9 in the day theme on a phone"></div></figure>
-    <figure><figcaption><span>After / R9 branch</span><span id="after-label">Phone · day</span></figcaption><div class="frame"><img id="after" src="../shots/r9/after/phone-day.png" alt="About poster after R9 in the day theme on a phone"></div></figure>
+    <figure><figcaption><span>Before / umbra main</span><span id="before-label">Phone · day</span></figcaption><div class="frame"><a id="before-open" href="../shots/r9/before/phone-day.png" target="_blank" rel="noreferrer" aria-label="Open full-size before image"><img id="before" src="../shots/r9/before/phone-day.png" alt="About page before R9 in the day theme on a phone"></a></div></figure>
+    <figure><figcaption><span>After / R9 branch</span><span id="after-label">Phone · day</span></figcaption><div class="frame"><a id="after-open" href="../shots/r9/after/phone-day.png" target="_blank" rel="noreferrer" aria-label="Open full-size after image"><img id="after" src="../shots/r9/after/phone-day.png" alt="About poster after R9 in the day theme on a phone"></a></div></figure>
   </div>
   <div class="notes">
-    <article><h2>One mark</h2><p>The sun with its shadow bite is shared by the app icon, selected-time marker, user-location marker and arrival stamp. The six field-key glyphs are original vector drawings.</p></article>
+    <article><h2>One mark</h2><p>The original sun-and-shadow disc is shared by the app icon, selected-time marker, user-location marker and arrival stamp. The six category icons use consistent <a href="../redesign-2.0/tabler-icons-license.md">MIT-licensed Tabler drawings</a>. Select “Walking figure” above to inspect the icon at poster size; click a capture to open it full size.</p></article>
     <article><h2>Motion</h2><p>Route verdicts and the arrival verdict reveal in ink; the arrival badge stamps in. The existing motion registry runs these only when reduced motion is off.</p></article>
     <article><h2>Reading</h2><p>The poster has bolder sun and shade plates, a wordmark that fits its panel, and a field key you can press to reveal each mark’s meaning. It reflows on phones and was captured in both themes.</p></article>
   </div>
@@ -61,9 +62,10 @@
       document.querySelector('.comparison').dataset.device = device;
       for (const kind of ['before', 'after']) {
         const image = document.getElementById(kind);
-        image.src = `../shots/r9/${kind}/${view === 'about' ? `${device}-${theme}` : `planning-${theme}`}.png`;
-        image.alt = `${view === 'about' ? 'About poster' : 'Planning controls'} ${kind} R9 in the ${theme} theme at ${device} size`;
-        document.getElementById(`${kind}-label`).textContent = `${view === 'about' ? 'About' : 'Planning'} · ${device === 'phone' ? 'Phone' : 'Desktop'} · ${theme}`;
+        image.src = `../shots/r9/${kind}/${view === 'planning' ? `planning-${theme}` : `${device}-${theme}${view === 'walk' && kind === 'after' ? '-walk' : ''}`}.png`;
+        image.alt = `${view === 'planning' ? 'Planning controls' : view === 'walk' ? 'About poster walking figure' : 'About poster'} ${kind} R9 in the ${theme} theme at ${device} size`;
+        document.getElementById(`${kind}-open`).href = image.src;
+        document.getElementById(`${kind}-label`).textContent = `${view === 'planning' ? 'Planning' : view === 'walk' ? 'Walk detail' : 'About'} · ${device === 'phone' ? 'Phone' : 'Desktop'} · ${theme}`;
       }
       document.querySelector('button[data-device="desktop"]').disabled = view === 'planning';
       document.querySelectorAll('button[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));

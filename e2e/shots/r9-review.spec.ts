@@ -19,6 +19,9 @@ for (const theme of ["day", "night"] as const) {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);
       await page.screenshot({ path: join(folder, `${viewport.name}-${theme}.png`), fullPage: true });
+      await page.getByRole("button", { name: /Walk On foot/ }).click();
+      await page.locator(".about-poster__reading-copy").evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+      await page.screenshot({ path: join(folder, `${viewport.name}-${theme}-walk.png`), fullPage: true });
     });
   }
 }
