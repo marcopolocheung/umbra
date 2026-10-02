@@ -1,6 +1,6 @@
 # Umbra redesign 2.0 — design language
 
-**Canonical visual spec for Umbra redesign 2.0.** [The R0 decision record](decision.md#umbra-redesign-20--r0-decision-2026-09-29) settles the choices and contrast calculations, and the [in-repo reference](redesign-2.0/reference.html) supplies the broader print vocabulary. The R9 review artifact is [here](artifacts/r9-review.html).
+**Canonical visual spec for Umbra redesign 2.0.** [The R0 decision record](decision.md#umbra-redesign-20--r0-decision-2026-09-29) settles the choices and contrast calculations, and the [in-repo reference](redesign-2.0/reference.html) supplies the broader print vocabulary. R9 review shots are in [shots/r9](shots/r9/).
 
 ## Meaning, surfaces, and theme
 
@@ -62,6 +62,6 @@ Use a small irregular quadrilateral for **decorative** kicker plates and stamps;
 
 The voice is a deadpan tour guide in **kickers, empty states, and the assistant's evidence-backed guide note only**. Verdict first, then what the number covers, then the method or uncertainty. No marketing adjectives. Every user-facing number has a traceable basis; the illustrative values in [R0 previews](candidates/redesign-2.0/day-phone.png) are explicitly labelled as examples, not app output. The existing route, search, assistant and arrival truth rules survive the visual migration.
 
-Original sun, shade, tree, rain, transit and walk sigils mark Umbra's core meanings. The umbra disc repeats across the app icon, selected-time marker, user-location marker and arrival stamp; utility controls continue to use Material Symbols. No third-party brand assets or artwork. Motion is a 0.1/0.2/0.3-second stamp or ink reveal on a small number of verdict and arrival moments; reduced motion removes those effects. Reduced transparency removes grain. Neither preference hides focus, numbers or source text.
+MIT-licensed sun, shade, tree, rain, transit and walk drawings mark Umbra's core meanings; their [source and license](redesign-2.0/tabler-icons-license.md) are included. The original umbra disc repeats across the app icon, selected-time marker, user-location marker and arrival stamp; utility controls continue to use Material Symbols. No third-party brand assets enter the app. Motion is a 0.1/0.2/0.3-second stamp or ink reveal on a small number of verdict and arrival moments; reduced motion removes those effects. Reduced transparency removes grain. Neither preference hides focus, numbers or source text.
 
 `app/globals.css` is the registry for these roles, enforced by `npm run design:check`; components consume roles rather than literal hex, radius, rotation or shadow values. UI checkpoints ship 390×844 day/night shots, review bright-sun legibility and focus, and run the four project gates. Basemap paint changes require the R4 canvas checks. The owner merges each checkpoint separately; no session merges its own PR.
