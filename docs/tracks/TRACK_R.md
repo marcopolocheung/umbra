@@ -24,7 +24,7 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint: R9 (PR pending).** The six core categories use one MIT-licensed icon set,
+- **Active checkpoint: R9 (PR #209).** The six core categories use one MIT-licensed icon set,
   including a clear walking figure and a cloud with rain; the original Umbra disc appears in
   the app icon, selected-time marker, user dot and arrival stamp. Verdicts reveal in ink and
   arrival stamps in, both respecting reduced motion. The About page is a responsive poster
