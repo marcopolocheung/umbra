@@ -175,7 +175,7 @@ function CloudCoverBadge({ pct }: { pct: number }) {
 function ShadowLegend({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div
-      className="flex min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg"
+      className="flex min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 border px-3 py-2 text-xs shadow-lg"
       style={{
         background: "var(--color-panel)",
         borderColor: "var(--color-rule)",
@@ -1051,7 +1051,7 @@ export default function Home() {
   const bottomPanelControls = (
     <div className="flex flex-col gap-2">
       <div
-        className="rounded-xl border p-2 flex flex-col gap-2"
+        className="border p-2 flex flex-col gap-2"
         style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
       >
         <AccumulationPanel
@@ -1349,7 +1349,7 @@ export default function Home() {
       <button
         type="button"
         onClick={() => setUiHidden((v) => !v)}
-        className={`absolute bottom-28 right-3 md:right-auto md:left-6 md:bottom-24 z-30 w-12 h-12 rounded-2xl bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
+        className={`absolute bottom-28 right-3 md:right-auto md:left-6 md:bottom-24 z-30 w-12 h-12 bg-panel shadow-hard-2 items-center justify-center text-ink-muted hover:text-ink transition-colors ${!uiHidden && menuOpen && (bottomSheetSnap === "mid" || bottomSheetSnap === "full") ? "hidden md:flex" : "flex"}`}
         aria-pressed={uiHidden}
         aria-label={uiHidden ? "Show interface" : "Hide interface"}
         title={uiHidden ? "Show interface" : "Hide interface"}
@@ -1368,7 +1368,7 @@ export default function Home() {
       {/* Rain map legend — only while the rain objective owns the map */}
       {!uiHidden && rainMode && !accumulation.enabled && (
         <div
-          className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 rounded-lg px-3 py-2 shadow-lg"
+          className="absolute left-6 top-24 z-10 hidden md:flex flex-col gap-1 px-3 py-2 shadow-lg"
           style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)", border: "1px solid var(--color-rule)" }}
         >
           <div className="text-[11px] uppercase tracking-widest font-bold" style={{ color: "var(--color-ink-muted)" }}>
@@ -1388,7 +1388,7 @@ export default function Home() {
       {/* Rain wind pill — the conditions used by the shared renderer */}
       {!uiHidden && rainMode && routeExposureContext?.objective === "rain" && (
         <div
-          className="hidden md:block absolute bottom-28 right-6 z-10 rounded-lg px-3 py-2 shadow-lg"
+          className="hidden md:block absolute bottom-28 right-6 z-10 px-3 py-2 shadow-lg"
           style={{ background: "var(--color-panel)", border: "1px solid var(--color-rule)" }}
         >
           <div className="text-[11px] uppercase tracking-widest font-bold" style={{ color: "var(--color-ink-muted)" }}>
@@ -1544,7 +1544,7 @@ export default function Home() {
                 drawMode={drawMode}
               />
               <div
-                className="mt-2 rounded-xl border p-1.5 flex flex-col gap-1"
+                className="mt-2 border p-1.5 flex flex-col gap-1"
                 style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
               >
                 <AccumulationPanel

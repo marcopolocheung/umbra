@@ -3,6 +3,7 @@ import type { TravelModeId } from "../lib/travelMode";
 import type { ManualWind, WindSource } from "../lib/exposure";
 import type { WeatherHour } from "../lib/heat/types";
 import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";
+import Sigil from "./ui/Sigil";
 import { formatTime12h } from "../hooks/useShadowTime";
 import WaypointInput from "./WaypointInput";
 import DirectionsConditions from "./DirectionsConditions";
@@ -55,10 +56,10 @@ export interface DirectionsPlanningProps {
 }
 
 const modes = [
-  { id: "walk", label: "Walk", icon: "directions_walk" },
+  { id: "walk", label: "Walk" },
   { id: "bike", label: "Bike", icon: "directions_bike" },
   { id: "scoot", label: "Scoot", icon: "skateboarding" },
-  { id: "transit", label: "Transit", icon: "train" },
+  { id: "transit", label: "Transit" },
 ] as const;
 
 function StopPin({ pressed }: { pressed: boolean }) {
@@ -69,8 +70,8 @@ export function DirectionsObjective({ rainMode, onRainModeChange }: { rainMode: 
   return <div className="directions-objective" data-directions-section="Dodge">
     <span className="directions-label">Dodge</span>
     <fieldset className="directions-tags"><legend className="sr-only">Dodge</legend>
-      <button type="button" className="directions-tag" data-kind="sun" aria-pressed={!rainMode} onClick={() => onRainModeChange?.(false)}><span className="material-symbols-outlined" aria-hidden="true">sunny</span>Sun</button>
-      <button type="button" className="directions-tag" data-kind="rain" aria-pressed={rainMode} onClick={() => onRainModeChange?.(true)}><span className="material-symbols-outlined" aria-hidden="true">rainy</span>Rain</button>
+      <button type="button" className="directions-tag" data-kind="sun" aria-pressed={!rainMode} onClick={() => onRainModeChange?.(false)}><Sigil name="sun" />Sun</button>
+      <button type="button" className="directions-tag" data-kind="rain" aria-pressed={rainMode} onClick={() => onRainModeChange?.(true)}><Sigil name="rain" />Rain</button>
     </fieldset>
   </div>;
 }
@@ -179,7 +180,7 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
         {modes.map((mode) => <button key={mode.id} type="button" className="directions-bullet" aria-label={mode.label} aria-pressed={selectedMode === mode.id} disabled={mode.id === "transit" && !canTransit} title={mode.id === "transit" && !canTransit ? transitOffReason : undefined} onClick={() => {
           if (mode.id === "transit") onRouteModeChange?.("transit");
           else { onRouteModeChange?.("walk"); onTravelModeChange?.(mode.id); }
-        }}><span className="directions-bullet-icon"><span className="material-symbols-outlined" aria-hidden="true">{mode.icon}</span></span><span className="directions-bullet-name">{mode.label}</span></button>)}
+        }}><span className="directions-bullet-icon">{mode.id === "walk" || mode.id === "transit" ? <Sigil name={mode.id} /> : <span className="material-symbols-outlined" aria-hidden="true">{mode.icon}</span>}</span><span className="directions-bullet-name">{mode.label}</span></button>)}
       </fieldset>
       {!canTransit && <p className="directions-transit-reason">{transitOffReason}</p>}
     </div>

@@ -24,7 +24,13 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
-- **Active checkpoint:** R8c (#190, PR #200), stacked on R8b (PR #197). Every empty state that
+- **Active checkpoint: R9 (PR #209).** The six core categories use one MIT-licensed icon set,
+  including a clear walking figure and a cloud with rain; the original Umbra disc appears in
+  the app icon, selected-time marker, user dot and arrival stamp. Verdicts reveal in ink and
+  arrival stamps in, both respecting reduced motion. The About page is a responsive poster
+  with color plates and an interactive field key. Review shots in both themes are under
+  `docs/design/shots/r9/`.
+- **R8c (open, #190, PR #200), stacked on R8b (PR #197):** Every empty state that
   renders gets a kicker/title pair, with the voice in the kicker only. The idle sheet
   (`QuickActions`) drops Canopy's pulsing "Device Idle" / "Quick Entry" for a square 2px
   panel: "Before you set out" / "Where to?" (a Grenze `h2`; it asks rather than claims
@@ -307,7 +313,7 @@ inspiration; the public mirror publishes everything here.
 | D2 | Theme model | Day theme (paper ground, warm ink) while the sun is up; night theme (warm black, cream) after sunset, driven by the app's solar model at the selected time. A manual UI override is allowed; the basemap follows solar altitude independently, so the dark basemap never carries daylight shadow pixels. R0 records the exact rule in `docs/design/decision.md`. |
 | D3 | Fonts | Openly licensed only, self-hosted. Display: chiseled face (candidate Grenze). Label: wide stamped grotesque (candidate Archivo Expanded 800). Body: Jost. Numbers: a clean tabular heavy sans, never the display face. |
 | D4 | Ornament boundary | Tilt, plates, grain and stamps only on labels, headings and story cards. Numbers, inputs, map controls and columnar content stay square, untextured and unrotated. Texture never over the map canvas. |
-| D5 | Icons | Keep Material Symbols through R8 restyled to the new weights; R9 replaces the Umbra-core glyphs (sun, shade, tree, rain, transit, walk) with an original sigil set. |
+| D5 | Icons | Keep Material Symbols through R8 restyled to the new weights; R9 gives the Umbra-core glyphs (sun, shade, tree, rain, transit, walk) a coherent icon set. At R9 review, the owner chose MIT-licensed Tabler drawings for these categories; the Umbra disc remains original. |
 
 ---
 
@@ -325,8 +331,8 @@ inspiration; the public mirror publishes everything here.
   no marketing adjectives, 11px caption floor, ≥44px touch targets.
 - Focus stays visible on clipped plates (inner stroke; outlines get clipped). Reduced motion
   removes stamps and wipes; reduced transparency removes grain.
-- No third-party brand assets, fonts or artwork — openly licensed fonts and original drawings
-  only.
+- No third-party brand assets or unlicensed artwork. Use openly licensed fonts and original
+  drawings, with the owner-approved R9 category icons and their license recorded in the repo.
 
 ---
 
@@ -426,8 +432,8 @@ Acceptance:
 ### R9 — icons, motif, motion, cleanup
 
 Acceptance:
-- Original sigil set for the Umbra-core glyphs; the umbra disc used for logo, now-marker, user
-  dot and arrival stamp.
+- Consistent MIT-licensed category icons for the Umbra-core glyphs, with a recognizable
+  walking figure; the original umbra disc used for logo, now-marker, user dot and arrival stamp.
 - Stamp and ink-reveal motion on verdicts and arrival, off under reduced motion.
 - The About page as a poster layout that reflows on phones.
 - `/design-audit` clean; no Canopy leftovers.

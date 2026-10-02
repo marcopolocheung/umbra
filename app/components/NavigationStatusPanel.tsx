@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import Sigil from "./ui/Sigil";
 import { lineCssColor } from "../lib/lineBulletInk";
 import { transitChangeLabel, transitRides } from "../lib/routeLegSummary";
 import type { RouteLeg, RouteOption } from "../lib/routing";
@@ -137,7 +138,7 @@ function Itinerary({
     const walkSec = leg.distanceM != null ? leg.distanceM / policy.speedMps : null;
     rows.push({
       id: `walk-${n}`,
-      node: <span className="material-symbols-outlined text-base" style={muted} aria-hidden="true">directions_walk</span>,
+      node: <Sigil name="walk" size={18} style={muted} />,
       rail: "foot",
       body: (
         <div className="text-xs font-medium" style={ink}>

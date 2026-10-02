@@ -1,9 +1,8 @@
 @import "tailwindcss";
 
 /* Umbra redesign 2.0. The adopted roles live in docs/design/language.md.
- * Day is the runtime default. R2 owns automatic UI theme selection; R4 owns
- * basemap and map-paint changes. Map-only compatibility values below stay
- * pinned until R4 so the palette cannot silently change shadow sampling. */
+ * The UI palette and map paints have separate theme drivers: user override
+ * for panels, solar state for the basemap and overlays. */
 
 @font-face {
   font-family: "Jost";

@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import type { AccumulationOptions } from "./MapView";
 import DateInput from "./DateInput";
+import Sigil from "./ui/Sigil";
 
 interface Bounds {
   getWest(): number;
@@ -159,20 +160,20 @@ export default function AccumulationPanel({
     <div className="flex flex-col gap-2 items-start">
       <button type="button"
         onClick={toggle}
-        className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+        className={`flex min-h-11 items-center gap-1 px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current ${
           accumulation.enabled
             ? "bg-ink text-on-ink font-medium"
              : "bg-panel border border-rule hover:bg-ground"
         }`}
         style={!accumulation.enabled ? { color: "var(--color-ink)" } : undefined}
       >
-        <span className="material-symbols-outlined text-sm align-middle mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>wb_sunny</span>
+        <Sigil name="sun" size={18} />
         Sun Exposure
       </button>
 
       {open && (
         <div
-          className="border rounded-lg p-3 flex flex-col gap-2 text-xs min-w-panel-min"
+          className="border p-3 flex flex-col gap-2 text-xs min-w-panel-min"
           style={{
             background: "var(--color-panel)",
             borderColor: "var(--color-rule)",
@@ -222,7 +223,7 @@ export default function AccumulationPanel({
 
           <div className="flex flex-col gap-1 mt-1">
             <div
-              className="h-2 rounded"
+              className="h-2"
               style={{
                 background: [
                   "linear-gradient(to right,",
@@ -250,7 +251,7 @@ export default function AccumulationPanel({
 
           <button type="button"
             onClick={exportGeoTIFF}
-            className="mt-1 transition-colors rounded px-3 py-1.5 text-center font-medium"
+            className="mt-1 min-h-11 px-3 text-center font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
             style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
           >
             Export GeoTIFF

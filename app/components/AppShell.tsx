@@ -18,7 +18,7 @@ interface AppShellProps {
 /**
  * Responsive layout shell.
  *
- * Desktop (>=768px): collapsible 331px frosted-glass sidebar (slides in/out) | map (flex-1)
+ * Desktop (>=768px): collapsible solid sidebar (slides in/out) | map (flex-1)
  * Mobile (<768px):   full-screen map with overlays + BottomSheet (rendered by caller)
  */
 export default function AppShell({
@@ -69,7 +69,7 @@ export default function AppShell({
         {/* Pull-tab — outside overflow-hidden wrapper so it isn't clipped */}
         <button type="button"
           onClick={onSidebarToggle}
-          className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-full w-8 h-16 rounded-r-xl flex items-center justify-center hover:brightness-95 transition-[filter]"
+          className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-full w-8 h-16 flex items-center justify-center hover:brightness-95 transition-[filter]"
           style={{
             background: "var(--color-panel)",
             boxShadow: "var(--shadow-hard-1)",

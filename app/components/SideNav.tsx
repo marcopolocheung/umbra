@@ -32,7 +32,7 @@ export default function SideNav({ activeTab, onTabChange, children, rainMode = f
             <button type="button"
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl text-[11px] tracking-tight flex-1 transition-all duration-150 active:scale-95 ${
+              className={`flex flex-col items-center gap-0.5 px-2 py-2 text-[11px] tracking-tight flex-1 transition-colors duration-150 ${
                 active
                   ? "text-on-ink font-bold bg-ink"
                   : "text-ink-muted font-medium hover:bg-ground hover:text-ink"

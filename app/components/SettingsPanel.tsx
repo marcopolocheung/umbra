@@ -30,7 +30,7 @@ export default function SettingsPanel({
     <div className="flex flex-col gap-2 items-start">
       <button type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`text-xs px-3 py-1.5 rounded-lg transition-colors border ${
+        className={`min-h-11 px-3 text-xs transition-colors border ${
           open ? "bg-ground" : "bg-panel hover:bg-ground"
         }`}
         style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
@@ -42,7 +42,7 @@ export default function SettingsPanel({
 
       {open && (
         <div
-          className="rounded-lg p-3 flex flex-col gap-3 text-xs min-w-panel-min border"
+          className="p-3 flex flex-col gap-3 text-xs min-w-panel-min border"
           style={{
             background: "var(--color-panel)",
             color: "var(--color-ink)",
@@ -56,11 +56,11 @@ export default function SettingsPanel({
 
           {/* Umbra redesign 2.0 D2: the override changes panels only; the basemap
               follows the sun so shadow detection never runs on a dark map. The focus
-              ring is inset because the rounded group clips an outer outline. */}
+              ring is inset because the group clips an outer outline. */}
           <fieldset className="flex flex-col gap-1.5 min-w-0 border-0 p-0 m-0">
             <legend className="mb-1.5 p-0" style={{ color: "var(--color-ink)" }}>Theme</legend>
             <div
-              className="flex rounded-lg overflow-hidden border"
+              className="flex overflow-hidden border"
               style={{ borderColor: "var(--color-rule)" }}
             >
               {THEME_OPTIONS.map(({ value, label }) => (

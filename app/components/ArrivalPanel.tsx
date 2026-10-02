@@ -5,6 +5,8 @@ import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { getTravelModePolicy } from "../lib/travelMode";
 import Kicker from "./ui/Kicker";
 import StampBadge from "./ui/StampBadge";
+import Sigil from "./ui/Sigil";
+import { INK_REVEAL } from "./ui/motion";
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
@@ -150,13 +152,7 @@ export default function ArrivalPanel({
           <StampBadge tone={sunVerdict ? "sun" : "ink"} className="shrink-0" aria-hidden="true">
             {/* Side padding widens the ring so the word sits inside it below centre. */}
             <span className="flex flex-col items-center px-1">
-              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-                <mask id={biteId}>
-                  <rect width="24" height="24" fill="white" />
-                  <circle cx="19" cy="5" r="5" fill="black" />
-                </mask>
-                <circle cx="12" cy="12" r="9" fill="currentColor" mask={`url(#${biteId})`} />
-              </svg>
+              <Sigil name="disc" size={22} />
               Arrived
             </span>
           </StampBadge>
@@ -165,7 +161,8 @@ export default function ArrivalPanel({
         {shadeStory ? (
           <>
             <div
-              className="font-numeric text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]"
+              key={shadeStory.headline}
+              className={`${INK_REVEAL} font-numeric text-verdict mt-3 font-bold leading-tight tabular-nums tracking-[-0.02em]`}
               style={{
                 color: shadeStory.pct == null ? "var(--color-ink)" : rainMode ? "var(--color-rain)" : "var(--color-sun)",
               }}
