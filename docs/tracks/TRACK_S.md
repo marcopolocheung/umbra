@@ -17,15 +17,24 @@ prior art comes from it, with links.
 ## Current state
 
 - **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR. Not started.
-- **Done:** S0's desk research (the 2026-10-02 report). S0's hands-on half is open.
-- **Open PRs:** none.
+- **Done:** S0, both halves — the 2026-10-02 desk research, then the hands-on recheck on
+  2026-10-02: five fixed NYC pairs × three departure times through shadewalker.nyc and Umbra,
+  plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
+  tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
+  observation or a dated source.
+- **Open PRs:** S0 (this PR).
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
-  touch shared files and stay sequential.
+  touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
+  European countries and no US city, so NYC is unreachable there; Google still ships no shade
+  toggle in walking route options; shadewalker's Arrive-by also collapses to one frozen instant,
+  so **no observed product advances the sun** (the H1/H4 gap is intact); ~15 pp of one Village
+  route's shade at 09:00 is tree shade — A8's gap, field-quantified.
 - **Blocked on:** nothing for S1, S2a, S3a, S4a. S2b waits for H2 (the objective it plugs into).
   S3b coordinates with Track C's active checkpoint. S4b needs a free mount point in the shell.
 - **Next action:** S1, and in parallel S2a and S3a.
-- **Last verified:** 2026-10-02 — brief written from `umbra/main` at `cc2a5ba`.
+- **Last verified:** 2026-10-02 — S0 observations against the deployed products; gates green on
+  this branch.
 
 ---
 
