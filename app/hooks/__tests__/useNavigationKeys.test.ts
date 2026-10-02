@@ -39,6 +39,7 @@ describe("useNavigation return contract", () => {
     );
     expect(Object.keys(result.current).sort()).toEqual(
       [
+        "additionalWaypointLabels",
         "additionalWaypoints",
         "bindStaticSnapshot",
         "canTransit",

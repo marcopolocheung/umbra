@@ -23,6 +23,7 @@ export interface DirectionsPlanningProps {
   onSetPendingSlot: (slot: "A" | "B" | null) => void;
   onPinDragStart?: (slot: "A" | "B") => void;
   additionalWaypoints?: [number, number][];
+  additionalWaypointLabels?: (string | null)[];
   onAddAdditionalWaypoint?: (coord: [number, number], label: string) => void;
   onRemoveAdditionalWaypoint?: (index: number) => void;
   drawMode: boolean;
@@ -78,14 +79,16 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
   const {
     waypointA, waypointB, waypointALabel, waypointBLabel, onSetWaypointA, onSetWaypointB,
     onSwapWaypoints, onClearWaypointA, onClearWaypointB, pendingSlot, onSetPendingSlot,
-    onPinDragStart, additionalWaypoints, onAddAdditionalWaypoint, onRemoveAdditionalWaypoint,
+    onPinDragStart, additionalWaypoints, additionalWaypointLabels, onAddAdditionalWaypoint, onRemoveAdditionalWaypoint,
     drawMode, onDrawModeToggle, onClearSketch, sketchPointCount, routeMode, onRouteModeChange,
     canTransit, travelMode, onTravelModeChange, shadowPreference, onShadowPreferenceChange,
     rainMode, onRainModeChange, windSource, manualWind, onWindSourceChange, onManualWindChange,
     onCalculate, isCalculating, onBack,
     selectedTime, mapUtcOffsetMin, solarPosition, sunset, weather, onOpenTimeline,
   } = props;
-  const [addingStop, setAddingStop] = useState(false);
+  // Unsent stops: any number, each removable before it has an address.
+  const [drafts, setDrafts] = useState<number[]>([]);
+  const nextDraft = useRef(0);
   const [misting, setMisting] = useState(false);
   const [sketchSubmission, setSketchSubmission] = useState(false);
   const wasCalculating = useRef(false);
@@ -145,19 +148,28 @@ export default function DirectionsPlanning(props: DirectionsPlanningProps) {
         <WaypointInput label={waypointALabel} placeholder="Choose a start" dotColor="green" variant="strip" fieldLabel="From" onSet={onSetWaypointA} onClear={onClearWaypointA} />
         <button type="button" className="directions-pin-button" aria-label="Place start on map" aria-pressed={pendingSlot === "A"} onPointerDown={() => onPinDragStart?.("A")} onClick={() => toggleSlot("A")}><StopPin pressed={pendingSlot === "A"} /></button>
       </div>
+      {additionalWaypoints?.map((point, index) => {
+        const name = additionalWaypointLabels?.[index] ?? `${point[1].toFixed(5)}, ${point[0].toFixed(5)}`;
+        return <div key={`${point[0]}:${point[1]}:${index}`} className="directions-stop">
+          <span className="directions-node directions-node-via" aria-hidden="true" />
+          <div className="directions-waypoint directions-stop-plate"><span className="directions-label">Stop {index + 1}</span><span className="directions-stop-name">{name}</span></div>
+          <button type="button" className="directions-stop-delete" aria-label={`Remove stop ${index + 1}: ${name}`} onClick={() => onRemoveAdditionalWaypoint?.(index)}><span className="material-symbols-outlined" aria-hidden="true">close</span></button>
+        </div>;
+      })}
+      {drafts.map((id, index) => <div key={id} className="directions-stop">
+        <span className="directions-node directions-node-via" aria-hidden="true" />
+        <WaypointInput label={null} placeholder="Type an address or place" dotColor="amber" variant="strip" fieldLabel={`Stop ${(additionalWaypoints?.length ?? 0) + index + 1}`} onSet={(coord, label) => { onAddAdditionalWaypoint?.(coord, label); setDrafts((list) => list.filter((d) => d !== id)); }} onClear={() => {}} />
+        <button type="button" className="directions-stop-delete" aria-label={`Remove stop ${(additionalWaypoints?.length ?? 0) + index + 1}`} onClick={() => setDrafts((list) => list.filter((d) => d !== id))}><span className="material-symbols-outlined" aria-hidden="true">close</span></button>
+      </div>)}
       <div className="directions-mid">
         <button type="button" className="directions-swap" aria-label="Swap start and destination" onClick={onSwapWaypoints}><span className="material-symbols-outlined" aria-hidden="true">swap_vert</span></button>
-        {onAddAdditionalWaypoint && <button type="button" className="directions-add" onClick={() => setAddingStop(true)}><span className="material-symbols-outlined" aria-hidden="true">add</span>Add a stop</button>}
+        {onAddAdditionalWaypoint && <button type="button" className="directions-add" onClick={() => setDrafts((list) => [...list, nextDraft.current++])}><span className="material-symbols-outlined" aria-hidden="true">add</span>Add a stop</button>}
       </div>
       <div className="directions-stop">
         <span className="directions-node directions-node-end" aria-hidden="true" />
         <WaypointInput label={waypointBLabel} placeholder={drawMode ? "Tap map to sketch route" : "Choose a destination"} dotColor="red" variant="strip" fieldLabel="To" onSet={onSetWaypointB} onClear={onClearWaypointB} />
         <button type="button" className="directions-pin-button" aria-label="Place destination on map" aria-pressed={pendingSlot === "B"} disabled={drawMode} onPointerDown={() => !drawMode && onPinDragStart?.("B")} onClick={() => toggleSlot("B")}><StopPin pressed={pendingSlot === "B"} /></button>
       </div>
-      {((additionalWaypoints?.length ?? 0) > 0 || addingStop) && <div className="directions-extra-stops">
-        {additionalWaypoints?.map((point, index) => <div key={`${point[0]}:${point[1]}:${index}`} className="directions-extra-stop"><span>Stop {index + 1}: {point[1].toFixed(5)}, {point[0].toFixed(5)}</span><button type="button" aria-label={`Remove stop ${index + 1}`} onClick={() => onRemoveAdditionalWaypoint?.(index)}>×</button></div>)}
-        {addingStop && <WaypointInput label={null} placeholder="Stop — type an address or place" dotColor="amber" variant="strip" onSet={(coord, label) => { onAddAdditionalWaypoint?.(coord, label); setAddingStop(false); }} onClear={() => setAddingStop(false)} />}
-      </div>}
     </div>
     <button type="button" className="directions-draw" aria-pressed={drawMode} onClick={onDrawModeToggle}><span className="material-symbols-outlined" aria-hidden="true">gesture</span>{drawMode ? "Use searched stops" : "Or draw the route on the map"}</button>
     {drawMode && <div className="directions-sketch-count"><span>{sketchPointCount} point{sketchPointCount === 1 ? "" : "s"} drawn</span>{sketchPointCount > 0 && onClearSketch && <button type="button" onClick={onClearSketch}>Clear sketch</button>}</div>}

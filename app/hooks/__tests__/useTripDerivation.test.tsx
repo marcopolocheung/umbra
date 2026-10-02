@@ -127,6 +127,15 @@ describe("derived waypoints: via stops", () => {
     expect(result.current.additionalWaypoints).toEqual([via]);
   });
 
+  it("keeps the label a via stop was added with", () => {
+    const { result } = renderNav();
+    act(() => result.current.handleSetWaypointA(A, "Origin"));
+    act(() => result.current.handleSetWaypointB(B, "Dest"));
+    act(() => result.current.handleAddAdditionalWaypoint([-3.69, 40.415], "Plaza Mayor"));
+    act(() => result.current.handleAddAdditionalWaypoint([-3.7, 40.42]));
+    expect(result.current.additionalWaypointLabels).toEqual(["Plaza Mayor", null]);
+  });
+
   it("removing a via stop leaves the endpoints alone", () => {
     const { result } = renderNav();
     act(() => result.current.handleSetWaypointA(A, "Origin"));

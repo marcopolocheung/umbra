@@ -82,6 +82,8 @@ export interface DirectionsPanelProps {
   onDeleteSavedRoute?: (id: string) => void;
   onRenameSavedRoute?: (id: string, name: string) => void;
   additionalWaypoints?: [number, number][];
+  /** Labels positional with `additionalWaypoints`. */
+  additionalWaypointLabels?: (string | null)[];
   onAddAdditionalWaypoint?: (coord: [number, number], label: string) => void;
   onRemoveAdditionalWaypoint?: (index: number) => void;
   onExportRoute?: (routeIndex: number, format: "gpx" | "geojson") => void;
@@ -140,7 +142,7 @@ export default function DirectionsPanel({
   onSaveRoute,
   savedRoutes, savedFolders,
   onLoadRoute, onDeleteSavedRoute, onRenameSavedRoute,
-  additionalWaypoints, onAddAdditionalWaypoint, onRemoveAdditionalWaypoint,
+  additionalWaypoints, additionalWaypointLabels, onAddAdditionalWaypoint, onRemoveAdditionalWaypoint,
   onExportRoute,
   onPinDragStart,
   drawMode = false, onDrawModeToggle, onClearSketch,
@@ -201,7 +203,7 @@ export default function DirectionsPanel({
         onSetWaypointA={onSetWaypointA} onSetWaypointB={onSetWaypointB} onSwapWaypoints={onSwapWaypoints}
         onClearWaypointA={onClearWaypointA} onClearWaypointB={onClearWaypointB}
         pendingSlot={pendingSlot} onSetPendingSlot={onSetPendingSlot} onPinDragStart={onPinDragStart}
-        additionalWaypoints={additionalWaypoints} onAddAdditionalWaypoint={onAddAdditionalWaypoint}
+        additionalWaypoints={additionalWaypoints} additionalWaypointLabels={additionalWaypointLabels} onAddAdditionalWaypoint={onAddAdditionalWaypoint}
         onRemoveAdditionalWaypoint={onRemoveAdditionalWaypoint} drawMode={drawMode}
         onDrawModeToggle={onDrawModeToggle} onClearSketch={onClearSketch} sketchPointCount={sketchPointCount}
         routeMode={routeMode} onRouteModeChange={onRouteModeChange} canTransit={canTransit}

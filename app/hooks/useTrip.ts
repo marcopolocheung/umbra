@@ -186,6 +186,11 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
     () => trip.stops.slice(slots.viaStart, slots.viaEnd).map((s) => s.coord),
     [trip.stops, slots.viaStart, slots.viaEnd],
   );
+  /** Labels positional with `additionalWaypoints`; null where none was given. */
+  const additionalWaypointLabels = useMemo(
+    () => trip.stops.slice(slots.viaStart, slots.viaEnd).map((s) => s.label),
+    [trip.stops, slots.viaStart, slots.viaEnd],
+  );
   /** Dwell per stop, positional. The plan-revision fingerprint reads this so
    * dwell edits invalidate agent jobs exactly like coordinate edits (C5). */
   const dwellSignature = useMemo(() => dwellSignatureOf(trip), [trip]);
@@ -423,13 +428,13 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
   );
 
   const handleAddAdditionalWaypoint = useCallback(
-    (coord: [number, number]) => {
+    (coord: [number, number], label?: string | null) => {
       seam.current.cancelInFlightCalculation();
       // Append to the via range. Adding a stop must never claim an endpoint
       // slot — doing so swapped the user's destination into the start field.
       setTrip((t) => {
         const r = resolveSlots(t.stops.length, slotsRef.current);
-        return addStop(t, makeStop(coord), r.viaEnd);
+        return addStop(t, makeStop(coord, label ?? null), r.viaEnd);
       });
       clearRoutes();
     },
@@ -657,6 +662,7 @@ export function useTrip({ mapRef, dateRef, setDate, travelMode, seam }: UseTripA
     pendingSlot,
     saveModalRouteIndex,
     additionalWaypoints,
+    additionalWaypointLabels,
     savedRoutes,
     savedFolders,
     userLocation,
