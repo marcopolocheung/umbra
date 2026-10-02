@@ -133,17 +133,31 @@ explicitly *"stationary PET … did not consider the dynamic thermal conditions 
 **Two of the three name it as their own future work.** Fujiwara remains the honest prior art; the
 frontier has not closed the clause since.
 
-**The competitive picture moved again by 2026-10-02 (§5e), and the claim above survives it only
-in part.** Basic shade routing is now crowded, and three entrants matter here:
+**The competitive picture was re-observed hands-on on 2026-10-02 (S0 → `docs/notes/competitors.md`);
+every claim below names its observation or its dated source.** Basic shade routing is now
+crowded, and three entrants matter here:
 
-- **shadewalker.nyc** (AGPL-3.0, 2026) is a direct NYC competitor: 488,677 sidewalk edges across
-  all five boroughs, hourly building shadow, monthly leaf-on/off canopy, and four shade weights.
-  It prices the whole route at departure time and publishes no error figure.
-- **openrouteservice / HeiGIT** shipped shaded routing for 136 European cities in Sept 2026, from
-  four fixed daily slots, with no metrics.
-- **Google Maps** carries an unlaunched "Prefer shade" walking toggle (APK teardown, Nov 2025).
+- **shadewalker.nyc** (AGPL-3.0, 2026) is a direct NYC competitor: 488,677 routable sidewalk and
+  path edges across all five boroughs, each side of a street its own path; building+tree shade
+  from a 12×24 hour×month sun table; a 0/5/15/40 shade-priority ladder returning all four routes
+  per request; and an *Arrive by* mode that collapses to one frozen departure instant exactly
+  like *Depart at* — all observed live on the deployed product. On the observed Village pair at
+  09:00, roughly 15 pp of the fastest route's shade there is tree shade a buildings-only model
+  cannot see. It publishes no error figure; its own validation is a test suite
+  (`docs/notes/competitors.md`, observed 2026-10-02).
+- **openrouteservice / HeiGIT**'s Shaded Edition is live (v3.0.8): a month dropdown and one of
+  four fixed time-of-day slots, no published metrics, and — from the tool's own coverage list —
+  **44 European countries, 138 cities, and no United States**, so no NYC
+  (`docs/notes/competitors.md`, observed 2026-10-02; method:
+  [HeiGIT, 2026-09-17](https://heigit.org/shadow-data-for-climate-resilient-urban-planning/)).
+- **Google Maps** has **no shade toggle in its walking route options** — hands-on, the options
+  sheet offers only avoid-ferries, wheelchair-accessible and distance units
+  (`docs/notes/competitors.md`, observed 2026-10-02); the "Prefer shade" toggle and "%s in sun"
+  strings remain APK-teardown-only
+  ([Android Authority, 2025-11-06](https://www.androidauthority.com/google-maps-sun-shade-apk-teardown-3613515/)).
   Its **Ask Maps** assistant already remembers saved places, past conversations and Gmail
-  reservations, so "the assistant remembers my hotel" is commodity.
+  reservations ([9to5Google, 2026-08-06](https://9to5google.com/2026/08/06/google-ask-maps-global/)),
+  so "the assistant remembers my hotel" is commodity.
 
 There is a second, thinner precedent for advancing the sun: Li, Yoshimura, Tu and Ratti (MIT,
 arXiv 1910.04312, 2019) recompute exposure every 5 minutes and run a time-aware Dijkstra over
@@ -153,8 +167,8 @@ compare against pricing at departure time. Cite it beside Fujiwara.
 **What still nobody publishes, and what therefore carries the claim:** a measured shade error
 (**S1**), a static-vs-traversal-time ablation over many trips (**H1/H4**), a learned per-walker
 shade preference (**S2**), and an assistant memory that changes the route under an eval (**S3**).
-**S0** replaces this paragraph's desk claims with observed ones. Until it lands, treat the
-competitor details as dated research, not verified fact.
+The desk claims above were replaced by observed ones on 2026-10-02 — `docs/notes/competitors.md`
+holds the method, the raw tables and the corrections.
 
 ### Anti-goals
 
@@ -530,7 +544,7 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
   Shadow Design Studio *(optimization portion superseded by H7)* · Option D Comfort Engine
 
 **The hiring sprint — Track S** *(added 2026-10-02; runs beside every wave above)*
-- [ ] **S0** competitor recheck, hands-on · [ ] **S1** shade reality audit vs NYC LiDAR *(the error bar)*
+- [x] **S0** competitor recheck, hands-on *(done 2026-10-02 — `docs/notes/competitors.md`)* · [ ] **S1** shade reality audit vs NYC LiDAR *(the error bar)*
 - [ ] **S2a** shade-preference prior + model · [ ] **S2b** learned preference wired into route choice *(after H2)*
 - [ ] **S3a** typed memory store · [ ] **S3b** memory in the assistant + panel · [ ] **S3c** memory cases in C13's harness
 - [ ] **S4a** shadow chronolocation solver · [ ] **S4b** photo panel
