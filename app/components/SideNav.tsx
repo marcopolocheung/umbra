@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import DirectionsScrollDecor from "./DirectionsScrollDecor";
 
 export type SideNavTab = "map" | "directions" | "history" | "saved" | "settings";
 
@@ -6,6 +7,9 @@ interface SideNavProps {
   activeTab: SideNavTab;
   onTabChange: (tab: SideNavTab) => void;
   children: ReactNode;
+  rainMode?: boolean;
+  windFromDeg?: number | null;
+  windSpeedMs?: number | null;
 }
 
 const tabs: { id: SideNavTab; icon: string; label: string }[] = [
@@ -16,7 +20,8 @@ const tabs: { id: SideNavTab; icon: string; label: string }[] = [
   { id: "settings", icon: "settings", label: "Settings" },
 ];
 
-export default function SideNav({ activeTab, onTabChange, children }: SideNavProps) {
+export default function SideNav({ activeTab, onTabChange, children, rainMode = false, windFromDeg = null, windSpeedMs = null }: SideNavProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   return (
     <div className="flex flex-col h-full pt-20 px-4 pb-4">
       {/* Navigation tabs — horizontal row */}
@@ -46,7 +51,8 @@ export default function SideNav({ activeTab, onTabChange, children }: SideNavPro
       </nav>
 
       {/* Phase-dependent content */}
-      <div className="mt-6 flex-1 overflow-y-auto overflow-x-hidden umbra-scrollbar min-h-0">
+      <div ref={scrollRef} id="directions-desktop-scroll" className={`relative mt-6 flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${activeTab === "directions" ? "directions-scroll" : "umbra-scrollbar"}`}>
+        {activeTab === "directions" && <DirectionsScrollDecor scrollRef={scrollRef} rainMode={rainMode} windFromDeg={windFromDeg} windSpeedMs={windSpeedMs} />}
         {children}
       </div>
     </div>
