@@ -13,10 +13,16 @@ Central, and scores only the minutes on foot. Dragging the timeline through the 
 every building's shadow — rendered in WebGL from building geometry — across the walk to the
 train, and the trip's shade share moves with it.*
 
-| In 3D | In the rain |
-|---|---|
-| ![The Vernon Blvd–Jackson Av end of the same trip, tilted over Long Island City's extruded buildings as the afternoon shadows lengthen](docs/hero-3d.gif) | ![The same trip in Rain mode, shelter along the Astor Place walk changing from 6 AM to 10 PM as the forecast wind shifts and the interface turns from night to day and back](docs/hero-rain.gif) |
-| Tilted, the shadows fall across extruded buildings and still land on the ground under them. | In Rain mode blue means sheltered, and the timeline moves the wind rather than the sun: each hour takes the forecast wind, which slants the rain and moves the dry side of the street. The interface follows the sun too, dark before sunrise and after sunset. |
+![The Vernon Blvd–Jackson Av end of the same trip, tilted over Long Island City's extruded buildings as the afternoon shadows lengthen](docs/hero-3d.gif)
+
+*In 3D. Tilted, the shadows fall across extruded buildings and still land on the ground under
+them.*
+
+![The same trip in Rain mode, shelter along the Astor Place walk changing from 6 AM to 10 PM as the forecast wind shifts and the interface turns from night to day and back](docs/hero-rain.gif)
+
+*In the rain. In Rain mode blue means sheltered, and the timeline moves the wind rather than the
+sun: each hour takes the forecast wind, which slants the rain and moves the dry side of the
+street. The interface follows the sun too, dark before sunrise and after sunset.*
 
 [![Watch the 43-second tour: the same subway trip, its afternoon, the 3D view and the rain](docs/tour-poster.jpg)](docs/tour.mp4)
 
