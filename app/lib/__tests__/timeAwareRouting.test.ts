@@ -199,4 +199,53 @@ describe("paretoRoutes time-aware pricing (H1)", () => {
     expect(best.nodeIds).toEqual([1, 3, 4, 5, 6]);
     expect(best.exposure?.exposedDurationSec).toBeCloseTo(1300 / 1.4, 1);
   });
+
+  it("stays within a small factor of the static search on a city-block grid", () => {
+    // The per-bucket Pareto sets multiply labels by ~3, so a time-aware run
+    // costs a few static runs. The destination-front lookup must not grow with
+    // the whole search: when it scanned every (node, bucket) set on every heap
+    // pop, this 3.1 km grid ran ~80× the static search (10 s), and longer
+    // routes froze the tab. A ratio on one graph in one process, not a
+    // wall-clock bound, so a slow CI runner cannot flake it.
+    const n = 50;
+    const spacingM = 45;
+    const nodes = new Map<number, OsmNode>();
+    const adj = new Map<number, GraphEdge[]>();
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const id = r * n + c;
+        nodes.set(id, { id, lat: 40.7 + (r * spacingM) / 110_900, lon: -74 + (c * spacingM) / 84_400 });
+        adj.set(id, []);
+      }
+    }
+    const bucketCount = 6;
+    const shade = (a: number, b: number, k: number) => ((a * 7 + b * 13 + k * 5) % 23) / 23;
+    const link = (a: number, b: number) => {
+      for (const [from, to] of [[a, b], [b, a]]) {
+        const series = Array.from({ length: bucketCount }, (_, k) => shade(from, to, k));
+        adj.get(from)!.push(edge(to, spacingM, series[0], series));
+      }
+    };
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const id = r * n + c;
+        if (c + 1 < n) link(id, id + 1);
+        if (r + 1 < n) link(id, id + n);
+      }
+    }
+    const g: RoutingGraph = { nodes, adj };
+    const straightLineDistM = Math.hypot((n - 1) * spacingM, (n - 1) * spacingM);
+    const time = (opts: Parameters<typeof paretoRoutes>[3]) => {
+      const t = performance.now();
+      const results = paretoRoutes(g, 0, n * n - 1, { straightLineDistM, ...opts });
+      return { ms: performance.now() - t, results };
+    };
+
+    time({}); // warm the JIT so the first measured run is not the slow one
+    const staticRun = time({});
+    const timedRun = time({ timeAware: { bucketMs: BUCKET_MS, bucketCount } });
+
+    expect(timedRun.results.length).toBeGreaterThan(0);
+    expect(timedRun.ms).toBeLessThan(Math.max(staticRun.ms, 20) * 15);
+  });
 });
