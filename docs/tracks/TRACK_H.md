@@ -12,29 +12,32 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H1 — **not started; the gate is met as of 2026-10-02.** A6 is landed
-  (Track A records one acceptance criterion unmet, with numbers; read it before relying on
-  sweep cost) and G2 is done (`npm run bench:route`, baseline in
-  `docs/notes/performance-baseline.md`). H1 is lane 1 of the hiring sprint (`docs/ROADMAP.md` §3).
-- **Gate (historical):** do not start until **A6 (time sweep)** and **G2 (route benchmark)** have landed.
-  H1 without A6 costs one full shadow evaluation per time bucket per edge and will not run at
-  interactive speed; H3 without G2 has no committed baseline, and this track's central claim is
-  a *comparison* against the static method. Starting early produces a demo that cannot be
-  defended, which is the one outcome this track exists to avoid.
-- **Done:** nothing in H1–H4. One prerequisite cleared: **#208** — `parallelSidewalkEdges`
-  rebuilt each sidewalk edge from scratch and silently dropped the five OSM access tags
-  `overpass.ts` had filled in, so H2/H3's "hard constraint" had nothing to read. It now
-  returns the source edge with only `shadowFactor` and `side` replaced.
-- **Open PRs:** none.
-- **Decisions made:** none yet. The design notes below are the starting position, not
-  decisions — record real ones here as they are made.
-- **Blocked on:** nothing as of 2026-10-02. A6 and G2 have landed. Prior art to cite beside
-  Fujiwara 2024: Li, Yoshimura, Tu & Ratti, arXiv 1910.04312 (5-minute time-aware Dijkstra over
-  1,000 simulated Tokyo trips, no static-vs-time-aware ablation). A direct NYC competitor,
-  shadewalker.nyc, prices whole routes at departure time, which is the static baseline H1 must beat.
-- **Next action:** H1 — traversal-time exposure, behind a flag, with the H4 oracle written in
-  the same PR or the one immediately after.
-- **Last verified:** 2026-10-02 — gate re-checked against Track A and Track G briefs and `ShadowField.sweep`.
+- **Active checkpoint:** H1 — **implemented on `feat/h1-traversal-time-exposure`; PR open.**
+  Labels carry `(distM, exposureM, arrivalSec)`; each edge's shadow is read from
+  `GraphEdge.timeShadow[bucket]` — the bucket the walker *arrives* in — from one
+  `field.sweep` over the detour-budget horizon, capped at 8 × 15-minute buckets
+  (A6's measurement says a sweep costs ≈ one `sampleEdges` per bucket, so the cap).
+  Dominance requires "no later" beside "no longer, no less shadowed" (full
+  revalidation deferred to H2, per its brief); reported metrics replay the
+  walker's clock so coverage matches the searched objective. The static
+  frozen-time path is intact — omit `timeAware` and behavior is unchanged, and
+  the pre-existing suite passes. Parameters, dominance note, and the committed
+  fixture comparison: **`docs/notes/time-aware-routing-h1.md`**.
+- **Gate (historical, met 2026-10-02):** A6 landed (its unmet acceptance
+  criterion, with numbers, is why the horizon is capped) and G2's baseline is
+  committed (`docs/notes/performance-baseline.md`).
+- **Done:** H1 (this branch). Earlier: **#208** — access tags survive the sidewalk split.
+- **Decisions made (H1):** edge priced at **end-of-edge arrival**; traversal clock
+  = the mode's cruise speed, penalties excluded (they are search cost, not
+  minutes); horizon = detour budget clamped to 8 buckets; pixel-fallback edges
+  stay frozen in time (stated limitation); sketch and exposure-refresh
+  pipelines stay static (H2/H3 consume them).
+- **Blocked on:** nothing for H2. H3 additionally needs A5.
+- **Next action:** H2 — exposure *duration* as the objective (`#241` bounds its claim;
+  measure the 2.0× detour factor through G2, don't blind-edit). The H4 oracle was
+  not written in H1's PR; take it with H2 or immediately after, before H3.
+- **Last verified:** 2026-10-02 — gates green in the H1 worktree; committed fixture
+  flips static-vs-time-aware with the difference attributed to specific edges.
 
 ---
 
