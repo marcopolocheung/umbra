@@ -16,9 +16,9 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L0 — measure where the time goes on current `main`.
+- **Active checkpoint:** L0 — measure where the time goes on current `main` (#260).
 - **Done:** nothing. Track created 2026-10-03 (owner).
-- **Open PRs:** none.
+- **Open PRs:** none. Checkpoints filed as #260–#264.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -66,7 +66,7 @@ production build; cold first load bounded by one download and reported separatel
 Each checkpoint publishes its own before/after in `docs/notes/route-latency.md`, measured the
 same way as L0, on the same scenarios.
 
-### L0 — Measure where the time goes *(small)*
+### L0 — Measure where the time goes (#260) *(small)*
 **Goal.** A per-phase breakdown that accounts for the whole calculation, on current `main`.
 **Approach.**
 - Fix the bench harness first: `bench:route`'s warm scenarios hang because the trip bar hides
@@ -81,7 +81,7 @@ per phase, the environment, and the reproduce command. Instrumentation only — 
 **Files.** `app/lib/metrics.ts`, `app/hooks/useRouting.ts` (timing brackets only),
 `e2e/bench/routeCalc.bench.spec.ts`, `docs/notes/route-latency.md`.
 
-### L1 — Street data once, on the device *(medium)*
+### L1 — Street data once, on the device (#261) *(medium)*
 **Goal.** No street-graph download on a repeat route, or after a reload.
 **Approach.**
 - Confirm production serves NYC from the static shards (`VITE_NAVIGATION_BASE`, published
@@ -94,7 +94,7 @@ per phase, the environment, and the reproduce command. Instrumentation only — 
 cold transfer reported separately; outside-coverage fallback to Overpass unchanged.
 **Files.** `app/lib/navigationData/**`, the trip-selection seam that triggers prefetch.
 
-### L2 — Precomputed per-edge shade *(large; ⚠️ A, H)*
+### L2 — Precomputed per-edge shade (#262) *(large; ⚠️ A, H)*
 **Goal.** Shade per edge becomes a lookup, not a geometry computation.
 **Approach.**
 - Offline, in `server/navigation-prep` (or a sibling), compute each sidewalk edge's shaded
@@ -112,7 +112,7 @@ counted and reported.
 **Files.** `server/navigation-prep/**`, `app/lib/shadowField/**` (a table-backed provider),
 `app/lib/navigationData/**`. Coordinate with Track A (owns `ShadowField`) and Track H.
 
-### L3 — Search in a worker, over typed arrays *(medium; ⚠️ H, E)*
+### L3 — Search in a worker, over typed arrays (#263) *(medium; ⚠️ H, E)*
 **Goal.** The search phase in tens of milliseconds, off the main thread.
 **Approach.** Build the routing graph as compressed sparse row typed arrays (offsets, targets,
 lengths, per-edge attributes) with a typed binary heap and reused search state; run it in a
@@ -124,7 +124,7 @@ main thread during the search.
 **Files.** `app/lib/routing.ts` (graph representation + search), a new worker under
 `app/workers/`, `app/hooks/useRouting.ts`.
 
-### L4 — A goal-directed shade objective *(medium; ⚠️ H)*
+### L4 — A goal-directed shade objective (#264) *(medium; ⚠️ H)*
 **Goal.** Let the search aim at the destination.
 **Approach.** Today's cost discounts shaded edges to as little as 0.3× their length
 (`MAX_SHADOW_SAVING = 0.7`), which makes a straight-line A* bound invalid. Rescale to a penalty
