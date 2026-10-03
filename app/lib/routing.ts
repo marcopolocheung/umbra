@@ -43,6 +43,8 @@ export interface GraphEdge {
   side?: SidewalkSide;
   highway?: string;
   surface?: string;
+  /** OSM `name=*` — the street this edge runs along (B2, for guidance). */
+  name?: string;
   /** OSM `smoothness=*` — read by the scoot cost model (E4); ignored by walk/bike. */
   smoothness?: string;
   cycleway?: string;

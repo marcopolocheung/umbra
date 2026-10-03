@@ -151,3 +151,22 @@ describe("shared geographic bearings", () => {
     expect(alternatives.every((route) => route.turnCount === 0)).toBe(true);
   });
 });
+
+describe("generateManeuvers — street names (B2)", () => {
+	it("names the street each maneuver proceeds along, not the one left", () => {
+		// Two straight runs meeting at a right angle: west along "First", then
+		// north along "Second". The turn's name is the street you turn ONTO.
+		const path = nodes([[0, 0], [0, 0.001], [0.001, 0.001]]);
+		const result = generateManeuvers(path, 0, ["First St", "Second Ave"]);
+		const byType = Object.fromEntries(result.map((m) => [m.type, m.streetName]));
+		expect(byType.depart).toBe("First St");
+		expect(byType["turn-right"] ?? byType["turn-left"]).toBe("Second Ave");
+		expect(result.at(-1)?.type).toBe("arrive");
+		expect(result.at(-1)?.streetName).toBe("Second Ave");
+	});
+
+	it("carries no name when none is supplied", () => {
+		const result = generateManeuvers(nodes([[0, 0], [0, 0.001], [0.001, 0.001]]));
+		expect(result.every((m) => m.streetName === undefined)).toBe(true);
+	});
+});

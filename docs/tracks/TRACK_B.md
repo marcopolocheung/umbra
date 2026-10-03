@@ -10,13 +10,15 @@
 
 ## Current state
 
-- **Active checkpoint:** B1 — PR #181 open for #179 on `feat/b1-maneuver-generation`.
-  Pure maneuver generation only; live position tracking and UI follow in B3/B4.
+- **Active checkpoint:** B2 — implemented on `feat/b2-street-names` (this branch). B1 is merged
+  (`app/lib/guidance/maneuvers.ts` is on `main`). B2 keeps OSM `name` on every routing edge and
+  threads it into `Maneuver.streetName`; the memory cost is measured (~0 bytes/edge) in
+  `docs/notes/guidance-street-names.md`. Live position tracking and UI follow in B3/B4.
 - **Done:** B1 implementation and its captured-route tests; prerequisite camera work #148
   (the PR for #145) and #159 merged, as did #150 (chosen sidewalk plumbing), #171
   (roof depth precision) and #178 (wall/ground shadow alignment). No numbered checkpoint
   before B1.
-- **Open PRs:** #181 (B1).
+- **Open PRs:** B2 (this branch) — street names in the graph.
 - **Decisions made:**
   - **B1 consumes ordered walking nodes** via `generateManeuvers(nodes, legIndex = 0)` in
     `app/lib/guidance/maneuvers.ts`; distances are cumulative haversine meters along the
