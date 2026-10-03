@@ -17,6 +17,11 @@
  *    block, read from the locally published generation (identical bytes to the
  *    deployed current.json pointer; SHA-256 verified against the manifest).
  *
+ * And three staleness inputs, so the audit can say what is time and what is
+ * error: the 2017→2021 canopy-change window (same Zenodo record, same window
+ * read), each footprint's CONSTRUCTION_YEAR from the city's live footprint
+ * layer, and the CHMv2 imagery-date footprints for the NYC quadkeys.
+ *
  * Node 20 has fetch and crypto.subtle. No app imports here — stage 2 bundles
  * the app modules; this stage only acquires bytes.
  */
@@ -40,6 +45,18 @@ const LAZ_BASE =
 /** Zenodo record 14053441: TNC/UVM NYC land cover 2021, 6 in, CC BY-NC-SA 4.0. */
 const LANDCOVER_URL =
   "https://zenodo.org/api/records/14053441/files/landcover_nyc_2021_6in.tif/content";
+/** Same record: 2017→2021 tree-canopy change, 1 no change / 2 gain / 3 loss. */
+const CANOPY_CHANGE_URL =
+  "https://zenodo.org/api/records/14053441/files/treecanopychange_nyc_2017_2021_6in.tif/content";
+/** The city's live footprint layer — the one the pinned pages were taken from,
+ * which also carries CONSTRUCTION_YEAR (the pinned pages do not). */
+const BUILDING_VIEW =
+  "https://services6.arcgis.com/yG5s3afENB5iO9fj/arcgis/rest/services/BUILDING_view/FeatureServer/0";
+/** CHMv2 per-footprint imagery dates (the bucket scripts/canopy-acq-index.mjs reads). */
+const CHM_META_BASE =
+  "https://dataforgood-fb-data.s3.amazonaws.com/forests/v2/global/dinov3_global_chm_v2_ml3/metadata";
+/** The z10 quadkeys the NYC blocks' canopy patches sit in (cache/canopy/*.json). */
+const CHM_QUADKEYS = ["0320101101", "0320101103"];
 /** The locally published NYC navigation generation (matches deployed current.json). */
 const NAV_ROOT = process.env.NAVIGATION_LOCAL_ROOT
   ? process.env.NAVIGATION_LOCAL_ROOT
@@ -117,10 +134,10 @@ async function downloadLaz(tile) {
  * as a flat uint8 dump + JSON sidecar. Uses rasterio /vsicurl over HTTP ranges
  * so the 1.7 GB source is never downloaded whole.
  */
-function downloadLandcoverWindow(block, bbox) {
-  const stem = join(CACHE, "landcover", block.slug);
+function downloadLandcoverWindow(block, bbox, dir = "landcover", url = LANDCOVER_URL) {
+  const stem = join(CACHE, dir, block.slug);
   if (existsSync(`${stem}.bin`) && existsSync(`${stem}.json`)) return { cached: true };
-  mkdirSync(join(CACHE, "landcover"), { recursive: true });
+  mkdirSync(join(CACHE, dir), { recursive: true });
   // The truth march attributes a blocker up to 400 m beyond the block, so the
   // class window must span the full truth-surface extent (±675 m) + margin.
   const script = `
@@ -129,7 +146,7 @@ import numpy as np
 import rasterio
 from rasterio.warp import transform as wt
 
-url = "${LANDCOVER_URL}"
+url = "${url}"
 EXT_FT = 675 * 3937 / 1200 + 50  # truth-surface extent in US survey feet + margin
 cx, cy = wt("EPSG:4326", "EPSG:2263", [${block.lng}], [${block.lat}])
 cx, cy = cx[0], cy[0]
@@ -156,6 +173,66 @@ print("ok")
     } catch (error) {
       lastError = error;
       execFileSync("sleep", ["90"]);
+    }
+  }
+  throw lastError;
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Construction years and CHMv2 imagery dates
+// ---------------------------------------------------------------------------
+
+/**
+ * `{ DOITT_ID: CONSTRUCTION_YEAR }` for every footprint in the block's ±675 m
+ * truth frame (casters outside the 250 m block still shade it). Shard building
+ * ids are `String(doittId)`, so this joins on id. Paged: the layer caps a
+ * response at 2000 records.
+ */
+async function downloadConstructionYears(block) {
+  const path = join(CACHE, "construction-year", `${block.slug}.json`);
+  if (existsSync(path)) return { cached: true, ...JSON.parse(readFileSync(path, "utf8")).counts };
+  const b = bboxAround(block.lng, block.lat, 675);
+  const geometry = `${b.west},${b.south},${b.east},${b.north}`;
+  const years = {};
+  for (let offset = 0; ; offset += 2000) {
+    const url =
+      `${BUILDING_VIEW}/query?where=1%3D1&outFields=DOITT_ID,CONSTRUCTION_YEAR` +
+      `&geometry=${geometry}&geometryType=esriGeometryEnvelope&inSR=4326` +
+      `&spatialRel=esriSpatialRelIntersects&returnGeometry=false` +
+      `&orderByFields=OBJECTID&resultOffset=${offset}&resultRecordCount=2000&f=json`;
+    const body = await withRetry(() => fetchJson(url));
+    if (body.error) throw new Error(`${url} -> ${JSON.stringify(body.error)}`);
+    for (const { attributes } of body.features) years[attributes.DOITT_ID] = attributes.CONSTRUCTION_YEAR;
+    if (!body.exceededTransferLimit) break;
+  }
+  const counts = { footprints: Object.keys(years).length };
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(
+    path,
+    `${JSON.stringify({ source: BUILDING_VIEW, fetchedAt: new Date().toISOString(), counts, years })}\n`,
+  );
+  return { cached: false, ...counts };
+}
+
+/** CHMv2 metadata footprints (acq_date per source image) for the NYC quadkeys. */
+async function downloadChmMetadata() {
+  for (const quadkey of CHM_QUADKEYS) {
+    const path = join(CACHE, "chmv2-metadata", `${quadkey}.geojson`);
+    if (existsSync(path)) continue;
+    const body = await withRetry(() => fetchJson(`${CHM_META_BASE}/${quadkey}.geojson`));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(body)}\n`);
+  }
+}
+
+async function withRetry(fn) {
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 90_000));
     }
   }
   throw lastError;
@@ -214,12 +291,21 @@ async function main() {
     const laz = [];
     for (const tile of tiles) laz.push(await downloadLaz(tile));
     const landcover = downloadLandcoverWindow(block, bbox);
+    const canopyChange = downloadLandcoverWindow(block, bbox, "canopychange", CANOPY_CHANGE_URL);
     const nav = downloadNavShards(block, bbox);
+    const years = await downloadConstructionYears(block);
     process.stderr.write(
-      `  landcover: ${landcover.cached ? "cached" : "fetched"}; nav shards: ${nav.streets} streets / ${nav.buildings} buildings (${nav.fetched} fetched)\n`,
+      `  landcover: ${landcover.cached ? "cached" : "fetched"}; canopy change: ${canopyChange.cached ? "cached" : "fetched"}; ` +
+      `nav shards: ${nav.streets} streets / ${nav.buildings} buildings (${nav.fetched} fetched); ` +
+      `construction years: ${years.footprints}\n`,
     );
-    plan[block.slug] = { laz: laz.map((t) => ({ id: t.id, cached: t.cached })), nav };
+    plan[block.slug] = {
+      laz: laz.map((t) => ({ id: t.id, cached: t.cached })),
+      nav,
+      constructionYears: years.footprints,
+    };
   }
+  await downloadChmMetadata();
   writeFileSync(join(CACHE, "acquisition.json"), `${JSON.stringify(plan, null, 2)}\n`);
   process.stderr.write("\nacquisition plan written to cache/acquisition.json\n");
 }

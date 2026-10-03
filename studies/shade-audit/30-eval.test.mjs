@@ -10,7 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,10 +23,12 @@ function loadTruthAt() {
     "RECEIVER_M",
     "MARCH_CAP_M",
     "ATTRIBUTION_RADIUS_M",
+    "CHANGE_REACH_M",
     `${src.match(/function truthAt[\s\S]*?\n}\n/)[0]}
      ${src.match(/function landcoverClass[\s\S]*?\n}\n/)[0]}
+     ${src.match(/function canopyChangedAt[\s\S]*?\n}\n/)[0]}
      return truthAt;`,
-  )(1.0, 400, 3);
+  )(1.0, 400, 3, 35);
 }
 
 /** A 41×41 m surface (±20 m) with a 5 m wall across east −1..+1 m. */
@@ -169,6 +171,69 @@ test("skipCanopy marches through a tree to the building behind it", () => {
   // Without the building, trees-removed truth is sun.
   for (let r = 0; r < n; r++) surface.top[r * n + 14] = 0;
   assert.equal(truthAt(surface, landcover, centre, 4, 0, WEST, ALT45, true).shadow, 0);
+});
+
+test("truth marcher flags rays that cross 2017→2021 canopy change", () => {
+  const truthAt = loadTruthAt();
+  const { surface, landcover, centre } = wallSurface();
+  // Change raster in metres-as-feet (ft = 1): gain (2) west of x = 0, none east.
+  const change = { data: new Uint8Array([2, 1, 2, 1]), h: 2, w: 2, west: -1e9, north: 1e9, resFt: 1e9, ft: 1 };
+  // Sun due west: a receiver at +3 marches west through the wall (x ≥ −1) and
+  // stops there — cells x ≥ 0 only, so unchanged.
+  assert.equal(truthAt(surface, landcover, centre, 3, 0, WEST, ALT45, false, change).changed, false);
+  // A receiver at −4 marches west through x < 0 cells → changed.
+  assert.equal(truthAt(surface, landcover, centre, -4, 0, WEST, ALT45, false, change).changed, true);
+  // A ray already 35 m up has passed every tree: a receiver at +3 with a sun
+  // at 89° is over x < 0 cells only once far above them → not flagged.
+  const steep = { ...change, data: new Uint8Array([2, 2, 2, 2]) };
+  const flat = { ...surface, top: new Float32Array(surface.n * surface.n) };
+  assert.equal(truthAt(flat, landcover, centre, 3, 0, WEST, (89 * Math.PI) / 180, false, steep).changed, false);
+  // Without a change raster the answer keeps its old shape.
+  assert.equal("changed" in truthAt(surface, landcover, centre, -4, 0, WEST, ALT45), false);
+});
+
+/**
+ * The double mask (PR #219 correction). The app's footprint subtraction zeroes
+ * the *whole* raster when one ring lies wholly west of the patch and covers its
+ * top row: the row-0 fill end goes negative, and TypedArray.fill counts that
+ * from the back. The study masks once with contained rings and hands the field
+ * a raster whose masked() is the identity.
+ */
+const BUNDLED_RASTER = join(HERE, "cache", "bundle", "shadowField", "canopyRasterField.mjs");
+
+function loadSingleMaskRaster() {
+  const src = readFileSync(join(HERE, "30-eval.mjs"), "utf8");
+  return new Function(`${src.match(/function singleMaskRaster[\s\S]*?\n}\n/)[0]} return singleMaskRaster;`)();
+}
+
+test("the field path keeps canopy that a wholly-outside ring would blank", { skip: !existsSync(BUNDLED_RASTER) }, async () => {
+  const { createCanopyHeightField } = await import(BUNDLED_RASTER);
+  const singleMaskRaster = loadSingleMaskRaster();
+  // 20 m canopy in the interior (rows/cols 2–7), bare ground at the edges. A
+  // fill end of −k spares the last k−1 pixels, which are bare here as in the
+  // NYC patches.
+  const heights = new Uint8Array(100);
+  for (let r = 2; r <= 7; r++) for (let c = 2; c <= 7; c++) heights[r * 10 + c] = 20;
+  const field = createCanopyHeightField({
+    width: 10,
+    height: 10,
+    bbox: [0, 0, 0.001, 0.001],
+    metresPerPixel: 11,
+    heights,
+  });
+  const square = (x0, x1, y0, y1) => ({ ring: [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]] });
+  const westTopRow = square(-0.0002, -0.0001, 0.0009, 0.0011);
+  const straddling = square(-0.0002, 0.0002, 0.0004, 0.0005);
+
+  // The app bug (#220), documented: this assertion flips when Track A fixes it.
+  assert.equal(field.masked([westTopRow]).maxHeightM, 0, "raw masked() blanks the raster");
+  // The study's single mask: the field's own re-mask is a no-op.
+  const single = singleMaskRaster(field, []);
+  assert.equal(single.masked([westTopRow]).maxHeightM, 20);
+  assert.equal(single.masked([westTopRow]), single);
+  // A ring that straddles the edge clamps cleanly on both paths.
+  assert.equal(field.masked([straddling]).maxHeightM, 20);
+  assert.equal(singleMaskRaster(field, [straddling]).masked([westTopRow]).maxHeightM, 20);
 });
 
 test("blocks cover at least three boroughs", () => {

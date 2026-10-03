@@ -63,6 +63,9 @@ for (const [label, [y, m, d], tz] of [
   ["jun-solstice", [2026, 6, 21], -4],
   ["mar-equinox", [2026, 3, 20], -4],
   ["dec-solstice", [2026, 12, 21], -5],
+  // The date the 2017 LiDAR was flown. Reported apart from the three dates
+  // above (40-report's season delta), never pooled into them.
+  ["may-flight", [2026, 5, 10], -4],
 ]) {
   for (const hour of [8, 10, 12, 14, 16]) {
     GRID.push({ label, when: new Date(Date.UTC(y, m - 1, d, hour - tz, 0, 0)), hour });
@@ -71,6 +74,9 @@ for (const [label, [y, m, d], tz] of [
 
 const RECEIVER_M = 1.0;   // pedestrian body height above bare earth
 const MARCH_CAP_M = 400;  // same cap as the app's canopy march and QUERY_PAD_M
+/** A changed canopy cell can only matter where the ray is still below a tree:
+ * 35 m above the receiver's eye clears the tallest CHMv2 canopy in any block (33 m). */
+const CHANGE_REACH_M = 35;
 
 // ---------------------------------------------------------------------------
 // Per-block geometry loading
@@ -88,9 +94,10 @@ function loadSurface(slug) {
   };
 }
 
-/** Land-cover window (2021, 6 in) in EPSG:2263 feet — class lookup per cell. */
-function loadLandcover(slug) {
-  const stem = join(CACHE, "landcover", slug);
+/** Land-cover window (2021, 6 in) in EPSG:2263 feet — class lookup per cell.
+ * The 2017→2021 canopy-change window (`dir` "canopychange") has the same shape. */
+function loadLandcover(slug, dir = "landcover") {
+  const stem = join(CACHE, dir, slug);
   const meta = JSON.parse(readFileSync(`${stem}.json`, "utf8"));
   const [h, w] = meta.shape;
   const data = new Uint8Array(readFileSync(`${stem}.bin`).buffer);
@@ -145,13 +152,19 @@ function loadNavGeometry(block, surface) {
   const withinReach = (ref) =>
     ref.geometryBounds.south - pad <= bbox.north && ref.geometryBounds.north + pad >= bbox.south &&
     ref.geometryBounds.west - pad <= bbox.east && ref.geometryBounds.east + pad >= bbox.west;
+  // `inEnvelope`: the first ring's first vertex lies inside the ±675 m frame
+  // 10-download queried for construction years — the join-rate denominator.
+  const envelope = bboxAround(block.lng, block.lat, 675);
   const buildings = [];
   for (const ref of manifest.buildingShards.filter(withinReach)) {
     const shard = JSON.parse(readFileSync(join(CACHE, "umbra-shards", ref.key), "utf8"));
     for (const b of shard.buildings) {
       const rings = b.rings.filter((ring) => ring.length >= 4);
       if (rings.length === 0) continue;
-      buildings.push({ heightM: b.heightM ?? 10, rings });
+      const [lng, lat] = rings[0][0];
+      const inEnvelope =
+        lng >= envelope.west && lng <= envelope.east && lat >= envelope.south && lat <= envelope.north;
+      buildings.push({ id: b.id, heightM: b.heightM ?? 10, rings, inEnvelope });
     }
   }
   const nodeById = new Map();
@@ -182,6 +195,113 @@ function loadNavGeometry(block, surface) {
     sidewalkEdges.push({ from: [a.lon, a.lat], to: [b.lon, b.lat], id: e.id, distanceM: e.distanceM, highway: hw });
   }
   return { buildings, edges: sidewalkEdges };
+}
+
+/** Same frame as 10-download's envelope query. */
+function bboxAround(lng, lat, halfM) {
+  const dLat = halfM / 111320;
+  const dLng = halfM / Math.max(1e-6, 111320 * Math.cos((lat * Math.PI) / 180));
+  return { west: lng - dLng, south: lat - dLat, east: lng + dLng, north: lat + dLat };
+}
+
+/** `{ [DOITT_ID]: CONSTRUCTION_YEAR }` for the block frame, cached by 10-download. */
+function loadConstructionYears(slug) {
+  return JSON.parse(readFileSync(join(CACHE, "construction-year", `${slug}.json`), "utf8")).years;
+}
+
+/**
+ * The canopy field masked once, with `maskPrisms`, whose own `masked()` is the
+ * identity — so the shadow field's maskedRaster() cannot re-mask it with the
+ * full caster set (see the comment in main()). The field is a plain object of
+ * closures, so the spread keeps every method working on the masked heights.
+ */
+function singleMaskRaster(canopyField, maskPrisms) {
+  const once = canopyField.masked(maskPrisms);
+  const single = { ...once, masked: () => single };
+  return single;
+}
+
+/**
+ * Median LiDAR height above ground (m) inside one footprint ring, sampled every
+ * 2 m; null when the ring leaves the surface or holds no sample. Tests the
+ * CONSTRUCTION_YEAR proxy: a "post-2017" building the 2017 flight already saw
+ * standing is not new to the truth.
+ */
+function lidarMedianHeight(surface, ring) {
+  const cos = Math.cos((surface.centre[1] * Math.PI) / 180);
+  const pts = ring.map(([lng, lat]) => [
+    (lng - surface.centre[0]) * 111320 * cos,
+    (lat - surface.centre[1]) * 111320,
+  ]);
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const lim = surface.extM - 1;
+  if (Math.max(...xs.map(Math.abs), ...ys.map(Math.abs)) > lim) return null;
+  const heights = [];
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 2) {
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y += 2) {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i];
+        const [xj, yj] = pts[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      if (!inside) continue;
+      const idx = Math.floor((surface.extM - y) / surface.cellM) * surface.n + Math.floor((x + surface.extM) / surface.cellM);
+      const h = surface.top[idx] - surface.ground[idx];
+      if (Number.isFinite(h)) heights.push(h);
+    }
+  }
+  if (heights.length === 0) return null;
+  heights.sort((a, b) => a - b);
+  return heights[heights.length >> 1];
+}
+
+/**
+ * A rough bound on demolitions since 2017: LiDAR cells over the central 250 m
+ * standing more than 20 m above ground on 2021 building land cover that no
+ * Umbra footprint contains. Square metres; cells only (1 m), so an upper
+ * bound that also catches footprint misregistration at facades.
+ */
+function demolitionBound(surface, landcover, centre, prisms, mPerLat, mPerLng) {
+  const half = 125;
+  const local = prisms
+    .map((p) => {
+      const ring = p.ring.map(([lng, lat]) => [
+        (lng - surface.centre[0]) * mPerLng,
+        (lat - surface.centre[1]) * mPerLat,
+      ]);
+      const xs = ring.map((q) => q[0]);
+      const ys = ring.map((q) => q[1]);
+      return { ring, w: Math.min(...xs), e: Math.max(...xs), s: Math.min(...ys), n: Math.max(...ys) };
+    })
+    .filter((p) => p.e >= -half && p.w <= half && p.n >= -half && p.s <= half);
+  const inside = (ring, x, y) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  const c0 = Math.floor((surface.extM - half) / surface.cellM);
+  const c1 = Math.ceil((surface.extM + half) / surface.cellM);
+  let tall = 0;
+  let uncovered = 0;
+  for (let r = c0; r < c1; r++) {
+    for (let c = c0; c < c1; c++) {
+      const idx = r * surface.n + c;
+      if (!(surface.top[idx] - surface.ground[idx] > 20)) continue;
+      const x = (c + 0.5) * surface.cellM - surface.extM;
+      const y = surface.extM - (r + 0.5) * surface.cellM;
+      if (landcoverClass(landcover, centre, x, y) !== "building") continue;
+      tall++;
+      if (!local.some((p) => x >= p.w && x <= p.e && y >= p.s && y <= p.n && inside(p.ring, x, y))) uncovered++;
+    }
+  }
+  const cellM2 = surface.cellM * surface.cellM;
+  return { tallBuildingM2: tall * cellM2, uncoveredM2: uncovered * cellM2 };
 }
 
 // ---------------------------------------------------------------------------
@@ -235,8 +355,12 @@ async function canopyPatchFor(block, surface) {
  * "would this point be shadowed with the trees removed". That is the honest
  * building-only truth — the first-blocker attribution alone would drop a point
  * whose ray meets a street tree before the tower behind it.
+ *
+ * `change` (optional, the 2017→2021 canopy-change window) adds `changed: true`
+ * when the ray crossed a gain or loss cell before it stopped — canopy that is
+ * not the same in the 2017 truth as in the 2021 world the models describe.
  */
-function truthAt(surface, landcover, centre, eastM, northM, azimuth, altitude, skipCanopy = false) {
+function truthAt(surface, landcover, centre, eastM, northM, azimuth, altitude, skipCanopy = false, change = null) {
   const n = surface.n;
   const extM = surface.extM;
   const cellM = surface.cellM;
@@ -269,26 +393,45 @@ function truthAt(surface, landcover, centre, eastM, northM, azimuth, altitude, s
   let gx = gridX;
   let gy = gridY;
   let entered = 0;
+  let changed = false;
+  const answer = (result) => (change ? { ...result, changed } : result);
   for (let i = 0; i < 4000; i++) {
     const leave = Math.min(tMaxE, tMaxN);
     if (entered > 0) {
       const idx = cellOf(gx, gy);
-      if (idx < 0) return { shadow: 0, blocker: null }; // left the surface
+      if (idx < 0) return answer({ shadow: 0, blocker: null }); // left the surface
+      const cellE = (gx + 0.5) * cellM - extM;
+      const cellN = extM - (gy + 0.5) * cellM;
+      if (change && !changed && entered * tanAlt < CHANGE_REACH_M) {
+        changed = canopyChangedAt(change, centre, cellE, cellN);
+      }
       const top = surface.top[idx];
       const rayLow = z0 + entered * tanAlt;
       if (Number.isFinite(top) && rayLow < top) {
-        const cellE = (gx + 0.5) * cellM - extM;
-        const cellN = extM - (gy + 0.5) * cellM;
         const blocker = landcoverClass(landcover, centre, cellE, cellN);
-        if (!(skipCanopy && blocker === "canopy")) return { shadow: 1, blocker };
+        if (!(skipCanopy && blocker === "canopy")) return answer({ shadow: 1, blocker });
       }
     }
-    if (leave > MARCH_CAP_M) return { shadow: 0, blocker: null };
+    if (leave > MARCH_CAP_M) return answer({ shadow: 0, blocker: null });
     if (tMaxE === tMaxN) { gx += stepE; gy += stepN; entered = tMaxE; tMaxE += tDeltaE; tMaxN += tDeltaN; }
     else if (tMaxE < tMaxN) { gx += stepE; entered = tMaxE; tMaxE += tDeltaE; }
     else { gy += stepN; entered = tMaxN; tMaxN += tDeltaN; }
   }
-  return { shadow: 0, blocker: null };
+  return answer({ shadow: 0, blocker: null });
+}
+
+/**
+ * Whether a local-frame cell sits on 2017→2021 canopy gain (2) or loss (3) in
+ * the TNC/UVM change raster (1 = no change, 0 = not canopy in either year).
+ * The cell-centre pixel only: no attribution radius, because this flags rays,
+ * not casters.
+ */
+function canopyChangedAt(change, centre, eastM, northM) {
+  const col = Math.floor((centre.cx + eastM / change.ft - change.west) / change.resFt);
+  const row = Math.floor((change.north - (centre.cy + northM / change.ft)) / change.resFt);
+  if (row < 0 || row >= change.h || col < 0 || col >= change.w) return false;
+  const cls = change.data[row * change.w + col];
+  return cls === 2 || cls === 3;
 }
 
 /** Land-cover class at a local-frame cell, "building" | "canopy" | "other". */
@@ -352,12 +495,33 @@ async function main() {
       `${block.slug}: ${nav.buildings.length} buildings, ${nav.edges.length} sidewalk edges, grid ${surface.n}\n`,
     );
 
-    // Umbra prism set over the whole padded area (caster reach 400 m = pad).
-    const prisms = prismsFromFootprints(nav.buildings).prisms;
+    // Umbra prism set over the whole padded area (caster reach 400 m = pad):
+    // (a) every shard building, as shipped; (b) the 2017-era set — buildings
+    // whose CONSTRUCTION_YEAR postdates the LiDAR flight dropped, so (b) is
+    // graded against a truth of its own epoch. Unknown years stay in (b).
+    const years = loadConstructionYears(block.slug);
+    const era = { matched: 0, unknownYear: 0, excluded: [] };
+    const eraBuildings = nav.buildings.filter((b) => {
+      const year = years[b.id];
+      if (year === undefined) return true;
+      era.matched++;
+      if (!year) { era.unknownYear++; return true; }
+      if (year > 2017) {
+        era.excluded.push({ id: b.id, year, heightM: b.heightM, lidarMedianM: lidarMedianHeight(surface, b.rings[0]) });
+        return false;
+      }
+      return true;
+    });
+    const sets = {
+      all: { prisms: prismsFromFootprints(nav.buildings).prisms },
+      era2017: { prisms: prismsFromFootprints(eraBuildings).prisms },
+    };
+    const prisms = sets.all.prisms;
 
     // Canopy patch (cached) and the app's height field over it.
     const patch = await canopyPatchFor(block, surface);
     const canopyField = createCanopyHeightField(patch);
+    const change = loadLandcover(block.slug, "canopychange");
 
     // The field as routing uses it: static building prisms + raster canopy.
     // Provider coverage spans the truth surface (±675 m) so the field's own
@@ -369,61 +533,68 @@ async function main() {
       south: surface.centre[1] - surface.extM / 111320 - 0.0001,
       north: surface.centre[1] + surface.extM / 111320 + 0.0001,
     };
-    // Footprint subtraction (A8c) clamps a straddling ring's scanline to the
-    // patch edge, which erases an entire row when a ring crosses it. In the
-    // app the canopy patch always exceeds the caster-reach selection, so a
-    // straddling prism is rare; here the 675 m prism set extends past the
-    // 675 m patch, so mask with only the prisms the patch fully contains —
-    // the prisms the app's own 400 m caster reach would have selected.
+    // Footprint subtraction (A8c) must see only rings the patch fully holds.
+    // A ring lying wholly west of the patch whose latitude span covers the
+    // patch's top row drives subtractFootprints' fill end negative on row 0,
+    // and TypedArray.fill counts a negative end from the back of the array:
+    // the whole raster is zeroed. The 675 m prism set reaches past the 675 m
+    // patch, and the field's own maskedRaster() re-masks with every provider
+    // prism — which is what blanked the first run's canopy outside Manhattan
+    // (#220 tracks the app-side bug).
+    // So mask once, with contained rings, and hand the field a raster whose
+    // masked() is the identity. Every prism still casts building shadow.
     const [pWest, pSouth, pEast, pNorth] = patch.bbox;
-    const insidePatch = prisms.filter((p) =>
+    const insidePatch = (set) => set.filter((p) =>
       p.ring.every(([lng, lat]) => lng >= pWest && lng <= pEast && lat >= pSouth && lat <= pNorth)
     );
-    const canopyFieldMasked = canopyField.masked(insidePatch);
-    const prismProvider = staticPrismProvider({ prisms, maxHeightM: 1 }, coverage, "nyc-static");
-    // The field hands the raster to maskedRaster() itself, which re-masks with
-    // the provider prisms — the straddle guard above applies to that set, so
-    // hand it the already-masked field over a *contained* prism list: the
-    // field's own mask call receives the same filtered set and is idempotent.
-    const rasterProvider = {
-      source: "canopy-raster",
-      fieldFor(bbox) {
-        return (
-          bbox.west >= coverage.west && bbox.east <= coverage.east &&
-          bbox.south >= coverage.south && bbox.north <= coverage.north
-        ) ? canopyFieldMasked : null;
-      },
-      async load() {},
-    };
-    const field = createGeometryShadowField([prismProvider], [], [rasterProvider]);
-    const fieldNoCanopy = createGeometryShadowField([prismProvider]);
+    for (const set of Object.values(sets)) {
+      const raster = singleMaskRaster(canopyField, insidePatch(set.prisms));
+      const prismProvider = staticPrismProvider({ prisms: set.prisms, maxHeightM: 1 }, coverage, "nyc-static");
+      const rasterProvider = {
+        source: "canopy-raster",
+        fieldFor(bbox) {
+          return (
+            bbox.west >= coverage.west && bbox.east <= coverage.east &&
+            bbox.south >= coverage.south && bbox.north <= coverage.north
+          ) ? raster : null;
+        },
+        async load() {},
+      };
+      set.maskedMaxHeightM = raster.maxHeightM;
+      set.field = createGeometryShadowField([prismProvider], [], [rasterProvider]);
+      set.fieldNoCanopy = createGeometryShadowField([prismProvider]);
+    }
+    process.stderr.write(
+      `  canopy max ${canopyField.maxHeightM} m raw, ${sets.all.maskedMaxHeightM} m masked; ` +
+      `${era.excluded.length} post-2017 buildings dropped from (b)\n`,
+    );
 
     // Sidewalk sample points per edge, exactly the field's walk():
     const edges = nav.edges.map((e) => ({ ...e, from: e.from, to: e.to }));
+    const mPerLat = 111320;
+    const cosLat = Math.cos((surface.centre[1] * Math.PI) / 180);
+    const mPerLng = 111320 * cosLat;
+    for (const set of Object.values(sets)) set.prepared = prepareShadowCasters(set.prisms);
+    const demolition = demolitionBound(surface, landcover, centre, prisms, mPerLat, mPerLng);
+
     const instants = [];
     for (const g of GRID) {
       const sun = SunCalc.getPosition(g.when, surface.centre[1], surface.centre[0]);
-      const mPerLat = 111320;
-      const cosLat = Math.cos((surface.centre[1] * Math.PI) / 180);
-      const mPerLng = 111320 * cosLat;
-      const prepared = sun.altitude > 0 ? prepareShadowCasters(prisms) : null;
-      const index =
-        prepared && sun.altitude > 0
-          ? buildShadowIndexFor(prepared, sun.azimuth, sun.altitude, mPerLat, mPerLng, {
+      for (const set of Object.values(sets)) {
+        set.index = sun.altitude > 0
+          ? buildShadowIndexFor(set.prepared, sun.azimuth, sun.altitude, mPerLat, mPerLng, {
               west: coverage.west,
               south: coverage.south,
               east: coverage.east,
               north: coverage.north,
             })
           : null;
-      const rasterShade =
-        canopyField && sun.altitude > 0 ? canopyField.shadeFor(sun.azimuth, sun.altitude, g.when) : null;
+        set.counts = { tp: 0, fp: 0, fn: 0, tn: 0, fnCanopy: 0, fnBuilding: 0, fnOther: 0 };
+      }
 
-      // --- Mask comparison over the central 250×250 m ---
+      // --- Mask comparison over the central 250×250 m, once per building set ---
       const c0 = Math.floor((surface.extM - 125) / surface.cellM);
       const c1 = Math.ceil((surface.extM + 125) / surface.cellM);
-      let tp = 0, fp = 0, fn = 0, tn = 0;
-      let fnCanopy = 0, fnBuilding = 0, fnOther = 0;
       let excluded = 0;
       for (let r = c0; r < c1; r++) {
         for (let c = c0; c < c1; c++) {
@@ -437,18 +608,27 @@ async function main() {
           const truth = truthAt(surface, landcover, centre, eastM, northM, sun.azimuth, sun.altitude);
           const lng = surface.centre[0] + eastM / mPerLng;
           const lat = surface.centre[1] + northM / mPerLat;
-          const umbra = index ? (index.isShadowed(lng, lat) ? 1 : 0) : sun.altitude <= 0 ? 1 : 0;
-          if (truth.shadow === 1 && umbra === 1) tp++;
-          else if (truth.shadow === 1 && umbra === 0) {
-            fn++;
-            if (truth.blocker === "canopy") fnCanopy++;
-            else if (truth.blocker === "building") fnBuilding++;
-            else fnOther++;
-          } else if (truth.shadow === 0 && umbra === 1) fp++;
-          else tn++;
+          for (const set of Object.values(sets)) {
+            const k = set.counts;
+            const umbra = set.index ? (set.index.isShadowed(lng, lat) ? 1 : 0) : sun.altitude <= 0 ? 1 : 0;
+            if (truth.shadow === 1 && umbra === 1) k.tp++;
+            else if (truth.shadow === 1 && umbra === 0) {
+              k.fn++;
+              if (truth.blocker === "canopy") k.fnCanopy++;
+              else if (truth.blocker === "building") k.fnBuilding++;
+              else k.fnOther++;
+            } else if (truth.shadow === 0 && umbra === 1) k.fp++;
+            else k.tn++;
+          }
         }
       }
-      const iou = (tp + fp + fn) > 0 ? tp / (tp + fp + fn) : null;
+      const maskOf = ({ counts: k }) => ({
+        ...k,
+        excluded,
+        iou: (k.tp + k.fp + k.fn) > 0 ? k.tp / (k.tp + k.fp + k.fn) : null,
+      });
+      const mask = maskOf(sets.all);
+      const iou = mask.iou;
 
       // --- Sidewalk segment comparison ---
       const segments = [];
@@ -456,7 +636,7 @@ async function main() {
         const offsets = sidewalkOffsets(edge);
         const steps = edgeSampleCount(edge.distanceM);
         const side = (offset) => {
-          let shadowAll = 0, shadowBldg = 0, canopyPts = 0, n2 = 0;
+          let shadowAll = 0, shadowBldg = 0, canopyPts = 0, changedPts = 0, n2 = 0;
           const mPerLatE = 111320;
           const cos = Math.cos((((edge.from[1] + edge.to[1]) / 2) * Math.PI) / 180);
           for (let i = 0; i <= steps; i++) {
@@ -466,8 +646,9 @@ async function main() {
             const eastM = (lng - surface.centre[0]) * mPerLng;
             const northM = (lat - surface.centre[1]) * mPerLatE;
             if (Math.abs(eastM) >= surface.extM || Math.abs(northM) >= surface.extM) continue;
-            const truth = truthAt(surface, landcover, centre, eastM, northM, sun.azimuth, sun.altitude);
+            const truth = truthAt(surface, landcover, centre, eastM, northM, sun.azimuth, sun.altitude, false, change);
             shadowAll += truth.shadow;
+            if (truth.changed) changedPts++;
             // Trees removed: canopy-first rays march on to whatever stands behind.
             shadowBldg += truth.blocker === "canopy"
               ? truthAt(surface, landcover, centre, eastM, northM, sun.azimuth, sun.altitude, true).shadow
@@ -479,6 +660,7 @@ async function main() {
             fraction: n2 ? shadowAll / n2 : null,
             buildingFraction: n2 ? shadowBldg / n2 : null,
             canopyPts,
+            changedPts,
             samples: n2,
           };
         };
@@ -491,9 +673,19 @@ async function main() {
         });
       }
 
-      // Field answers for the same edges, with and without canopy.
-      const withCanopy = field.sampleEdges(edges, g.when);
-      const withoutCanopy = fieldNoCanopy.sampleEdges(edges, g.when);
+      // Field answers for the same edges, with and without canopy, per set.
+      // Unsuffixed keys are set (a), all buildings; `…2017` keys are set (b).
+      const fieldAnswers = (set) => ({
+        withCanopy: set.field.sampleEdges(edges, g.when).map((s) => ({
+          left: s.left,
+          right: s.right,
+          source: s.source,
+          confidence: s.confidence,
+        })),
+        withoutCanopy: set.fieldNoCanopy.sampleEdges(edges, g.when).map((s) => ({ left: s.left, right: s.right })),
+      });
+      const a = fieldAnswers(sets.all);
+      const b = fieldAnswers(sets.era2017);
 
       instants.push({
         label: g.label,
@@ -501,20 +693,35 @@ async function main() {
         iso: g.when.toISOString(),
         sunAltitudeDeg: (sun.altitude * 180) / Math.PI,
         sunAzimuthDeg: (sun.azimuth * 180) / Math.PI,
-        mask: { tp, fp, fn, tn, excluded, iou, fnCanopy, fnBuilding, fnOther },
+        mask,
+        mask2017: maskOf(sets.era2017),
         segments,
-        fieldWithCanopy: withCanopy.map((s) => ({
-          left: s.left,
-          right: s.right,
-          source: s.source,
-          confidence: s.confidence,
-        })),
-        fieldWithoutCanopy: withoutCanopy.map((s) => ({ left: s.left, right: s.right })),
+        fieldWithCanopy: a.withCanopy,
+        fieldWithoutCanopy: a.withoutCanopy,
+        fieldWithCanopy2017: b.withCanopy,
+        fieldWithoutCanopy2017: b.withoutCanopy,
       });
-      process.stderr.write(`  ${g.label} ${g.hour}h: IoU ${iou === null ? "n/a" : iou.toFixed(3)} fnCanopy ${fnCanopy}\n`);
+      process.stderr.write(`  ${g.label} ${g.hour}h: IoU ${iou === null ? "n/a" : iou.toFixed(3)} fnCanopy ${mask.fnCanopy}\n`);
     }
 
-    writeFileSync(outPath, `${JSON.stringify({ block, instants })}\n`);
+    const shardBuildings = nav.buildings.filter((b) => b.inEnvelope).length;
+    const meta = {
+      canopy: {
+        rawMaxHeightM: canopyField.maxHeightM,
+        maskedMaxHeightM: sets.all.maskedMaxHeightM,
+        maskedMaxHeightM2017: sets.era2017.maskedMaxHeightM,
+      },
+      buildingSets: {
+        all: nav.buildings.length,
+        era2017: eraBuildings.length,
+        excluded: era.excluded,
+        unknownYear: era.unknownYear,
+        joined: nav.buildings.filter((b) => b.inEnvelope && years[b.id] !== undefined).length,
+        shardBuildingsInEnvelope: shardBuildings,
+      },
+      demolition,
+    };
+    writeFileSync(outPath, `${JSON.stringify({ block, meta, instants })}\n`);
     process.stderr.write(`results: ${block.slug} written\n`);
   }
 }
