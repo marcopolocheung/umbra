@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { HeatProfile, HeatTolerance } from "../lib/heat/profile";
+import type { SkinType } from "../lib/heat/types";
 import type { ThemePreference } from "../lib/uiTheme";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -14,6 +16,9 @@ interface SettingsPanelProps {
   onShowSunLinesChange: (v: boolean) => void;
   showSheds: boolean;
   onShowShedsChange: (v: boolean) => void;
+  /** D5: the personal heat profile. */
+  profile: HeatProfile;
+  onProfileChange: (p: HeatProfile) => void;
 }
 
 export default function SettingsPanel({
@@ -23,6 +28,8 @@ export default function SettingsPanel({
   onShowSunLinesChange,
   showSheds,
   onShowShedsChange,
+  profile,
+  onProfileChange,
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
@@ -136,6 +143,67 @@ export default function SettingsPanel({
               </span>
             </div>
           )}
+          <div
+            className="uppercase tracking-widest text-[11px] font-bold pt-2 border-t"
+            style={{ color: "var(--color-ink-muted)", borderColor: "var(--color-rule)" }}
+          >
+            You
+          </div>
+
+          {/* D5 — local-only profile. Labels wrap their controls, so each field is
+              associated without an id; nothing here leaves the device. */}
+          <label className="flex flex-col gap-1" style={{ color: "var(--color-ink)" }}>
+            <span>Skin type (Fitzpatrick I–VI)</span>
+            <select
+              value={profile.skinType}
+              onChange={(e) => onProfileChange({ ...profile, skinType: e.target.value as SkinType })}
+              className="min-h-11 border px-2"
+              style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
+            >
+              {(["I", "II", "III", "IV", "V", "VI"] as SkinType[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1" style={{ color: "var(--color-ink)" }}>
+            <span>Heat tolerance</span>
+            <select
+              value={profile.heatTolerance}
+              onChange={(e) => onProfileChange({ ...profile, heatTolerance: e.target.value as HeatTolerance })}
+              className="min-h-11 border px-2"
+              style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
+            >
+              {(["low", "moderate", "high"] as HeatTolerance[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
+            <span style={{ color: "var(--color-ink)" }}>I burn easily</span>
+            <input
+              type="checkbox"
+              checked={profile.burnsEasily}
+              onChange={(e) => onProfileChange({ ...profile, burnsEasily: e.target.checked })}
+              className="accent-ink w-4 h-4"
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
+            <span style={{ color: "var(--color-ink)" }}>I overheat easily</span>
+            <input
+              type="checkbox"
+              checked={profile.overheatsEasily}
+              onChange={(e) => onProfileChange({ ...profile, overheatsEasily: e.target.checked })}
+              className="accent-ink w-4 h-4"
+            />
+          </label>
+
+          <p className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+            Used only on this device to tune the dose, heat score and how much shade routes
+            favour. Nothing is sent anywhere.
+          </p>
         </div>
       )}
     </div>

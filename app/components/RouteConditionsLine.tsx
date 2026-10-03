@@ -1,4 +1,5 @@
 import { dose } from "../lib/heat/dose";
+import type { HeatProfile } from "../lib/heat/profile";
 import { heatBand, heatScore } from "../lib/heat/score";
 import type { WeatherHour } from "../lib/heat/types";
 import { routeExposureMinutes, routeExposureScope } from "../lib/routeTradeoff";
@@ -26,6 +27,8 @@ interface RouteConditionsLineProps {
   baselineRoute?: RouteOption;
   /** The forecast hour at the map's location, or null when none is available. */
   weather: WeatherHour | null;
+  /** D5: the walker's heat profile, or null for the population-neutral numbers. */
+  profile?: HeatProfile | null;
 }
 
 /**
@@ -51,17 +54,18 @@ export default function RouteConditionsLine({
   route,
   baselineRoute,
   weather,
+  profile = null,
 }: RouteConditionsLineProps) {
   // Null when some of a transit trip's time outdoors has no answer: a score or
   // a dose of the rest would read as the whole trip's (#393).
   const exposure = routeExposureMinutes(route);
-  const selected = exposure ? heatScore(exposure, weather) : null;
+  const selected = exposure ? heatScore(exposure, weather, profile) : null;
   const baselineExposure =
     baselineRoute && baselineRoute !== route ? routeExposureMinutes(baselineRoute) : null;
-  const baseline = baselineExposure ? heatScore(baselineExposure, weather) : null;
+  const baseline = baselineExposure ? heatScore(baselineExposure, weather, profile) : null;
 
   // Null when the UV index is unknown: an absent forecast is not a safe trip.
-  const uv = exposure ? dose(exposure, weather?.uvIndex ?? null) : null;
+  const uv = exposure ? dose(exposure, weather?.uvIndex ?? null, profile) : null;
   const scope = routeExposureScope(route);
 
   const scored = selected?.mode === "felt-temperature";

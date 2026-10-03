@@ -1,4 +1,5 @@
 import type { WeatherHour } from "./types";
+import { type HeatProfile, heatScoreOffsetC } from "./profile";
 
 /**
  * How much of the score's inputs were actually measured.
@@ -166,7 +167,9 @@ export function feltToScore(feltC: number): number {
  */
 export function heatScore(
   exposure: TripExposure,
-  weather: WeatherHour | null
+  weather: WeatherHour | null,
+  /** D5: the walker's heat profile; null keeps the population-neutral score. */
+  profile: HeatProfile | null = null
 ): HeatScore {
   const sunMinutes = Math.max(0, exposure.sunMinutes);
   const shadowMinutes = Math.max(0, exposure.shadowMinutes);
@@ -215,7 +218,8 @@ export function heatScore(
     };
   }
 
-  const feltC = (shadowAmbientC as number) + sunFraction * sunPenaltyC;
+  const feltC =
+    (shadowAmbientC as number) + sunFraction * sunPenaltyC + (profile ? heatScoreOffsetC(profile) : 0);
 
   return {
     score: Math.round(feltToScore(feltC)),

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { WeatherHour } from "../lib/heat/types";
+import type { HeatProfile } from "../lib/heat/profile";
 import type { RouteOption } from "../lib/routing";
 import { routeAfterSunset, shortestRoute } from "../lib/routeTradeoff";
 import RouteCard from "./RouteCard";
@@ -26,6 +27,8 @@ interface FloatingRouteCardsProps {
   rainIntensity?: number;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** D5: the walker's heat profile. */
+  profile?: HeatProfile | null;
 }
 
 function routeKey(route: RouteOption): string {
@@ -51,6 +54,7 @@ export default function FloatingRouteCards({
   rainMode = false,
   rainIntensity = 5,
   rainWind = null,
+  profile = null,
 }: FloatingRouteCardsProps) {
   if (routes.length === 0) return null;
   const baselineRoute = shortestRoute(routes);
@@ -99,6 +103,7 @@ export default function FloatingRouteCards({
               rainIntensity={rainIntensity}
               rainWind={rainWind}
               weather={weather}
+              profile={profile}
               exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
             />
           ))}

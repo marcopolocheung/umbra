@@ -44,6 +44,7 @@ import { contextConditionsLabel, resolveExposureContext } from "./lib/exposure";
 import { sunriseSunset } from "./lib/sunTimes";
 
 import { useAgent } from "./hooks/useAgent";
+import { type HeatProfile, loadProfile, saveProfile, shadowWeight } from "./lib/heat/profile";
 import { assistantPinId, type AssistantPin } from "./lib/agent/tools";
 import type { MapObject } from "./lib/agent/receipts";
 import { fetchCloudCoverForecast } from "./services/weather";
@@ -517,6 +518,18 @@ export default function Home() {
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // D5 — local-only personal profile, persisted beside saved routes.
+  const [heatProfile, setHeatProfile] = useState<HeatProfile>(() => loadProfile());
+  const handleProfileChange = useCallback((next: HeatProfile) => {
+    setHeatProfile(next);
+    saveProfile(next);
+  }, []);
+  // D5: the profile sets the routing shadow weight, so changing it re-ranks the
+  // route options. The manual "Fastest / Balanced / Most shade" slider still wins
+  // after the user touches it.
+  useEffect(() => {
+    handleShadowPreferenceChange(shadowWeight(heatProfile));
+  }, [heatProfile, handleShadowPreferenceChange]);
   const [assistantPins, setAssistantPins] = useState<AssistantPin[]>([]);
   const [receiptMapObjects, setReceiptMapObjects] = useState<MapObject[]>([]);
   const agent = useAgent({
@@ -1071,6 +1084,8 @@ export default function Home() {
           onShowSunLinesChange={setShowSunLines}
           showSheds={showSheds}
           onShowShedsChange={setShowSheds}
+          profile={heatProfile}
+          onProfileChange={handleProfileChange}
         />
         <a
           href="/about"
@@ -1185,6 +1200,7 @@ export default function Home() {
             travelMode={travelMode}
             onTravelModeChange={handleTravelModeChange}
             shadowPreference={shadowPreference}
+            profile={heatProfile}
             onShadowPreferenceChange={handleShadowPreferenceChange}
             rainMode={rainMode}
             onRainModeChange={handleRainModeChange}
@@ -1300,6 +1316,7 @@ export default function Home() {
           weather={heatWeather}
           solarIntensity={routeSolarIntensity}
           rainWind={routeWind}
+          profile={heatProfile}
           exposureSlot={exposureSlot}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
           grip={
@@ -1507,6 +1524,7 @@ export default function Home() {
               travelMode={travelMode}
               onTravelModeChange={handleTravelModeChange}
               shadowPreference={shadowPreference}
+              profile={heatProfile}
               onShadowPreferenceChange={handleShadowPreferenceChange}
               rainMode={rainMode}
               onRainModeChange={handleRainModeChange}
@@ -1569,6 +1587,8 @@ export default function Home() {
                   onShowSunLinesChange={setShowSunLines}
                   showSheds={showSheds}
                   onShowShedsChange={setShowSheds}
+                  profile={heatProfile}
+                  onProfileChange={handleProfileChange}
                 />
                 <a
                   href="/about"

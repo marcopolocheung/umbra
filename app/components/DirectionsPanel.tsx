@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { WeatherHour } from "../lib/heat/types";
+import type { HeatProfile } from "../lib/heat/profile";
 import type { RouteOption } from "../lib/routing";
 import type { TravelModeId } from "../lib/travelMode";
 import type { ManualWind, WindSource } from "../lib/exposure";
@@ -123,6 +124,8 @@ export interface DirectionsPanelProps {
   onRainIntensityChange?: (v: number) => void;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** D5: the walker's heat profile. */
+  profile?: HeatProfile | null;
   windSource?: WindSource;
   manualWind?: ManualWind;
   onWindSourceChange?: (source: WindSource) => void;
@@ -162,6 +165,7 @@ export default function DirectionsPanel({
   rainMode = false, onRainModeChange,
   rainIntensity: _rainIntensity = 5, onRainIntensityChange: _onRainIntensityChange,
   rainWind = null,
+  profile = null,
   windSource = "forecast",
   manualWind = { directionDeg: 0, speedMps: 0 },
   onWindSourceChange,
@@ -258,6 +262,7 @@ export default function DirectionsPanel({
                   rainIntensity={_rainIntensity}
                   rainWind={rainWind}
                   weather={weather}
+                  profile={profile}
                   exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
                 />
               </Fragment>

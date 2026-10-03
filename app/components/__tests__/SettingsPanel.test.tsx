@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_PROFILE } from "../../lib/heat/profile";
 import SettingsPanel from "../SettingsPanel";
 
 afterEach(cleanup);
@@ -14,6 +15,8 @@ function renderPanel(showSheds: boolean, onShowShedsChange = vi.fn(), onThemeCha
       onShowSunLinesChange={vi.fn()}
       showSheds={showSheds}
       onShowShedsChange={onShowShedsChange}
+      profile={DEFAULT_PROFILE}
+      onProfileChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /settings/i }));
@@ -51,4 +54,45 @@ describe("SettingsPanel theme", () => {
     renderPanel(false);
     expect(screen.getByText(/panels only, not the map/i)).toBeTruthy();
   });
+});
+
+describe("SettingsPanel personal profile (D5)", () => {
+	it("reports a skin-type change to its owner", () => {
+		const onProfileChange = vi.fn();
+		render(
+			<SettingsPanel
+				themePreference="auto"
+				onThemePreferenceChange={vi.fn()}
+				showSunLines={false}
+				onShowSunLinesChange={vi.fn()}
+				showSheds={false}
+				onShowShedsChange={vi.fn()}
+				profile={DEFAULT_PROFILE}
+				onProfileChange={onProfileChange}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+		fireEvent.change(screen.getByLabelText(/skin type/i), { target: { value: "II" } });
+		expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ skinType: "II" }));
+	});
+
+	it("reports the overheat toggle and states the profile stays on the device", () => {
+		const onProfileChange = vi.fn();
+		render(
+			<SettingsPanel
+				themePreference="auto"
+				onThemePreferenceChange={vi.fn()}
+				showSunLines={false}
+				onShowSunLinesChange={vi.fn()}
+				showSheds={false}
+				onShowShedsChange={vi.fn()}
+				profile={DEFAULT_PROFILE}
+				onProfileChange={onProfileChange}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+		fireEvent.click(screen.getByRole("checkbox", { name: /overheat/i }));
+		expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ overheatsEasily: true }));
+		expect(screen.getByText(/nothing is sent anywhere/i)).toBeTruthy();
+	});
 });

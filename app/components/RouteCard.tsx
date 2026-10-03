@@ -3,6 +3,7 @@ import { INK_REVEAL } from "./ui/motion";
 import Sigil from "./ui/Sigil";
 import type { RouteOption, RouteLeg } from "../lib/routing";
 import type { WeatherHour } from "../lib/heat/types";
+import type { HeatProfile } from "../lib/heat/profile";
 import { describeShadowProvenance } from "../lib/shadowProvenance";
 import { partialRouteNotice } from "../lib/partialRoute";
 import {
@@ -60,6 +61,8 @@ interface RouteCardProps {
   weather?: WeatherHour | null;
   /** The dose line and hourly exposure strip, rendered inside the selected card. */
   exposureSlot?: ReactNode;
+  /** D5: the walker's heat profile, for the dose and heat score. */
+  profile?: HeatProfile | null;
 }
 
 export default function RouteCard({
@@ -75,6 +78,7 @@ export default function RouteCard({
   rainWind = null,
   weather = null,
   exposureSlot,
+  profile = null,
 }: RouteCardProps) {
   const rainCard = rainMode && (r.objective === "rain" || r.dryCoverage !== undefined);
   const streak =
@@ -457,7 +461,7 @@ export default function RouteCard({
             rainCard ? (
               <RainRouteSummary route={r} rainIntensity={rainIntensity} wind={rainWind} />
             ) : (
-              <RouteConditionsLine route={r} baselineRoute={baselineRoute} weather={weather} />
+              <RouteConditionsLine route={r} baselineRoute={baselineRoute} weather={weather} profile={profile} />
             )
           )}
           {exposureSlot}
