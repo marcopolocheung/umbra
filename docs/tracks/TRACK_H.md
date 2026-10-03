@@ -16,9 +16,10 @@ G's fixture and benchmark infrastructure).
   merged (#222, #224). The oracle and its published gap are in
   `docs/notes/sun-budget-model.md`; H3 is next.
 - **H4 (this branch):** `app/lib/__tests__/routingOracle.test.ts` — exhaustive path enumeration
-  as ground truth for the H1/H2 search on small fixtures. Result: the search is **exact on the
-  discretized model (gap 0)**; the bucket sampling can misprice an edge by up to one edge's
-  traversal seconds. 10 tests.
+  as ground truth for the H1/H2 search on small fixtures. Result: the search is exact where
+  routes meet only at the destination, but **loses a Pareto point at a bucket-boundary merge**
+  (measured: production 57.00 s vs the true 55.00 s on the fixture — a 2.00 s / 3.5% miss, and
+  a non-dominated option dropped). 6 tests.
 - **H2 (merged #224):** The label criterion is
   `exposureCrit`: **minimized sun seconds** (rain keeps maximized sheltered
   metres). One honest clock — `edgeTraversalSeconds` (cruise speed, plus the
@@ -49,7 +50,8 @@ G's fixture and benchmark infrastructure).
 - **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
   G2 factor sweep (#243 follow-up, Track G).
 - **Next action:** H3 — Sun Budget reachability (needs A5; consume E's `Trip`).
-  The H4 oracle is written (gap 0 on fixtures), so H3's output now has ground truth to check against.
+  The H4 oracle is written, and it found a bucket-boundary dominance gap, so H3's output now has
+  ground truth to check against — and that gap to fix in H1/H2's search.
 - **Last verified:** 2026-10-03 — H4 on `feat/h4-oracle`: lint (0 errors), typecheck, tests
   (oracle 10/10), build all green. 2026-10-02 — gates green in the H1/H2 worktree (one
   full-suite order-dependent flake observed under back-to-back loaded runs —
