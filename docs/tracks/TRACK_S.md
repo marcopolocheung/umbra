@@ -16,25 +16,60 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR. Not started.
+- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR — PR #219 open (`studies/shade-audit/`
+  + `docs/notes/shade-accuracy.md`). First published shade-error figure, against a 2017 LiDAR
+  highest-hit truth over 8 blocks × 4 boroughs × 3 dates × 5 hours. Corrected 2026-10-02:
+  the first version's canopy numbers were a double-mask harness artefact.
+  - **Mask IoU:** 0.561 mean, 0.090 worst (unchanged).
+  - **Per-segment error:** 34.7 pp mean; p90 100, because 13% of segment-sides are wholly
+    wrong.
+  - **Misses:** tree canopy 38%, building 35%, neither within 3 m 27% (unchanged).
+  - **CHMv2 canopy:** +9.5 pp mean, +22.3 June, in every borough (was +3.7, Manhattan-only).
+    It cuts tree-segment error from 41.7 to 33.5 pp.
+  - **Buildings-only residual:** 35.1 pp.
+  - **Staleness:**
+    - Dropping 358 post-2017 buildings removes 10% of false shade, but segment error rises
+      (35.1 pp).
+    - Excluding the 44% of sides crossing 2017→2021 canopy change does not reduce error.
+    - May (the flight date) vs June agree within 0.7 pp.
+    - CHMv2's NYC imagery is 2019-11 / 2020-03.
+  - **Shipping bug found:** the same mask bug very likely blanks raster canopy on NYC routes;
+    filed as #220 (Track A, p2).
 - **Done:** S0, both halves — the 2026-10-02 desk research, then the hands-on recheck on
   2026-10-02: five fixed NYC pairs × three departure times through shadewalker.nyc and Umbra,
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
   observation or a dated source.
-- **Open PRs:** #213 (S0).
+- **Open PRs:** #213 (S0), #219 (S1).
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
   European countries and no US city, so NYC is unreachable there; Google still ships no shade
   toggle in walking route options; shadewalker's Arrive-by also collapses to one frozen instant,
   so **no observed product advances the sun** (the H1/H4 gap is intact); ~15 pp of one Village
-  route's shade at 09:00 is tree shade — A8's gap, field-quantified.
-- **Blocked on:** nothing for S1, S2a, S3a, S4a. S2b waits for H2 (the objective it plugs into).
+  route's shade at 09:00 is tree shade — A8's gap, field-quantified, and S1 now measures it
+  block-wide. S1's method decisions:
+  - **Truth:** highest-hit and class-2 bare-earth surfaces built locally from the 2017 1-ft
+    LAZ (not the city's bare-earth DEM).
+  - **Attribution:** 2021 6-in TNC/UVM land cover (CC BY-NC-SA 4.0, cached, aggregate numbers
+    only), taking the dominant building/canopy class within 3 m of the blocker. A
+    single-pixel first pass misread facades as "other" and over-filed #218, since corrected
+    to p3.
+  - **Building-only truth:** the march with trees removed.
+  - **Umbra side:** the app's own bundled modules over the deployed generation
+    `nyc-2026-09-18-9f2924750af1`.
+- **Open question from S1 (narrowed):** new construction is ruled out as the source of the
+  35.1 pp buildings-only residual (set (b) does not reduce it). What remains is shard
+  height/footprint-part error versus demolitions and same-lot replacements. Bound: 16% of tall
+  LiDAR building area lies under no Umbra footprint. The next measurement is a per-building
+  height audit against the LiDAR; no post-2017 city surface is public.
+- **Blocked on:** nothing for S2a, S3a, S4a. S2b waits for H2 (the objective it plugs into).
   S3b coordinates with Track C's active checkpoint. S4b needs a free mount point in the shell.
-- **Next action:** S1, and in parallel S2a and S3a.
-- **Last verified:** 2026-10-02 — S0 observations against the deployed products; gates green on
-  this branch.
+- **Next action:** S2a and S3a (parallel-safe builder slices); A10 consumes S1's residual as
+  its geometric baseline.
+- **Last verified:** 2026-10-02 — S1 correction pass: study self-tests 9/9, note cross-check
+  84/84 against `_summary.json` (`50-check-note.mjs`); the audit re-run end to end from the
+  cached sources.
 
 ---
 
