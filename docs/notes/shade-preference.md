@@ -225,8 +225,9 @@ starting point, not a lock.
 
 **Known limits, filed not fixed.** Tapping a card to compare it is the same action as
 choosing it, so browsing A→B→A→B records four picks; the prior regularizes but a
-"settled selection" signal (on save, or on start-navigation) is the better event. After
-Reset the button unmounts, so keyboard focus falls to the body even though the row's
-`aria-live` announces the change. `applyLearnedPreference` and `selectRoute` are thin
-wiring over the tested `routeChoice`/`pickStore` pure functions but are not themselves
-hook-tested. All three are filed against Track S.
+"settled selection" signal (on save, or on start-navigation) is the better event (#228).
+After Reset the button unmounts, so keyboard focus falls to the body even though the
+row's `aria-live` announces the change, and the confirm step has no auto-disarm timer
+(#229). `applyLearnedPreference` and `selectRoute` are thin wiring over the tested
+`routeChoice`/`pickStore` pure functions but are not themselves hook-tested (#226), and
+the line is not cleared when a sketch or saved route replaces the cards (#227).
