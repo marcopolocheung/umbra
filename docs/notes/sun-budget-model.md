@@ -26,7 +26,7 @@ For a walk from `start` to `end`:
 start→end on a small fixture graph, computes each one's exact
 (cost metres, sun seconds) with the same per-edge rules, and takes the Pareto
 front. It is exhaustive and obviously correct, so it is slow — but a fixture is
-tens of nodes, not a city, so the whole file runs in **under a second**.
+a handful of nodes, not a city, so the whole file runs in **under a second**.
 
 Fixtures must place node coordinates consistently with their edge distances: the
 search's straight-line heuristic reads coordinates, so arbitrary positions give
@@ -43,7 +43,8 @@ questions.
 ## What it found — the published gap
 
 **The search is exact on the static fixtures (one time bucket), and loses a
-Pareto point where routes merge at an interior node across a bucket boundary.**
+Pareto point where routes merge at an interior node and the next edge crosses a
+bucket boundary.**
 
 The mechanism is the dominance rule. Within one time bucket, a label is dropped
 when another label at the same node is no later, no longer and no sunnier
@@ -72,7 +73,7 @@ is 57 s, and the dropped node-path is absent from the result.
 defect cannot occur by construction — the production's shortest equals the
 oracle's least-distance path, its least-exposed option equals the oracle's
 minimum sun seconds, and no returned option is dominated; that holds on the line
-fixture and on a randomized 2×3 grid. In time-aware mode the oracle has no
+fixture and on a fixed-seed 2×3 grid. In time-aware mode the oracle has no
 positive exactness evidence: the merge fixture above is the only time-aware case,
 and it shows the gap. (Both static fixtures do contain interior merges — a
 cross-link and a shared grid node — but with one bucket there is no boundary to
@@ -89,3 +90,7 @@ cross.)
   how much, is not established.
 - **The fix is not here.** Correcting the bucket-boundary dominance belongs to
   H1/H2's search (`routing.ts`); H4 measures the gap and publishes it.
+- **The bucket discretization error against continuous time is not measured.** The
+  oracle uses the same buckets as production, so it measures *search* error only.
+  The H1 note's pointer ("H4's oracle publishes it") is not satisfied here; a
+  continuous-shadow oracle is a separate piece.
