@@ -96,8 +96,9 @@ describe("detourPerSunMinute", () => {
 		expect(detourPerSunMinute({ alpha: 1.2, sigma: 0, n: 0 })).toBe(17);
 	});
 
-	it("never states a negative trade for a sun-loving walker", () => {
-		expect(detourPerSunMinute({ alpha: 0.6, sigma: 0, n: 0 })).toBe(0);
+	it("is signed — negative for a sun-loving walker, zero near indifference", () => {
+		expect(detourPerSunMinute({ alpha: 0.6, sigma: 0, n: 0 })).toBe(-34);
+		expect(detourPerSunMinute({ alpha: 1.001, sigma: 0, n: 0 })).toBe(0);
 	});
 });
 

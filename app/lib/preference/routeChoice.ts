@@ -118,11 +118,12 @@ export function resolvePreference(
 }
 
 /**
- * Metres of detour this walker accepts to remove one minute of open sun.
+ * Metres of detour this walker accepts to remove one minute of open sun, signed:
+ * positive is shade-seeking, ~0 is indifferent, negative is sun-seeking.
  * The detour rate is `α−1` (the model prices a sun metre at α and a shade metre
  * at 1, so removing a sun metre saves the walking metre too); a minute of sun
  * at `speedMps` is `60·speedMps` sun metres.
  */
 export function detourPerSunMinute(fit: PreferenceFit, speedMps = WALK_SPEED_MPS): number {
-	return Math.max(0, Math.round((fit.alpha - 1) * 60 * speedMps));
+	return Math.round((fit.alpha - 1) * 60 * speedMps);
 }

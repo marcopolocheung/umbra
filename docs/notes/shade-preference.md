@@ -199,8 +199,10 @@ The model now changes which card Umbra shows first.
   replaces the picks outright. Nothing writes the slot yet — S3b's panel is its editor.
 - **The card states the trade and can forget it.** The selected card carries
   "Learned from your N route picks: about M m of detour per minute of sun", where
-  `M = round((α−1)·60·1.4)` — one minute of walking is 84 m of sun at 1.4 m/s. A Reset
-  link clears the picks and re-selects on the prior.
+  `M = round((α−1)·60·1.4)` — one minute of walking is 84 m of sun at 1.4 m/s. M is
+  signed: negative (a sun-seeking walker) reads "you would rather walk in the sun" and
+  ~0 reads "shade and sun about even", so the card never claims a trade the model did
+  not find. A Reset clears the picks and re-selects on the prior.
 - **The manual "Fastest/Balanced/Most shade" slider is untouched.** It stays an explicit
   per-request override that moves the selection directly; the learned α only sets the
   *initial* default after a calculation.

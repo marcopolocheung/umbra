@@ -487,7 +487,9 @@ export default function RouteCard({
                 {": "}
                 {learnedPreference.detourM > 0
                   ? `about ${learnedPreference.detourM} m of detour per minute of sun`
-                  : "sun over shade, no detour priced"}
+                  : learnedPreference.detourM < 0
+                    ? "you would rather walk in the sun"
+                    : "shade and sun about even"}
               </span>
               {learnedPreference.picks > 0 && onResetLearnedPreference && (
                 <button
