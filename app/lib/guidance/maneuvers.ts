@@ -1,4 +1,4 @@
-import { bearingDegrees, haversineMeters, type OsmNode } from "../routing";
+import { bearingDegrees, haversineMeters, type OsmNode, type RoutingGraph } from "../routing";
 import type { Maneuver, ManeuverType } from "./types";
 
 /** Classify a signed bearing delta in [-180, 180). Positive turns go right. */
@@ -8,6 +8,23 @@ export function classifyTurn(bearingDelta: number): ManeuverType {
   if (angle < 50) return bearingDelta < 0 ? "slight-left" : "slight-right";
   if (angle <= 120) return bearingDelta < 0 ? "turn-left" : "turn-right";
   return bearingDelta < 0 ? "sharp-left" : "sharp-right";
+}
+
+/**
+ * Per-segment street names along a node path, from the graph's edges (B2). The
+ * bridge from `GraphEdge.name` to `generateManeuvers`'s `names`: an edge that
+ * cannot be found (or has no name) yields `undefined` for that segment.
+ */
+export function streetNamesAlong(
+  graph: RoutingGraph,
+  nodeIds: readonly number[],
+): (string | undefined)[] {
+  const names: (string | undefined)[] = [];
+  for (let i = 1; i < nodeIds.length; i++) {
+    const edge = graph.adj.get(nodeIds[i - 1])?.find((e) => e.toId === nodeIds[i]);
+    names.push(edge?.name);
+  }
+  return names;
 }
 
 /**
