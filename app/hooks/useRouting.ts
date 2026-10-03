@@ -1115,6 +1115,11 @@ export function useRouting({
             travelMode,
             totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
             surfaceMetresM: result.surfaceMetresM,
+            // H2: exposure duration (exposedDurationSec) reported alongside
+            // coverage on every route option — the objective the search just
+            // optimized, not a second opinion computed later. The rain branch
+            // above already sets exposureSegments and objective.
+            exposure: result.exposure,
           }));
         } else {
           const nodeChain = snappedStops.ids;

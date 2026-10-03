@@ -156,43 +156,47 @@ describe("paretoRoutes time-aware pricing (H1)", () => {
 
   it("keeps a later-arriving label whose remaining edges are the shaded ones", () => {
     // The dominance trap the H1 brief warns about: an earlier arrival is NOT
-    // automatically better. Two all-sun paths reach node 5 — a short one
-    // (2400 m, arriving ≈ 1714 s, bucket 1) and a long one (3600 m, arriving
-    // ≈ 2571 s, bucket 2). The final edge 5→6 is bare in buckets 0–1 and
-    // shaded in bucket 2. Only the slower path is still walking when the
-    // shade arrives — a rule that lets the earlier label prune the later one
-    // at node 5 throws that route away.
-    const sun = (toId: number, distanceM: number): GraphEdge =>
+    // automatically better. Two paths reach node 5 — a fast one (2400 m,
+    // arriving ≈ 1714 s, bucket 1) and a slow one (3600 m, arriving ≈ 2571 s,
+    // bucket 2). The slow path's late legs — reached in bucket 2 — are the
+    // shaded ones, so under the H2 duration objective it carries *less* sun
+    // time than the fast one despite the extra distance. A dominance rule
+    // that lets the fast label at node 5 prune the slow one throws the
+    // better route away.
+    const bare = (toId: number, distanceM: number): GraphEdge =>
       edge(toId, distanceM, 0, [0, 0, 0]);
+    const lateShade = (toId: number, distanceM: number): GraphEdge =>
+      edge(toId, distanceM, 0, [0, 0, 1]);
     // Coordinates roughly collinear with the declared distances so the
     // straight-line heuristic stays admissible and the detour-budget prune
     // does not kill the fixture before the search runs.
     const nodes = new Map<number, OsmNode>([
       [1, { id: 1, lat: 0, lon: 0 }],
-      [2, { id: 2, lat: 0.01078, lon: 0 }],
-      [3, { id: 3, lat: 0.01078, lon: 0.0001 }],
-      [4, { id: 4, lat: 0.02156, lon: 0.0001 }],
-      [5, { id: 5, lat: 0.02156, lon: 0 }],
-      [6, { id: 6, lat: 0.02266, lon: 0 }],
+      [2, { id: 2, lat: 0.0109, lon: 0 }],
+      [3, { id: 3, lat: 0.01171, lon: 0.0001 }],
+      [4, { id: 4, lat: 0.02342, lon: 0.0001 }],
+      [5, { id: 5, lat: 0.0343, lon: 0 }],
+      [6, { id: 6, lat: 0.0352, lon: 0 }],
     ]);
     const adj: Map<number, GraphEdge[]> = new Map([
-      [1, [sun(2, 1200), sun(3, 1200)]],
-      [2, [sun(1, 1200), sun(5, 1200)]],
-      [3, [sun(1, 1200), sun(4, 1200)]],
-      [4, [sun(3, 1200), sun(5, 1200)]],
-      [5, [sun(2, 1200), sun(4, 1200), edge(6, 100, 0, [0, 0, 1])]],
-      [6, [edge(5, 100, 0, [0, 0, 1])]],
+      [1, [bare(2, 1210), lateShade(3, 1300)]],
+      [2, [bare(1, 1210), bare(5, 1210)]],
+      [3, [lateShade(1, 1300), lateShade(4, 1300)]],
+      [4, [lateShade(3, 1300), lateShade(5, 1300)]],
+      [5, [bare(2, 1210), lateShade(4, 1300), lateShade(6, 100)]],
+      [6, [lateShade(5, 100)]],
     ]);
     const g: RoutingGraph = { nodes, adj };
 
     const timed = paretoRoutes(g, 1, 6, { timeAware: { bucketMs: BUCKET_MS, bucketCount: 3 } });
-    const timedBest = timed.reduce((a, b) =>
-      b.shadowCoverage > a.shadowCoverage ? b : a);
-    // The slow path reaches 5→6 in bucket 2, where it is shaded; the fast
-    // path walks it bare. The slow path must survive node 5 and win.
-    expect(timedBest.nodeIds).toEqual([1, 3, 4, 5, 6]);
-    expect(timedBest.shadowCoverage).toBeCloseTo(100 / 3700, 2);
-    const fast = timed.find((r) => r.nodeIds.includes(2));
-    if (fast) expect(fast.shadowCoverage).toBeCloseTo(0);
+    const best = timed.reduce((a, b) =>
+      (b.exposure?.exposedDurationSec ?? Infinity) < (a.exposure?.exposedDurationSec ?? Infinity) ? b : a);
+    // The slow path's first leg (arrival ≈ 929 s) is still in bucket 1 and
+    // bare, but every leg after it lands in bucket 2, shaded — so it carries
+    // ≈ 929 s of sun despite 4,000 m of walking. The fast path (2,420 m) is
+    // bare the whole way (≈ 1,729 s). The slow path must survive node 5 and
+    // win on sun time.
+    expect(best.nodeIds).toEqual([1, 3, 4, 5, 6]);
+    expect(best.exposure?.exposedDurationSec).toBeCloseTo(1300 / 1.4, 1);
   });
 });

@@ -859,8 +859,10 @@ describe("routing reads the shadow field (A4b)", () => {
     await runRouteWith(map);
 
     // The initial street pass remains one batch. A later transit access walk
-    // may legitimately sample its own edge set.
-    expect(shadowStub.sampledBatchSizes[0]).toBe(2);
+    // may legitimately sample its own edge set — and under load its 1-edge
+    // batch has been observed winning the race for index 0, so assert the
+    // invariant (the whole set handed over in one call) rather than the order.
+    expect(shadowStub.sampledBatchSizes).toContain(2);
   });
 
   it("routes anyway when the geometry preload fails", async () => {

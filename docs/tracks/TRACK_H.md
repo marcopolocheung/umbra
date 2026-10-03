@@ -12,32 +12,46 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H1 — **implemented on `feat/h1-traversal-time-exposure`; PR open.**
-  Labels carry `(distM, exposureM, arrivalSec)`; each edge's shadow is read from
-  `GraphEdge.timeShadow[bucket]` — the bucket the walker *arrives* in — from one
-  `field.sweep` over the detour-budget horizon, capped at 8 × 15-minute buckets
-  (A6's measurement says a sweep costs ≈ one `sampleEdges` per bucket, so the cap).
-  Dominance requires "no later" beside "no longer, no less shadowed" (full
-  revalidation deferred to H2, per its brief); reported metrics replay the
-  walker's clock so coverage matches the searched objective. The static
-  frozen-time path is intact — omit `timeAware` and behavior is unchanged, and
-  the pre-existing suite passes. Parameters, dominance note, and the committed
-  fixture comparison: **`docs/notes/time-aware-routing-h1.md`**.
-- **Gate (historical, met 2026-10-02):** A6 landed (its unmet acceptance
-  criterion, with numbers, is why the horizon is capped) and G2's baseline is
-  committed (`docs/notes/performance-baseline.md`).
-- **Done:** H1 (this branch). Earlier: **#208** — access tags survive the sidewalk split.
-- **Decisions made (H1):** edge priced at **end-of-edge arrival**; traversal clock
-  = the mode's cruise speed, penalties excluded (they are search cost, not
-  minutes); horizon = detour budget clamped to 8 buckets; pixel-fallback edges
-  stay frozen in time (stated limitation); sketch and exposure-refresh
-  pipelines stay static (H2/H3 consume them).
-- **Blocked on:** nothing for H2. H3 additionally needs A5.
-- **Next action:** H2 — exposure *duration* as the objective (`#241` bounds its claim;
-  measure the 2.0× detour factor through G2, don't blind-edit). The H4 oracle was
-  not written in H1's PR; take it with H2 or immediately after, before H3.
-- **Last verified:** 2026-10-02 — gates green in the H1 worktree; committed fixture
-  flips static-vs-time-aware with the difference attributed to specific edges.
+- **Active checkpoint:** H2 — **implemented, stacked on H1 in PR #222
+  (`feat/h1-traversal-time-exposure`); not merged.** The label criterion is
+  `exposureCrit`: **minimized sun seconds** (rain keeps maximized sheltered
+  metres). One honest clock — `edgeTraversalSeconds` (cruise speed, plus the
+  steps penalty as a time surrogate; the scooter rough-surface deterrent stays
+  OUT of the clock — it turned 20 m of cobbles into 340 s — and preferences
+  never ride below physical time) — prices exposure, arrival buckets and the
+  reported segment durations. Representatives re-derived; destFront candidates
+  sorted by cost (bucket-iteration order had been able to drop the true
+  shortest); knee per objective (rain's most-sheltered corner — a wrong
+  direction collapsed rain's front and deleted "Balanced");
+  `maxContinuousExposureSec` hard constraint plumbed and tested, with the
+  **sun-streak in the dominance comparison** (without it the cap could return
+  no route at all); every pareto walk option now carries `exposure` with
+  `exposedDurationSec` (card display is a Track U hand-off). Notes:
+  **`docs/notes/exposure-objective-h2.md`** (names the #241 Ma et al. bound;
+  #243's constant deliberately untouched — G2 follow-up filed as
+  marcopolocheung/umbra#223) and `docs/notes/time-aware-routing-h1.md`
+  (clock section superseded by H2).
+- **H1 — implemented in the same PR.** Labels carry arrival seconds; per-bucket
+  Pareto sets; `field.sweep` over the 8 × 15-min horizon; static path intact.
+- **Done:** H1, H2 (this PR). Earlier: **#208**.
+- **Decisions made:** H1 — end-of-edge arrival pricing; horizon = detour budget
+  clamped to 8 buckets; pixel-fallback edges frozen in time; sketch/refresh
+  pipelines static. H2 — duration criterion with the penalized-but-never-
+  discounted traversal clock (the E1 stairs test caught the cruise-only clock
+  pricing a steps shortcut as *least*-sun); knee re-derived;
+  `maxDetourFactor` untouched (#243 — G2's sweep owns it).
+- **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
+  G2 factor sweep (#243 follow-up, Track G).
+- **Next action:** H3 — Sun Budget reachability (needs A5; consume E's `Trip`).
+  The H4 oracle remains unwritten — take it before trusting any H3 output.
+- **Last verified:** 2026-10-02 — gates green in the H1/H2 worktree (one
+  full-suite order-dependent flake observed under back-to-back loaded runs —
+  `useNavigation.test.tsx` "hands the whole edge set to the field in one
+  batch" — its assertion made order-robust in this PR; re-run green).
+  Committed fixtures: static-vs-time-aware flip, later-arrival survival
+  (re-derived for the duration objective), Route-A/Route-B regression,
+  hard-constraint cap surviving dominance, rain three-representative knee —
+  each mutation-checked to fail on the broken rule it guards.
 
 ---
 

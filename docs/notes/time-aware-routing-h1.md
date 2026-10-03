@@ -20,10 +20,10 @@ stay static (below).
   linearly (below); coarser ones blur the morning/evening transitions this
   exists to catch.
 - **Walking speed: the mode's cruise speed** from `TRAVEL_MODE_POLICIES`
-  (`travelTimeSeconds(distanceM, mode)` — walk 1.4 m/s, bike 4.5, scoot 3.0).
-  Crossing and surface penalties are *search cost*, not clock minutes; pricing
-  them into arrival would push walkers into later buckets for reasons no clock
-  explains.
+  (walk 1.4 m/s, bike 4.5, scoot 3.0). *(Superseded by H2 — see
+  `exposure-objective-h2.md`: the exposure clock is now `edgeTraversalSeconds`,
+  which lets the mode's penalties slow the clock, because a 500 m-cost flight
+  of steps is not 22 seconds of biking. Crossing waits stay off the clock.)*
 - **Edge pricing semantics: at end-of-edge arrival.** An edge spanning buckets
   is priced wholly at the bucket containing the arrival at its far node — the
   walker is on the edge *before* that instant, so this prices the last, not

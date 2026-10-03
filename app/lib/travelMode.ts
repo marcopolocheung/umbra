@@ -281,6 +281,26 @@ export function modeAdjustedDistanceM(edge: ModeEdgeTags, mode: TravelModeId): n
 }
 
 /**
+ * One edge's traversal time on the exposure clock (H2): physical distance over
+ * the mode's cruise speed, except that a steps edge costs a bike/scoot rider
+ * the dismount — the steps penalty is metres-at-speed, the same convention the
+ * crossing penalty uses, so 100 m of steps is not 22 s of riding.
+ *
+ * Only the steps penalty enters the clock. The scooter's rough-surface
+ * penalty (1000 m) is a documented *deterrent*, not a duration — pricing it
+ * as time turned 20 m of cobbles into 340 s of sun — and a preference
+ * discount never rides below the edge's physical time. Crossing waits stay
+ * off the clock (unmodelled waiting is H5's).
+ */
+export function edgeTraversalSeconds(edge: ModeEdgeTags, mode: TravelModeId): number {
+  const policy = getTravelModePolicy(mode);
+  const slowM = mode !== "walk" && edge.highway === "steps"
+    ? edge.distanceM + policy.stepsPenaltyM
+    : edge.distanceM;
+  return Math.max(edge.distanceM, slowM) / policy.speedMps;
+}
+
+/**
  * Lower bound on (mode-adjusted cost ÷ physical distance) over any edge,
  * derived from each mode's own policy: a mode with no discount (walk, scoot)
  * keeps every edge's full length, so the ratio is 1; bike's capped discount
