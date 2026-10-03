@@ -12,8 +12,16 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H2 — **implemented, stacked on H1 in PR #222
-  (`feat/h1-traversal-time-exposure`); not merged.** The label criterion is
+- **Active checkpoint:** H4 — **implemented in part on `feat/h4-oracle`** (this branch): the
+  oracle and the published gap are in `docs/notes/sun-budget-model.md`. The checkpoint's
+  Approach items (four property tests, the runtime/memory/cache figures) and the P4 hand-off
+  are NOT in this PR. H1/H2 are merged (#222, #224). H3 is next.
+- **H4 (this branch):** `app/lib/__tests__/routingOracle.test.ts` — exhaustive path enumeration
+  as ground truth for the H1/H2 search on small fixtures. Result: the search is exact on
+  static fixtures, but **loses a Pareto point at a bucket-boundary merge**
+  (measured: production 57.00 s vs the true 55.00 s on the fixture — a 2.00 s miss, 3.6% of the
+  optimum, and a non-dominated option dropped). 6 tests.
+- **H2 (merged #222):** The label criterion is
   `exposureCrit`: **minimized sun seconds** (rain keeps maximized sheltered
   metres). One honest clock — `edgeTraversalSeconds` (cruise speed, plus the
   steps penalty as a time surrogate; the scooter rough-surface deterrent stays
@@ -33,7 +41,7 @@ G's fixture and benchmark infrastructure).
   (clock section superseded by H2).
 - **H1 — implemented in the same PR.** Labels carry arrival seconds; per-bucket
   Pareto sets; `field.sweep` over the 8 × 15-min horizon; static path intact.
-- **Done:** H1, H2 (this PR). Earlier: **#208**.
+- **Done:** H1, H2 (#222, #224). Earlier: **#208**.
 - **Decisions made:** H1 — end-of-edge arrival pricing; horizon = detour budget
   clamped to 8 buckets; pixel-fallback edges frozen in time; sketch/refresh
   pipelines static. H2 — duration criterion with the penalized-but-never-
@@ -43,8 +51,10 @@ G's fixture and benchmark infrastructure).
 - **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
   G2 factor sweep (#243 follow-up, Track G).
 - **Next action:** H3 — Sun Budget reachability (needs A5; consume E's `Trip`).
-  The H4 oracle remains unwritten — take it before trusting any H3 output.
-- **Last verified:** 2026-10-02 — gates green in the H1/H2 worktree (one
+  The H4 oracle is written and found a bucket-boundary dominance gap; it gives H3's *path* search
+  ground truth (it does not test a reachability region) — and that gap to fix in H1/H2's search.
+- **Last verified:** 2026-10-03 — H4 on `feat/h4-oracle`: lint (0 errors), typecheck, tests
+  (oracle 6/6), build all green. 2026-10-02 — gates green in the H1/H2 worktree (one
   full-suite order-dependent flake observed under back-to-back loaded runs —
   `useNavigation.test.tsx` "hands the whole edge set to the field in one
   batch" — its assertion made order-robust in this PR; re-run green).
