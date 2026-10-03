@@ -16,8 +16,13 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** S2b — PR open (learned preference wired into the default route
-  card). H1/H2 landed on `main` (#222/#224), which unblocked it. S3b and S4b remain.
+- **Active checkpoint:** S2b — **built but BLOCKED, no PR** (branch
+  `feat/s2b-learned-preference`, pushed, 5 commits). The grounding audit's third pass
+  found the learned-trade line's ±band is falsely precise while picks are recorded on
+  every card tap (#228): a look-and-return records two contradictory picks and collapses
+  σ. The checkpoint is abandoned this run per the verify→fix cap; fix #228 (record on a
+  settled event) and the estimator issues #230/#231, then re-open. H1/H2 landed on
+  `main` (#222/#224), which unblocked it. S3b and S4b remain.
 - **S2b (PR open):** `app/lib/preference/pickStore.ts` records card picks in
   `localStorage`; `app/lib/preference/routeChoice.ts` turns α into the default card and
   the stated trade; `useRouting` selects it at calculation time and records a pick when
