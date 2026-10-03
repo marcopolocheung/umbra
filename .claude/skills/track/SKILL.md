@@ -1,7 +1,7 @@
 ---
 name: track
 description: Boot a Umbra track session — load the brief, confirm the baseline, pick the next checkpoint, and start work. One session owns one track for its whole life.
-argument-hint: <a|b|c|d|e|f|g|h|p|r|s|u> [checkpoint id, e.g. A3]
+argument-hint: <a|b|c|d|e|f|g|h|l|p|r|s|u> [checkpoint id, e.g. A3]
 arguments: [track, checkpoint]
 disable-model-invocation: true
 allowed-tools:

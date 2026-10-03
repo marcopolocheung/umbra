@@ -165,6 +165,10 @@ worth blocking on, because it removes the ⚠️s from this table permanently.
 paths. Its integration slices are ⚠️ with C (S3b edits `app/lib/agent/**`) and with H and E
 (S2b reads the route objective H2 changes).
 
+**Track L (route latency) is ⚠️ with H, A, E and G.** L0 only adds timing brackets, but L2–L4
+change how exposure is priced and searched (`routing.ts`, `ShadowField`, `useRouting.ts`); agree
+the order in an issue before two of them edit those files at once.
+
 **Track C is the friendliest to run alongside anything** — it owns `app/lib/agent/**` outright
 and consumes everyone else through tool wrappers.
 
