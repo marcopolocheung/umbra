@@ -5,9 +5,13 @@
 > itself, and an assistant memory that changes the route.** Then run the sprint that lands those
 > beside Tracks H, A, C and B in parallel.
 
-**Class:** Flagship evidence. **Runs alongside:** B, D, G, P freely; ⚠️ C (S3b edits
-`app/lib/agent/**`); ⚠️ H and E (S2b reads the route objective H2 changes); ⚠️ A (S1 measures
-A8's canopy, so take A8's numbers from `main`, never from an open PR).
+> **Scope narrowed 2026-10-03 (owner):** the track continues with **S1 and S4 only**. S2b and
+> S3b/S3c are dropped; S2a and S3a stay merged as standalone modules with their notes, and nothing
+> in the product calls them. See "Current state".
+
+**Class:** Flagship evidence. **Runs alongside:** B, C, D, E, G, H, P freely (the C/H/E overlaps
+were S2b and S3b, both dropped); ⚠️ A (S1 measures A8's canopy, so take A8's numbers from `main`,
+never from an open PR); ⚠️ the shell for S4b's mount point.
 **Source:** `docs/research/Umbra_ML_Prior_Art_and_Hiring_Signal_2026-10-02.md` — read its
 ranking table and "do not build" list before taking any checkpoint here. Every claim below about
 prior art comes from it, with links.
@@ -16,8 +20,13 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** none unblocked — the first wave is all merged (S1 #219, S3a #221,
-  S2a #215, S4a #216); every b-slice is blocked (see below).
+- **Active checkpoint:** S4 — first the S4a ground-geometry fix (#235), then S4b, then the
+  photo evaluation (#217). The first wave is all merged (S1 #219, S3a #221, S2a #215, S4a #216).
+- **Scope decision (2026-10-03, owner):** Track S is **S1 + S4**. S2b and S3b/S3c are dropped as
+  weak hiring signal for their cost: S2's model is a one-parameter-per-person logit that does not
+  beat the pooled baseline, and S3's memory is commodity without an eval that would likely tie
+  full-history-in-prompt. Their issues (#226–#234) are closed as not planned. The unmerged S2b
+  wiring stays on `feat/s2b-learned-preference` for reference.
 - **S1 (merged #219):** shade reality audit vs NYC LiDAR (`studies/shade-audit/` +
   `docs/notes/shade-accuracy.md`). First published shade-error figure, against a 2017 LiDAR
   highest-hit truth over 8 blocks × 4 boroughs × 3 dates × 5 hours. Corrected 2026-10-02:
@@ -42,18 +51,26 @@ prior art comes from it, with links.
   provider text and unknown tools; 13 unit tests; contract note `docs/notes/assistant-memory.md`.
   A scoped replacement for #214, whose branch was cut from the wrong lineage and carried 138
   unrelated files against `umbra/main`; the store's five files are the only content there.
+  **Final:** S3b/S3c dropped 2026-10-03; the store stays merged and unused.
 - **S2a (merged #215):** `app/lib/preference/` + `studies/shade-preference/` +
   `docs/notes/shade-preference.md`. The refit reproduces β̄ = 1.205 (paper ≈ 1.16) and ρ = 0.414
   (≈ 0.5), and beats the population-mean α and shadewalker's fixed ladder online at every k —
   but **does not beat the non-hierarchical pooled logit on held-out log-likelihood** (9 picks per
   person is too few), reported as a partial negative result. The module ships as prior + note;
-  nothing in the product calls it yet. OSF data is individual-level and unlicensed — cached, never
-  committed.
+  nothing in the product calls it. OSF data is individual-level and unlicensed — cached, never
+  committed. **Final:** S2b dropped 2026-10-03; the note is the deliverable.
 - **S4a (merged #216):** `app/lib/chronolocation/` + `docs/notes/chronolocation.md` — the solver
   turns pinned photo marks into two date windows and a time band, or abstains. 15 tests on
   geometric fixtures (round trips through the real sun model, abstention, timezone labels, the
   ShadowField cross-check); the real-photo field evaluation is outstanding and filed as **#217**.
   The `ShadowMarks`/`PhotoFrame`/`solveChronolocation` interface is the contract S4b builds on.
+  **Defect (#235, found 2026-10-03):** `observeShadow` takes the shadow's azimuth from the
+  image-bearing difference, not a ground-plane direction; on 221 synthetic photos the true time
+  fell inside the answer 0 times. The sweep is sound (true sun angles solve every case). Fixing it
+  needs camera pitch (device tilt or a marked horizon) to project marks onto the ground.
+- **S4b (built, held):** `feat/s4b-chronolocation-panel` — photo intake, three marks, heading/hFOV,
+  windows-or-abstain; gates green. Held because it would surface #235's wrong answers; its own
+  follow-ups are #236–#245 (#245: the cross-check never receives a `ShadowField`).
 - **Done:** S0, both halves — the 2026-10-02 desk research, then the hands-on recheck on
   2026-10-02: five fixed NYC pairs × three departure times through shadewalker.nyc and Umbra,
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
@@ -84,13 +101,16 @@ prior art comes from it, with links.
   height/footprint-part error versus demolitions and same-lot replacements. Bound: 16% of tall
   LiDAR building area lies under no Umbra footprint. The next measurement is a per-building
   height audit against the LiDAR; no post-2017 city surface is public.
-- **Blocked on:** nothing in the review queue. S2b waits for H2 — Track H's brief says H1 has
-  not started. S3b edits `app/lib/agent/**` while Track C is mid-C10 on the same files, so it
-  needs coordination first. S4b needs a free mount point in the shell (U7 in flight).
-- **Next action:** S2b the moment H2 lands (H1 has not started); S3b once Track C's C10 clears;
-  S4b when a shell mount point frees. Nothing else in this track is startable — the lower-priority
-  items wait on S1–S3 having landed *and* their baselines being in hand. A10 consumes S1's
-  residual as its geometric baseline.
+- **Blocked on:** nothing. S4b's shell mount point is the only shared-file touch.
+- **Next action:**
+  1. **#235** — ground geometry in `observeShadow`; turn the 221-case synthetic projection check
+     into a regression test (no photos needed).
+  2. **S4b** — rebase `feat/s4b-chronolocation-panel` onto the fixed solver; close #236–#245.
+  3. **#217** — the photo evaluation. The solver is location-agnostic (only the `ShadowField`
+     cross-check is NYC-bound), so the set may include non-NYC photos; the note must say how
+     many are NYC.
+  4. Track P publishes S1's figure and, once measured, S4's.
+  A10 consumes S1's residual as its geometric baseline.
 - **Last verified:** 2026-10-03 — S2a/S3a/S4a merged (gates green on each merged tree: 1904–1916
   tests); S1's own verification stands from 2026-10-02 (study self-tests 9/9, note cross-check
   84/84 against `_summary.json`).
@@ -186,7 +206,7 @@ picks until α is within ±20% of the truth.
 **Files.** `studies/shade-preference/**`, `app/lib/preference/**` + tests,
 `docs/notes/shade-preference.md`.
 
-**S2b — wiring (sequential; after H2).** Record which route card a user picks into
+**S2b — wiring. Dropped 2026-10-03 (owner); spec kept for the record.** Record which route card a user picks into
 `localStorage`, beside saved routes. Feed α into the default route selection, and into H2's
 exposure objective once H2 lands. Add a visible, resettable line on the route card in the
 redesign voice, stating the learned trade in metres of detour per minute of sun. The stated
@@ -213,7 +233,7 @@ not a vector store (ROADMAP anti-goal).
   the July 2026 email-borne false-memory attack). Align with C10's trust boundary.
 - `localStorage` only; accounts stay declined (ROADMAP "Not doing").
 
-**S3b — integration (sequential; coordinate with Track C).** Memory reaches the loop through a
+**S3b — integration. Dropped 2026-10-03 (owner), with S3c; spec kept for the record.** Memory reaches the loop through a
 tool call, so every use appears in the existing receipts (C5). A memory panel lets the user see,
 edit and delete entries, with an incognito toggle. A stated sun tolerance sets S2's prior.
 **Eval (S3c, in Track C's harness).** 30–50 scripted cases, graded deterministically: plain
@@ -242,8 +262,9 @@ exists. The gap is real but narrow, so keep the claim narrow.
 
 **S4b — the panel (sequential).** Photo intake and point marking, in the redesign. Mounting it
 touches the shell.
-**Eval.** A self-collected NYC photo set (60 or more) with trusted EXIF times, stratified by solar
-elevation and season, including overcast shots that must abstain. Report median minutes of error,
+**Eval.** A self-collected photo set (60 or more; NYC preferred, others allowed since the solver
+is location-agnostic — report the split) with trusted EXIF times, stratified by solar elevation
+and season, including overcast shots that must abstain. Report median minutes of error,
 % within 15 and 30 minutes, the date-candidate hit rate, and abstention accuracy.
 **Must beat.** A Gemini vision time guess on the same photos (same key, cheap), GT-Loc's published
 2.72 h mean error, and a human doing the manual ShadeMap workflow on a subset.
@@ -251,7 +272,7 @@ elevation and season, including overcast shots that must abstain. Report median 
 **Files.** `app/lib/chronolocation/**` + tests, a new component, `docs/notes/chronolocation.md`.
 
 ### Lower priority — specified so nobody starts them believing they are higher
-From the research ranking. Take one only when S1–S3 have landed and its baseline is in hand.
+From the research ranking. Take one only when S4 has landed and its baseline is in hand.
 - **Per-edge exposure surrogate** (gradient-boosted trees on canyon geometry, orientation,
   canopy and sun position, labelled from S1). Must beat a **precomputed lookup table**, and
   probably will not.
@@ -285,10 +306,10 @@ plan that respects it.
 |---|---|---|---|
 | 1 | **Track H** | H1 → H2 → H4 → H3 → H5 → H7 → H6 | ⚠️ A, E on `routing.ts` |
 | 2 | **Track A** | A8f → A5 → A10 (after S1 publishes the residual) | ⚠️ H on `routing.ts` |
-| 3 | **Track C** | C10 → C11 → C13 (with S3c's cases, pass^k reporting) → C12 | ⚠️ S3b |
+| 3 | **Track C** | C10 → C11 → C13 (pass^k reporting) → C12 | ✅ (S3b dropped) |
 | 4 | **Track B** | B2 → B6 | ✅ |
 | 5a | **Track S, `builder` worktrees** | S1 · S2a · S3a · S4a, all at once | ✅ disjoint new paths |
-| 5b | **Track S, session** | S0, then S2b (after H2) → S3b → S4b | ⚠️ C, H |
+| 5b | **Track S, session** | S0, then #235 → S4b → #217 (S2b/S3b dropped) | ⚠️ shell (S4b mount) |
 | 6 | **Track P** | Publish S1's figure, then H4's gap, as each lands | ✅ |
 
 **Lane 5a is the only place inside one track where fan-out is allowed**, because S1, S2a, S3a and
@@ -323,9 +344,8 @@ the track.
 
 - **Overclaiming the audit.** LiDAR-vs-Umbra is geometry against geometry. Call it physical
   accuracy and it becomes the overclaim §2 was written to prevent.
-- **A model nobody needs.** The preference model's online half can only be validated in
-  simulation until there are real users. Ship the prior and the honest note; do not invent a
-  user study.
+- **A model nobody needs.** Realised: S2b was dropped for it (2026-10-03). The prior and its
+  honest note are the whole deliverable; do not invent a user study.
 - **Memory as a vector store.** The anti-goal stands. Typed slots and deterministic resolution
   are the design, and the eval is what makes it signal.
 - **Licences.** Check and record the licence for every dataset S1–S4 touch: Zenodo 14053441, Ma
@@ -336,8 +356,8 @@ the track.
 
 - Traversal-time exposure, the exact oracle, Sun Budget reachability → **Track H**.
 - Trees in the shade model, the A10 field calibration set and learned correction → **Track A**.
-- The assistant's held-out, repeated evaluation program → **Track C** (C13). S3c adds cases to it
-  and does not fork it.
+- The assistant's held-out, repeated evaluation program → **Track C** (C13). (S3c, which would
+  have added memory cases to it, is dropped.)
 - README, numbers page and demo → **Track P**.
 
 ## Owns

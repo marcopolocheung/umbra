@@ -77,8 +77,8 @@ not enough. The completed artifact must expose these independent proofs:
 | Defensible Geo optimization | H1–H7, exposed by H6 | Time-dependent constrained search, brute-force oracle, integer reference, LP/convex relaxation, published gaps and agent-visible certificates |
 | Code-enforced safety and accessible use | C10, C15, G5 | Adversarial trust-boundary tests and a keyboard/screen-reader-complete plan/evidence journey |
 | A measured shade error bar *(added 2026-10-02)* | S1 | Umbra's shade vs a NYC LiDAR surface-model shade raster: mean, p90, worst case, building-only vs canopy. No shade router publishes one |
-| A model Umbra trains and evaluates itself *(added 2026-10-02)* | S2 | Hierarchical shade-preference model reproducing a published study, participant-blocked holdout, beating population-mean and fixed-ladder baselines, wired into route choice |
-| Memory that changes a decision, evaluated *(added 2026-10-02)* | S3 | Typed, time-valid, provenance-carrying memory; scripted update/contradiction/abstention/poisoning cases; beats no-memory and full-history-in-prompt baselines or reports the tie |
+| ~~A model Umbra trains and evaluates itself~~ *(added 2026-10-02, dropped 2026-10-03)* | S2 | S2a merged as a prior + note with a partial negative result; S2b (wiring) dropped — see `TRACK_S.md` |
+| ~~Memory that changes a decision, evaluated~~ *(added 2026-10-02, dropped 2026-10-03)* | S3 | S3a store merged and unused; S3b/S3c dropped — see `TRACK_S.md` |
 
 This is intentionally a higher bar than “good personal project.” It does not pretend a repository
 proves years of employment, credentials, teamwork, adoption at Google scale, or interview
@@ -165,8 +165,9 @@ arXiv 1910.04312, 2019) recompute exposure every 5 minutes and run a time-aware 
 compare against pricing at departure time. Cite it beside Fujiwara.
 
 **What still nobody publishes, and what therefore carries the claim:** a measured shade error
-(**S1**), a static-vs-traversal-time ablation over many trips (**H1/H4**), a learned per-walker
-shade preference (**S2**), and an assistant memory that changes the route under an eval (**S3**).
+(**S1**), a static-vs-traversal-time ablation over many trips (**H1/H4**), and photo dating from
+shadows (**S4**). A learned per-walker preference (S2) and evaluated memory (S3) were also listed
+here; both were dropped 2026-10-03 as weak signal for their cost.
 The desk claims above were replaced by observed ones on 2026-10-02 — `docs/notes/competitors.md`
 holds the method, the raw tables and the corrections.
 
@@ -206,11 +207,11 @@ lane table, the file-ownership rules that make it safe, and the launch prompts a
 | 2 | **A** | A8f → A5 → A10 | Trees close the consumer-parity gap. A10 waits for S1's residual |
 | 3 | **C** | C10 → C11 → C13 | The dependable agent core, then repeated held-out evaluation (report pass^k) |
 | 4 | **B** | B2 → B6 | "Cross to the shadowed side" is the instruction nobody else can generate |
-| 5 | **S** | S1 · S2a · S3a · S4a in parallel worktrees | The error bar, the owned model, the memory store and the photo solver, all in new paths |
+| 5 | **S** | S1 · S4 (#235 → S4b → #217) | The error bar and the photo solver. S2/S3 dropped 2026-10-03 after their a-halves merged |
 | 6 | **P** | Publish each number as it lands | A number on `main` that nobody can see is worth nothing |
 
 **Collision points, and nowhere else:** `routing.ts` (H, A, E: agree in an issue who goes
-first), `app/lib/agent/**` (C, and S3b), and the shell files `page.tsx` / `MapView.tsx` (any
+first), `app/lib/agent/**` (C), and the shell files `page.tsx` / `MapView.tsx` (any
 b-slice that mounts UI). Everything in lane 5's first wave is a new directory.
 
 ### NOW — Wave 0: truth · blocks new checkpoints
@@ -495,7 +496,7 @@ proposals that were considered and declined.
 | A learned replacement for the WebGL shadow renderer | **Declined** *(2026-10-02)* | Building shadow is exact geometry the renderer already computes in real time. A model would be slower and less accurate (§5e). |
 | Training a shadow detector, or a canopy-height, green-view or building-height model for NYC | **Declined** *(2026-10-02)* | Mature and open elsewhere, with error bars. NYC's own LiDAR products beat the global ML layers locally. Trees come in as data (A7/A8), not as a model. |
 | Planet-scale photo geolocation, learned walking ETA | **Declined** *(2026-10-02)* | PIGEON/GeoCLIP and Google's GNN ETA are mature, and public traffic data is freeway sensors. S4 (time from shadows, at a known place) is the narrow version worth doing. |
-| "The assistant remembers my hotel" as a feature on its own | **Declined** *(2026-10-02)* | Commodity: Ask Maps, ChatGPT, Gemini and Claude all remember. Only S3's evaluated, route-changing version earns a place. |
+| "The assistant remembers my hotel" as a feature on its own | **Declined** *(2026-10-02)* | Commodity: Ask Maps, ChatGPT, Gemini and Claude all remember. S3's evaluated version was also dropped (2026-10-03). |
 
 ---
 
@@ -544,10 +545,11 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
   Shadow Design Studio *(optimization portion superseded by H7)* · Option D Comfort Engine
 
 **The hiring sprint — Track S** *(added 2026-10-02; runs beside every wave above)*
-- [x] **S0** competitor recheck, hands-on *(done 2026-10-02 — `docs/notes/competitors.md`)* · [ ] **S1** shade reality audit vs NYC LiDAR *(the error bar)*
-- [ ] **S2a** shade-preference prior + model · [ ] **S2b** learned preference wired into route choice *(after H2)*
-- [ ] **S3a** typed memory store · [ ] **S3b** memory in the assistant + panel · [ ] **S3c** memory cases in C13's harness
-- [ ] **S4a** shadow chronolocation solver · [ ] **S4b** photo panel
+*Scope narrowed 2026-10-03 (owner): S1 + S4 only.*
+- [x] **S0** competitor recheck, hands-on *(done 2026-10-02 — `docs/notes/competitors.md`)* · [x] **S1** shade reality audit vs NYC LiDAR *(the error bar — #219)*
+- [x] **S2a** shade-preference prior + model *(#215)* · ~~S2b learned preference wired into route choice~~ *(dropped)*
+- [x] **S3a** typed memory store *(#221)* · ~~S3b memory in the assistant + panel~~ · ~~S3c memory cases~~ *(dropped)*
+- [x] **S4a** shadow chronolocation solver *(#216; ground-geometry defect #235 open)* · [ ] **S4b** photo panel · [ ] photo evaluation *(#217)*
 - Gate notes, verified 2026-10-02 against the briefs: **G2 is done** and **A6 is landed** with one
   acceptance criterion unmet, so Wave 2 may start. Tick those two in their own tracks' PRs.
 
@@ -746,7 +748,7 @@ research strands, all claims linked). What it changed, so no session re-derives 
   now says which clauses still hold.
 - **Four things nobody publishes:** a measured shade error, a static-vs-traversal-time ablation,
   a learned per-walker preference, and an evaluated memory that changes the route. Each became a
-  checkpoint: S1, H1/H4 (already planned), S2, S3.
+  checkpoint: S1, H1/H4 (already planned), S2, S3. S2b and S3b/S3c were dropped 2026-10-03.
 - **Hiring evidence is consistent on what earns trust:** a simple baseline the model must beat,
   error analysis, self-collected data, held-out splits that respect geography, and measured
   latency. Tree models are respected on tabular data when the choice is explained. Current Google
@@ -779,9 +781,7 @@ public mirror.
 | ⬜ | "Trained and calibrated a geospatial shadow-correction model with neighborhood and date holdouts; measured [metric] and [route impact], with versioned deployment, drift checks and rollback." | A10 |
 
 | ⬜ | "Measured a NYC shade model against a LiDAR surface-model raster across [N] blocks and [M] sun positions: mean [x], p90 [y], worst [z]; adding canopy cut segment error by [d]." | S1 |
-| ⬜ | "Trained a hierarchical Bayesian shade-preference model on a published choice study (reproduced β̄ = 1.16), beat population-mean and fixed-ladder baselines on participant-blocked holdouts, and wired it into route selection." | S2 |
-| ⬜ | "Built typed, time-valid assistant memory with provenance and a poisoning-resistant write policy; [latest-value accuracy] and [false-use rate] over [N] scripted cases vs no-memory and full-history baselines." | S3 |
-| ⬜ | "Dated photos from their shadows by inverting a sun and building-shadow model: median [m] min error on [N] self-collected NYC photos, abstaining on [k] overcast shots, vs a Gemini vision baseline." | S4 |
+| ⬜ | "Dated photos from their shadows by inverting a sun and building-shadow model: median [m] min error on [N] self-collected photos ([k] NYC), abstaining on [k] overcast shots, vs a Gemini vision baseline." | S4 |
 
 **Two of six are already earned and merely unpublished.** That is the cheapest value available
 anywhere in this document.

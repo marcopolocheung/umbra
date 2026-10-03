@@ -426,8 +426,7 @@ version, temperature, seed where supported, and failure classification.
 **Acceptance.** Development and held-out sets are mechanically separated and leakage-checked;
 the real-tool tier catches at least one failure that stubs do not; repeated results include
 sample count and intervals, including **pass^k** (a task counts only if it passes on all k
-repeats, as τ-bench reports it); Track S's S3c memory cases run in this harness rather than a
-fork of it; every headline metric links to raw traces and includes partial,
+repeats, as τ-bench reports it); every headline metric links to raw traces and includes partial,
 unknown, timeout, and failure outcomes. A deliberately degraded loop/model is detected. CI runs
 the deterministic tier, scheduled/manual automation runs the live tiers within a declared quota,
 and regression thresholds gate C14 promotion.
