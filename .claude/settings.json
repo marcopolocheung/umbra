@@ -67,6 +67,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/apply-agent-models.sh",
+            "args": [],
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PreToolUse": [
