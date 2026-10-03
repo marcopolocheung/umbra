@@ -60,8 +60,10 @@ These constants ship in `app/lib/preference/prior.ts`
   in log(α) space with backtracking, and the Laplace band (observed information at the
   mode). `updatePreference(picks)` is the whole entry point: prior + picks → α with a
   ±1σ band. Cold start (no picks) = population mean with the population's spread.
-- `update.ts` — the browser-facing API; `detourPerSunM(fit)` is the number S2b's route
-  card will state as "your learned trade: N m of detour per minute of sun".
+- `update.ts` — the browser-facing API; `detourPerSunM(fit)` is α to two decimals (the
+  model card's published exchange rate). It is **not** the route card's detour rate:
+  S2b states `α−1` per metre of sun (`routeChoice.detourPerSunMinute`), because removing
+  a sun metre saves the walking metre too.
 
 Cost: single-digit milliseconds for realistic histories (≤ 200 ascent steps × picks);
 bounded by construction.
@@ -92,9 +94,11 @@ never random rows from one person.
 
 **What it must beat, and whether it did:**
 
-- **Population-mean α — beaten** online at every k ≥ 1 on both LL and accuracy (the one
-  comparison where the hierarchical update earns its keep: a user's own picks carry
-  signal the population mean doesn't). Cold they tie by construction.
+- **Population-mean α — beaten** on held-out log-likelihood at every k ≥ 1, and on
+  accuracy at k = 1 and k = 3 (the one comparison where the hierarchical update earns
+  its keep: a user's own picks carry signal the population mean doesn't). It loses
+  accuracy at k = 2, 4, 5 and 8 (e.g. 0.7531 vs 0.7750 at k = 2). Cold they tie by
+  construction.
 - **shadewalker's fixed ladder — beaten** at every k ≥ 1, decisively on LL (the ladder's
   best-rung-on-picks is a high-variance discrete update; it can't do smooth per-user
   learning). The ladder's cold LL is slightly better because its cold α = 1.0 is closer
@@ -197,12 +201,13 @@ The model now changes which card Umbra shows first.
 - **The stated sun-tolerance slot wins over the learned value.** The S3a `sunTolerance`
   slot (low/moderate/high → α 2.0/1.205/0.5) is read at calculation time; when set it
   replaces the picks outright. Nothing writes the slot yet — S3b's panel is its editor.
-- **The card states the trade and can forget it.** The selected card carries
-  "Learned from your N route picks: about M m of detour per minute of sun", where
-  `M = round((α−1)·60·1.4)` — one minute of walking is 84 m of sun at 1.4 m/s. M is
-  signed: negative (a sun-seeking walker) reads "you would rather walk in the sun" and
-  ~0 reads "shade and sun about even", so the card never claims a trade the model did
-  not find. A Reset clears the picks and re-selects on the prior.
+- **The card states the trade only when the fit supports it, and can forget it.**
+  `M = round((α−1)·60·1.4)` — one minute of walking is 84 m of sun at 1.4 m/s — with a
+  ±1σ band `B = round(σ·84)`. The card states a direction only when the band sits
+  entirely on one side of zero; otherwise it says "not enough picks yet to tell your
+  shade preference" (`routeChoice.tradeIsDirectional` / `learnedTradeLine`). A stated
+  tolerance is stated directly; the population prior is stated as a population figure,
+  not a claim about this walker. A Reset clears the picks and re-selects on the prior.
 - **The manual "Fastest/Balanced/Most shade" slider is untouched.** It stays an explicit
   per-request override that moves the selection directly; the learned α only sets the
   *initial* default after a calculation.
@@ -223,6 +228,15 @@ re-price the search itself (a `routing.ts` change, Track H's file). The manual s
 the learned default can disagree until the user drags one — the learned value is a
 starting point, not a lock.
 
+**Why this ships despite the S2a partial negative.** The S2a rule — a model that does
+not beat its non-ML baseline does not ship to users — is met on the two named baselines:
+the population-mean α and shadewalker's fixed ladder are both beaten online. The loss is
+to the non-hierarchical *pooled logit*, reported in S2a as a partial negative, and
+`docs/tracks/TRACK_S.md`'s S2b checkpoint is the owner's instruction to wire the model
+into the product anyway — on the strength of the online win over the population mean and
+the abstention above. The card states no direction the ±1σ band does not support. The
+shipping call itself is flagged for explicit owner confirmation in an issue.
+
 **Known limits, filed not fixed.** Tapping a card to compare it is the same action as
 choosing it, so browsing A→B→A→B records four picks; the prior regularizes but a
 "settled selection" signal (on save, or on start-navigation) is the better event (#228).
@@ -230,4 +244,7 @@ After Reset the button unmounts, so keyboard focus falls to the body even though
 row's `aria-live` announces the change, and the confirm step has no auto-disarm timer
 (#229). `applyLearnedPreference` and `selectRoute` are thin wiring over the tested
 `routeChoice`/`pickStore` pure functions but are not themselves hook-tested (#226), and
-the line is not cleared when a sketch or saved route replaces the cards (#227).
+the line is not cleared when a sketch or saved route replaces the cards (#227). Two
+estimator mismatches remain: cold start uses the prior mean while any fit uses the MAP
+(#230), and picks are filed from `shadowCoverage` while the default is ranked on
+`exposedDurationSec` (#231).

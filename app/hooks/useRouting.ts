@@ -116,6 +116,7 @@ import { createPickStore, pickFromRoutes } from "../lib/preference/pickStore";
 import {
   type ChoiceOption,
   defaultRouteIndex,
+  detourBandM,
   detourPerSunMinute,
   resolvePreference,
 } from "../lib/preference/routeChoice";
@@ -204,6 +205,8 @@ export function routesForMode(
 export interface LearnedPreference {
   /** Metres of detour per minute of open sun the walker accepts. */
   detourM: number;
+  /** ±1σ band on `detourM`, in the same units. */
+  bandM: number;
   /** How many observed picks the fit rests on. */
   picks: number;
   /** The stated sun-tolerance slot is the source, not the learned picks. */
@@ -328,6 +331,7 @@ export function useRouting({
         pricedOnSun
           ? {
               detourM: detourPerSunMinute(resolved.fit),
+              bandM: detourBandM(resolved.fit),
               picks: resolved.fit.n,
               stated: resolved.source === "stated",
             }

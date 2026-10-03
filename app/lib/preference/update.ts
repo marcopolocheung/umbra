@@ -41,9 +41,11 @@ export function updatePreference(
 }
 
 /**
- * Metres of detour one metre of open sun is worth to this user — the number
- * S2b's route-card line will state as the learned trade. Rounded to two
- * decimals because the band is ±0.2 at the very best.
+ * α rounded to two decimals — the disutility exchange rate (a metre of open
+ * sun is worth α metres of distance to this user). Not the route-card's detour
+ * rate: removing a sun metre saves the walking metre too, so the detour the
+ * card states is `α−1` (`routeChoice.detourPerSunMinute`). Unused by the app;
+ * kept as the model card's published number.
  */
 export function detourPerSunM(fit: PreferenceFit): number {
 	return Math.round(fit.alpha * 100) / 100;

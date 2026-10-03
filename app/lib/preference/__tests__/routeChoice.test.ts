@@ -4,10 +4,13 @@ import { populationMeanAlpha } from "../model";
 import {
 	type ChoiceOption,
 	defaultRouteIndex,
+	detourBandM,
 	detourPerSunMinute,
+	learnedTradeLine,
 	resolvePreference,
 	routeChoiceCost,
 	statedToleranceAlpha,
+	tradeIsDirectional,
 } from "../routeChoice";
 import { updatePreference } from "../update";
 import type { Pick } from "../types";
@@ -103,6 +106,48 @@ describe("detourPerSunMinute", () => {
 	it("is signed — negative for a sun-loving walker, zero near indifference", () => {
 		expect(detourPerSunMinute({ alpha: 0.6, sigma: 0, n: 0 })).toBe(-34);
 		expect(detourPerSunMinute({ alpha: 1.001, sigma: 0, n: 0 })).toBe(0);
+	});
+});
+
+describe("learnedTradeLine", () => {
+	it("states the population prior as a population figure, no band", () => {
+		expect(learnedTradeLine({ detourM: 17, bandM: 33, picks: 0, stated: false })).toBe(
+			"Population default: about 17 m of detour per minute of sun",
+		);
+	});
+
+	it("states a learned direction with its band once the band excludes zero", () => {
+		expect(learnedTradeLine({ detourM: 30, bandM: 8, picks: 5, stated: false })).toBe(
+			"Learned from your 5 route picks: about 30 m of detour per minute of sun (±8 m)",
+		);
+		expect(learnedTradeLine({ detourM: -20, bandM: 5, picks: 8, stated: false })).toBe(
+			"Learned from your 8 route picks: you would rather walk in the sun",
+		);
+	});
+
+	it("abstains while the band still crosses zero", () => {
+		expect(learnedTradeLine({ detourM: 6, bandM: 33, picks: 1, stated: false })).toBe(
+			"Learned from your 1 route pick: not enough picks yet to tell your shade preference",
+		);
+	});
+
+	it("states a stated tolerance directly, with no band", () => {
+		expect(learnedTradeLine({ detourM: 42, bandM: 0, picks: 0, stated: true })).toBe(
+			"Your stated sun tolerance: about 42 m of detour per minute of sun",
+		);
+	});
+});
+
+describe("tradeIsDirectional / detourBandM", () => {
+	it("is directional only when the ±1σ band sits on one side of zero", () => {
+		expect(tradeIsDirectional(10, 3)).toBe(true);
+		expect(tradeIsDirectional(-10, 3)).toBe(true);
+		expect(tradeIsDirectional(2, 3)).toBe(false);
+		expect(tradeIsDirectional(-2, 3)).toBe(false);
+	});
+
+	it("converts the fit's sigma to a band in metres per minute of sun", () => {
+		expect(detourBandM({ alpha: 1.2, sigma: 0.4, n: 0 })).toBe(Math.round(0.4 * 84));
 	});
 });
 

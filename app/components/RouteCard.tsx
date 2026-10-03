@@ -31,6 +31,7 @@ import {
   routeTradeoffLine,
 } from "../lib/routeTradeoff";
 import { getTravelModePolicy, roughSurfaceLine } from "../lib/travelMode";
+import { learnedTradeLine } from "../lib/preference/routeChoice";
 import RouteConditionsLine from "./RouteConditionsLine";
 import RainRouteSummary from "./RainRouteSummary";
 import Kicker from "./ui/Kicker";
@@ -61,7 +62,7 @@ interface RouteCardProps {
   /** The dose line and hourly exposure strip, rendered inside the selected card. */
   exposureSlot?: ReactNode;
   /** S2b: the learned shade preference behind the default card, on the selected card. */
-  learnedPreference?: { detourM: number; picks: number; stated: boolean } | null;
+  learnedPreference?: { detourM: number; bandM: number; picks: number; stated: boolean } | null;
   onResetLearnedPreference?: () => void;
 }
 
@@ -478,19 +479,7 @@ export default function RouteCard({
               style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}
               aria-live="polite"
             >
-              <span>
-                {learnedPreference.stated
-                  ? "Your stated sun tolerance"
-                  : learnedPreference.picks > 0
-                    ? `Learned from your ${learnedPreference.picks} route ${learnedPreference.picks === 1 ? "pick" : "picks"}`
-                    : "Population default"}
-                {": "}
-                {learnedPreference.detourM > 0
-                  ? `about ${learnedPreference.detourM} m of detour per minute of sun`
-                  : learnedPreference.detourM < 0
-                    ? "you would rather walk in the sun"
-                    : "shade and sun about even"}
-              </span>
+              <span>{learnedTradeLine(learnedPreference)}</span>
               {learnedPreference.picks > 0 && onResetLearnedPreference && (
                 <button
                   type="button"

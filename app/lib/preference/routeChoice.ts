@@ -127,3 +127,51 @@ export function resolvePreference(
 export function detourPerSunMinute(fit: PreferenceFit, speedMps = WALK_SPEED_MPS): number {
 	return Math.round((fit.alpha - 1) * 60 * speedMps);
 }
+
+/** ±1σ on the trade, in metres of detour per minute of sun. */
+export function detourBandM(fit: PreferenceFit, speedMps = WALK_SPEED_MPS): number {
+	return Math.round(fit.sigma * 60 * speedMps);
+}
+
+/**
+ * True when the ±1σ band on the trade sits entirely on one side of zero — the
+ * only time the card may state a direction. A band that crosses zero means the
+ * picks have not pinned the sign yet.
+ */
+export function tradeIsDirectional(detourM: number, bandM: number): boolean {
+	return detourM - bandM > 0 || detourM + bandM < 0;
+}
+
+/** What the selected card states about the walker's shade preference. */
+export interface TradeStatement {
+	detourM: number;
+	/** ±1σ band on `detourM`, in the same units. */
+	bandM: number;
+	picks: number;
+	stated: boolean;
+}
+
+/**
+ * The route-card line. A direction is stated only when the band supports it
+ * (see `tradeIsDirectional`); otherwise the card says so plainly rather than
+ * reading a sign into noise. The population prior is stated as a population
+ * figure, not a claim about this walker.
+ */
+export function learnedTradeLine(statement: TradeStatement): string {
+	const { detourM, bandM, picks, stated } = statement;
+	const lead = stated
+		? "Your stated sun tolerance"
+		: picks > 0
+			? `Learned from your ${picks} route ${picks === 1 ? "pick" : "picks"}`
+			: "Population default";
+	if (!stated && picks > 0 && !tradeIsDirectional(detourM, bandM)) {
+		return `${lead}: not enough picks yet to tell your shade preference`;
+	}
+	if (detourM > 0) {
+		const band = !stated && picks > 0 && bandM > 0 ? ` (±${bandM} m)` : "";
+		return `${lead}: about ${detourM} m of detour per minute of sun${band}`;
+	}
+	if (detourM < 0) return `${lead}: you would rather walk in the sun`;
+	return `${lead}: shade and sun about even`;
+}
+

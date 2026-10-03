@@ -124,7 +124,7 @@ export interface DirectionsPanelProps {
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
   /** S2b: the learned shade preference behind the default card. */
-  learnedPreference?: { detourM: number; picks: number; stated: boolean } | null;
+  learnedPreference?: { detourM: number; bandM: number; picks: number; stated: boolean } | null;
   onResetLearnedPreference?: () => void;
   windSource?: WindSource;
   manualWind?: ManualWind;
