@@ -81,12 +81,16 @@ describe("defaultRouteIndex", () => {
 	});
 
 	it("uses one unit for a mixed set — never seconds against metres", () => {
+		// The first option's clock (100 s) would win on the seconds branch while
+		// the second (1400 m, 80% shade) wins on metres, so a per-option branch
+		// would pick index 0 here; unifying on metres must pick index 1.
 		const mixed: ChoiceOption[] = [
 			{ ...REQUEST[0], totalTimeSec: 100, exposedDurationSec: 0 },
 			REQUEST[1], // no clock
 		];
 		const metresOnly = mixed.map(({ totalTimeSec: _t, exposedDurationSec: _e, ...o }) => o);
-		expect(defaultRouteIndex(mixed, 1.2)).toBe(defaultRouteIndex(metresOnly, 1.2));
+		expect(defaultRouteIndex(mixed, 2.5)).toBe(1);
+		expect(defaultRouteIndex(mixed, 2.5)).toBe(defaultRouteIndex(metresOnly, 2.5));
 	});
 });
 

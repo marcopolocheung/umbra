@@ -90,14 +90,14 @@ prior art comes from it, with links.
   height/footprint-part error versus demolitions and same-lot replacements. Bound: 16% of tall
   LiDAR building area lies under no Umbra footprint. The next measurement is a per-building
   height audit against the LiDAR; no post-2017 city surface is public.
-- **Blocked on:** nothing in the review queue. H1/H2 landed (#222/#224), so S2b is done. S3b
+- **Blocked on:** nothing in the review queue. H1/H2 landed (#222/#224), so S2b is in review. S3b
   edits `app/lib/agent/**` while Track C is mid-C10 on the same files, so it needs coordination
   first. S4b needs a free mount point in the shell (U7 in flight).
 - **Next action:** S3b once Track C's C10 clears; S4b when a shell mount point frees. Nothing
   else in this track is startable — the lower-priority items wait on S1–S3 having landed *and*
   their baselines being in hand. A10 consumes S1's residual as its geometric baseline.
 - **Last verified:** 2026-10-03 — S2b on its branch: lint (0 errors), typecheck, tests
-  (1961 passing), build all green; S2a/S3a/S4a merged (gates green on each merged tree:
+  (1966 passing), build all green; S2a/S3a/S4a merged (gates green on each merged tree:
   1904–1916 tests); S1's own verification stands from 2026-10-02 (study self-tests 9/9, note
   cross-check 84/84 against `_summary.json`).
 
