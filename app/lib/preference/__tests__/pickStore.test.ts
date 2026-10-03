@@ -4,6 +4,7 @@ import {
 	PICK_STORAGE_KEY,
 	createPickStore,
 	optionFromRoute,
+	pickFromRoutes,
 } from "../pickStore";
 import type { Pick } from "../types";
 
@@ -41,6 +42,37 @@ describe("optionFromRoute", () => {
 	it("treats a missing or out-of-range share as fully open", () => {
 		expect(optionFromRoute({ distanceM: 100, shadowCoverage: Number.NaN }).sunM).toBe(100);
 		expect(optionFromRoute({ distanceM: 100, shadowCoverage: 2 }).shadeM).toBe(100);
+	});
+});
+
+describe("pickFromRoutes", () => {
+	const sunRoutes = [
+		{ distanceM: 1000, shadowCoverage: 0, objective: "sun" as const },
+		{ distanceM: 1200, shadowCoverage: 0.8, objective: "sun" as const },
+	];
+
+	it("builds the chosen option against the other sun-priced options", () => {
+		const pick = pickFromRoutes(sunRoutes, 1);
+		expect(pick).not.toBeNull();
+		expect(pick?.chosen.shadeM).toBeCloseTo(960, 6);
+		expect(pick?.rejected).toHaveLength(1);
+		expect(pick?.rejected[0].sunM).toBeCloseTo(1000, 6);
+	});
+
+	it("excludes rain options from the rejected set", () => {
+		const pick = pickFromRoutes(
+			[...sunRoutes, { distanceM: 900, shadowCoverage: 0, objective: "rain" as const }],
+			0,
+		);
+		expect(pick?.rejected).toHaveLength(1);
+	});
+
+	it("returns null for a rain card, a single option, or a missing reading", () => {
+		expect(pickFromRoutes([{ distanceM: 1, shadowCoverage: 0, objective: "rain" }], 0)).toBeNull();
+		expect(pickFromRoutes([{ distanceM: 1, shadowCoverage: 0, objective: "sun" }], 0)).toBeNull();
+		expect(
+			pickFromRoutes([{ distanceM: 1, shadowCoverage: Number.NaN, objective: "sun" }], 0),
+		).toBeNull();
 	});
 });
 

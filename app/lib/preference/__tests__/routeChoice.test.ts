@@ -53,6 +53,22 @@ describe("routeChoiceCost", () => {
 		// 1000 + (α−1)·200 = 1000 + 0.2·200 = 1040.
 		expect(routeChoiceCost(withClock, 1.2)).toBeCloseTo(1040, 6);
 	});
+
+	it("agrees between the clock and metres branches for a sun-loving α < 1", () => {
+		const open: ChoiceOption = { distanceM: 1000, shadowCoverage: 0.5, objective: "sun" };
+		const sunny: ChoiceOption = { distanceM: 1050, shadowCoverage: 0, objective: "sun" };
+		const withClock = defaultRouteIndex(
+			[
+				{ ...open, totalTimeSec: 1000 / 1.4, exposedDurationSec: 500 / 1.4 },
+				{ ...sunny, totalTimeSec: 1050 / 1.4, exposedDurationSec: 1050 / 1.4 },
+			],
+			0.6,
+		);
+		// α = 0.6: sun is cheaper than shade, so the sunnier longer route wins
+		// in both units — the branches must not disagree about the direction.
+		expect(withClock).toBe(1);
+		expect(withClock).toBe(defaultRouteIndex([open, sunny], 0.6));
+	});
 });
 
 describe("defaultRouteIndex", () => {
@@ -62,6 +78,15 @@ describe("defaultRouteIndex", () => {
 
 	it("skips rain options and returns the shortest when nothing qualifies", () => {
 		expect(defaultRouteIndex([{ ...REQUEST[1], objective: "rain" }], 2.5)).toBe(0);
+	});
+
+	it("uses one unit for a mixed set — never seconds against metres", () => {
+		const mixed: ChoiceOption[] = [
+			{ ...REQUEST[0], totalTimeSec: 100, exposedDurationSec: 0 },
+			REQUEST[1], // no clock
+		];
+		const metresOnly = mixed.map(({ totalTimeSec: _t, exposedDurationSec: _e, ...o }) => o);
+		expect(defaultRouteIndex(mixed, 1.2)).toBe(defaultRouteIndex(metresOnly, 1.2));
 	});
 });
 

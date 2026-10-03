@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { INK_REVEAL } from "./ui/motion";
 import Sigil from "./ui/Sigil";
 import type { RouteOption, RouteLeg } from "../lib/routing";
@@ -81,6 +81,7 @@ export default function RouteCard({
   learnedPreference = null,
   onResetLearnedPreference,
 }: RouteCardProps) {
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const rainCard = rainMode && (r.objective === "rain" || r.dryCoverage !== undefined);
   const streak =
     rainCard
@@ -468,28 +469,47 @@ export default function RouteCard({
           {exposureSlot}
 
           {/* S2b: what the default card is tuned to, and a way to forget it.
-              The population default until the walker's own picks move it. */}
+              The population default until the walker's own picks move it.
+              Reset is a 44px target and takes a second tap to confirm, so a
+              thumb reaching for Save below cannot wipe the picks by accident. */}
           {learnedPreference && (
             <div
-              className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t pt-2 text-[11px]"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-[11px]"
               style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}
+              aria-live="polite"
             >
               <span>
                 {learnedPreference.stated
-                  ? `Your stated sun tolerance: about ${learnedPreference.detourM} m of detour per minute of sun`
+                  ? "Your stated sun tolerance"
                   : learnedPreference.picks > 0
-                    ? `Learned from your ${learnedPreference.picks} route ${learnedPreference.picks === 1 ? "pick" : "picks"}: about ${learnedPreference.detourM} m of detour per minute of sun`
-                    : `Population default: about ${learnedPreference.detourM} m of detour per minute of sun`}
+                    ? `Learned from your ${learnedPreference.picks} route ${learnedPreference.picks === 1 ? "pick" : "picks"}`
+                    : "Population default"}
+                {": "}
+                {learnedPreference.detourM > 0
+                  ? `about ${learnedPreference.detourM} m of detour per minute of sun`
+                  : "sun over shade, no detour priced"}
               </span>
               {learnedPreference.picks > 0 && onResetLearnedPreference && (
                 <button
                   type="button"
-                  onClick={onResetLearnedPreference}
-                  aria-label="Reset learned shade preference"
-                  className="underline underline-offset-2 hover:no-underline"
+                  onClick={
+                    confirmingReset
+                      ? () => {
+                          setConfirmingReset(false);
+                          onResetLearnedPreference();
+                        }
+                      : () => setConfirmingReset(true)
+                  }
+                  onBlur={() => setConfirmingReset(false)}
+                  aria-label={
+                    confirmingReset
+                      ? "Confirm reset of learned shade preference"
+                      : "Reset learned shade preference"
+                  }
+                  className="ml-auto inline-flex min-h-11 items-center px-2 underline underline-offset-2 hover:no-underline"
                   style={{ color: "var(--color-ink)" }}
                 >
-                  Reset
+                  {confirmingReset ? "Confirm reset" : "Reset"}
                 </button>
               )}
             </div>

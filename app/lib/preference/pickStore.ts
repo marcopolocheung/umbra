@@ -46,6 +46,27 @@ export function optionFromRoute(route: {
 	};
 }
 
+/**
+ * The pick a card selection implies: the chosen option against the other
+ * sun-priced options from the same request, or null when there is no sun
+ * choice to learn from (a rain card, a single option, or a missing shade
+ * reading).
+ */
+export function pickFromRoutes(
+	routes: Array<{ distanceM: number; shadowCoverage: number; objective?: "sun" | "rain" }>,
+	index: number,
+): Pick | null {
+	const chosen = routes[index];
+	if (!chosen || chosen.objective === "rain" || !Number.isFinite(chosen.shadowCoverage)) {
+		return null;
+	}
+	const rejected = routes.filter(
+		(o, i) => i !== index && o.objective !== "rain" && Number.isFinite(o.shadowCoverage),
+	);
+	if (rejected.length === 0) return null;
+	return { chosen: optionFromRoute(chosen), rejected: rejected.map(optionFromRoute) };
+}
+
 const isRouteOption = (v: unknown): v is RouteOption => {
 	if (typeof v !== "object" || v === null) return false;
 	const o = v as Record<string, unknown>;

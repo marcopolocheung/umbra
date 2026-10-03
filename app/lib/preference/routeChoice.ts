@@ -38,38 +38,55 @@ export function statedToleranceAlpha(tolerance: "low" | "moderate" | "high"): nu
 const clamp01 = (v: number): number =>
 	Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
 
+const hasClock = (option: ChoiceOption): boolean =>
+	Number.isFinite(option.totalTimeSec) && Number.isFinite(option.exposedDurationSec);
+
 /**
- * The model's cost for one option, lower preferred. In the source's units the
- * cost is `α·sun + shade` (metres); with H2's clock it is
- * `travelSeconds + (α−1)·exposedSeconds`, which is the same ordering because
- * both scale by the mode's speed. `α−1` is the detour rate: the extra metres a
- * walker accepts per metre of sun removed.
+ * The model's cost in H2's clock: `travelSeconds + (α−1)·exposedSeconds`.
+ * `α−1` is the detour rate — the extra seconds a walker accepts per second of
+ * sun — because the cost is `distance + (α−1)·sun` in metres, and both scale
+ * by the mode's speed.
  */
-export function routeChoiceCost(option: ChoiceOption, alpha: number): number {
-	if (
-		Number.isFinite(option.totalTimeSec) &&
-		Number.isFinite(option.exposedDurationSec)
-	) {
-		const rate = Math.max(0, alpha - 1);
-		return (option.totalTimeSec as number) + rate * (option.exposedDurationSec as number);
-	}
+function costSeconds(option: ChoiceOption, alpha: number): number {
+	return (
+		(option.totalTimeSec as number) +
+		(alpha - 1) * (option.exposedDurationSec as number)
+	);
+}
+
+/** The model's cost in the source's metres: `α·sun + shade`. */
+function costMetres(option: ChoiceOption, alpha: number): number {
 	const distanceM = Number.isFinite(option.distanceM) ? Math.max(0, option.distanceM) : 0;
 	const sunM = distanceM * (1 - clamp01(option.shadowCoverage));
 	return alpha * sunM + (distanceM - sunM);
+}
+
+/** The model's cost for one option, lower preferred. */
+export function routeChoiceCost(option: ChoiceOption, alpha: number): number {
+	return hasClock(option) ? costSeconds(option, alpha) : costMetres(option, alpha);
 }
 
 /**
  * Index of the option this walker's α prefers. Rain options and options
  * without a shade reading are skipped; if none qualifies, 0 (the shortest,
  * H2's first representative) is the default.
+ *
+ * One unit for the whole set: the clock is used only when every considered
+ * option carries it, so a mixed set can never compare seconds with metres.
  */
 export function defaultRouteIndex(options: ChoiceOption[], alpha: number): number {
-	let best = 0;
-	let bestCost = Number.POSITIVE_INFINITY;
+	const considered: number[] = [];
 	for (let i = 0; i < options.length; i++) {
 		const option = options[i];
 		if (option.objective === "rain" || !Number.isFinite(option.shadowCoverage)) continue;
-		const cost = routeChoiceCost(option, alpha);
+		considered.push(i);
+	}
+	if (considered.length === 0) return 0;
+	const useClock = considered.every((i) => hasClock(options[i]));
+	let best = considered[0];
+	let bestCost = Number.POSITIVE_INFINITY;
+	for (const i of considered) {
+		const cost = useClock ? costSeconds(options[i], alpha) : costMetres(options[i], alpha);
 		if (cost < bestCost) {
 			bestCost = cost;
 			best = i;

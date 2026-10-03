@@ -184,8 +184,16 @@ The model now changes which card Umbra shows first.
   is `α·sun + shade`; with H2's clock it is `travelSeconds + (α−1)·exposedSeconds`,
   which is the same ordering because both scale by the mode's speed. `α−1` is the
   detour rate: `distance + (α−1)·sun` is the same cost, so the extra metres a walker
-  accepts per metre of sun removed is `α−1`. Cold (no picks, no stated tolerance) α is
-  the population mean 1.205 and the shortest card wins, which is the pre-S2b default.
+  accepts per metre of sun removed is `α−1`. **Cold (no picks, no stated tolerance) α is
+  the population mean 1.205**, so the default is the least-cost card under *that* prior —
+  the shortest route when nothing is close, but a slightly longer, partly shaded option
+  can win (1000 m open costs 1205, 1030 m at 50% shade costs 1136). That is a deliberate
+  change from the pre-S2b "always shortest" default, not a no-op.
+- **Only walking cards are priced.** The model is a pedestrian one (Melnikov et al.); it
+  is applied when the visible mode is walk *and* the travel mode is walk. Transit cards
+  (whose `shadowCoverage` is only their walk legs, and whose ride time is ignored) and
+  bike/scoot routes keep the pre-S2b default of index 0 and show no trade line. Only a
+  walking card selection is recorded as a pick.
 - **The stated sun-tolerance slot wins over the learned value.** The S3a `sunTolerance`
   slot (low/moderate/high → α 2.0/1.205/0.5) is read at calculation time; when set it
   replaces the picks outright. Nothing writes the slot yet — S3b's panel is its editor.
@@ -212,3 +220,11 @@ carry into the product: the card says "population default" until picks exist.
 re-price the search itself (a `routing.ts` change, Track H's file). The manual slider and
 the learned default can disagree until the user drags one — the learned value is a
 starting point, not a lock.
+
+**Known limits, filed not fixed.** Tapping a card to compare it is the same action as
+choosing it, so browsing A→B→A→B records four picks; the prior regularizes but a
+"settled selection" signal (on save, or on start-navigation) is the better event. After
+Reset the button unmounts, so keyboard focus falls to the body even though the row's
+`aria-live` announces the change. `applyLearnedPreference` and `selectRoute` are thin
+wiring over the tested `routeChoice`/`pickStore` pure functions but are not themselves
+hook-tested. All three are filed against Track S.

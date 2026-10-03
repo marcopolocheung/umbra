@@ -112,7 +112,7 @@ import {
   waitForMapIdle,
 } from "../lib/navigationHelpers";
 import { createMemoryStore } from "../lib/memory/memoryStore";
-import { createPickStore, optionFromRoute } from "../lib/preference/pickStore";
+import { createPickStore, pickFromRoutes } from "../lib/preference/pickStore";
 import {
   type ChoiceOption,
   defaultRouteIndex,
@@ -302,7 +302,15 @@ export function useRouting({
    * frame the map to the same route.
    */
   const applyLearnedPreference = useCallback(
-    (options: RouteOption[]): number => {
+    (options: RouteOption[], mode: "walk" | "transit"): number => {
+      // The model is a pedestrian one, fitted on walking choices; it prices
+      // walking cards only. Transit cards are answered on other criteria and
+      // bike/scoot routes are outside the fitted domain.
+      if (mode !== "walk" || travelModeRef.current !== "walk") {
+        setLearnedPreference(null);
+        setSelectedRouteIndex(0);
+        return 0;
+      }
       const resolved = resolvePreference(pickStore.load(), readStatedTolerance());
       const choice: ChoiceOption[] = options.map((o) => ({
         distanceM: o.distanceM,
@@ -311,8 +319,8 @@ export function useRouting({
         totalTimeSec: o.totalTimeSec,
         exposedDurationSec: o.exposure?.exposedDurationSec,
       }));
-      // The learned sun aversion prices walk routes; transit and rain cards
-      // are answered on other criteria, so the line stays off them.
+      // The learned sun aversion prices walk routes; rain cards are answered
+      // on shelter, so the line stays off them.
       const pricedOnSun = choice.some(
         (o) => o.objective !== "rain" && Number.isFinite(o.shadowCoverage),
       );
@@ -2018,7 +2026,7 @@ export function useRouting({
         const visibleOptions = routesForMode(options, routeModeRef.current);
         // S2b: the default card is the one the walker's learned sun aversion
         // prefers, not always the shortest.
-        const defaultIndex = applyLearnedPreference(visibleOptions);
+        const defaultIndex = applyLearnedPreference(visibleOptions, routeModeRef.current);
         setRouteSolarIntensity(solarIntensity);
         setRouteWind(rainObjective ? routeWindNow : null);
         setRouteExposureContext(routeExposureContext);
@@ -2275,35 +2283,24 @@ export function useRouting({
    */
   const selectRoute = useCallback(
     (index: number) => {
-      const options = routesForMode(navRoutes, routeMode);
-      const chosen = options[index];
-      if (
-        index !== selectedRouteIndex &&
-        options.length > 1 &&
-        chosen &&
-        chosen.objective !== "rain" &&
-        Number.isFinite(chosen.shadowCoverage)
-      ) {
-        const rejected = options.filter(
-          (o, i) => i !== index && o.objective !== "rain" && Number.isFinite(o.shadowCoverage),
-        );
-        if (rejected.length > 0) {
-          pickStore.record({
-            chosen: optionFromRoute(chosen),
-            rejected: rejected.map(optionFromRoute),
-          });
-        }
+      // Only walking cards carry a sun choice the pedestrian model can learn
+      // from; a transit pick is answered on line and time, not shade.
+      if (index !== selectedRouteIndex && routeMode === "walk" && travelModeRef.current === "walk") {
+        const pick = pickFromRoutes(routesForMode(navRoutes, routeMode), index);
+        if (pick) pickStore.record(pick);
       }
       setSelectedRouteIndex(index);
     },
     [navRoutes, routeMode, selectedRouteIndex, pickStore],
   );
 
-  /** Forget every pick and re-select the card the remaining prior prefers. */
+  /** Forget every pick, re-select on the prior, and frame the map to it. */
   const resetLearnedPreference = useCallback(() => {
     pickStore.clear();
-    applyLearnedPreference(routesForMode(navRoutes, routeMode));
-  }, [pickStore, applyLearnedPreference, navRoutes, routeMode]);
+    const options = routesForMode(navRoutes, routeMode);
+    const index = applyLearnedPreference(options, routeMode);
+    if (options[index]) fitMapToRoute(options[index]);
+  }, [pickStore, applyLearnedPreference, navRoutes, routeMode, fitMapToRoute]);
 
   // Derived values
   const filteredRoutes = useMemo(
