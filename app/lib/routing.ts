@@ -1016,13 +1016,22 @@ export function paretoRoutes(
   // inside one bucket; the residual unsoundness — two arrivals inside the
   // same bucket whose *next* edge straddles a boundary — is bounded by the
   // bucket width and is H4's oracle's job to measure. Static runs have one
-  // bucket, so this is the old per-node set exactly.
-  const paretoSets = new Map<string, number[]>();
-  const setKey = (id: number, bucket: number): string => `${id}:${bucket}`;
+  // bucket, so this is the old per-node set exactly. Keyed node → bucket so
+  // every bucket's set at one node (the destination front) is one lookup, not
+  // a scan of the whole search's sets on every heap pop.
+  const paretoSets = new Map<number, Map<number, number[]>>();
   const getSet = (id: number, bucket: number): number[] => {
-    const key = setKey(id, bucket);
-    if (!paretoSets.has(key)) paretoSets.set(key, []);
-    return paretoSets.get(key)!;
+    let byBucket = paretoSets.get(id);
+    if (!byBucket) {
+      byBucket = new Map();
+      paretoSets.set(id, byBucket);
+    }
+    let set = byBucket.get(bucket);
+    if (!set) {
+      set = [];
+      byBucket.set(bucket, set);
+    }
+    return set;
   };
   const labelBucket = (lbl: PLabel): number =>
     ta ? bucketOf(lbl.arrivalSec) : 0;
@@ -1136,11 +1145,8 @@ export function paretoRoutes(
     // bucket's set at endId — no bucket comparison happens here, because the
     // optimistic bound already assumes every remaining edge is fully shadowed,
     // which no bucket can beat.
-    const destBuckets = ta ? [...paretoSets.entries()]
-      .filter(([k]) => k.startsWith(`${endId}:`))
-      .flatMap(([, ids]) => ids)
-      : paretoSets.get(`${endId}:0`);
-    if (destBuckets && destBuckets.length > 0 && label.nodeId !== endId) {
+    const destBuckets = paretoSets.get(endId);
+    if (destBuckets && label.nodeId !== endId) {
       const optDistM  = label.distM + hCostRemaining(label.nodeId);
       // Optimistic completion: rain can still walk the whole remaining budget
       // fully sheltered; sun's best case is every remaining edge fully
@@ -1149,11 +1155,13 @@ export function paretoRoutes(
         ? label.exposureCrit + (budgetM - label.distM) / costRatio
         : label.exposureCrit;
       let prunedByDest = false;
-      for (const id of destBuckets) {
-        const d = allLabels[id];
-        if (d.distM <= optDistM
-          && (rain ? d.exposureCrit >= optExposureCrit : d.exposureCrit <= optExposureCrit)) {
-          prunedByDest = true; break;
+      scan: for (const set of destBuckets.values()) {
+        for (const id of set) {
+          const d = allLabels[id];
+          if (d.distM <= optDistM
+            && (rain ? d.exposureCrit >= optExposureCrit : d.exposureCrit <= optExposureCrit)) {
+            prunedByDest = true; break scan;
+          }
         }
       }
       if (prunedByDest) continue;
@@ -1222,12 +1230,9 @@ export function paretoRoutes(
   }
 
   // The destination front spans every bucket's Pareto set at endId.
-  const destFront = (ta
-    ? [...paretoSets.entries()]
-      .filter(([k]) => k.startsWith(`${endId}:`))
-      .flatMap(([, ids]) => ids)
-    : paretoSets.get(`${endId}:0`) ?? []
-  ).map((id) => allLabels[id]);
+  const destFront = [...(paretoSets.get(endId)?.values() ?? [])]
+    .flat()
+    .map((id) => allLabels[id]);
   if (destFront.length === 0) return [];
 
   // Reconstruct path for a label by following parentId back-pointers.
