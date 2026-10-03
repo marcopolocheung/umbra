@@ -78,7 +78,35 @@ export interface RoutingPhaseMs {
   entrances?: number; // entrance-box fetch + match + pick (subway only)
   walkLegs?: number; // reachableFrom + snapToReachable + walkA/walkB dijkstras
   busWait?: number; // bus boarding shadowAt + stop preloads + waitExposureFrom
+  /**
+   * L0: contiguous stage split from a lap timer — every millisecond of
+   * `total` lands in exactly one stage, so the stages sum to `total` (the
+   * named phases above overlap and leave gaps). Absent on older runs.
+   */
+  stages?: Record<string, number>;
   total: number; // wall-clock end-to-end
+}
+
+/**
+ * L0: a lap timer for contiguous attribution. Each `lap(stage)` charges the
+ * time since the previous lap (or `start`) to `stage`; repeated stages
+ * accumulate. `finish(end)` charges the remainder to `other` and returns the
+ * split, which sums to `end - start` exactly.
+ */
+export function createLapTimer(start: number, now: () => number = () => performance.now()) {
+  let last = start;
+  const stages: Record<string, number> = {};
+  const charge = (stage: string, t: number) => {
+    stages[stage] = (stages[stage] ?? 0) + (t - last);
+    last = t;
+  };
+  return {
+    lap: (stage: string) => charge(stage, now()),
+    finish(end: number): Record<string, number> {
+      charge("other", end);
+      return stages;
+    },
+  };
 }
 
 export interface RouteMetricSnapshot {
@@ -304,6 +332,11 @@ export function recordRoutingRun(m: RoutingRunMetrics): void {
       "Bus wait (ms)": (phases.busWait ?? 0).toFixed(1),
       "Total (ms)": phases.total.toFixed(1),
     });
+    if (phases.stages) {
+      console.table(
+        Object.fromEntries(Object.entries(phases.stages).map(([k, v]) => [`${k} (ms)`, v.toFixed(1)])),
+      );
+    }
     if (m.navigation) {
       const nav = m.navigation;
       console.log(
