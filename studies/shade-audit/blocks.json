@@ -1,0 +1,13 @@
+{
+  "comment": "Sample blocks for the S1 shade reality audit. Chosen as street-corner-centred ~250 m blocks in four boroughs, echoing the S0 OD pair neighbourhoods so the audit speaks to the same routes. lng/lat is the block centre; borough drives the split.",
+  "blocks": [
+    { "slug": "midtown-mn",  "borough": "manhattan", "lng": -73.9803, "lat": 40.7531, "halfM": 125 },
+    { "slug": "village-mn",  "borough": "manhattan", "lng": -73.9998, "lat": 40.7331, "halfM": 125 },
+    { "slug": "harlem-mn",   "borough": "manhattan", "lng": -73.9529, "lat": 40.8105, "halfM": 125 },
+    { "slug": "williamsburg-bk", "borough": "brooklyn", "lng": -73.9570, "lat": 40.7174, "halfM": 125 },
+    { "slug": "greenpoint-bk",  "borough": "brooklyn", "lng": -73.9542, "lat": 40.7298, "halfM": 125 },
+    { "slug": "astoria-qn",   "borough": "queens",   "lng": -73.9187, "lat": 40.7642, "halfM": 125 },
+    { "slug": "jackson-hts-qn", "borough": "queens",  "lng": -73.8869, "lat": 40.7514, "halfM": 125 },
+    { "slug": "concourse-bx", "borough": "bronx",    "lng": -73.9269, "lat": 40.8260, "halfM": 125 }
+  ]
+}
