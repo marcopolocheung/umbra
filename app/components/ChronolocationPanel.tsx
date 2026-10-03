@@ -13,6 +13,7 @@ import {
 	type MarkSlot,
 	describeResult,
 	hasAllMarks,
+	nearestMarkSlot,
 	nextMarkSlot,
 	pixelFromClick,
 } from "../lib/chronolocation/panel";
@@ -71,8 +72,6 @@ export default function ChronolocationPanel({
 		[],
 	);
 
-	if (!open) return null;
-
 	const activeSlot = nextMarkSlot(marks);
 	const allMarks = hasAllMarks(marks);
 	const headingDeg = Number(heading);
@@ -96,15 +95,20 @@ export default function ChronolocationPanel({
 
 	function onPhotoClick(event: React.MouseEvent<HTMLElement>) {
 		if (!natural) return;
+		// A keyboard activation (Enter/Space) reports detail 0 and no coordinates;
+		// the numeric fields are the keyboard path, so a tap only places marks.
+		if (event.detail === 0) return;
 		const rect = event.currentTarget.getBoundingClientRect();
-		setMark(activeSlot, pixelFromClick(rect, natural, event.clientX, event.clientY));
+		const point = pixelFromClick(rect, natural, event.clientX, event.clientY);
+		setMark(allMarks ? nearestMarkSlot(marks as ShadowMarks, point) : activeSlot, point);
 	}
 
 	function solve() {
 		if (!natural || !allMarks) return;
+		const parsedHfov = Number(hfov);
 		const frame: PhotoFrame = {
 			headingDeg,
-			hfovDeg: Number(hfov) || DEFAULT_HFOV_DEG,
+			hfovDeg: Number.isFinite(parsedHfov) && parsedHfov > 0 ? parsedHfov : DEFAULT_HFOV_DEG,
 			widthPx: natural.width,
 		};
 		const observation = observeShadow(marks, frame);
@@ -123,12 +127,12 @@ export default function ChronolocationPanel({
 		);
 	}
 
-	const lines = result ? describeResult(result, new Date().getFullYear()) : [];
+	const lines = result ? describeResult(result, new Date().getFullYear(), utcOffsetMin) : [];
 
 	return (
 		<section
 			aria-label="Photo chronolocation"
-			className="umbra-rise-in fixed z-50 flex flex-col overflow-hidden border-2 shadow-hard-2"
+			className={`umbra-rise-in fixed z-50 flex-col overflow-hidden border-2 shadow-hard-2 ${open ? "flex" : "hidden"}`}
 			style={{
 				bottom: "1rem",
 				left: "1rem",
@@ -233,7 +237,7 @@ export default function ChronolocationPanel({
 				{photoUrl && natural && (
 					<p className="text-[11px]" role="status" style={{ color: "var(--color-ink-muted)" }}>
 						{allMarks
-							? "All three marks set."
+							? "All three marks set — tap a mark to move it."
 							: `Next tap sets ${MARK_LABELS[activeSlot]}.`}
 					</p>
 				)}
@@ -280,10 +284,24 @@ export default function ChronolocationPanel({
 												aria-label={`${MARK_LABELS[slot]} ${axis} pixel`}
 												value={marks[slot]?.[axis] ?? ""}
 												onChange={(event) => {
-													const value = Number(event.target.value);
-													if (!natural || !Number.isFinite(value)) return;
+													if (!natural) return;
+													const raw = event.target.value;
+													// Clearing a field removes the mark, so a half-typed
+													// coordinate never becomes a silent 0.
+													if (raw === "") {
+														setMarks((prev) => {
+															const next = { ...prev };
+															delete next[slot];
+															return next;
+														});
+														setResult(null);
+														return;
+													}
+													const value = Number(raw);
+													if (!Number.isFinite(value)) return;
+													const limit = axis === "x" ? natural.width : natural.height;
 													const current = marks[slot] ?? { x: 0, y: 0 };
-													setMark(slot, { ...current, [axis]: value });
+													setMark(slot, { ...current, [axis]: Math.min(limit, Math.max(0, value)) });
 												}}
 												className={`${fieldClass} ${focusClass}`}
 												style={fieldStyle}

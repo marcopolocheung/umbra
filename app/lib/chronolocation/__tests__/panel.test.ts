@@ -4,9 +4,9 @@ import {
 	describeResult,
 	formatCandidate,
 	hasAllMarks,
+	nearestMarkSlot,
 	nextMarkSlot,
 	pixelFromClick,
-	undoLastMark,
 } from "../panel";
 import type { ChronolocationResult, DateCandidate } from "../solver";
 
@@ -24,13 +24,10 @@ const candidate = (overrides: Partial<DateCandidate> = {}): DateCandidate => ({
 });
 
 describe("mark sequencing", () => {
-	it("asks for top, then base, then shadow tip, then cycles", () => {
+	it("asks for the first unset mark", () => {
 		expect(nextMarkSlot({})).toBe<MarkSlot>("top");
 		expect(nextMarkSlot({ top: { x: 0, y: 0 } })).toBe<MarkSlot>("base");
 		expect(nextMarkSlot({ top: { x: 0, y: 0 }, base: { x: 1, y: 1 } })).toBe<MarkSlot>("shadowTip");
-		expect(
-			nextMarkSlot({ top: { x: 0, y: 0 }, base: { x: 1, y: 1 }, shadowTip: { x: 2, y: 2 } }),
-		).toBe<MarkSlot>("top");
 	});
 
 	it("knows when all three marks are placed", () => {
@@ -40,10 +37,11 @@ describe("mark sequencing", () => {
 		).toBe(true);
 	});
 
-	it("undoes the last mark placed, in order", () => {
-		const full = { top: { x: 0, y: 0 }, base: { x: 1, y: 1 }, shadowTip: { x: 2, y: 2 } };
-		expect(undoLastMark(full)).toEqual({ top: { x: 0, y: 0 }, base: { x: 1, y: 1 } });
-		expect(undoLastMark({ top: { x: 0, y: 0 } })).toEqual({});
+	it("moves the nearest mark once all three are set", () => {
+		const full = { top: { x: 10, y: 10 }, base: { x: 100, y: 100 }, shadowTip: { x: 200, y: 40 } };
+		expect(nearestMarkSlot(full, { x: 95, y: 96 })).toBe<MarkSlot>("base");
+		expect(nearestMarkSlot(full, { x: 205, y: 38 })).toBe<MarkSlot>("shadowTip");
+		expect(nearestMarkSlot(full, { x: 0, y: 0 })).toBe<MarkSlot>("top");
 	});
 });
 

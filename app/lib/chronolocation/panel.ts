@@ -25,8 +25,8 @@ export const MARK_LABELS: Record<MarkSlot, string> = {
 };
 
 /**
- * The mark the next tap sets: the first unset one, or `top` once all three are
- * placed (so a tap always replaces something and the panel never dead-ends).
+ * The mark the next tap sets: the first unset one. Once all three are placed,
+ * `nearestMarkSlot` decides which one a tap moves.
  */
 export function nextMarkSlot(marks: Partial<ShadowMarks>): MarkSlot {
 	return MARK_ORDER.find((slot) => marks[slot] === undefined) ?? "top";
@@ -37,14 +37,19 @@ export function hasAllMarks(marks: Partial<ShadowMarks>): marks is ShadowMarks {
 	return MARK_ORDER.every((slot) => marks[slot] !== undefined);
 }
 
-/** Drop the last-placed mark, for a mis-tap. */
-export function undoLastMark(marks: Partial<ShadowMarks>): Partial<ShadowMarks> {
-	const filled = MARK_ORDER.filter((slot) => marks[slot] !== undefined);
-	const last = filled[filled.length - 1];
-	if (!last) return { ...marks };
-	const next = { ...marks };
-	delete next[last];
-	return next;
+/** The mark a tap moves once all three are set: the one nearest the tap. */
+export function nearestMarkSlot(marks: ShadowMarks, point: PhotoPoint): MarkSlot {
+	let best: MarkSlot = "top";
+	let bestDistance = Number.POSITIVE_INFINITY;
+	for (const slot of MARK_ORDER) {
+		const mark = marks[slot];
+		const distance = (mark.x - point.x) ** 2 + (mark.y - point.y) ** 2;
+		if (distance < bestDistance) {
+			bestDistance = distance;
+			best = slot;
+		}
+	}
+	return best;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -73,9 +78,10 @@ const MONTHS = [
 /** "3–21 Jun" or "28 May – 14 Jun"; the year only when it differs from `year`. */
 function formatDayRange(start: Date, end: Date, year: number): string {
 	const d = (date: Date): string => `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
-	const span = start.getUTCFullYear() === end.getUTCFullYear()
-		? `${d(start)} – ${d(end)}`
-		: `${d(start)} ${start.getUTCFullYear()} – ${d(end)} ${end.getUTCFullYear()}`;
+	if (start.getUTCFullYear() !== end.getUTCFullYear()) {
+		return `${d(start)} ${start.getUTCFullYear()} – ${d(end)} ${end.getUTCFullYear()}`;
+	}
+	const span = `${d(start)} – ${d(end)}`;
 	return start.getUTCFullYear() === year ? span : `${span}, ${start.getUTCFullYear()}`;
 }
 
@@ -114,6 +120,8 @@ const MARKS_ERROR_TEXT: Record<MarksError, string> = {
 export function describeResult(
 	result: ChronolocationResult | { error: MarksError },
 	year: number,
+	/** Civil offset (minutes east of UTC), for the near-miss instant's local date. */
+	utcOffsetMin = 0,
 ): string[] {
 	if ("error" in result) return [MARKS_ERROR_TEXT[result.error]];
 	switch (result.kind) {
@@ -129,16 +137,13 @@ export function describeResult(
 			];
 		case "abstain":
 			return [ABSTAIN_TEXT[result.reason]];
-		case "no-match":
+		case "no-match": {
+			if (!result.nearest) return ["No instant this year matches the marked shadow."];
+			const local = new Date(result.nearest.date.getTime() + utcOffsetMin * 60000);
 			return [
 				"No instant this year matches the marked shadow.",
-				...(result.nearest
-					? [
-							`Nearest match: ${result.nearest.date.getUTCDate()} ${
-								MONTHS[result.nearest.date.getUTCMonth()]
-							}`,
-						]
-					: []),
+				`Nearest match: ${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]}`,
 			];
+		}
 	}
 }
