@@ -36,14 +36,14 @@ overestimated it.)
 
 The oracle shares the production's *per-edge* cost functions
 (`modeAdjustedDistanceM`, `edgeTraversalSeconds`). That is deliberate: it tests
-the **search** — dominance pruning, the budget bound, the bucket bookkeeping —
-not the cost model. An oracle that re-derived the cost model would conflate two
+the **search** — dominance pruning and the bucket bookkeeping (the detour
+budget is modelled but never binding on these fixtures) — not the cost model. An oracle that re-derived the cost model would conflate two
 questions.
 
 ## What it found — the published gap
 
-**The search is exact where routes meet only at the destination, and loses a
-Pareto point where they merge at an interior node across a bucket boundary.**
+**The search is exact on the static fixtures (one time bucket), and loses a
+Pareto point where routes merge at an interior node across a bucket boundary.**
 
 The mechanism is the dominance rule. Within one time bucket, a label is dropped
 when another label at the same node is no later, no longer and no sunnier
@@ -63,16 +63,20 @@ bucket). The truth:
 | 0-1-3-4 (production returns this) | 79.8 | 57.00 |
 | 0-2-3-4 (production drops it) | 86.8 | **55.00** |
 
-So on this fixture the production's least-sun option is **2.00 s worse (3.5%)**
-than the true optimum, and a non-dominated option is missing from the front
+So on this fixture the production's least-sun option is **2.00 s worse than the
+true optimum (3.6% of it)**, and a non-dominated option is missing from the front
 entirely. The test asserts both: the oracle's minimum is 55 s, the production's
 is 57 s, and the dropped node-path is absent from the result.
 
-**Where it is exact.** Where two routes meet only at the destination (no interior
-merge before a bucket-crossing edge), the production's shortest equals the
+**Where it is exact.** On the *static* fixtures — a single time bucket, so the
+defect cannot occur by construction — the production's shortest equals the
 oracle's least-distance path, its least-exposed option equals the oracle's
-minimum sun seconds, and no returned option is dominated — on the line fixture
-and on a randomized 2×3 grid.
+minimum sun seconds, and no returned option is dominated; that holds on the line
+fixture and on a randomized 2×3 grid. In time-aware mode the oracle has no
+positive exactness evidence: the merge fixture above is the only time-aware case,
+and it shows the gap. (Both static fixtures do contain interior merges — a
+cross-link and a shared grid node — but with one bucket there is no boundary to
+cross.)
 
 ## What this does not claim
 

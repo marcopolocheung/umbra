@@ -131,7 +131,7 @@ function isDominated(candidate: PathMetrics, paths: PathMetrics[]): boolean {
 const walkOptions = { travelMode: "walk" as const, maxDetourFactor: 2.0 };
 const leastSun = (paths: PathMetrics[]): number => Math.min(...paths.map((p) => p.exposureSec));
 
-describe("H4 oracle — exact where routes meet only at the destination", () => {
+describe("H4 oracle — exact on a static fixture (one time bucket)", () => {
 	const graph = buildGraph(
 		[0, 100, 140, 200],
 		[
