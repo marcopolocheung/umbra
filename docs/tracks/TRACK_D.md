@@ -10,7 +10,12 @@
 
 ## Current state
 
-- **Active checkpoint:** **D5** — implemented on `feat/d5-personal-profile` (this branch). D0
+- **Active checkpoint:** **D5** — built but **BLOCKED, no PR** (branch `feat/d5-personal-profile`,
+  pushed). The verifier and grounding audit found its acceptance unmet and a health-number claim
+  ungrounded: skin type has no visible effect (the burn fraction is never rendered) and the
+  routing shadow weight never reaches the search, so only "score" changes; and the personal °C
+  offset silently shifts the published UTCI heat-stress category. Abandoned per the gate; the
+  findings are filed. D0
   merged as #204 (#225 followed); D3 (#189), D4 (#196), D2 (#188) merged. #197 (the D1 strip on
   mobile) is **already fixed on `main`** — the mobile `DirectionsPanel` is passed `exposureSlot`
   — so the brief's "fix it before D5" is done; the code wins over this note.
@@ -39,7 +44,7 @@
     Closes #204. #225 followed it, putting sunrise/sunset on the same SunCalc model that
     draws the shadows and removing the `+ 12` minute constant behind a 5:40 AM marker whose
     real value was 5:26.
-- **Open PRs:** D5 (this branch) — the personal heat profile.
+- **Open PRs:** none — D5 is built on `feat/d5-personal-profile` but blocked (no PR).
 - **⚠️ D3 and D4 are not actually done, and it is not a code problem.** Both acceptance criteria
   require the method to be *linked from the UI*, and those links point at
   `docs/notes/heat-model.md` and `docs/notes/heat-score.md` on the **public mirror**, which lags
