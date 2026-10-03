@@ -10,10 +10,17 @@
 
 ## Current state
 
-- **Active checkpoint:** **D0 is done** — it merged as #204, and #225 followed it. D3 (PR
-  #189), D4 (PR #196) and D2 (PR #188) have all merged too. Next is **#197** (the D1 hourly
-  strip never renders on mobile), which the bullet below says to fix before D5; **D5** after
-  that.
+- **Active checkpoint:** **D5** — implemented on `feat/d5-personal-profile` (this branch). D0
+  merged as #204 (#225 followed); D3 (#189), D4 (#196), D2 (#188) merged. #197 (the D1 strip on
+  mobile) is **already fixed on `main`** — the mobile `DirectionsPanel` is passed `exposureSlot`
+  — so the brief's "fix it before D5" is done; the code wins over this note.
+- **D5 (this branch):** `app/lib/heat/profile.ts` — a typed, local-only `HeatProfile` (skin
+  type, heat tolerance, "I burn easily" / "I overheat"), neutral defaults, `localStorage`
+  persistence, and the two derived inputs: `shadowWeight` (→ the routing shadow weight) and
+  `heatScoreOffsetC` (a bounded felt-temperature offset for `heatScore`). `SettingsPanel` gains
+  the form; the profile is threaded to `RouteConditionsLine` for the dose and score. **`pace`
+  (overriding the mode speed) is NOT implemented** — it is a routing-cost change (Track E's
+  profiles), filed rather than half-wired.
 - **D0 was also a Track H prerequisite, and that block is now cleared.** `timezone.ts:8` used
   to guess the UTC offset from longitude with no DST; an hour of clock error is ~15° of sun, so
   H1 would have priced every edge's traversal against a wrong sky and H4 would have published a
@@ -32,7 +39,7 @@
     Closes #204. #225 followed it, putting sunrise/sunset on the same SunCalc model that
     draws the shadows and removing the `+ 12` minute constant behind a 5:40 AM marker whose
     real value was 5:26.
-- **Open PRs:** none in this track.
+- **Open PRs:** D5 (this branch) — the personal heat profile.
 - **⚠️ D3 and D4 are not actually done, and it is not a code problem.** Both acceptance criteria
   require the method to be *linked from the UI*, and those links point at
   `docs/notes/heat-model.md` and `docs/notes/heat-score.md` on the **public mirror**, which lags
@@ -95,13 +102,13 @@
     on "no forecast" after a pan or an hour-crossing drag. A stale-result flag is the correct
     cancellation for a shared cache, and a signal-aware test pins the regression.
 - **Blocked on:** nothing (D6 still wants A6)
-- **Next action:** D5 — `SettingsPanel.tsx`, `app/lib/heat/profile.ts`. Both `dose()` and
-  `heatScore()` already take their person-dependent inputs as an explicit argument with no
-  default, so D5 is the first caller rather than a retrofit.
+- **Next action:** D6 — best-time surfaces (still wants A6). D5 is implemented (this branch);
+  it is the first caller of the person-dependent inputs `dose()`/`heatScore()` already took.
 - **Known limitation to close in D4/D6:** "most shadowed around 7 PM" is true but weakly useful
   near sunset, where everything ties at fully shadowed. D4's `sunPenaltyC` is the weighting the
   D1 series needs — it goes to zero after dark, which is exactly the tie-break missing today.
-- **Last verified:** 2026-09-08, 468 tests / 38 files green merged with `main` (main baseline 439/36). D4 confirmed in a browser
+- **Last verified:** 2026-10-03 — D5 on `feat/d5-personal-profile`: lint (0 errors), typecheck,
+  tests (1953 passing), build all green. 2026-09-08, 468 tests / 38 files green merged with `main` (main baseline 439/36). D4 confirmed in a browser
   (Playwright, fixture basemap) on all four paths: with a stubbed 900 W/m² / 34 °C apparent
   forecast the card reads "EXPERIMENTAL · strong heat stress / Heat 69 · feels about 35 °C
   walking this"; with wind missing it drops to "about 34 °C — air temperature only"; with
