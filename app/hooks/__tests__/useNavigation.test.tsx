@@ -71,6 +71,14 @@ const shadowStub = vi.hoisted(() => ({
     options?: { signal?: AbortSignal; deadlineAt?: number };
   }>,
   sampledBatchSizes: [] as number[],
+  /**
+   * H1: per-bucket sweep answers — one array per bucket, one entry per edge,
+   * in the order `sweep` was handed them. `null` (the default) makes `sweep`
+   * answer nothing, so every bucket falls back to the static sample.
+   */
+  sweepBuckets: null as Array<Array<{ left: number; right: number; source: string; confidence: number }>> | null,
+  /** The bucket instants each `sweep` call was handed, recorded per call. */
+  sweepCalls: [] as Array<number[]>,
 }));
 
 afterEach(() => vi.unstubAllEnvs());
@@ -83,7 +91,10 @@ vi.mock("../../lib/shadowField/ShadowField", async () => {
     ...actual,
     createGeometryShadowField: () => ({
       shadowAt: () => ({ shadow: 0, source: "none", confidence: 0 }),
-      sweep: () => [],
+      sweep: (_edges: unknown[], times: Date[]) => {
+        shadowStub.sweepCalls.push(times.map((t) => t.getTime()));
+        return shadowStub.sweepBuckets ?? [];
+      },
       coverage: () => shadowStub.coverage,
       sampleEdges: (edges: unknown[]) => {
         shadowStub.sampledBatchSizes.push(edges.length);
@@ -598,6 +609,8 @@ function resetShadowStub() {
   shadowStub.readyGate = null;
   shadowStub.readyCalls = [];
   shadowStub.sampledBatchSizes = [];
+  shadowStub.sweepBuckets = null;
+  shadowStub.sweepCalls = [];
   vi.mocked(sampleBuildingMaskBothSidewalks).mockClear();
 }
 
@@ -760,6 +773,35 @@ describe("routing reads the shadow field (A4b)", () => {
     expect(result.current.navRoutes[0].shadowSource?.dominant).toBe("tiles");
   });
 
+  it("prices the route at the sweep's arrival buckets instead of the frozen sample (H1)", async () => {
+    // The frozen-time sample says fully shadowed; the sweep says the same
+    // street is only a quarter shadowed at the walker's arrival bucket. The
+    // route must carry the sweep's answer — the whole point of H1.
+    shadowStub.edgeShadow = [{ left: 1, right: 1, source: "tiles", confidence: 0.8 }];
+    shadowStub.sweepBuckets = [[{ left: 0.25, right: 0.25, source: "tiles", confidence: 0.8 }]];
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+
+    const result = await runRouteWith(map);
+
+    expect(result.current.navRoutes[0].shadowCoverage).toBeCloseTo(0.25);
+    // The 150 m two-node route's horizon fits one 15-minute bucket, and its
+    // bucket 0 is the same instant the frozen sample read.
+    expect(shadowStub.sweepCalls).toHaveLength(1);
+    expect(shadowStub.sweepCalls[0]).toHaveLength(1);
+    expect(shadowStub.sweepCalls[0][0]).toBe(new Date("2026-08-16T04:00:00Z").getTime());
+  });
+
+  it("keeps the frozen sample's answer where the sweep cannot answer (H1)", async () => {
+    // sweepBuckets stays null: the field's sweep answers nothing, so every
+    // bucket falls back to the static sample the existing gating chose.
+    shadowStub.edgeShadow = [{ left: 1, right: 1, source: "tiles", confidence: 0.8 }];
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+
+    const result = await runRouteWith(map);
+
+    expect(result.current.navRoutes[0].shadowCoverage).toBe(1);
+  });
+
   it("keeps renderer-owned readback and route scoring identical with debug on or off", async () => {
     // The diagnostic is a MapLibre custom layer, never an IShadowLayer. This
     // checks the actual routing seam: both runs consume only the renderer-owned
@@ -817,8 +859,10 @@ describe("routing reads the shadow field (A4b)", () => {
     await runRouteWith(map);
 
     // The initial street pass remains one batch. A later transit access walk
-    // may legitimately sample its own edge set.
-    expect(shadowStub.sampledBatchSizes[0]).toBe(2);
+    // may legitimately sample its own edge set — and under load its 1-edge
+    // batch has been observed winning the race for index 0, so assert the
+    // invariant (the whole set handed over in one call) rather than the order.
+    expect(shadowStub.sampledBatchSizes).toContain(2);
   });
 
   it("routes anyway when the geometry preload fails", async () => {

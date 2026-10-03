@@ -13,6 +13,8 @@ import {
   parallelSidewalkEdges,
   reachableFrom,
   snapToReachable,
+  DEFAULT_MAX_DETOUR_FACTOR,
+  DETOUR_FLAT_M,
 } from "../lib/routing";
 import type {
   GraphEdge,
@@ -109,6 +111,26 @@ import {
   routingEdgeBatch,
   waitForMapIdle,
 } from "../lib/navigationHelpers";
+
+/**
+ * H1 traversal-time exposure: price each edge at the bucket the walker arrives
+ * in rather than one frozen `dateRef.current`. The static frozen-time path
+ * stays fully intact — omit `timeAware` and the search is unchanged — so H2/H4
+ * can run both and compare. Flip this off to serve the static baseline.
+ */
+const TIME_AWARE_ROUTING = true;
+/** Time discretization, the documented H1 parameter: 15-minute buckets. */
+const TIME_BUCKET_MS = 15 * 60 * 1000;
+/**
+ * Horizon cap. A6's sweep costs ≈ one `sampleEdges` per bucket (the batch plan
+ * saves 0–11%), so the bucket count multiplies sampling cost almost linearly.
+ * Eight buckets cover a 2-hour walk at 15 minutes. The horizon estimate below
+ * uses the straight-line distance while the search's budget uses the shortest
+ * path, so it can run short on detour-heavy O-D pairs — arrivals past it
+ * clamp to the last bucket, which keeps that safe but coarser (see
+ * `docs/notes/time-aware-routing-h1.md`).
+ */
+const MAX_TIME_BUCKETS = 8;
 
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
@@ -855,6 +877,57 @@ export function useRouting({
         }
         shadowSampleMs = performance.now() - tShadow;
 
+        // H1 traversal-time exposure: one `field.sweep` prices the same batch
+        // once per bucket over the walk's horizon. The bucket table is local
+        // to this calculation and indexed by exactly this bucket list, and the
+        // sweep ran inside the same route-scoped snapshot pin as the static
+        // sample above — so no entry can be a stale answer from a different
+        // geometry generation or a different bucket that happens to share
+        // coordinates. Weak-confidence buckets keep the static answer the
+        // gating above already chose (pixel fallbacks included, frozen in
+        // time — documented in docs/notes/time-aware-routing-h1.md).
+        const timeShadowByEdge = new Map<string, { left: number[]; right: number[] }>();
+        let timeBucketCount = 0;
+        // Only the no-via branch runs `paretoRoutes` — via-stop legs and
+        // transit walk legs call `dijkstra`, which still prices one frozen
+        // instant (a stated gap in docs/notes/time-aware-routing-h1.md). Those
+        // routes would pay the sweep for nothing, so they don't run it.
+        if (TIME_AWARE_ROUTING && !rainObjective && edgeRefs.length > 0
+          && (plan?.via ?? additionalWaypoints).length === 0) {
+          const tSweep = performance.now();
+          const horizonSec = travelTimeSeconds(
+            straightLineDistM * DEFAULT_MAX_DETOUR_FACTOR + DETOUR_FLAT_M,
+            travelModeRef.current,
+          );
+          timeBucketCount = Math.max(
+            1,
+            Math.min(MAX_TIME_BUCKETS, Math.ceil((horizonSec * 1000) / TIME_BUCKET_MS)),
+          );
+          const startMs = dateRef.current.getTime();
+          const bucketDates = Array.from(
+            { length: timeBucketCount },
+            (_, b) => new Date(startMs + b * TIME_BUCKET_MS),
+          );
+          const sweep = field.sweep(edgeRefs, bucketDates);
+          for (let i = 0; i < edgeRefs.length; i++) {
+            const key = edgeKeys[i];
+            const fallback = edgeShadowCache.get(key);
+            const left: number[] = [];
+            const right: number[] = [];
+            for (let b = 0; b < timeBucketCount; b++) {
+              const sample = sweep[b]?.[i];
+              const trusted =
+                sample != null && (sample.confidence >= LOW_CONFIDENCE || !buildingMask);
+              left.push(trusted ? sample!.left : (fallback?.left ?? 0));
+              right.push(trusted ? sample!.right : (fallback?.right ?? 0));
+            }
+            timeShadowByEdge.set(key, { left, right });
+          }
+          // The sweep is sampling cost — fold it into the ledger's shadowSample
+          // phase rather than inventing a new metrics key mid-checkpoint.
+          shadowSampleMs += performance.now() - tSweep;
+        }
+
         const shareOf = <T>(values: T[], value: T) =>
           edgeRefs.length === 0
             ? 0
@@ -876,6 +949,12 @@ export function useRouting({
             const lo = Math.min(fromId, edge.toId);
             const hi = Math.max(fromId, edge.toId);
             const { left, right } = edgeShadowCache.get(`${lo},${hi}`) ?? { left: 0, right: 0 };
+            // The sweep answers in the canonical (lo→hi) direction, exactly
+            // like the static sample above — so the same canonical flip
+            // `parallelSidewalkEdges` applies to left/right picks each side's
+            // bucket array here.
+            const timeEntry = timeShadowByEdge.get(`${lo},${hi}`);
+            const isCanonical = fromId < edge.toId;
             const sidewalkEdges = parallelSidewalkEdges(
               fromId,
               edge,
@@ -884,6 +963,18 @@ export function useRouting({
               rainObjective ? "rain" : "sun",
             ).map((sidewalk) => ({
               ...sidewalk,
+              ...(timeEntry && !rainObjective
+                ? {
+                    timeShadow:
+                      sidewalk.side === "left"
+                        ? isCanonical
+                          ? timeEntry.left
+                          : timeEntry.right
+                        : isCanonical
+                          ? timeEntry.right
+                          : timeEntry.left,
+                  }
+                : {}),
               ...(rainObjective
                 ? { shelterConfidence: edgeShadowCache.get(`${lo},${hi}`)?.confidence ?? 0 }
                 : { exposureConfidence: edgeShadowCache.get(`${lo},${hi}`)?.confidence ?? 0 }),
@@ -970,6 +1061,10 @@ export function useRouting({
           straightLineDistM,
           travelMode,
           objective: rainObjective ? "rain" as const : "sun" as const,
+          // H1: the bucket horizon this calculation swept (0 = static run).
+          ...(timeBucketCount > 0
+            ? { timeAware: { bucketMs: TIME_BUCKET_MS, bucketCount: timeBucketCount } }
+            : {}),
         };
         // Station access is pedestrian even on a bike journey (mixed-mode is E6).
         const walkOpts = { ...opts, travelMode: "walk" as TravelModeId };
@@ -1020,6 +1115,11 @@ export function useRouting({
             travelMode,
             totalTimeSec: travelTimeSeconds(result.distanceM, travelMode),
             surfaceMetresM: result.surfaceMetresM,
+            // H2: exposure duration (exposedDurationSec) reported alongside
+            // coverage on every route option — the objective the search just
+            // optimized, not a second opinion computed later. The rain branch
+            // above already sets exposureSegments and objective.
+            exposure: result.exposure,
           }));
         } else {
           const nodeChain = snappedStops.ids;

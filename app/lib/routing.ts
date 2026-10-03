@@ -3,7 +3,7 @@ import { MinHeap } from "./minHeap";
 import type { PartialRouteInfo } from "./partialRoute";
 import type { TrainDrawData, TrainRide, TransitProvenance } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
-import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk } from "./travelMode";
+import { modeAdjustedDistanceM, minCostRatio, isProhibitedEdge, speedRatioVsWalk, edgeTraversalSeconds } from "./travelMode";
 import type { TravelModeId } from "./travelMode";
 import type { TransitWaitExposure } from "./transitWaitExposure";
 import type { ExposureMetrics } from "./exposureMetrics";
@@ -49,6 +49,16 @@ export interface GraphEdge {
   bicycle?: string;
   foot?: string;
   access?: string;
+  /**
+   * Per-time-bucket shadow fractions for this edge's *own* side, one entry per
+   * bucket over the horizon the caller swept (H1). `timeShadow[b]` is the
+   * shadow a walker meets arriving `b × bucketMs` after departure. Read only
+   * when `DijkstraOptions.timeAware` is set — the caller that sets it is the
+   * one that ran `field.sweep` and filled this from one pinned geometry
+   * snapshot, so an entry can never be a stale answer from another generation.
+   * Absent (rain, sketch, fixtures) → the search falls back to `shadowFactor`.
+   */
+  timeShadow?: number[];
 }
 
 export interface RoutingGraph {
@@ -279,6 +289,27 @@ export interface DijkstraOptions {
   travelMode?: TravelModeId;  // default "walk"; applies the mode cost policy (E1)
   /** "sun" (default) prices `shadowFactor`; "rain" prices `shelterFactor`. */
   objective?: ExposureObjective;
+  /**
+   * H1 traversal-time exposure: price each edge at the bucket the walker
+   * *arrives* in, not one frozen instant. Labels carry arrival seconds since
+   * departure — traversal time is `distanceM / speedMps` (the mode's plain
+   * clock; crossing and surface penalties are search cost, not time). An
+   * arrival past the last swept bucket is priced at that last bucket, so the
+   * horizon must cover the detour budget (the caller sizes it). Dominance
+   * gains "no later" beside "no longer, no less shadowed": equal-cost paths
+   * that arrive at different clocks can see different skies, so arrival time
+   * is part of the label it must be part of the comparison. Sun only; on rain
+   * it is ignored. Omitted → the static frozen-time behavior, unchanged.
+   */
+  timeAware?: { bucketMs: number; bucketCount: number };
+  /**
+   * H2 hard constraint, sun objective only: reject any path whose longest
+   * unbroken sunlit run — measured in sun-weighted seconds, the edge's
+   * traversal time × unshadowed fraction, accumulated across consecutive
+   * edges below `SHADOW_THRESH` — exceeds this many seconds. Absent (the
+   * default) → no constraint.
+   */
+  maxContinuousExposureSec?: number;
   /** Deprecated compatibility input. Rain no longer has an intensity scale. */
   precipIntensity?: number;
 }
@@ -595,6 +626,8 @@ const MAX_SHADOW_SAVING = 0.7;
  *  distance, so Dijkstra cannot treat a sheltered arcade as a zero-cost wormhole. */
 const MAX_RAIN_SAVING = 0.7;
 
+/** Above this the edge counts as shadowed (sun) — the streak-metric cut. */
+const SHADOW_THRESH = 0.5;
 /** Above this the edge counts as wet for streak metrics (mirror of `SHADOW_THRESH`). */
 const WET_EXPOSURE_THRESH = 0.5;
 
@@ -685,7 +718,6 @@ export function dijkstra(
 
   // Compute aggregate stats along the path
   const sides: Array<SidewalkSide | null> = [];
-  const SHADOW_THRESH = 0.5;
   let totalDist = 0, shadowedDist = 0, dryDist = 0;
   let longestContinuousShadowM = 0, currentStreakM = 0, shadowTransitions = 0;
   let longestContinuousSunM = 0, currentSunStreakM = 0;
@@ -815,16 +847,21 @@ export function dijkstra(
 
 /** Flat allowance added to the Pareto detour budget so very short routes can
  *  still take a meaningfully more shadow parallel street. */
-const DETOUR_FLAT_M = 250;
+export const DETOUR_FLAT_M = 250;
+/** Exported for the caller's H1 horizon: how many buckets cover the detour budget. */
+export const DEFAULT_MAX_DETOUR_FACTOR = 2.0;
 
 /**
  * Bi-criteria Pareto routing (NAMOA*-inspired label-setting).
  *
- * Finds the Pareto front of (distance, shadowed distance) between start and end.
- * Returns up to 3 RouteResult objects:
+ * Finds the Pareto front of (distance, exposure) between start and end. Under
+ * the sun objective exposure is *duration in the sun* (H2: fewer is better);
+ * under rain it is sheltered distance (more is better). Returns up to 3
+ * RouteResult objects:
  *   - Shortest (min distM)
- *   - Most shadowed (max shadowM)
- *   - Balanced (knee of Pareto front — closest to ideal point in normalized space)
+ *   - The exposure extreme (least sun time / most shelter)
+ *   - Balanced (knee of the Pareto front — closest to the ideal corner in
+ *     normalized space)
  *
  * The search is bounded — in raw (distance, shadowed-meters) space any walk that
  * adds shadowed meters is Pareto-optimal, including pacing back and forth on one
@@ -889,11 +926,21 @@ export function paretoRoutes(
   endId: number,
   options: DijkstraOptions = {}
 ): RouteResult[] {
-  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = 2.0, maxLabelsPerNode = 20, travelMode = "walk", objective = "sun" } = options;
+  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = DEFAULT_MAX_DETOUR_FACTOR, maxLabelsPerNode = 20, travelMode = "walk", objective = "sun", maxContinuousExposureSec } = options;
   const rain = objective === "rain";
-  /** The bi-criterion the labels accumulate: shadowed metres, or sheltered metres. */
-  const exposureFactor = (edge: GraphEdge): number =>
-    rain ? (edge.shelterFactor ?? 0) : edge.shadowFactor;
+  // Time-aware pricing is a sun feature (rain shelter is wind/overhead cover,
+  // not sun geometry), and only when the caller swept a horizon in.
+  const ta = !rain && options.timeAware ? options.timeAware : undefined;
+  /** Which bucket an arrival `sec` seconds after departure falls in. */
+  const bucketOf = (arrivalSec: number): number =>
+    Math.min(Math.floor((arrivalSec * 1000) / (ta?.bucketMs ?? 1)), (ta?.bucketCount ?? 1) - 1);
+  /** The exposure factor an edge carries for the walker arriving at `arrivalSec`. */
+  const exposureFactorAt = (edge: GraphEdge, arrivalSec: number): number => {
+    if (!ta) return rain ? (edge.shelterFactor ?? 0) : edge.shadowFactor;
+    const ts = edge.timeShadow;
+    if (!ts || ts.length === 0) return edge.shadowFactor;
+    return ts[Math.min(bucketOf(arrivalSec), ts.length - 1)];
+  };
 
   // Distance-only Dijkstra: budget baseline + fast exit when unreachable.
   // Runs in the same mode so the baseline prices the same mode penalties, but
@@ -927,8 +974,22 @@ export function paretoRoutes(
   interface PLabel {
     id: number;
     distM: number;
-    /** Shadowed metres (sun) or sheltered metres (rain) accumulated so far. */
-    exposureM: number;
+    /**
+     * The exposure criterion the front optimizes (H2). Sun accumulates
+     * *sun seconds* — traversal time × unshadowed fraction — and FEWER is
+     * better: the walker cares about minutes in the sun, not metres of shade,
+     * and maximized shade-metres could win with more absolute sun (the
+     * Route-A/Route-B defect, pinned in `timeAwareRouting.test.ts`). Rain
+     * keeps sheltered metres, where MORE is better.
+     */
+    exposureCrit: number;
+    /** Seconds after departure the walker reaches this node (H1; 0 when static). */
+    arrivalSec: number;
+    /**
+     * Current unbroken run of sunlit walking, seconds (sun only) — the
+     * `maxContinuousExposureSec` hard constraint reads and resets this.
+     */
+    streakSec: number;
     nodeId: number;
     parentId: number;      // allLabels index; -1 for the start label
     prevEdge: GraphEdge | null;
@@ -937,34 +998,69 @@ export function paretoRoutes(
 
   const allLabels: PLabel[] = [];
   const mkLabel = (
-    distM: number, exposureM: number, nodeId: number,
-    parentId: number, prevEdge: GraphEdge | null
+    distM: number, exposureCrit: number, arrivalSec: number, streakSec: number,
+    nodeId: number, parentId: number, prevEdge: GraphEdge | null
   ): PLabel => {
-    const lbl: PLabel = { id: allLabels.length, distM, exposureM, nodeId, parentId, prevEdge, evicted: false };
+    const lbl: PLabel = { id: allLabels.length, distM, exposureCrit, arrivalSec, streakSec, nodeId, parentId, prevEdge, evicted: false };
     allLabels.push(lbl);
     return lbl;
   };
 
-  // Per-node Pareto set: array of label IDs, sorted distM asc (→ shadowM necessarily
-  // asc too — a later label with less shadow would be dominated by an earlier one).
-  const paretoSets = new Map<number, number[]>();
-  const getSet = (id: number): number[] => {
-    if (!paretoSets.has(id)) paretoSets.set(id, []);
-    return paretoSets.get(id)!;
+  // Per-(node, time-bucket) Pareto set: array of label IDs, sorted distM asc
+  // (→ exposureCrit necessarily asc too — a later label with better exposure
+  // would be dominated by an earlier one). With time-dependent exposure the state is
+  // (node, arrivalTime), so labels that reach a node in *different buckets*
+  // are incomparable: the later one may be the one whose remaining edges are
+  // shaded, and letting the earlier prune it is exactly the H5 trap (an
+  // earlier arrival is not automatically better). Dominance applies only
+  // inside one bucket; the residual unsoundness — two arrivals inside the
+  // same bucket whose *next* edge straddles a boundary — is bounded by the
+  // bucket width and is H4's oracle's job to measure. Static runs have one
+  // bucket, so this is the old per-node set exactly.
+  const paretoSets = new Map<string, number[]>();
+  const setKey = (id: number, bucket: number): string => `${id}:${bucket}`;
+  const getSet = (id: number, bucket: number): number[] => {
+    const key = setKey(id, bucket);
+    if (!paretoSets.has(key)) paretoSets.set(key, []);
+    return paretoSets.get(key)!;
   };
+  const labelBucket = (lbl: PLabel): number =>
+    ta ? bucketOf(lbl.arrivalSec) : 0;
 
-  /** Returns true if a dominates b (at least as short AND at least as sheltered). */
-  const dom = (a: PLabel, b: PLabel) => a.distM <= b.distM && a.exposureM >= b.exposureM;
+  /** True when a's exposure is at least as good as b's — fewer sun seconds
+   * (sun), more sheltered metres (rain). Revalidated for the duration
+   * objective (H2): both criteria are additive and non-negative per edge, so
+   * within one time bucket the label-setting dominance argument holds with
+   * the comparison direction flipped; the bucket-boundary residual is
+   * unchanged from H1 and still H4's to measure. */
+  const exposureBetter = (a: PLabel, b: PLabel) =>
+    rain ? a.exposureCrit >= b.exposureCrit : a.exposureCrit <= b.exposureCrit;
+
+  /** True when a's unbroken sun run is no worse than b's (sun only): a label
+   * that has already walked a long sunlit stretch is the one the
+   * `maxContinuousExposureSec` cap will cut, so it must not prune a
+   * shade-broken-streak rival that is marginally longer. Without this, the
+   * cap can eliminate every path to the destination. */
+  const streakBetter = (a: PLabel, b: PLabel) =>
+    rain || a.streakSec <= b.streakSec;
+
+  /** Returns true if a dominates b: at least as short, at least as good on
+   * exposure and sun-streak, and — only where exposure is time-dependent —
+   * at least as early. Only ever compared within one bucket (see the
+   * Pareto-set comment above). */
+  const dom = (a: PLabel, b: PLabel) =>
+    a.distM <= b.distM && exposureBetter(a, b) && streakBetter(a, b)
+    && (!ta || a.arrivalSec <= b.arrivalSec);
 
   /**
-   * Try to insert `incoming` into the Pareto set for its node.
+   * Try to insert `incoming` into the Pareto set for its node and bucket.
    * Rejects if dominated by any existing label.
    * Evicts any existing labels now dominated by incoming.
    * If still at cap after evictions, rejects incoming if it would be worst (highest distM).
    * Returns true if accepted.
    */
   const insertPareto = (incoming: PLabel): boolean => {
-    const set = getSet(incoming.nodeId);
+    const set = getSet(incoming.nodeId, labelBucket(incoming));
     for (const id of set) {
       if (dom(allLabels[id], incoming)) return false;
     }
@@ -1013,7 +1109,7 @@ export function paretoRoutes(
   // the budget prune and A* ordering stay admissible for bike discounts.
   const hCostRemaining = (nodeId: number): number => hRemaining(nodeId) * costRatio;
 
-  const startLabel = mkLabel(0, 0, startId, -1, null);
+  const startLabel = mkLabel(0, 0, 0, 0, startId, -1, null);
   insertPareto(startLabel);
 
   const heap = new MinHeap<{ labelId: number; f: number }>((a, b) => a.f - b.f);
@@ -1036,15 +1132,29 @@ export function paretoRoutes(
     // fully shadowed). If an already-found destination label dominates even that
     // optimistic completion, the label can't contribute to the front. The shadow
     // optimism is divided by the mode's minimum cost ratio: discounted cost
-    // meters buy more than one physical meter each.
-    const destSet = paretoSets.get(endId);
-    if (destSet && destSet.length > 0 && label.nodeId !== endId) {
+    // meters buy more than one physical meter each. The front spans every
+    // bucket's set at endId — no bucket comparison happens here, because the
+    // optimistic bound already assumes every remaining edge is fully shadowed,
+    // which no bucket can beat.
+    const destBuckets = ta ? [...paretoSets.entries()]
+      .filter(([k]) => k.startsWith(`${endId}:`))
+      .flatMap(([, ids]) => ids)
+      : paretoSets.get(`${endId}:0`);
+    if (destBuckets && destBuckets.length > 0 && label.nodeId !== endId) {
       const optDistM  = label.distM + hCostRemaining(label.nodeId);
-      const optExposureM = label.exposureM + (budgetM - label.distM) / costRatio;
+      // Optimistic completion: rain can still walk the whole remaining budget
+      // fully sheltered; sun's best case is every remaining edge fully
+      // shadowed, i.e. no further sun seconds at all.
+      const optExposureCrit = rain
+        ? label.exposureCrit + (budgetM - label.distM) / costRatio
+        : label.exposureCrit;
       let prunedByDest = false;
-      for (const id of destSet) {
+      for (const id of destBuckets) {
         const d = allLabels[id];
-        if (d.distM <= optDistM && d.exposureM >= optExposureM) { prunedByDest = true; break; }
+        if (d.distM <= optDistM
+          && (rain ? d.exposureCrit >= optExposureCrit : d.exposureCrit <= optExposureCrit)) {
+          prunedByDest = true; break;
+        }
       }
       if (prunedByDest) continue;
     }
@@ -1063,29 +1173,61 @@ export function paretoRoutes(
           ? effectiveCrossingM : 0;
 
       const newDistM  = label.distM  + modeAdjustedDistanceM(edge, travelMode) + crossing;
-      const newExposureM = label.exposureM + edge.distanceM * exposureFactor(edge);
+      // The exposure clock (H2): penalties are the mode policy's own time
+      // surrogates, so steps and rough surfaces cost real minutes of sun —
+      // but the clock never rides below physical time at cruise speed (see
+      // `edgeTraversalSeconds`). Crossing waits stay off the clock: the
+      // crossing penalty is search cost and its real wait time is not modelled
+      // (H5 owns waiting).
+      const edgeSec = edgeTraversalSeconds(edge, travelMode);
+      const newArrivalSec = ta ? label.arrivalSec + edgeSec : 0;
+      const factor = exposureFactorAt(edge, newArrivalSec);
+      // H2: sun accumulates sun seconds, rain sheltered metres.
+      const newExposureCrit = rain
+        ? label.exposureCrit + edge.distanceM * (edge.shelterFactor ?? 0)
+        : label.exposureCrit + edgeSec * (1 - factor);
+      // The hard-constraint streak: an edge above SHADOW_THRESH breaks
+      // the sunlit run; at or below it the run keeps growing, weighted by
+      // the edge's unshadowed fraction.
+      const newStreakSec = rain ? 0
+        : factor > SHADOW_THRESH ? 0 : label.streakSec + edgeSec * (1 - factor);
+      // maxContinuousExposureSec (sun only): a path whose longest sunlit run
+      // already exceeds it can only get worse — prune the edge outright.
+      if (!rain && maxContinuousExposureSec != null && newStreakSec > maxContinuousExposureSec) {
+        continue;
+      }
 
       // Detour budget: prune anything that can no longer finish within budget
       const hTo = hCostRemaining(edge.toId);
       if (newDistM + hTo > budgetM) continue;
 
-      // Pre-check dominance before allocating a label object
-      const candidateSet = getSet(edge.toId);
+      // Pre-check dominance before allocating a label object — against this
+      // arrival's bucket only (see the Pareto-set comment above).
+      const candidateSet = getSet(edge.toId, ta ? bucketOf(newArrivalSec) : 0);
       let dominated = false;
       for (const id of candidateSet) {
         const ex = allLabels[id];
-        if (ex.distM <= newDistM && ex.exposureM >= newExposureM) { dominated = true; break; }
+        if (ex.distM <= newDistM
+          && (rain ? ex.exposureCrit >= newExposureCrit : ex.exposureCrit <= newExposureCrit)
+          && (rain || ex.streakSec <= newStreakSec)
+          && (!ta || ex.arrivalSec <= newArrivalSec)) { dominated = true; break; }
       }
       if (dominated) continue;
 
-      const newLabel = mkLabel(newDistM, newExposureM, edge.toId, labelId, edge);
+      const newLabel = mkLabel(newDistM, newExposureCrit, newArrivalSec, newStreakSec, edge.toId, labelId, edge);
       if (insertPareto(newLabel)) {
         heap.push({ labelId: newLabel.id, f: newDistM + hTo });
       }
     }
   }
 
-  const destFront = getSet(endId).map((id) => allLabels[id]);
+  // The destination front spans every bucket's Pareto set at endId.
+  const destFront = (ta
+    ? [...paretoSets.entries()]
+      .filter(([k]) => k.startsWith(`${endId}:`))
+      .flatMap(([, ids]) => ids)
+    : paretoSets.get(`${endId}:0`) ?? []
+  ).map((id) => allLabels[id]);
   if (destFront.length === 0) return [];
 
   // Reconstruct path for a label by following parentId back-pointers.
@@ -1108,7 +1250,6 @@ export function paretoRoutes(
     // edgePath[i] is the edge from nodeIds[i] to nodeIds[i + 1], so this stays
     // one shorter than nodeIds — the alignment RouteResult.sides documents.
     const sides: Array<SidewalkSide | null> = edgePath.map((e) => e.side ?? null);
-    const SHADOW_THRESH = 0.5;
     let totalDist = 0, shadowedDist = 0, dryDist = 0;
     let longestContinuousShadowM = 0, currentStreakM = 0, shadowTransitions = 0;
     let longestContinuousSunM = 0, currentSunStreakM = 0;
@@ -1122,11 +1263,18 @@ export function paretoRoutes(
       protection?: number;
       confidence?: number;
       provenance?: string;
+      durationSec?: number;
     }> = [];
     const sampledEdges: NonNullable<RouteResult["sampledEdges"]> = [];
 
+    // Replay the walker's clock along the chosen path so the reported metrics
+    // are priced at the same buckets the search optimized (H1). Static runs
+    // read `shadowFactor` directly and are unchanged.
+    let replayArrivalSec = 0;
     for (let i = 0; i < edgePath.length; i++) {
       const edge = edgePath[i];
+      if (ta) replayArrivalSec += edgeTraversalSeconds(edge, travelMode);
+      const factor = ta ? exposureFactorAt(edge, replayArrivalSec) : edge.shadowFactor;
       totalDist  += edge.distanceM;
       const fromNode = graph.nodes.get(nodeIds[i]);
       const toNodeForSample = graph.nodes.get(nodeIds[i + 1]);
@@ -1137,24 +1285,28 @@ export function paretoRoutes(
           side: edge.side ?? null,
         });
       }
-      shadowedDist += edge.distanceM * edge.shadowFactor;
+      shadowedDist += edge.distanceM * factor;
       const shelterConfidence = edge.shelterFactor == null
         ? undefined
         : edge.shelterConfidence ?? edge.exposureConfidence ?? 1;
       if (shelterConfidence != null && shelterConfidence >= 0.5) {
         dryDist += edge.distanceM * (edge.shelterFactor ?? 0);
       }
-      const protection = rain ? edge.shelterFactor : edge.shadowFactor;
+      const protection = rain ? edge.shelterFactor : factor;
       const exposureConfidence = rain ? shelterConfidence : edge.exposureConfidence ?? 1;
       exposureSegments.push({
         distanceM: edge.distanceM,
+        // H2: the exposure metrics' durations are the mode's traversal clock
+        // (see `edgeTraversalSeconds`) — a bike ride's sun minutes are
+        // shorter, and its steps are not.
+        durationSec: edgeTraversalSeconds(edge, travelMode),
         protection,
         confidence: exposureConfidence,
         provenance: protection == null ? "unknown" : "geometry",
       });
       surfaceMetresM[edge.surface ?? "unknown"] =
         (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
-      const isShadowed = edge.shadowFactor > SHADOW_THRESH;
+      const isShadowed = factor > SHADOW_THRESH;
       if (isShadowed) {
         currentStreakM += edge.distanceM;
         longestContinuousShadowM = Math.max(longestContinuousShadowM, currentStreakM);
@@ -1230,25 +1382,37 @@ export function paretoRoutes(
     .map((lbl) => ({ lbl, res: buildResult(lbl) }))
     .filter(({ res }) => new Set(res.nodeIds).size === res.nodeIds.length);
   if (candidates.length === 0) return [];
+  // destFront's order is bucket-iteration order in a time-aware run — NOT
+  // distM order — so sort before anything assumes "first = shortest". The
+  // representatives and the normalization ranges below both lean on that.
+  candidates.sort((a, b) => a.lbl.distM - b.lbl.distM);
 
-  // Select representatives: shortest (min distM), most shadowed (max shadowM), knee.
-  // candidates inherit destFront's order: distM asc → shadowM asc.
-  const shortest   = candidates[0];
-  const mostShadowed = candidates[candidates.length - 1];
+  // Select representatives: shortest (min distM), the exposure extreme, and
+  // the knee between them. Under the H2 duration objective the extreme is the
+  // *least* sun seconds (rain keeps the most sheltered metres); destFront is
+  // still sorted distM asc, so scan rather than take the tail.
+  const shortest = candidates[0];
+  const extreme = candidates.reduce((a, b) =>
+    exposureBetter(b.lbl, a.lbl) ? b : a);
 
   const minDist  = candidates[0].lbl.distM;
   const maxDist  = candidates[candidates.length - 1].lbl.distM;
-  const minExposure = candidates[0].lbl.exposureM;
-  const maxExposure = candidates[candidates.length - 1].lbl.exposureM;
+  const crits = candidates.map((c) => c.lbl.exposureCrit);
+  const minExposure = Math.min(...crits);
+  const maxExposure = Math.max(...crits);
   const distRange  = maxDist  - minDist  || 1;
   const exposureRange = maxExposure - minExposure || 1;
 
+  // The knee in the new normalized space: both axes are "smaller is better"
+  // (distance, and exposure normalized so 0 is the best exposure), so the
+  // balanced representative is the candidate closest to the ideal corner.
   let knee = candidates[0];
   let kneeScore = Infinity;
   for (const c of candidates) {
     const nd = (c.lbl.distM  - minDist)  / distRange;
-    const ns = (c.lbl.exposureM - minExposure) / exposureRange;
-    const score = Math.sqrt(nd * nd + (1 - ns) * (1 - ns));
+    const ncrit = (c.lbl.exposureCrit - minExposure) / exposureRange;
+    const ne = rain ? 1 - ncrit : ncrit;
+    const score = Math.sqrt(nd * nd + ne * ne);
     if (score < kneeScore) { kneeScore = score; knee = c; }
   }
 
@@ -1265,7 +1429,7 @@ export function paretoRoutes(
 
   tryAdd(shortest);
   tryAdd(knee);
-  tryAdd(mostShadowed);
+  tryAdd(extreme);
 
   return results;
 }

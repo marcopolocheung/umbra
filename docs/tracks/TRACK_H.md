@@ -12,29 +12,46 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H1 — **not started; the gate is met as of 2026-10-02.** A6 is landed
-  (Track A records one acceptance criterion unmet, with numbers; read it before relying on
-  sweep cost) and G2 is done (`npm run bench:route`, baseline in
-  `docs/notes/performance-baseline.md`). H1 is lane 1 of the hiring sprint (`docs/ROADMAP.md` §3).
-- **Gate (historical):** do not start until **A6 (time sweep)** and **G2 (route benchmark)** have landed.
-  H1 without A6 costs one full shadow evaluation per time bucket per edge and will not run at
-  interactive speed; H3 without G2 has no committed baseline, and this track's central claim is
-  a *comparison* against the static method. Starting early produces a demo that cannot be
-  defended, which is the one outcome this track exists to avoid.
-- **Done:** nothing in H1–H4. One prerequisite cleared: **#208** — `parallelSidewalkEdges`
-  rebuilt each sidewalk edge from scratch and silently dropped the five OSM access tags
-  `overpass.ts` had filled in, so H2/H3's "hard constraint" had nothing to read. It now
-  returns the source edge with only `shadowFactor` and `side` replaced.
-- **Open PRs:** none.
-- **Decisions made:** none yet. The design notes below are the starting position, not
-  decisions — record real ones here as they are made.
-- **Blocked on:** nothing as of 2026-10-02. A6 and G2 have landed. Prior art to cite beside
-  Fujiwara 2024: Li, Yoshimura, Tu & Ratti, arXiv 1910.04312 (5-minute time-aware Dijkstra over
-  1,000 simulated Tokyo trips, no static-vs-time-aware ablation). A direct NYC competitor,
-  shadewalker.nyc, prices whole routes at departure time, which is the static baseline H1 must beat.
-- **Next action:** H1 — traversal-time exposure, behind a flag, with the H4 oracle written in
-  the same PR or the one immediately after.
-- **Last verified:** 2026-10-02 — gate re-checked against Track A and Track G briefs and `ShadowField.sweep`.
+- **Active checkpoint:** H2 — **implemented, stacked on H1 in PR #222
+  (`feat/h1-traversal-time-exposure`); not merged.** The label criterion is
+  `exposureCrit`: **minimized sun seconds** (rain keeps maximized sheltered
+  metres). One honest clock — `edgeTraversalSeconds` (cruise speed, plus the
+  steps penalty as a time surrogate; the scooter rough-surface deterrent stays
+  OUT of the clock — it turned 20 m of cobbles into 340 s — and preferences
+  never ride below physical time) — prices exposure, arrival buckets and the
+  reported segment durations. Representatives re-derived; destFront candidates
+  sorted by cost (bucket-iteration order had been able to drop the true
+  shortest); knee per objective (rain's most-sheltered corner — a wrong
+  direction collapsed rain's front and deleted "Balanced");
+  `maxContinuousExposureSec` hard constraint plumbed and tested, with the
+  **sun-streak in the dominance comparison** (without it the cap could return
+  no route at all); every pareto walk option now carries `exposure` with
+  `exposedDurationSec` (card display is a Track U hand-off). Notes:
+  **`docs/notes/exposure-objective-h2.md`** (names the #241 Ma et al. bound;
+  #243's constant deliberately untouched — G2 follow-up filed as
+  marcopolocheung/umbra#223) and `docs/notes/time-aware-routing-h1.md`
+  (clock section superseded by H2).
+- **H1 — implemented in the same PR.** Labels carry arrival seconds; per-bucket
+  Pareto sets; `field.sweep` over the 8 × 15-min horizon; static path intact.
+- **Done:** H1, H2 (this PR). Earlier: **#208**.
+- **Decisions made:** H1 — end-of-edge arrival pricing; horizon = detour budget
+  clamped to 8 buckets; pixel-fallback edges frozen in time; sketch/refresh
+  pipelines static. H2 — duration criterion with the penalized-but-never-
+  discounted traversal clock (the E1 stairs test caught the cruise-only clock
+  pricing a steps shortcut as *least*-sun); knee re-derived;
+  `maxDetourFactor` untouched (#243 — G2's sweep owns it).
+- **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
+  G2 factor sweep (#243 follow-up, Track G).
+- **Next action:** H3 — Sun Budget reachability (needs A5; consume E's `Trip`).
+  The H4 oracle remains unwritten — take it before trusting any H3 output.
+- **Last verified:** 2026-10-02 — gates green in the H1/H2 worktree (one
+  full-suite order-dependent flake observed under back-to-back loaded runs —
+  `useNavigation.test.tsx` "hands the whole edge set to the field in one
+  batch" — its assertion made order-robust in this PR; re-run green).
+  Committed fixtures: static-vs-time-aware flip, later-arrival survival
+  (re-derived for the duration objective), Route-A/Route-B regression,
+  hard-constraint cap surviving dominance, rain three-representative knee —
+  each mutation-checked to fail on the broken rule it guards.
 
 ---
 
