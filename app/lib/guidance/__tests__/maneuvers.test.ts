@@ -155,8 +155,8 @@ describe("shared geographic bearings", () => {
 
 describe("generateManeuvers — street names (B2)", () => {
 	it("names the street each maneuver proceeds along, not the one left", () => {
-		// Two straight runs meeting at a right angle: west along "First", then
-		// north along "Second". The turn's name is the street you turn ONTO.
+		// Two straight runs meeting at a right angle: north along "First", then
+		// east along "Second". The turn's name is the street you turn ONTO.
 		const path = nodes([[0, 0], [0, 0.001], [0.001, 0.001]]);
 		const result = generateManeuvers(path, 0, ["First St", "Second Ave"]);
 		const byType = Object.fromEntries(result.map((m) => [m.type, m.streetName]));
@@ -201,8 +201,10 @@ describe("generateManeuvers — street names (B2)", () => {
 		// nodes[1] duplicates nodes[2], so segment 1→2 is zero-length and skipped;
 		// the name index is derived from i, not a running counter, so it stays put.
 		const path = nodes([[0, 0], [0, 0.001], [0, 0.001], [0.001, 0.001]]);
-		const result = generateManeuvers(path, 0, ["First St", "First St", "Second Ave"]);
+		// names[1] belongs to the skipped segment: a running counter would hand it to the turn.
+		const result = generateManeuvers(path, 0, ["First St", "Skipped", "Second Ave"]);
 		expect(result.find((m) => m.type === "depart")?.streetName).toBe("First St");
+		expect(result.find((m) => m.type === "turn-right")?.streetName).toBe("Second Ave");
 		expect(result.at(-1)?.streetName).toBe("Second Ave");
 	});
 });

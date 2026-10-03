@@ -23,22 +23,24 @@ guessed**, because dense-city graphs are large. The baseline matters: on `main`
 the edge object has **no `name` key at all**, so B2 adds one property slot to
 every edge, named or not.
 
-Measured with `node --expose-gc`, building 400,000 edges with 2,000 shared
-street-name strings, comparing the `main` edge shape against the B2 shape:
+Measured with `node --expose-gc`, each shape in its own process, building 400,000
+edges exactly as `buildRoutingGraphFromElements` does (an `edgeTags` object
+literal spread into the edge) over ways sharing 2,000 street-name strings, with
+the edge array held live across the final GC:
 
-| method | Δ bytes/edge |
+| shape | bytes/edge (Node 20.20 / 24.20) |
 |---|---|
-| each shape in its own process, `heapUsed` after GC | ~1 |
-| both shapes in one process, forced GC between, repeated | ~24–29 |
+| `main` (no `name` key) | 142.9 / 143.1 |
+| B2 (`name` key) | 166.8 / 167.1 |
 
-Heap measurement at this scale is noisy — V8 rounds object sizes to 8-byte
-classes, so the extra slot may or may not bump the class, and the two figures
-disagree by an order of magnitude. The honest reading: **it is one reference
-slot per edge, single-digit to low-tens of bytes, ≲12 MB per 400,000 edges in
-the worst run** — not literally free. The earlier draft of this note claimed
-"~0 bytes/edge" from a measurement that held the object shape constant (it
-compared `name: ""` against a real name, both already B2-shaped); that baseline
-was wrong and the claim is corrected here.
+**B2 costs 24 bytes per edge, about 9.6 MB per 400,000 edges** — stable across
+three runs on Node 20 and two on Node 24. It is one more in-object property on
+every edge, named or not. The number depends on how the edge is built: a harness
+that adds the key differently (e.g. `Object.assign` after a partial literal) can
+land both shapes in the same V8 size class and read ~0, and a harness that lets
+the array be collected before reading `heapUsed` also reads ~0. An earlier draft
+of this note reported ~0 and then "~1 to ~29 bytes, noisy"; both came from such
+harness artefacts, and are corrected here.
 
 The shared strings themselves are negligible: 2,000 unique names beside 400,000
 edges. The cost is the slot, and unnamed edges pay it too.
@@ -48,7 +50,8 @@ edges. The cost is the slot, and unnamed edges pay it too.
 - **Overpass graph only.** The static NYC routing path
   (`app/lib/navigationData/`) does not carry `name` — its shard contract and
   adapter drop all tags — so NYC routes get no names until that path is
-  extended. Filed separately. `cloneRoutingGraph` also drops tags (pre-existing).
+  extended (#255). The sketch path's `cloneRoutingGraph` in `app/lib/navigationHelpers.ts` also drops
+  tags (pre-existing); the `cloneRoutingGraph` in `overpass.ts` copies whole edges and keeps `name`.
 - It measures the **edge** cost, not the whole graph build.
 - It does not wire `name` into the UI — B2 threads it into the maneuver; naming
   the street on screen is B6's instruction surface.

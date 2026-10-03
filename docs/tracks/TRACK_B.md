@@ -13,7 +13,7 @@
 - **Active checkpoint:** B2 — implemented on `feat/b2-street-names` (this branch). B1 is merged
   (`app/lib/guidance/maneuvers.ts` is on `main`). B2 keeps OSM `name` on every routing edge and
   threads it into `Maneuver.streetName` (via `streetNamesAlong`); the memory cost is measured
-  (one reference slot per edge, single-digit to low-tens of bytes) in
+  (24 bytes per edge, ~9.6 MB per 400,000 edges) in
   `docs/notes/guidance-street-names.md`. Live position tracking and UI follow in B3/B4.
 - **Done:** B1 implementation and its captured-route tests; prerequisite camera work #148
   (the PR for #145) and #159 merged, as did #150 (chosen sidewalk plumbing), #171
@@ -89,7 +89,7 @@
   endpoint connectors currently shift sidewalk labels against final GeoJSON (#180).
 - **Next action:** B3 — position tracking and map matching. B2 is implemented (this branch).
 - **Last verified:** 2026-10-03 — B2 on `feat/b2-street-names`: lint (0 errors), typecheck,
-  tests (1945 passing), build all green. 2026-09-05, main `fb47c18` baseline: 342 tests / 33 files green.
+  tests (1947 passing), build all green. 2026-09-05, main `fb47c18` baseline: 342 tests / 33 files green.
   B1 branch: all four gates green, 376 tests / 34 files (34 new guidance tests), build
   5.57 s; lint has 52 existing warnings and 8 infos (capped output), with no errors in
   the changed files. Cold verifier: no findings, independently reran all four gates.
