@@ -26,6 +26,9 @@ interface FloatingRouteCardsProps {
   rainIntensity?: number;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** S2b: the learned shade preference behind the default card. */
+  learnedPreference?: { detourM: number; picks: number; stated: boolean } | null;
+  onResetLearnedPreference?: () => void;
 }
 
 function routeKey(route: RouteOption): string {
@@ -51,6 +54,8 @@ export default function FloatingRouteCards({
   rainMode = false,
   rainIntensity = 5,
   rainWind = null,
+  learnedPreference = null,
+  onResetLearnedPreference,
 }: FloatingRouteCardsProps) {
   if (routes.length === 0) return null;
   const baselineRoute = shortestRoute(routes);
@@ -100,6 +105,8 @@ export default function FloatingRouteCards({
               rainWind={rainWind}
               weather={weather}
               exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
+              learnedPreference={i === selectedRouteIndex ? learnedPreference : undefined}
+              onResetLearnedPreference={onResetLearnedPreference}
             />
           ))}
         </div>

@@ -60,6 +60,9 @@ interface RouteCardProps {
   weather?: WeatherHour | null;
   /** The dose line and hourly exposure strip, rendered inside the selected card. */
   exposureSlot?: ReactNode;
+  /** S2b: the learned shade preference behind the default card, on the selected card. */
+  learnedPreference?: { detourM: number; picks: number; stated: boolean } | null;
+  onResetLearnedPreference?: () => void;
 }
 
 export default function RouteCard({
@@ -75,6 +78,8 @@ export default function RouteCard({
   rainWind = null,
   weather = null,
   exposureSlot,
+  learnedPreference = null,
+  onResetLearnedPreference,
 }: RouteCardProps) {
   const rainCard = rainMode && (r.objective === "rain" || r.dryCoverage !== undefined);
   const streak =
@@ -461,6 +466,34 @@ export default function RouteCard({
             )
           )}
           {exposureSlot}
+
+          {/* S2b: what the default card is tuned to, and a way to forget it.
+              The population default until the walker's own picks move it. */}
+          {learnedPreference && (
+            <div
+              className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t pt-2 text-[11px]"
+              style={{ borderColor: "var(--color-rule)", color: "var(--color-ink-muted)" }}
+            >
+              <span>
+                {learnedPreference.stated
+                  ? `Your stated sun tolerance: about ${learnedPreference.detourM} m of detour per minute of sun`
+                  : learnedPreference.picks > 0
+                    ? `Learned from your ${learnedPreference.picks} route ${learnedPreference.picks === 1 ? "pick" : "picks"}: about ${learnedPreference.detourM} m of detour per minute of sun`
+                    : `Population default: about ${learnedPreference.detourM} m of detour per minute of sun`}
+              </span>
+              {learnedPreference.picks > 0 && onResetLearnedPreference && (
+                <button
+                  type="button"
+                  onClick={onResetLearnedPreference}
+                  aria-label="Reset learned shade preference"
+                  className="underline underline-offset-2 hover:no-underline"
+                  style={{ color: "var(--color-ink)" }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Actions: explicit labelled buttons rather than icon-only targets
               with a hover menu that never existed on touch. */}

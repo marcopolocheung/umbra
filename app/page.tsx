@@ -330,8 +330,10 @@ export default function Home() {
     rainIntensity,
     travelMode,
     setPendingSlot,
-    setSelectedRouteIndex,
     setSaveModalRouteIndex,
+    selectRoute,
+    learnedPreference,
+    resetLearnedPreference,
     handleMapClick,
     handleClear,
     handleOpenSaveModal,
@@ -1145,8 +1147,10 @@ export default function Home() {
             routeProgress={routeProgress}
             routes={filteredRoutes}
             exposureSlot={exposureSlot}
+            learnedPreference={learnedPreference}
+            onResetLearnedPreference={resetLearnedPreference}
             selectedRouteIndex={selectedRouteIndex}
-            onSelectRoute={setSelectedRouteIndex}
+            onSelectRoute={selectRoute}
             error={navError}
             solarIntensity={routeSolarIntensity}
             pendingSlot={pendingSlot}
@@ -1294,13 +1298,15 @@ export default function Home() {
         <FloatingRouteCards
           routes={filteredRoutes}
           selectedRouteIndex={selectedRouteIndex}
-          onSelectRoute={setSelectedRouteIndex}
+          onSelectRoute={selectRoute}
           onSaveRoute={handleOpenSaveModal}
           onExportRoute={handleExportRoute}
           weather={heatWeather}
           solarIntensity={routeSolarIntensity}
           rainWind={routeWind}
           exposureSlot={exposureSlot}
+          learnedPreference={learnedPreference}
+          onResetLearnedPreference={resetLearnedPreference}
           onStartNavigation={() => dispatch({ type: "START_NAVIGATION" })}
           grip={
             <RoutePreviewGrip
@@ -1474,10 +1480,12 @@ export default function Home() {
               routeProgress={routeProgress}
               routes={filteredRoutes}
               exposureSlot={exposureSlot}
+              learnedPreference={learnedPreference}
+              onResetLearnedPreference={resetLearnedPreference}
               weather={heatWeather}
               rainWind={routeWind}
               selectedRouteIndex={selectedRouteIndex}
-              onSelectRoute={setSelectedRouteIndex}
+              onSelectRoute={selectRoute}
               error={navError}
               solarIntensity={routeSolarIntensity}
               pendingSlot={pendingSlot}

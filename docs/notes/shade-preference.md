@@ -167,3 +167,48 @@ repo. The fitted *constants* (four numbers, not person-level data) ship in the a
   observation also applies: shadewalker's fixed ladder buys almost nothing on the
   Midtown grid, so a learned α matters most exactly where trees and side-streets give
   real alternatives — the Village, Brooklyn, the crosstown.
+
+## S2b — the wiring (2026-10-03)
+
+The model now changes which card Umbra shows first.
+
+- **Picks are recorded where the user chooses.** `app/lib/preference/pickStore.ts`
+  keeps the chosen card against the others the same request offered, in
+  `localStorage` under `umbra:routePicks`, bounded to the last 50. A card's
+  `shadowCoverage` gives only the shaded share of its length, not the tree/building
+  split, so all shade is filed as building shade; nothing is lost, because the model's
+  cost `α·sun + shade` is invariant to that split (effective sun + effective shade =
+  length at any ρ).
+- **α sets the default card.** `app/lib/preference/routeChoice.ts` minimises the
+  model's cost over the options H2's search returned. In the source's metres that cost
+  is `α·sun + shade`; with H2's clock it is `travelSeconds + (α−1)·exposedSeconds`,
+  which is the same ordering because both scale by the mode's speed. `α−1` is the
+  detour rate: `distance + (α−1)·sun` is the same cost, so the extra metres a walker
+  accepts per metre of sun removed is `α−1`. Cold (no picks, no stated tolerance) α is
+  the population mean 1.205 and the shortest card wins, which is the pre-S2b default.
+- **The stated sun-tolerance slot wins over the learned value.** The S3a `sunTolerance`
+  slot (low/moderate/high → α 2.0/1.205/0.5) is read at calculation time; when set it
+  replaces the picks outright. Nothing writes the slot yet — S3b's panel is its editor.
+- **The card states the trade and can forget it.** The selected card carries
+  "Learned from your N route picks: about M m of detour per minute of sun", where
+  `M = round((α−1)·60·1.4)` — one minute of walking is 84 m of sun at 1.4 m/s. A Reset
+  link clears the picks and re-selects on the prior.
+- **The manual "Fastest/Balanced/Most shade" slider is untouched.** It stays an explicit
+  per-request override that moves the selection directly; the learned α only sets the
+  *initial* default after a calculation.
+
+**Acceptance.** `app/lib/preference/__tests__/routeChoice.test.ts` gives two walkers
+one request: a shade-picking history and a sun-picking history produce different α, and
+that difference alone changes the default index (1 vs 0) — the fixture the brief asks
+for. The same file pins the cost model, the tolerance override and the trade figure.
+
+**Honesty, unchanged from S2a and now load-bearing.** With one user and a handful of
+picks, online learning is still validated **in simulation only** — S2b ships the wiring,
+not a claim that it improves any real walker's route. And the prior is still 46
+Singaporeans in a courtyard, a domain shift from Manhattan in July. Both statements
+carry into the product: the card says "population default" until picks exist.
+
+**Not in this slice.** α selects among the Pareto front H2 already computed; it does not
+re-price the search itself (a `routing.ts` change, Track H's file). The manual slider and
+the learned default can disagree until the user drags one — the learned value is a
+starting point, not a lock.

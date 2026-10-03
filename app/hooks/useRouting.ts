@@ -111,6 +111,14 @@ import {
   routingEdgeBatch,
   waitForMapIdle,
 } from "../lib/navigationHelpers";
+import { createMemoryStore } from "../lib/memory/memoryStore";
+import { createPickStore, optionFromRoute } from "../lib/preference/pickStore";
+import {
+  type ChoiceOption,
+  defaultRouteIndex,
+  detourPerSunMinute,
+  resolvePreference,
+} from "../lib/preference/routeChoice";
 
 /**
  * H1 traversal-time exposure: price each edge at the bucket the walker arrives
@@ -192,6 +200,16 @@ export function routesForMode(
   return routes.filter((r) => (mode === "transit") === isTransitRoute(r));
 }
 
+/** S2b: the shade preference behind the current default route selection. */
+export interface LearnedPreference {
+  /** Metres of detour per minute of open sun the walker accepts. */
+  detourM: number;
+  /** How many observed picks the fit rests on. */
+  picks: number;
+  /** The stated sun-tolerance slot is the source, not the learned picks. */
+  stated: boolean;
+}
+
 /**
  * Everything `useRouting` reads from outside its own state. Trip pieces arrive
  * explicitly (values for the plan-revision effect, refs and setters for the
@@ -267,6 +285,52 @@ export function useRouting({
   const [routeExposureContext, setRouteExposureContext] = useState<ResolvedExposureContext | null>(null);
   /** Map rings of the sidewalk sheds the last calculation's field sampled. */
   const [shedRings, setShedRings] = useState<[number, number][][]>([]);
+  /** S2b: the learned shade preference behind the current default selection. */
+  const [learnedPreference, setLearnedPreference] = useState<LearnedPreference | null>(null);
+  const pickStore = useMemo(() => createPickStore(), []);
+  const memoryStore = useMemo(() => createMemoryStore(), []);
+
+  /** The stated sun-tolerance slot (S3a), if the walker has set one. */
+  const readStatedTolerance = useCallback((): "low" | "moderate" | "high" | null => {
+    const value = memoryStore.resolve("sunTolerance", Date.now())?.value;
+    return value === "low" || value === "moderate" || value === "high" ? value : null;
+  }, [memoryStore]);
+
+  /**
+   * S2b: resolve α from the walker's picks (the stated slot wins over them) and
+   * select the card it prefers. Returns the chosen index so the caller can
+   * frame the map to the same route.
+   */
+  const applyLearnedPreference = useCallback(
+    (options: RouteOption[]): number => {
+      const resolved = resolvePreference(pickStore.load(), readStatedTolerance());
+      const choice: ChoiceOption[] = options.map((o) => ({
+        distanceM: o.distanceM,
+        shadowCoverage: o.shadowCoverage,
+        objective: o.objective,
+        totalTimeSec: o.totalTimeSec,
+        exposedDurationSec: o.exposure?.exposedDurationSec,
+      }));
+      // The learned sun aversion prices walk routes; transit and rain cards
+      // are answered on other criteria, so the line stays off them.
+      const pricedOnSun = choice.some(
+        (o) => o.objective !== "rain" && Number.isFinite(o.shadowCoverage),
+      );
+      setLearnedPreference(
+        pricedOnSun
+          ? {
+              detourM: detourPerSunMinute(resolved.fit),
+              picks: resolved.fit.n,
+              stated: resolved.source === "stated",
+            }
+          : null,
+      );
+      const index = defaultRouteIndex(choice, resolved.fit.alpha);
+      setSelectedRouteIndex(index);
+      return index;
+    },
+    [pickStore, readStatedTolerance],
+  );
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -1951,7 +2015,10 @@ export function useRouting({
         updateProgress({ message: "Finalizing route options" });
         const partialWarning = options.find((o) => o.partial)?.partial;
         setNavRoutes(options);
-        setSelectedRouteIndex(0);
+        const visibleOptions = routesForMode(options, routeModeRef.current);
+        // S2b: the default card is the one the walker's learned sun aversion
+        // prefers, not always the shortest.
+        const defaultIndex = applyLearnedPreference(visibleOptions);
         setRouteSolarIntensity(solarIntensity);
         setRouteWind(rainObjective ? routeWindNow : null);
         setRouteExposureContext(routeExposureContext);
@@ -1961,10 +2028,9 @@ export function useRouting({
           partialWarning ? partialRouteNotice(partialWarning) : transitNotice,
         );
         seam.current.setSimplifiedWaypoints(null);
-        // The panel shows one mode's list, and selection resets to its first
-        // entry — so frame that, not whichever option happens to be first
-        // overall.
-        fitMapToRoute(routesForMode(options, routeModeRef.current)[0] ?? options[0]);
+        // The panel shows one mode's list, so frame the selected entry, not
+        // whichever option happens to be first overall.
+        fitMapToRoute(visibleOptions[defaultIndex] ?? visibleOptions[0] ?? options[0]);
         const metrics = options.map((option) => ({
           label: option.label,
           distanceM: option.distanceM,
@@ -2201,6 +2267,44 @@ export function useRouting({
     return object && object.planRevision === routePlanRevisionRef.current ? [object] : [];
   }, []);
 
+  /**
+   * S2b: a user picking a card is the observation the preference learns from —
+   * the chosen option against the others the same request offered. Programmatic
+   * selections (the default, the manual slider) call `setSelectedRouteIndex`
+   * directly and are not picks.
+   */
+  const selectRoute = useCallback(
+    (index: number) => {
+      const options = routesForMode(navRoutes, routeMode);
+      const chosen = options[index];
+      if (
+        index !== selectedRouteIndex &&
+        options.length > 1 &&
+        chosen &&
+        chosen.objective !== "rain" &&
+        Number.isFinite(chosen.shadowCoverage)
+      ) {
+        const rejected = options.filter(
+          (o, i) => i !== index && o.objective !== "rain" && Number.isFinite(o.shadowCoverage),
+        );
+        if (rejected.length > 0) {
+          pickStore.record({
+            chosen: optionFromRoute(chosen),
+            rejected: rejected.map(optionFromRoute),
+          });
+        }
+      }
+      setSelectedRouteIndex(index);
+    },
+    [navRoutes, routeMode, selectedRouteIndex, pickStore],
+  );
+
+  /** Forget every pick and re-select the card the remaining prior prefers. */
+  const resetLearnedPreference = useCallback(() => {
+    pickStore.clear();
+    applyLearnedPreference(routesForMode(navRoutes, routeMode));
+  }, [pickStore, applyLearnedPreference, navRoutes, routeMode]);
+
   // Derived values
   const filteredRoutes = useMemo(
     () => routesForMode(navRoutes, routeMode),
@@ -2251,6 +2355,9 @@ export function useRouting({
     getRouteReceiptMapObjects,
     setNavRoutes,
     setSelectedRouteIndex,
+    selectRoute,
+    learnedPreference,
+    resetLearnedPreference,
     setNavError,
     setIsCalculating,
     setRouteProgress,

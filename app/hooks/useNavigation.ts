@@ -141,6 +141,9 @@ export function useNavigation({ mapRef, getRouteFitPadding, shadowLayerRef, date
     getRouteReceiptMapObjects,
     setNavRoutes,
     setSelectedRouteIndex,
+    selectRoute,
+    learnedPreference,
+    resetLearnedPreference,
     setNavError,
     setIsCalculating,
     setRouteProgress,
@@ -595,6 +598,9 @@ export function useNavigation({ mapRef, getRouteFitPadding, shadowLayerRef, date
     setSaveModalRouteIndex,
 
     // Handlers
+    selectRoute,
+    learnedPreference,
+    resetLearnedPreference,
     handleMapClick,
     handleClear,
     handleOpenSaveModal,

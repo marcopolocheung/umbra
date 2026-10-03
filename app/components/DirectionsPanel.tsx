@@ -123,6 +123,9 @@ export interface DirectionsPanelProps {
   onRainIntensityChange?: (v: number) => void;
   /** Wind the last rain calculation priced, for the card to state it. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** S2b: the learned shade preference behind the default card. */
+  learnedPreference?: { detourM: number; picks: number; stated: boolean } | null;
+  onResetLearnedPreference?: () => void;
   windSource?: WindSource;
   manualWind?: ManualWind;
   onWindSourceChange?: (source: WindSource) => void;
@@ -162,6 +165,8 @@ export default function DirectionsPanel({
   rainMode = false, onRainModeChange,
   rainIntensity: _rainIntensity = 5, onRainIntensityChange: _onRainIntensityChange,
   rainWind = null,
+  learnedPreference = null,
+  onResetLearnedPreference,
   windSource = "forecast",
   manualWind = { directionDeg: 0, speedMps: 0 },
   onWindSourceChange,
@@ -259,6 +264,8 @@ export default function DirectionsPanel({
                   rainWind={rainWind}
                   weather={weather}
                   exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
+                  learnedPreference={i === selectedRouteIndex ? learnedPreference : undefined}
+                  onResetLearnedPreference={onResetLearnedPreference}
                 />
               </Fragment>
             ))}

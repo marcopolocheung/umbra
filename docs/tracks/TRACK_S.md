@@ -16,8 +16,15 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** none unblocked — the first wave is all merged (S1 #219, S3a #221,
-  S2a #215, S4a #216); every b-slice is blocked (see below).
+- **Active checkpoint:** S2b — PR open (learned preference wired into the default route
+  card). H1/H2 landed on `main` (#222/#224), which unblocked it. S3b and S4b remain.
+- **S2b (PR open):** `app/lib/preference/pickStore.ts` records card picks in
+  `localStorage`; `app/lib/preference/routeChoice.ts` turns α into the default card and
+  the stated trade; `useRouting` selects it at calculation time and records a pick when
+  the user chooses a card. The stated `sunTolerance` slot (S3a) overrides the learned α.
+  The selected card carries a resettable "learned trade" line. Acceptance fixture in
+  `routeChoice.test.ts` (two histories → different α → different default index). Note
+  section in `docs/notes/shade-preference.md` §S2b.
 - **S1 (merged #219):** shade reality audit vs NYC LiDAR (`studies/shade-audit/` +
   `docs/notes/shade-accuracy.md`). First published shade-error figure, against a 2017 LiDAR
   highest-hit truth over 8 blocks × 4 boroughs × 3 dates × 5 hours. Corrected 2026-10-02:
@@ -60,8 +67,7 @@ prior art comes from it, with links.
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
   observation or a dated source. S1 merged as #219; S2a #215, S3a #221 and S4a #216 followed the
   same day.
-- **Open PRs:** none — the first wave is merged (#215, #216, #219, #221) and #214 is closed as
-  superseded by #221.
+- **Open PRs:** S2b (this branch) — learned preference wired into the default route card.
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
@@ -84,16 +90,16 @@ prior art comes from it, with links.
   height/footprint-part error versus demolitions and same-lot replacements. Bound: 16% of tall
   LiDAR building area lies under no Umbra footprint. The next measurement is a per-building
   height audit against the LiDAR; no post-2017 city surface is public.
-- **Blocked on:** nothing in the review queue. S2b waits for H2 — Track H's brief says H1 has
-  not started. S3b edits `app/lib/agent/**` while Track C is mid-C10 on the same files, so it
-  needs coordination first. S4b needs a free mount point in the shell (U7 in flight).
-- **Next action:** S2b the moment H2 lands (H1 has not started); S3b once Track C's C10 clears;
-  S4b when a shell mount point frees. Nothing else in this track is startable — the lower-priority
-  items wait on S1–S3 having landed *and* their baselines being in hand. A10 consumes S1's
-  residual as its geometric baseline.
-- **Last verified:** 2026-10-03 — S2a/S3a/S4a merged (gates green on each merged tree: 1904–1916
-  tests); S1's own verification stands from 2026-10-02 (study self-tests 9/9, note cross-check
-  84/84 against `_summary.json`).
+- **Blocked on:** nothing in the review queue. H1/H2 landed (#222/#224), so S2b is done. S3b
+  edits `app/lib/agent/**` while Track C is mid-C10 on the same files, so it needs coordination
+  first. S4b needs a free mount point in the shell (U7 in flight).
+- **Next action:** S3b once Track C's C10 clears; S4b when a shell mount point frees. Nothing
+  else in this track is startable — the lower-priority items wait on S1–S3 having landed *and*
+  their baselines being in hand. A10 consumes S1's residual as its geometric baseline.
+- **Last verified:** 2026-10-03 — S2b on its branch: lint (0 errors), typecheck, tests
+  (1961 passing), build all green; S2a/S3a/S4a merged (gates green on each merged tree:
+  1904–1916 tests); S1's own verification stands from 2026-10-02 (study self-tests 9/9, note
+  cross-check 84/84 against `_summary.json`).
 
 ---
 
