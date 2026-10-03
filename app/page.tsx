@@ -21,6 +21,7 @@ import NavigationStatusPanel from "./components/NavigationStatusPanel";
 import ArrivalPanel from "./components/ArrivalPanel";
 import PlaceDetail from "./components/PlaceDetail";
 import AssistantPanel from "./components/AssistantPanel";
+import ChronolocationPanel from "./components/ChronolocationPanel";
 
 import type { IShadowLayer } from "./lib/shadow/IShadowLayer";
 import {
@@ -517,6 +518,8 @@ export default function Home() {
 
   // AI assistant (shadow-aware day-trip planner)
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // S4b — photo chronolocation panel.
+  const [chronoOpen, setChronoOpen] = useState(false);
   const [assistantPins, setAssistantPins] = useState<AssistantPin[]>([]);
   const [receiptMapObjects, setReceiptMapObjects] = useState<MapObject[]>([]);
   const agent = useAgent({
@@ -1072,6 +1075,15 @@ export default function Home() {
           showSheds={showSheds}
           onShowShedsChange={setShowSheds}
         />
+        <button
+          type="button"
+          onClick={() => setChronoOpen(true)}
+          disabled={!mapCenter}
+          className="min-h-11 border-2 px-2 text-[11px] font-medium transition-colors hover:bg-ground disabled:opacity-40"
+          style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
+        >
+          Date a photo
+        </button>
         <a
           href="/about"
           className="text-[11px] hover:underline"
@@ -1570,6 +1582,15 @@ export default function Home() {
                   showSheds={showSheds}
                   onShowShedsChange={setShowSheds}
                 />
+                <button
+                  type="button"
+                  onClick={() => setChronoOpen(true)}
+                  disabled={!mapCenter}
+                  className="min-h-11 border-2 px-2 text-[11px] font-medium transition-colors hover:bg-ground disabled:opacity-40"
+                  style={{ borderColor: "var(--color-rule)", color: "var(--color-ink)" }}
+                >
+                  Date a photo
+                </button>
                 <a
                   href="/about"
                   className="text-[11px] px-1.5 pt-0.5 pb-0.5 transition-colors hover:underline"
@@ -1665,6 +1686,17 @@ export default function Home() {
         stopIds={assistantPins.map((pin) => pin.objectId ?? assistantPinId(pin.lat, pin.lng))}
         routeIds={getRouteReceiptMapObjects().map((route) => route.id)}
       />
+
+      {/* S4b — photo chronolocation. The map centre is the photo's location, so
+          the panel only opens once the map has reported a centre. */}
+      {chronoOpen && mapCenter && !uiHidden && (
+        <ChronolocationPanel
+          open
+          onClose={() => setChronoOpen(false)}
+          mapCenter={mapCenter}
+          utcOffsetMin={mapUtcOffsetMin}
+        />
+      )}
     </>
   );
 }
