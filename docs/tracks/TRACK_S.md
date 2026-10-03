@@ -16,8 +16,8 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** none unblocked — S1 merged as #219, and S2a (#215), S3a (this PR) and
-  S4a (#216) are in review; every b-slice is blocked (see below).
+- **Active checkpoint:** none unblocked — the first wave is all merged (S1 #219, S3a #221,
+  S2a #215, S4a #216); every b-slice is blocked (see below).
 - **S1 (merged #219):** shade reality audit vs NYC LiDAR (`studies/shade-audit/` +
   `docs/notes/shade-accuracy.md`). First published shade-error figure, against a 2017 LiDAR
   highest-hit truth over 8 blocks × 4 boroughs × 3 dates × 5 hours. Corrected 2026-10-02:
@@ -37,18 +37,31 @@ prior art comes from it, with links.
     - CHMv2's NYC imagery is 2019-11 / 2020-03.
   - **Shipping bug found:** the same mask bug very likely blanks raster canopy on NYC routes;
     filed as #220 (Track A, p2).
-- **S3a (this PR):** `app/lib/memory/` — six typed slots with bi-temporal validity, provenance,
+- **S3a (merged #221):** `app/lib/memory/` — six typed slots with bi-temporal validity, provenance,
   supersede-not-delete history, deterministic resolution in code, and a write policy that refuses
   provider text and unknown tools; 13 unit tests; contract note `docs/notes/assistant-memory.md`.
   A scoped replacement for #214, whose branch was cut from the wrong lineage and carried 138
-  unrelated files against `umbra/main`; the store's five files are the only content here.
+  unrelated files against `umbra/main`; the store's five files are the only content there.
+- **S2a (merged #215):** `app/lib/preference/` + `studies/shade-preference/` +
+  `docs/notes/shade-preference.md`. The refit reproduces β̄ = 1.205 (paper ≈ 1.16) and ρ = 0.414
+  (≈ 0.5), and beats the population-mean α and shadewalker's fixed ladder online at every k —
+  but **does not beat the non-hierarchical pooled logit on held-out log-likelihood** (9 picks per
+  person is too few), reported as a partial negative result. The module ships as prior + note;
+  nothing in the product calls it yet. OSF data is individual-level and unlicensed — cached, never
+  committed.
+- **S4a (merged #216):** `app/lib/chronolocation/` + `docs/notes/chronolocation.md` — the solver
+  turns pinned photo marks into two date windows and a time band, or abstains. 15 tests on
+  geometric fixtures (round trips through the real sun model, abstention, timezone labels, the
+  ShadowField cross-check); the real-photo field evaluation is outstanding and filed as **#217**.
+  The `ShadowMarks`/`PhotoFrame`/`solveChronolocation` interface is the contract S4b builds on.
 - **Done:** S0, both halves — the 2026-10-02 desk research, then the hands-on recheck on
   2026-10-02: five fixed NYC pairs × three departure times through shadewalker.nyc and Umbra,
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
-  observation or a dated source. S1 merged as #219.
-- **Open PRs:** #215 (S2a), #216 (S4a), and this PR (S3a). #214 is superseded by this one and
-  left open for the owner to close.
+  observation or a dated source. S1 merged as #219; S2a #215, S3a #221 and S4a #216 followed the
+  same day.
+- **Open PRs:** none — the first wave is merged (#215, #216, #219, #221) and #214 is closed as
+  superseded by #221.
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
@@ -74,11 +87,13 @@ prior art comes from it, with links.
 - **Blocked on:** nothing in the review queue. S2b waits for H2 — Track H's brief says H1 has
   not started. S3b edits `app/lib/agent/**` while Track C is mid-C10 on the same files, so it
   needs coordination first. S4b needs a free mount point in the shell (U7 in flight).
-- **Next action:** review and merge #215, #216 and this PR (S3a); S2b the moment H2 lands; S3b
-  once C10 clears. A10 consumes S1's residual as its geometric baseline.
-- **Last verified:** 2026-10-02 — S1 correction pass: study self-tests 9/9, note cross-check
-  84/84 against `_summary.json` (`50-check-note.mjs`); the audit re-run end to end from the
-  cached sources. This PR: the S3a store cherry-picked onto `umbra/main` (`8c5cc0b`), gates green.
+- **Next action:** S2b the moment H2 lands (H1 has not started); S3b once Track C's C10 clears;
+  S4b when a shell mount point frees. Nothing else in this track is startable — the lower-priority
+  items wait on S1–S3 having landed *and* their baselines being in hand. A10 consumes S1's
+  residual as its geometric baseline.
+- **Last verified:** 2026-10-03 — S2a/S3a/S4a merged (gates green on each merged tree: 1904–1916
+  tests); S1's own verification stands from 2026-10-02 (study self-tests 9/9, note cross-check
+  84/84 against `_summary.json`).
 
 ---
 
