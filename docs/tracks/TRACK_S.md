@@ -16,7 +16,7 @@ prior art comes from it, with links.
 
 ## Current state
 
-- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR — PR open (`studies/shade-audit/`
+- **Active checkpoint:** S1 — shade reality audit vs NYC LiDAR — PR #219 open (`studies/shade-audit/`
   + `docs/notes/shade-accuracy.md`). First published shade-error figure, against a 2017 LiDAR
   highest-hit truth over 8 blocks × 4 boroughs × 3 dates × 5 hours:
   - **Mask IoU:** 0.561 mean, 0.090 worst.
@@ -31,7 +31,7 @@ prior art comes from it, with links.
   plus ORS/Google reachability checks. `docs/notes/competitors.md` holds the method, the raw
   tables and the corrections; `docs/ROADMAP.md` §2 now links every competitor claim to an
   observation or a dated source.
-- **Open PRs:** #213 (S0), S1's PR.
+- **Open PRs:** #213 (S0), #219 (S1).
 - **Decisions made:** the track exists (2026-10-02, owner). S1, S2a, S3a and S4a own disjoint new
   paths and **may run as parallel `builder` worktrees**. The integration slices (S2b, S3b, S4b)
   touch shared files and stay sequential. S0 carried forward: ORS's Shaded Edition covers 44
