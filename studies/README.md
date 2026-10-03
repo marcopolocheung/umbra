@@ -39,6 +39,7 @@ shared import every time.
 |---|---|---|
 | `canopy-urban-confusion.mjs` | Does the Meta/WRI CHM v2 canopy raster read *buildings* as canopy? (A8c, #279) | `docs/notes/canopy-urban-confusion-2026-09-10.md` |
 | `canopy-paint-predicate.mjs` | Does building shadow stay detectable by `isBlueDominantShadowPixel` where it lands on A8f's canopy fill, on the real canvas? (A8f, #275) | `docs/notes/canopy-paint-2026-09-10.md` |
+| `shade-audit/` | How wrong is Umbra's shade against NYC LiDAR — mask IoU and per-segment error, split by canopy, hour, elevation, borough? (S1) | `docs/notes/shade-accuracy.md` |
 
 ## Not yet moved
 

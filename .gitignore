@@ -81,3 +81,8 @@ issues/
 bench-dist/
 # The nav-smoke project's own preview build (the keyless build keeps /dist).
 nav-dist/
+
+# S1 shade-audit study cache (studies/shade-audit/cache): LiDAR LAZ tiles,
+# land-cover windows, decoded result rasters. Tens to hundreds of MB; re-fetchable
+# via the study's download stage (see docs/notes/shade-accuracy.md).
+studies/shade-audit/cache/
