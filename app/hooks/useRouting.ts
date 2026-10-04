@@ -84,7 +84,7 @@ import { verticalRainDirection } from "../lib/rain/direction";
 import { fetchWeatherForecast } from "../services/weather";
 import { MAX_STOP_PRELOADS, shelterWaitExposureFrom, waitExposureFrom } from "../lib/transitWaitExposure";
 import type { BoardingSample, TransitWaitExposure } from "../lib/transitWaitExposure";
-import type { RouteCalculationProgress } from "../lib/routeProgress";
+import { type RouteCalculationProgress, shouldYield } from "../lib/routeProgress";
 import { partialRouteNotice, type PartialRouteInfo } from "../lib/partialRoute";
 import { travelTimeSeconds } from "../lib/travelMode";
 import { transitOutdoorExposure, transitRainMetrics } from "../lib/routeTradeoff";
@@ -805,6 +805,7 @@ export function useRouting({
         let shedEdges = 0;
         const buildingProviders: Array<"tiles" | "overpass" | "nyc-static" | "dedicated-mask" | "none"> = [];
         const canopyProviders: Array<"osm" | "raster" | "both" | "none"> = [];
+        let lastYield = performance.now();
         for (let i = 0; i < edgeRefs.length; i++) {
           const sample = fieldShadow[i];
           const fieldAnswered = rainObjective || sample.confidence >= LOW_CONFIDENCE || !buildingMask;
@@ -865,13 +866,14 @@ export function useRouting({
             canopyProviders.push("none");
           }
           const done = i + 1;
-          if (done === edgeRefs.length || done % 100 === 0) {
+          if (shouldYield(done, edgeRefs.length, performance.now(), lastYield)) {
             updateProgress({
               message: rainObjective ? "Sampling street rain shelter" : "Sampling street shadow",
               current: done,
               total: edgeRefs.length,
             });
             await yieldToBrowser();
+            lastYield = performance.now();
             if (myGen !== calcGenRef.current) return cancelled();
           }
         }
