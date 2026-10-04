@@ -27,7 +27,7 @@ with sources. The decisions below cite it as "the report".
   - **L3a (in review):** the dominance pre-check, not the destination-front scan, was the hot
     spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
-- **Open PRs:** L3a (`perf/l3a-pareto-search`) — search −19% to −37% across the long-route
+- **Open PRs:** #271 — L3a (`perf/l3a-pareto-search`) — search −19% to −37% across the long-route
   scenarios, routes identical (161-case differential test against a frozen copy).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
