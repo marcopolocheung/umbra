@@ -17,18 +17,19 @@ with sources. The decisions below cite it as "the report".
 ## Current state
 
 - **Active checkpoint:** L3 — the walking-route search (#263), with Track H (coordination: #270).
-  L3a (exact waste removal in `paretoRoutes`) is in review; next is L3b, a typed-array core,
-  because L3a leaves cross-borough search at 3.6–5.4 s. Then `app/workers/routing.worker.ts`
-  (L3c — the file A5b and H3 also reserve).
+  L3b (typed-array core) is in review. Next is L3c — the search in
+  `app/workers/routing.worker.ts` (the file A5b and H3 also reserve) — so the remaining
+  1–2.5 s of search stops blocking the main thread.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
   - **#266 (#268):** yields on elapsed time, removing 1.5–3 s per long route.
-  - **L3a (in review):** the dominance pre-check, not the destination-front scan, was the hot
+  - **L3a (#271):** the dominance pre-check, not the destination-front scan, was the hot
     spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
-- **Open PRs:** #271 — L3a (`perf/l3a-pareto-search`) — search −19% to −37% across the long-route
-  scenarios, routes identical (161-case differential test against a frozen copy).
+  - **L3b (in review):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
+    −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
+- **Open PRs:** L3b (`perf/l3b-typed-search`), routes identical (164-case differential test).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -50,15 +51,20 @@ with sources. The decisions below cite it as "the report".
   - **L1 last.**
 - **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
   Fixing #246 is a Track H PR.
+- **The 100 ms search target is out of reach without changing routes.** After L3b the cost is
+  the label count (~67 per node from the per-bucket fronts), and exact pruning bounds were
+  prototyped and do not reduce it (route-latency.md, L3b section). Getting under ~1 s needs an
+  approximate front or L4's three-representative search — both change routes, so they are Track
+  H's and the owner's call (#270). Until then L3's acceptance is measured reduction plus no
+  main-thread blocking (L3c), with 100 ms as the stretch target.
 - **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
   deployed environment.
-- **Next action:** L3b — compact CSR graph + struct-of-arrays labels + typed heap behind the
-  unchanged `paretoRoutes` signature; the layout must serve a target-less search (H3).
-  L3a's profile: the cost left is ~1.1M scattered label objects and per-relaxation `Map`
-  lookups, so layout, not algorithm.
-- **Last verified:** 2026-10-04 — main `8bee10e` (#247, #258, #259, #265, #267 merged): lint 0
-  errors, typecheck, 1958 tests / 153 files, build.
-
+- **Next action:** L3c — a long-lived `app/workers/routing.worker.ts` (create it, or extend it if
+  A5b landed first) running the CSR search with the `shadowField/v2/workerProtocol.ts` pattern,
+  transferred buffers and a synchronous fallback; acceptance: no main-thread long task during
+  the search, timeline draggable mid-calculation, routes identical.
+- **Last verified:** 2026-10-04 — `perf/l3b-typed-search` on main `0fa4558` (L3a merged): lint 0
+  errors, typecheck, 2,128 tests / 155 files, build.
 ---
 
 ## Why this track exists
