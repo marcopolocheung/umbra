@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MinHeap } from "../minHeap";
+import { MinHeap, NumericMinHeap } from "../minHeap";
 
 describe("MinHeap", () => {
   it("pops in comparator order, not insertion order", () => {
@@ -58,5 +58,51 @@ describe("MinHeap", () => {
     expect(heap.pop()).toBe(7);
     expect(heap.pop()).toBe(10);
     expect(heap.size).toBe(0);
+  });
+});
+
+describe("NumericMinHeap", () => {
+  it("pops exactly what MinHeap pops, equal keys and growth included", () => {
+    // `paretoRoutes` swapped one for the other on the promise that no route
+    // changes, and with lazy deletion the pop order *is* the search order. A
+    // bare binary heap's order among equal keys depends on its sift details, so
+    // this interleaves pushes and pops over heavily tied keys, past the initial
+    // capacity, and requires the two to agree payload for payload.
+    let seed = 12345;
+    const next = () => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return seed / 4294967296;
+    };
+    const ref = new MinHeap<{ id: number; key: number }>((a, b) => a.key - b.key);
+    const heap = new NumericMinHeap();
+    const fromRef: number[] = [];
+    const fromNumeric: number[] = [];
+    let id = 0;
+    for (let step = 0; step < 20_000; step++) {
+      if (next() < 0.6 || ref.size === 0) {
+        const key = Math.floor(next() * 50);
+        ref.push({ id, key });
+        heap.push(id, key);
+        id++;
+      } else {
+        fromRef.push(ref.pop()!.id);
+        fromNumeric.push(heap.pop());
+      }
+      expect(heap.size).toBe(ref.size);
+    }
+    while (ref.size > 0) {
+      fromRef.push(ref.pop()!.id);
+      fromNumeric.push(heap.pop());
+    }
+    expect(id).toBeGreaterThan(1024);
+    expect(fromNumeric).toEqual(fromRef);
+  });
+
+  it("returns -1 when empty", () => {
+    const heap = new NumericMinHeap();
+    expect(heap.pop()).toBe(-1);
+    heap.push(3, 1.5);
+    expect(heap.pop()).toBe(3);
+    expect(heap.pop()).toBe(-1);
   });
 });

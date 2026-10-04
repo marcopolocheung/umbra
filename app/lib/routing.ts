@@ -1,5 +1,5 @@
 // Pure TypeScript routing utilities — no browser dependencies
-import { MinHeap } from "./minHeap";
+import { MinHeap, NumericMinHeap } from "./minHeap";
 import type { PartialRouteInfo } from "./partialRoute";
 import type { TrainDrawData, TrainRide, TransitProvenance } from "./trainGraph";
 import type { ShadowProvenance } from "./shadowProvenance";
@@ -1065,17 +1065,18 @@ export function paretoRoutes(
 
   /**
    * Try to insert `incoming` into the Pareto set for its node and bucket.
-   * Rejects if dominated by any existing label.
-   * Evicts any existing labels now dominated by incoming.
+   * The caller has already rejected it if any existing label dominates it
+   * (the pre-check in the main loop, against this same set), so this only
+   * evicts the existing labels incoming now dominates.
    * If still at cap after evictions, rejects incoming if it would be worst (highest distM).
    * Returns true if accepted.
    */
   const insertPareto = (incoming: PLabel): boolean => {
     const set = getSet(incoming.nodeId, labelBucket(incoming));
-    for (const id of set) {
-      if (dom(allLabels[id], incoming)) return false;
-    }
+    // Sets are sorted distM asc, so walking from the tail, the first label
+    // shorter than incoming ends the run incoming can dominate.
     for (let i = set.length - 1; i >= 0; i--) {
+      if (allLabels[set[i]].distM < incoming.distM) break;
       if (dom(incoming, allLabels[set[i]])) {
         allLabels[set[i]].evicted = true;
         set.splice(i, 1);
@@ -1123,11 +1124,11 @@ export function paretoRoutes(
   const startLabel = mkLabel(0, 0, 0, 0, startId, -1, null);
   insertPareto(startLabel);
 
-  const heap = new MinHeap<{ labelId: number; f: number }>((a, b) => a.f - b.f);
-  heap.push({ labelId: startLabel.id, f: hCostRemaining(startId) });
+  const heap = new NumericMinHeap();
+  heap.push(startLabel.id, hCostRemaining(startId));
 
   while (heap.size > 0) {
-    const { labelId } = heap.pop()!;
+    const labelId = heap.pop();
     const label = allLabels[labelId];
 
     // Skip if this label was evicted from its node's Pareto set since being pushed
@@ -1160,8 +1161,9 @@ export function paretoRoutes(
       scan: for (const set of destBuckets.values()) {
         for (const id of set) {
           const d = allLabels[id];
-          if (d.distM <= optDistM
-            && (rain ? d.exposureCrit >= optExposureCrit : d.exposureCrit <= optExposureCrit)) {
+          // Sorted distM asc: nothing further in this bucket is short enough.
+          if (d.distM > optDistM) break;
+          if (rain ? d.exposureCrit >= optExposureCrit : d.exposureCrit <= optExposureCrit) {
             prunedByDest = true; break scan;
           }
         }
@@ -1177,9 +1179,8 @@ export function paretoRoutes(
       // Prohibited edges are not routable at any cost (see dijkstra).
       if (isProhibitedEdge(edge, travelMode)) continue;
 
-      const toNode = graph.nodes.get(edge.toId);
       const crossing =
-        effectiveCrossingM > 0 && toNode?.isIntersection && edge.toId !== endId
+        effectiveCrossingM > 0 && graph.nodes.get(edge.toId)?.isIntersection && edge.toId !== endId
           ? effectiveCrossingM : 0;
 
       const newDistM  = label.distM  + modeAdjustedDistanceM(edge, travelMode) + crossing;
@@ -1213,12 +1214,14 @@ export function paretoRoutes(
 
       // Pre-check dominance before allocating a label object — against this
       // arrival's bucket only (see the Pareto-set comment above).
-      const candidateSet = getSet(edge.toId, ta ? bucketOf(newArrivalSec) : 0);
+      // Read-only, so an empty bucket is not allocated for a rejected label.
+      const candidateSet = paretoSets.get(edge.toId)?.get(ta ? bucketOf(newArrivalSec) : 0) ?? [];
       let dominated = false;
       for (const id of candidateSet) {
         const ex = allLabels[id];
-        if (ex.distM <= newDistM
-          && (rain ? ex.exposureCrit >= newExposureCrit : ex.exposureCrit <= newExposureCrit)
+        // Sorted distM asc: no later label is short enough to dominate.
+        if (ex.distM > newDistM) break;
+        if ((rain ? ex.exposureCrit >= newExposureCrit : ex.exposureCrit <= newExposureCrit)
           && (rain || ex.streakSec <= newStreakSec)
           && (!ta || ex.arrivalSec <= newArrivalSec)) { dominated = true; break; }
       }
@@ -1226,7 +1229,7 @@ export function paretoRoutes(
 
       const newLabel = mkLabel(newDistM, newExposureCrit, newArrivalSec, newStreakSec, edge.toId, labelId, edge);
       if (insertPareto(newLabel)) {
-        heap.push({ labelId: newLabel.id, f: newDistM + hTo });
+        heap.push(newLabel.id, newDistM + hTo);
       }
     }
   }

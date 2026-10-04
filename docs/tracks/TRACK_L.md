@@ -16,14 +16,19 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L3 — the walking-route search (#263), with Track H. Handoff plan: profile
-  and remove waste in `paretoRoutes` (L3a), then a typed-array core (L3b) only if still > 100 ms,
-  then `app/workers/routing.worker.ts` (L3c — the file A5b and H3 also reserve).
+- **Active checkpoint:** L3 — the walking-route search (#263), with Track H (coordination: #270).
+  L3a (exact waste removal in `paretoRoutes`) is in review; next is L3b, a typed-array core,
+  because L3a leaves cross-borough search at 3.6–5.4 s. Then `app/workers/routing.worker.ts`
+  (L3c — the file A5b and H3 also reserve).
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
   - **#266 (#268):** yields on elapsed time, removing 1.5–3 s per long route.
-- **Open PRs:** none.
+  - **L3a (in review):** the dominance pre-check, not the destination-front scan, was the hot
+    spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
+    and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
+- **Open PRs:** #271 — L3a (`perf/l3a-pareto-search`) — search −19% to −37% across the long-route
+  scenarios, routes identical (161-case differential test against a frozen copy).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -47,7 +52,10 @@ with sources. The decisions below cite it as "the report".
   Fixing #246 is a Track H PR.
 - **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
   deployed environment.
-- **Next action:** L3a — profile `paretoRoutes` on a cross-borough-sized time-aware graph.
+- **Next action:** L3b — compact CSR graph + struct-of-arrays labels + typed heap behind the
+  unchanged `paretoRoutes` signature; the layout must serve a target-less search (H3).
+  L3a's profile: the cost left is ~1.1M scattered label objects and per-relaxation `Map`
+  lookups, so layout, not algorithm.
 - **Last verified:** 2026-10-04 — main `8bee10e` (#247, #258, #259, #265, #267 merged): lint 0
   errors, typecheck, 1958 tests / 153 files, build.
 
