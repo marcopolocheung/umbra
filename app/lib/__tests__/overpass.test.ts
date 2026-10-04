@@ -313,7 +313,7 @@ describe("fetchRoutingGraph — out body geom inline geometry", () => {
       type: "way",
       id: 1001,
       nodes: [10, 11],
-      tags: { highway: "cycleway", surface: "gravel", bicycle: "designated", foot: "yes" },
+      tags: { highway: "cycleway", name: "Via Roma", surface: "gravel", bicycle: "designated", foot: "yes" },
       geometry: [
         { lat: 43.7701, lon: 11.2558 },
         { lat: 43.7702, lon: 11.2559 },
@@ -347,6 +347,7 @@ describe("fetchRoutingGraph — out body geom inline geometry", () => {
     expect(edgeTo11).toBeDefined();
     expect(edgeTo11).toMatchObject({
       highway: "cycleway",
+      name: "Via Roma",
       surface: "gravel",
       bicycle: "designated",
       foot: "yes",
@@ -355,6 +356,7 @@ describe("fetchRoutingGraph — out body geom inline geometry", () => {
     const edgeTo10 = graph.adj.get(11)!.find((e) => e.toId === 10);
     expect(edgeTo10).toMatchObject({
       highway: "cycleway",
+      name: "Via Roma",
       surface: "gravel",
       bicycle: "designated",
       foot: "yes",

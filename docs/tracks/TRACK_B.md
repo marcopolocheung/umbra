@@ -10,13 +10,16 @@
 
 ## Current state
 
-- **Active checkpoint:** B1 — PR #181 open for #179 on `feat/b1-maneuver-generation`.
-  Pure maneuver generation only; live position tracking and UI follow in B3/B4.
+- **Active checkpoint:** B2 — implemented on `feat/b2-street-names` (this branch). B1 is merged
+  (`app/lib/guidance/maneuvers.ts` is on `main`). B2 keeps OSM `name` on every routing edge and
+  threads it into `Maneuver.streetName` (via `streetNamesAlong`); the memory cost is measured
+  (24 bytes per edge, ~9.6 MB per 400,000 edges) in
+  `docs/notes/guidance-street-names.md`. Live position tracking and UI follow in B3/B4.
 - **Done:** B1 implementation and its captured-route tests; prerequisite camera work #148
   (the PR for #145) and #159 merged, as did #150 (chosen sidewalk plumbing), #171
   (roof depth precision) and #178 (wall/ground shadow alignment). No numbered checkpoint
   before B1.
-- **Open PRs:** #181 (B1).
+- **Open PRs:** B2 (this branch) — street names in the graph.
 - **Decisions made:**
   - **B1 consumes ordered walking nodes** via `generateManeuvers(nodes, legIndex = 0)` in
     `app/lib/guidance/maneuvers.ts`; distances are cumulative haversine meters along the
@@ -31,8 +34,8 @@
   - **Continue instructions are omitted**, including small successive bends; real adjacent
     turns are retained even when close together. Consecutive duplicate positions are skipped.
     Empty paths yield no maneuvers; stationary paths yield only arrival at 0 m.
-    `guidance/types.ts` publishes the full contract, with street names and shadow hints left
-    unset until B2/B6. The Madrid fixture records actual OSM nodes, source timestamps,
+    `guidance/types.ts` publishes the full contract; street names are filled from the graph by B2
+    (`streetNamesAlong`), and shadow hints remain unset until B6. The Madrid fixture records actual OSM nodes, source timestamps,
     way IDs and capture inputs; its 281 m path yields five turns plus depart/arrive.
   - **No terrain, ever.** It displaces the ground while the shadow layer's triangles stay at
     `z = 0`. Draping them means sampling the DEM in the shadow vertex shader, and elevation
@@ -84,9 +87,9 @@
   no A2 stub is needed. `GraphEdge.side` and `RouteResult`/`RouteOption.sides` also exist
   after #150. Remaining integration work: switching sides costs nothing (#151), and
   endpoint connectors currently shift sidewalk labels against final GeoJSON (#180).
-- **Next action:** B2 — retain street names on graph edges and thread them into maneuvers,
-  after B1 is reviewed and available on main; always branch from main, never stack open PRs.
-- **Last verified:** 2026-09-05, main `fb47c18` baseline: 342 tests / 33 files green.
+- **Next action:** B3 — position tracking and map matching. B2 is implemented (this branch).
+- **Last verified:** 2026-10-03 — B2 on `feat/b2-street-names`: lint (0 errors), typecheck,
+  tests (1947 passing), build all green. 2026-09-05, main `fb47c18` baseline: 342 tests / 33 files green.
   B1 branch: all four gates green, 376 tests / 34 files (34 new guidance tests), build
   5.57 s; lint has 52 existing warnings and 8 infos (capped output), with no errors in
   the changed files. Cold verifier: no findings, independently reran all four gates.

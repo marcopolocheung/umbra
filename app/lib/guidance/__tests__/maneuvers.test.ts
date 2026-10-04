@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bearingDegrees, dijkstra, paretoRoutes, type RoutingGraph } from "../../routing";
-import { classifyTurn, generateManeuvers } from "../maneuvers";
+import { classifyTurn, generateManeuvers, streetNamesAlong } from "../maneuvers";
+import type { GraphEdge } from "../../routing";
 import madridRoute from "./fixtures/madrid-plaza-mayor.json";
 
 function nodes(coordinates: [number, number][]) {
@@ -150,4 +151,60 @@ describe("shared geographic bearings", () => {
     expect(alternatives.length).toBeGreaterThan(0);
     expect(alternatives.every((route) => route.turnCount === 0)).toBe(true);
   });
+});
+
+describe("generateManeuvers — street names (B2)", () => {
+	it("names the street each maneuver proceeds along, not the one left", () => {
+		// Two straight runs meeting at a right angle: north along "First", then
+		// east along "Second". The turn's name is the street you turn ONTO.
+		const path = nodes([[0, 0], [0, 0.001], [0.001, 0.001]]);
+		const result = generateManeuvers(path, 0, ["First St", "Second Ave"]);
+		const byType = Object.fromEntries(result.map((m) => [m.type, m.streetName]));
+		expect(byType.depart).toBe("First St");
+		expect(byType["turn-right"] ?? byType["turn-left"]).toBe("Second Ave");
+		expect(result.at(-1)?.type).toBe("arrive");
+		expect(result.at(-1)?.streetName).toBe("Second Ave");
+	});
+
+	it("carries no name when none is supplied", () => {
+		const result = generateManeuvers(nodes([[0, 0], [0, 0.001], [0.001, 0.001]]));
+		expect(result.every((m) => m.streetName === undefined)).toBe(true);
+	});
+
+	it("joins the graph's edge names to the maneuvers via streetNamesAlong", () => {
+		// 0 →(First St) 1 →(Second Ave) 2, an L-shaped turn at node 1.
+		const graph: RoutingGraph = {
+			nodes: new Map([
+				[0, { id: 0, lat: 0, lon: 0 }],
+				[1, { id: 1, lat: 0, lon: 0.001 }],
+				[2, { id: 2, lat: 0.001, lon: 0.001 }],
+			]),
+			adj: new Map<number, GraphEdge[]>([
+				[0, [{ toId: 1, distanceM: 100, shadowFactor: 0, name: "First St" }]],
+				[1, [
+					{ toId: 0, distanceM: 100, shadowFactor: 0, name: "First St" },
+					{ toId: 2, distanceM: 100, shadowFactor: 0, name: "Second Ave" },
+				]],
+				[2, [{ toId: 1, distanceM: 100, shadowFactor: 0, name: "Second Ave" }]],
+			]),
+		};
+		const nodeIds = [0, 1, 2];
+		const path = nodeIds.map((id) => graph.nodes.get(id)!);
+		const names = streetNamesAlong(graph, nodeIds);
+		expect(names).toEqual(["First St", "Second Ave"]);
+		const result = generateManeuvers(path, 0, names);
+		expect(result.find((m) => m.type === "depart")?.streetName).toBe("First St");
+		expect(result.at(-1)?.streetName).toBe("Second Ave");
+	});
+
+	it("keeps names aligned across a skipped zero-length segment", () => {
+		// nodes[1] duplicates nodes[2], so segment 1→2 is zero-length and skipped;
+		// the name index is derived from i, not a running counter, so it stays put.
+		const path = nodes([[0, 0], [0, 0.001], [0, 0.001], [0.001, 0.001]]);
+		// names[1] belongs to the skipped segment: a running counter would hand it to the turn.
+		const result = generateManeuvers(path, 0, ["First St", "Skipped", "Second Ave"]);
+		expect(result.find((m) => m.type === "depart")?.streetName).toBe("First St");
+		expect(result.find((m) => m.type === "turn-right")?.streetName).toBe("Second Ave");
+		expect(result.at(-1)?.streetName).toBe("Second Ave");
+	});
 });

@@ -314,6 +314,7 @@ export function buildRoutingGraphFromElements(rawWays: OverpassWayElement[]): Ro
 
       const edgeTags = {
         highway: way.tags?.highway,
+        name: way.tags?.name,
         surface: way.tags?.surface,
         smoothness: way.tags?.smoothness,
         cycleway: way.tags?.cycleway,
