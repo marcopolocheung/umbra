@@ -94,6 +94,8 @@ interface PhaseSample {
   shadowIndexPrep?: number;
   /** Checkpoint 6 navigation record — counts and bytes, no coordinates. */
   nav?: NavigationSample;
+  /** L0 contiguous stage split; sums to `total`. Absent on runs recorded before it. */
+  stages?: Record<string, number>;
   total: number;
   shadowFallbackShare: number;
 }
@@ -162,7 +164,7 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
       window as unknown as {
         __umbraMetrics?: {
           history: {
-            phases: Record<string, number>;
+            phases: Record<string, number> & { stages?: Record<string, number> };
             shadowFallbackShare: number;
             buildingProviderShares?: Partial<Record<"tiles" | "overpass" | "nyc-static", number>>;
             staticBuildingGeneration?: string | null;
@@ -249,6 +251,7 @@ async function readHistory(page: Page): Promise<PhaseSample[]> {
           : undefined,
         nycStaticShare: h.buildingProviderShares?.["nyc-static"] ?? 0,
         staticGeneration: h.staticBuildingGeneration ?? null,
+        stages: h.phases.stages,
         total: h.phases.total,
         shadowFallbackShare: h.shadowFallbackShare,
       };
@@ -346,7 +349,13 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootpri
       ),
     };
   });
-  await page.getByRole("button", { name: "Find the shade" }).click();
+  // #107: once routes exist the trip bar replaces the form, hiding the button.
+  // Wait for whichever renders, so a trip bar still mounting is not missed.
+  const editTrip = page.getByRole("button", { name: /^Edit trip:/ });
+  const find = page.getByRole("button", { name: "Find the shade" });
+  await expect(editTrip.or(find).first()).toBeVisible();
+  if (await editTrip.isVisible()) await editTrip.click();
+  await find.click();
   await expect
     .poll(
       () =>
@@ -720,6 +729,42 @@ test.afterAll(() => {
       "\n\nPhase columns are medians in ms and do not sum to the total: the phases " +
       "are timed inside one wall-clock span that also covers work between them.\n",
   );
+
+  // L0: the contiguous stage split. Unlike the phase columns, the stages of one
+  // run sum to its total, so they account for the whole calculation. Each stage
+  // cell is "p50 / p95"; `attributed %` is the minimum over runs of the share
+  // that landed in a named stage (not `other`).
+  const stageNames = [...new Set(results.flatMap((r) => r.samples.flatMap((s) => Object.keys(s.stages ?? {}))))];
+  if (stageNames.length > 0) {
+    const named = stageNames.filter((n) => n !== "other");
+    console.log(
+      `\n### Route calculation — contiguous stages (L0)\n\n` +
+        markdownTable(
+          ["Scenario", "N", "total p50 / p95 (ms)", ...stageNames, "attributed % (min)"],
+          results.map((r) => {
+            const cell = (values: number[]) => {
+              const st = stats(values);
+              return `${ms(st.p50)} / ${ms(st.p95)}`;
+            };
+            const attributedMin = Math.min(
+              ...r.samples.map((s) => {
+                const sum = named.reduce((acc, n) => acc + (s.stages?.[n] ?? 0), 0);
+                return s.total > 0 ? (sum / s.total) * 100 : 0;
+              }),
+            );
+            return [
+              r.name,
+              String(r.samples.length),
+              cell(r.samples.map((s) => s.total)),
+              ...stageNames.map((n) => cell(r.samples.map((s) => s.stages?.[n] ?? 0))),
+              pct(attributedMin),
+            ];
+          }),
+        ) +
+        "\n\nStage cells are p50 / p95 in ms. Within one run the stages sum to its total; " +
+        "`attributed % (min)` is the lowest share of any run's total that landed in a named stage.\n",
+    );
+  }
 
   for (const r of results) {
     const fallback = stats(r.samples.map((s) => s.shadowFallbackShare)).p50;

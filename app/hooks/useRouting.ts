@@ -47,6 +47,7 @@ import {
   TRANSIT_ACCESS_RADIUS_M,
 } from "../lib/navigationData/routingGraphSource";
 import { createNycStaticPrismProvider } from "../lib/navigationData/buildingProvider";
+import { createLapTimer } from "../lib/metrics";
 import type { NycStaticBuildingProvider } from "../lib/navigationData/buildingProvider";
 import {
   acquireNavigationSnapshot,
@@ -493,6 +494,8 @@ export function useRouting({
       await yieldToBrowser();
 
       const t0 = performance.now();
+      // L0: contiguous stage split — every ms of `total` lands in one stage.
+      const laps = createLapTimer(t0);
       let graphFetchMs = 0;
       const canvasReadMs = 0;
       let dedicatedMaskReadMs = 0;
@@ -567,6 +570,7 @@ export function useRouting({
           }
         }
         navSnapshotMs = performance.now() - tNavSnapshot;
+        laps.lap("setup+snapshot");
         staticBuildingsRef.current?.bindSnapshot(navSnapshot);
         // The building provider binds the same route-scoped collector beside
         // the same snapshot lease: one calculation, one phase ledger.
@@ -629,6 +633,7 @@ export function useRouting({
           throw error;
         }
         staticStreetsMs = performance.now() - tStaticStreets;
+        laps.lap("streets");
         // Enumerate as soon as the graph arrives. These exact cells, rather than the
         // graph's large enclosing rectangle, are what sampling and confidence use.
         const edgeBatch = routingEdgeBatch(graph);
@@ -654,6 +659,7 @@ export function useRouting({
           await field.ready(shadowBbox, readyOptions).catch(() => {});
         }
         fieldReadyMs = performance.now() - tFieldReady;
+        laps.lap("fieldReady");
         graphFetchMs = performance.now() - tFetch;
         if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
@@ -689,6 +695,7 @@ export function useRouting({
             );
           }
           if (!bboxInView || flattened) await waitForMapIdle(map);
+          laps.lap("mapIdleWait");
           if (myGen !== calcGenRef.current) return cancelled();
 
           const tCanvas = performance.now();
@@ -709,6 +716,7 @@ export function useRouting({
             buildingMask = null;
           }
           dedicatedMaskReadMs = performance.now() - tCanvas;
+          laps.lap("maskRead");
         }
 
         // Project lng/lat → CSS pixels with MapLibre's transform so shadow sampling
@@ -721,9 +729,11 @@ export function useRouting({
         };
 
         clearVirtualNodes(graph);
+        laps.lap("other");
 
         if (myGen !== calcGenRef.current) return cancelled();
         await yieldToBrowser();
+        laps.lap("yield");
         if (myGen !== calcGenRef.current) return cancelled();
 
         const tShadow = performance.now();
@@ -789,6 +799,7 @@ export function useRouting({
           current: 0,
           total: edgeRefs.length,
         });
+        laps.lap("exposureContext");
         const fieldShadow = edgeRefs.length > 0
           ? rainObjective
             ? field.sampleRainEdges(edgeRefs, rainDirection, dateRef.current)
@@ -872,12 +883,15 @@ export function useRouting({
               current: done,
               total: edgeRefs.length,
             });
+            laps.lap("shadowSample");
             await yieldToBrowser();
             lastYield = performance.now();
+            laps.lap("yield");
             if (myGen !== calcGenRef.current) return cancelled();
           }
         }
         shadowSampleMs = performance.now() - tShadow;
+        laps.lap("shadowSample");
 
         // H1 traversal-time exposure: one `field.sweep` prices the same batch
         // once per bucket over the walk's horizon. The bucket table is local
@@ -928,6 +942,7 @@ export function useRouting({
           // The sweep is sampling cost — fold it into the ledger's shadowSample
           // phase rather than inventing a new metrics key mid-checkpoint.
           shadowSampleMs += performance.now() - tSweep;
+          laps.lap("sweep");
         }
 
         const shareOf = <T>(values: T[], value: T) =>
@@ -1000,6 +1015,7 @@ export function useRouting({
           return routingAdj.get(to)?.find((e) => e.toId === from)?.distanceM ?? 0;
         };
 
+        laps.lap("graphBuild");
         updateProgress({ message: "Snapping stops to walkable streets" });
         const MAX_SNAP_DIST_M = 100;
         const snapStops = (stops: [number, number][]) =>
@@ -1075,10 +1091,12 @@ export function useRouting({
 
         if ((plan?.via ?? additionalWaypoints).length === 0) {
           updateProgress({ message: "Finding route choices" });
+          laps.lap("snap");
           const tPareto = performance.now();
           const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
           walkParetoMs += performance.now() - tPareto;
           dijkstraMs = performance.now() - tDijkstra;
+          laps.lap("search");
 
           // Results are ordered [shortest, balanced, most exposed] with duplicate
           // paths removed — when only 2 remain, the second is always the exposed
@@ -1132,6 +1150,7 @@ export function useRouting({
           const STRENGTHS = [0, 0.5, 1.0];
           options = [];
 
+          laps.lap("snap");
           const tParetoMulti = performance.now();
           for (let si = 0; si < STRENGTHS.length; si++) {
             const strength = STRENGTHS[si];
@@ -1298,12 +1317,14 @@ export function useRouting({
 
           walkParetoMs += performance.now() - tParetoMulti;
           dijkstraMs = performance.now() - tDijkstra;
+          laps.lap("search");
 
           // A1: the one browser yield for the whole multi-leg loop. The loop
           // itself is a few sub-millisecond searches and must not be
           // serialized against a repaint, but the pass progress and the
           // si === 0 preview updates above need one paint opportunity.
           await yieldToBrowser();
+          laps.lap("yield");
           if (myGen !== calcGenRef.current) return cancelled();
 
           options = options.filter(
@@ -1340,6 +1361,7 @@ export function useRouting({
         // Set when a transit route was found and then discarded, so the user is
         // told transit was considered rather than silently shown walking only.
         let transitNotice: string | null = null;
+        laps.lap("optionAssembly");
         if (!forcedPartial && straightLineDistM > MIN_TRANSIT_DISTANCE_M) {
           transitTried = true;
           try {
@@ -1850,6 +1872,7 @@ export function useRouting({
             console.error("[routing] Train routing failed:", e);
           }
         }
+        laps.lap("transit");
 
         options = options.map((option) => ({
           ...option,
@@ -1876,6 +1899,10 @@ export function useRouting({
             : o.shadowCoverage,
         }));
         const { shadowCoverageGainPp, pathLengthDeltaPct } = computeDerivedKpis(routeSnapshots);
+        // One clock read for both, so the stage split sums to `total` exactly.
+        const tEnd = performance.now();
+        const stages = laps.finish(tEnd);
+        const totalMs = tEnd - t0;
         recordRoutingRun({
           timestamp: Date.now(),
           phases: {
@@ -1906,7 +1933,8 @@ export function useRouting({
             entrances: entrancesMs,
             walkLegs: walkLegsMs,
             busWait: busWaitMs,
-            total: performance.now() - t0,
+            stages,
+            total: totalMs,
           },
           transitTried,
           transitStationCount,

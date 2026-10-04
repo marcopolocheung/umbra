@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearMetrics,
   computeDerivedKpis,
+  createLapTimer,
   getMetricsSummary,
   getRunHistory,
   recordRoutingRun,
@@ -184,5 +185,23 @@ describe("computeDerivedKpis", () => {
         { label: "Most Shadowed", distanceM: 500, shadowCoverage: 0.5 },
       ])
     ).toEqual({ shadowCoverageGainPp: null, pathLengthDeltaPct: null });
+  });
+});
+
+describe("createLapTimer (L0)", () => {
+  it("charges each interval to the stage that ended it, and the stages sum to the span", () => {
+    const clock = [10, 25, 26, 40];
+    const laps = createLapTimer(0, () => clock.shift()!);
+    laps.lap("fetch"); // 0 → 10
+    laps.lap("sample"); // 10 → 25
+    laps.lap("yield"); // 25 → 26
+    laps.lap("sample"); // 26 → 40, accumulates
+    const stages = laps.finish(55); // 40 → 55 is unattributed
+    expect(stages).toEqual({ fetch: 10, sample: 29, yield: 1, other: 15 });
+    expect(Object.values(stages).reduce((a, b) => a + b, 0)).toBe(55);
+  });
+
+  it("reports the whole span as other when no lap was taken", () => {
+    expect(createLapTimer(100, () => 0).finish(130)).toEqual({ other: 30 });
   });
 });
