@@ -16,9 +16,14 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L0 — measure where the time goes on current `main` (#260).
-- **Done:** nothing. Track created 2026-10-03 (owner).
-- **Open PRs:** none. Checkpoints filed as #260–#264.
+- **Active checkpoint:** L3 — the walking-route search (#263), with Track H. Handoff plan: profile
+  and remove waste in `paretoRoutes` (L3a), then a typed-array core (L3b) only if still > 100 ms,
+  then `app/workers/routing.worker.ts` (L3c — the file A5b and H3 also reserve).
+- **Done:**
+  - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
+    baseline in `docs/notes/route-latency.md`.
+  - **#266 (#268):** yields on elapsed time, removing 1.5–3 s per long route.
+- **Open PRs:** none.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -32,12 +37,19 @@ with sources. The decisions below cite it as "the report".
     Umbra alone recomputes it from building geometry per request (1.8–3.7 s).
   - **Measure before optimizing.** The 2026-09-20 phase split leaves ~3–4 s of a long route
     unattributed, and predates H1/H2's time-aware search.
-- **Blocked on:** nothing for L0. L1 needs the owner to confirm (or set) `VITE_NAVIGATION_BASE`
-  in the deployed environment.
-- **Next action:** L0.
-- **Last verified:** 2026-10-03 — baseline numbers below are from
-  `docs/notes/nyc-navigation-checkpoint6-2026-09-20.md` (synthetic shards, SwiftShader, WSL),
-  not re-measured yet.
+- **Order, revised by L0's measurement:** L3 → L2 → L1.
+  - **L3 first:** `search` is now the largest stage on six of eight long-route scenarios
+    (3.2–7.9 s), up to 3.3× slower since H1/H2.
+  - **L2 second:** precomputed per-edge shade is justified by removing `fieldReady` (1–2 s) and
+    the canvas fallback (up to ~5 s), not by sampling cost (0.4–0.8 s).
+  - **L1 last.**
+- **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
+  Fixing #246 is a Track H PR.
+- **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
+  deployed environment.
+- **Next action:** L3a — profile `paretoRoutes` on a cross-borough-sized time-aware graph.
+- **Last verified:** 2026-10-04 — main `8bee10e` (#247, #258, #259, #265, #267 merged): lint 0
+  errors, typecheck, 1958 tests / 153 files, build.
 
 ---
 
