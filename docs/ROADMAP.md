@@ -209,6 +209,7 @@ lane table, the file-ownership rules that make it safe, and the launch prompts a
 | 4 | **B** | B2 → B6 | "Cross to the shadowed side" is the instruction nobody else can generate |
 | 5 | **S** | S1 · S4 (#235 → S4b → #217) | The error bar and the photo solver. S2/S3 dropped 2026-10-03 after their a-halves merged |
 | 6 | **P** | Publish each number as it lands | A number on `main` that nobody can see is worth nothing |
+| 7 | **L** | L0 → L1 → L2 → L3 | A long walking route takes 8–12 s; every peer answers in under one. Measure, then stop recomputing shade per request *(added 2026-10-03; `docs/tracks/TRACK_L.md`)* |
 
 **Collision points, and nowhere else:** `routing.ts` (H, A, E: agree in an issue who goes
 first), `app/lib/agent/**` (C), and the shell files `page.tsx` / `MapView.tsx` (any
