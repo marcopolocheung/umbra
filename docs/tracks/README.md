@@ -161,9 +161,9 @@ shared file first, and let the second session rebase after the first PR opens.
 Pause other tracks' work on those files while it's in flight — it is the one piece of work
 worth blocking on, because it removes the ⚠️s from this table permanently.
 
-**Track S is safe alongside B, D, G and P.** Its first wave (S1, S2a, S3a, S4a) owns only new
-paths. Its integration slices are ⚠️ with C (S3b edits `app/lib/agent/**`) and with H and E
-(S2b reads the route objective H2 changes).
+**Track S is safe alongside every track.** Since 2026-10-03 it is S1 + S4 only; S4's work lives
+in `app/lib/chronolocation/**` and its own panel, and only S4b's shell mount point touches a
+shared file. (The C, H and E overlaps were S2b and S3b, both dropped.)
 
 **Track C is the friendliest to run alongside anything** — it owns `app/lib/agent/**` outright
 and consumes everyone else through tool wrappers.
