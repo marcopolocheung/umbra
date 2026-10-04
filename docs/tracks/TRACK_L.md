@@ -29,7 +29,7 @@ with sources. The decisions below cite it as "the report".
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
   - **L3b (in review):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
     −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
-- **Open PRs:** L3b (`perf/l3b-typed-search`), routes identical (164-case differential test).
+- **Open PRs:** #272 — L3b (`perf/l3b-typed-search`), routes identical (164-case differential test).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
