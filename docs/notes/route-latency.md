@@ -192,3 +192,90 @@ Verbatim from `npm run bench:route`. Keyless build (first table) and `nav-static
 | nav-static subway warm | 10 | 9327.9 / 9892.7 | 15.3 / 41.0 | 143.5 / 177.7 | 1986.8 / 2031.3 | 1485.4 / 1918.0 | 3555.1 / 4144.3 | 0.8 / 2.9 | 1511.7 / 1568.5 | 0.1 / 0.3 | 190.1 / 229.4 | 180.4 / 212.2 | 82.8 / 130.6 | 61.3 / 73.0 | 12.1 / 15.4 | 0.2 / 0.3 | 26.2 / 32.5 | 100.0 |
 | nav-static bus-only cold | 5 | 6455.9 / 6520.7 | 16.3 / 30.9 | 394.3 / 438.7 | 1717.8 / 1746.6 | 777.0 / 845.7 | 1399.6 / 1496.4 | 2.0 / 2.1 | 1485.8 / 1499.4 | 0.2 / 0.9 | 203.6 / 242.0 | 173.1 / 182.2 | 115.0 / 127.5 | 60.8 / 63.7 | 15.9 / 23.5 | 0.3 / 0.6 | 88.8 / 95.8 | 100.0 |
 | nav-static bus-only warm | 10 | 9360.3 / 9658.8 | 18.5 / 38.2 | 138.2 / 164.4 | 1985.8 / 2025.0 | 1478.6 / 2128.0 | 3538.5 / 4207.5 | 0.9 / 2.4 | 1517.9 / 1589.9 | 0.0 / 3.1 | 188.9 / 239.1 | 181.8 / 196.2 | 83.0 / 121.6 | 60.8 / 74.0 | 15.1 / 21.4 | 0.2 / 0.3 | 31.8 / 40.9 | 100.0 |
+
+## L3a — waste removed from `paretoRoutes` (#263)
+
+Exact-semantics changes only, for finite inputs; the data layout is untouched (that is L3b).
+The new early exits read a NaN coordinate differently from the old `&&` chains. Shard
+nodes are rejected unless lat/lon are finite, and a NaN Overpass coordinate already makes a
+NaN edge length, which never terminated in either version.
+
+### What the profile showed
+
+A seeded sidewalk lattice shaped like the production graph: two parallel sidewalk edges per street
+direction, an 8 × 15-min `timeShadow` per edge, crossing penalty 15 m. It runs at 280 × 60
+(16,800 nodes, 133,040 directed edges, a 22.9 km corner-to-corner pair). The case is committed as
+`walk search — paretoRoutes, time-aware sidewalk lattice (L3)` in
+`app/lib/__benchmarks__/navigationScale.bench.ts`. It was measured on Node 24 with
+`--cpu-prof`, plus a counter-instrumented copy of the search.
+
+| Count (time-aware, one search) | value |
+|---|---:|
+| heap pops | 842,252 (297,256 of them stale, evicted labels) |
+| relaxations | 3,225,140 |
+| labels created / accepted | 1,130,627 / 842,251 (~67 per node; static: ~32) |
+| dominance pre-check iterations | **28,270,013** |
+| destination-front scan iterations | 649,105 (88 prunes) |
+| detour-budget prunes | 0 |
+
+The per-relaxation dominance pre-check is the hot spot. The destination-front scan the L3
+handoff suspected is not: it does about 2% as many iterations. Each pre-check scanned its
+whole Pareto set (up to 20 labels), although the set is sorted by `distM` ascending and no
+label past the candidate's `distM` can dominate it. Next came the heap: one comparator call per
+sift step and one `{ labelId, f }` object per push, together ~13% of self time.
+
+### What changed
+
+- **Pre-check, eviction and destination-front scans stop at the sorted boundary.** All three
+  sets are kept sorted by `distM` ascending.
+- **`insertPareto` no longer re-runs the dominance scan.** The main loop's pre-check has just
+  run the same predicate on the same set.
+- **`NumericMinHeap`** (`app/lib/minHeap.ts`): keys and ids in growable typed arrays, with the
+  sift logic copied line for line from `MinHeap`. Same pop order, ties included; a test
+  interleaves 20k tied pushes and pops against `MinHeap`.
+- **The pre-check reads its set without creating it.** An empty bucket is still created only
+  when a label is inserted, so bucket creation order (and so destination-front order) is
+  unchanged.
+
+**Parity.** `paretoParity.test.ts` runs 161 seeded graphs and requires `toStrictEqual` output
+from the new search and from a frozen copy of the pre-L3a search
+(`paretoRoutesReference.fixture.ts`). The graphs cover static and time-aware runs, sun and
+rain, walk/bike/scoot, caps 1–20, detour factors 1.1–3, `maxContinuousExposureSec`, and
+integer lengths that force ties. The H4 oracle still pins 57.00 s (#246 untouched).
+
+### Before / after
+
+Node, the L3 lattice, median of 5 fresh-process runs:
+
+| Lattice | static before → after | time-aware before → after |
+|---|---:|---:|
+| 8,400 nodes (140 × 60) | 827 → 420 ms | 2,655 → 1,943 ms |
+| 16,800 nodes (280 × 60) | 1,711 → 1,038 ms | 4,315 → 2,971 ms |
+
+`npm run bench:route` subset (`-g "route-long|cross-borough"`), same machine and environment as
+above. `main` at `e0141ce` ("before") and this branch ("after") ran back to back. The `search`
+stage, p50 / p95 ms:
+
+| Scenario | before | after | change |
+|---|---:|---:|---:|
+| route-long cold | 687 / 701 | 438 / 497 | −36% |
+| route-long warm | 741 / 816 | 517 / 599 | −30% |
+| cross-borough cold | 4,465 / 4,553 | 3,627 / 4,357 | −19% |
+| cross-borough warm | 5,400 / 5,870 | 3,926 / 4,724 | −27% |
+| nav-static route-long cold | 3,475 / 3,567 | 2,437 / 2,481 | −30% |
+| nav-static route-long warm | 3,838 / 3,979 | 2,562 / 2,637 | −33% |
+| nav-static cross-borough cold | 6,850 / 7,175 | 4,542 / 4,605 | −34% |
+| nav-static cross-borough warm | 8,563 / 8,779 | 5,384 / 5,462 | −37% |
+
+Graph sizes (33,602 / 133,600 and 16,802 / 66,680) and route labels
+(`[Shortest, Balanced, Most shadowed]`) are identical in both runs.
+
+### What it means
+
+L3a is not enough on its own: cross-borough search is still 3.6–5.4 s against L3's 100 ms.
+After these fixes the profile is flat and memory-bound:
+- ~1.1M label objects scattered across the heap
+- five `Map` lookups and one allocation per relaxation
+
+That is L3b's typed-array layout. The other lever is the label count itself, ~67 per node from
+the per-bucket Pareto sets. That is Track H's semantics, not L's, and is recorded on #270.

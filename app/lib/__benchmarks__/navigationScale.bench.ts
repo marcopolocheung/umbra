@@ -17,7 +17,7 @@
  */
 
 import { bench, describe } from "vitest";
-import { dijkstra, paretoRoutes, reachableFrom, type RoutingGraph } from "../routing";
+import { dijkstra, haversineMeters, paretoRoutes, reachableFrom, type RoutingGraph } from "../routing";
 import {
   findBestTrainRoute,
   nearestStations,
@@ -305,6 +305,88 @@ describe("walk search — paretoRoutes, 2-point", () => {
       heavy,
     );
   }
+});
+
+// ─── L3: the production hot path — time-aware sidewalk pairs ─────────────────
+//
+// `streetGrid` above has one edge per direction and no `timeShadow`, so it never
+// exercises what production searches since H1/H2: two parallel sidewalk edges
+// per street direction and an 8 × 15-min `timeShadow` per edge. This lattice is
+// sized like the browser bench's cross-borough graph (16,800 nodes, 133,040
+// directed edges vs 133,600) and is the L3 profiling case in
+// `docs/notes/route-latency.md`. Seeded, so every run searches the same graph.
+
+/** Seeded mulberry32. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sidewalkGrid(rows: number, cols: number, buckets: number): RoutingGraph {
+  const r = seeded(7);
+  const nodes: RoutingGraph["nodes"] = new Map();
+  const adj: RoutingGraph["adj"] = new Map();
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const id = i * cols + j;
+      nodes.set(id, {
+        id,
+        lat: ORIGIN[1] + i * 80 * DEG_PER_M_LAT,
+        lon: ORIGIN[0] + j * 80 * DEG_PER_M_LNG,
+        isIntersection: true,
+      });
+      adj.set(id, []);
+    }
+  }
+  const shade = () => {
+    const x = r();
+    return x < 0.4 ? 0 : x < 0.7 ? 1 : r();
+  };
+  const series = () => {
+    const base = shade();
+    return Array.from({ length: buckets }, () => (r() < 0.25 ? shade() : base));
+  };
+  const link = (a: number, b: number) => {
+    const distanceM = 80 * (0.9 + 0.2 * r());
+    const left = series();
+    const right = series();
+    const edge = (toId: number, timeShadow: number[], side: "left" | "right") => ({
+      toId, distanceM, shadowFactor: timeShadow[0], side, timeShadow,
+    });
+    adj.get(a)!.push(edge(b, left, "left"), edge(b, right, "right"));
+    adj.get(b)!.push(edge(a, right, "left"), edge(a, left, "right"));
+  };
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const id = i * cols + j;
+      if (j + 1 < cols) link(id, id + 1);
+      if (i + 1 < rows) link(id, id + cols);
+    }
+  }
+  return { nodes, adj };
+}
+
+describe("walk search — paretoRoutes, time-aware sidewalk lattice (L3)", () => {
+  const graph = sidewalkGrid(280, 60, 8);
+  const end = 280 * 60 - 1;
+  const a = graph.nodes.get(0)!;
+  const b = graph.nodes.get(end)!;
+  const base = {
+    crossingPenaltyM: 15,
+    straightLineDistM: haversineMeters([a.lon, a.lat], [b.lon, b.lat]),
+  };
+  bench("16,800 nodes static", () => {
+    paretoRoutes(graph, 0, end, base);
+  }, heavy);
+  bench("16,800 nodes time-aware (8 × 15 min)", () => {
+    paretoRoutes(graph, 0, end, { ...base, timeAware: { bucketMs: 15 * 60_000, bucketCount: 8 } });
+  }, heavy);
 });
 
 describe("walk search — per-leg 12-pass loop (5-stop shape × 3 strengths)", () => {
