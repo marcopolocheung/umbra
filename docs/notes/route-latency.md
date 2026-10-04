@@ -279,3 +279,98 @@ After these fixes the profile is flat and memory-bound:
 
 That is L3b's typed-array layout. The other lever is the label count itself, ~67 per node from
 the per-bucket Pareto sets. That is Track H's semantics, not L's, and is recorded on #270.
+
+## L3b — typed-array search core (#263)
+
+`paretoRoutes` keeps its signature and now runs over `toCompactGraph` (`app/lib/compactGraph.ts`).
+That is a CSR graph: offsets/targets typed arrays plus node coordinates and intersection flags.
+It carries no destination or travel mode, so H3's one-to-many search and the L3c worker can use
+the same form. Per search, `paretoRoutes` builds:
+- per-edge mode cost, traversal seconds, and the exposure increment for each time bucket — each
+  computed by the same function and in the same operand order as before, so every sum is
+  bit-identical;
+- struct-of-arrays labels with integer parent and edge indices;
+- the Pareto sets as one array indexed by node × bucket, recording the order in which the
+  destination's buckets were created, which the front's tie-breaks depend on;
+- the heuristic as a precomputed array.
+
+Result building is unchanged.
+
+**Parity.** `paretoParity.test.ts` grows to 164 cases. The new ones cover:
+- negative virtual ids, an edge target with no node record, and a destination with no record;
+- a coordinate-less node on a candidate route;
+- equal-length destination labels in out-of-order buckets — creation order is what breaks the
+  tie.
+
+The generator now also varies `timeShadow` length (short and empty series) and draws the static
+factor independently of bucket 0. Mutating the bucket clamp, the empty-series fallback, the
+static branch, the no-coordinate heuristic or the result front's bucket order fails cases; each
+went unnoticed by the suite before. The H4 oracle passes.
+
+Identical output holds for every input the app produces. Two degenerate options differ:
+- `timeAware.bucketCount: 0` (the caller only sets `timeAware` with ≥ 1 bucket) returns no
+  route;
+- `maxLabelsPerNode: 0` returns a route where the old code threw.
+
+### Before / after
+
+Node, the L3 lattice, median of 5 fresh-process runs (pre-L3a reference vs this branch):
+
+| Lattice | static | time-aware |
+|---|---:|---:|
+| 8,400 nodes (140 × 60) | 700 → 306 ms | 2,466 → 696 ms |
+| 16,800 nodes (280 × 60) | 1,684 → 549 ms | 3,956 → 1,160 ms |
+
+`npm run bench:route` subset, same machine and environment as above, `main` at `0fa4558`
+(L3a merged) vs this branch, run back to back. `search` stage p50 / p95 ms:
+
+| Scenario | L3a (main) | L3b | change |
+|---|---:|---:|---:|
+| route-long cold | 439 / 450 | 303 / 311 | −31% |
+| route-long warm | 465 / 523 | 307 / 369 | −34% |
+| cross-borough cold | 3,012 / 3,668 | 1,599 / 1,611 | −47% |
+| cross-borough warm | 3,330 / 3,766 | 2,324 / 2,377 | −30% |
+| nav-static route-long cold | 2,311 / 2,365 | 1,273 / 1,286 | −45% |
+| nav-static route-long warm | 2,279 / 2,406 | 1,256 / 1,695 | −45% |
+| nav-static cross-borough cold | 4,513 / 4,595 | 2,195 / 2,235 | −51% |
+| nav-static cross-borough warm | 5,028 / 5,472 | 2,579 / 3,803 | −49% |
+
+Graph sizes and route labels are identical in both runs.
+
+Absolute numbers drift between bench sessions. Main's L3a figures here run up to ~17% (p50) below
+the same code's figures in the L3a section above, with the largest drift on cross-borough cold.
+Compare within one table, not across them. Chained across sessions, nav-static cross-borough
+warm search went 8,285 ms (L0) → 5,384 (L3a session) and 5,028 → 2,579 (this session).
+
+### Why it stops at ~1–2.5 s, not 100 ms
+
+Profiled after the change, the remaining time is:
+- the per-relaxation dominance scan over a Pareto set (~30%);
+- the heap (~17%);
+- label creation.
+
+All three scale with the number of labels: ~1.1M on the 16.8k lattice, ~67 per node. Layout
+cannot remove them. Two attempts confirmed this:
+- **Pre-sizing the label columns** gained 2% and would reserve ~100 MB up front, so it was
+  not kept.
+- **Exact remaining-cost bounds** (reverse Dijkstras for distance and for minimum sun
+  seconds), the one label reduction that might keep routes unchanged, were prototyped:
+
+| Pair (16.8k lattice, time-aware) | labels | routes |
+|---|---:|---|
+| corner to corner, 22.9 km | 1,130,627 → 1,130,627 | identical |
+| same column, 8 km | 825,748 → 656,233 | changed |
+| diagonal, 3 km | 134,247 → 119,407 | changed |
+
+Single-run timings moved within ±20% in either direction between repeats, so they are omitted:
+the label counts and the route changes are what decide it.
+
+Nearly every label lies inside the detour budget and is a real trade-off, and with ~40% of
+edges fully shaded the best-case remaining sun is ~0 almost everywhere. Where the bounds did
+prune, they changed routes: freed room under the 20-label cap let different labels survive.
+
+So the remaining levers change routes. One is an approximate (ε-dominance) front; the other is
+searching only for the three representatives shown, which is L4's shape. Both are recorded on
+#270 for Track H and the owner. L's next step is L3c: the search moves to a worker, so the
+remaining 1–2.5 s no longer blocks the main thread. L2 then removes ~4 s of shade work that is
+not search at all.
