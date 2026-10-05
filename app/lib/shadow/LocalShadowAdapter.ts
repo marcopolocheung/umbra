@@ -30,14 +30,8 @@ import type { CanopyAtlas } from '../canopyRaster/viewportCanopy';
 import { lonLatToMercator } from '../canopyRaster/tiles';
 import { crownOpacity } from '../shadowField/canopy';
 import { rainOpacityForLightOpacity } from '../rain/opacity';
+import { shadowTargetSize } from './shadowTargetSize';
 
-// Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
-// SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
-// composite quad (Pass D). 2 = 4 samples/pixel. Cost is ~4× shadow fragment work
-// and FBO memory, so the supersampled dimension is capped at SHADOW_FBO_MAX_DIM
-// (per-axis) to avoid blowing past GPU limits / memory on hi-DPR displays.
-const SHADOW_SUPERSAMPLE = 2;
-const SHADOW_FBO_MAX_DIM = 4096;
 
 /**
  * Metres spanned by one full unit of Mercator x/y at the equator — MapLibre's
@@ -115,6 +109,18 @@ interface CachedBuildingGeometry {
   bldgVertexCount: number;
 }
 
+type ShadowTargetKey = 'lo' | 'hi';
+
+/** One shadow FBO + its height FBO, allocated at one size. */
+interface ShadowTargets {
+  fbo: WebGLFramebuffer | null;
+  fboTexture: WebGLTexture | null;
+  heightFbo: WebGLFramebuffer | null;
+  heightFboTexture: WebGLTexture | null;
+  w: number;
+  h: number;
+}
+
 /**
  * Local exposure renderer implemented as a MapLibre CustomLayer.
  *
@@ -180,7 +186,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // center, so repeats are dropped here rather than answered and discarded.
   private lastSunRequestKey: string | null = null;
 
-  // Offscreen FBO for single-write shadow compositing
+  // Offscreen FBO for single-write shadow compositing. `fbo`, `fboTexture`,
+  // `heightFbo`, `heightFboTexture` and `fboWidth/Height` point at the active
+  // set in `shadowTargets`: 'hi' (supersampled) when settled, 'lo' (1×) while
+  // the camera moves. Both stay allocated so a gesture never reallocates.
+  private shadowTargets: Record<ShadowTargetKey, ShadowTargets | null> = { lo: null, hi: null };
+  private activeTargetKey: ShadowTargetKey = 'hi';
   private fbo: WebGLFramebuffer | null = null;
   private fboTexture: WebGLTexture | null = null;
   private fboWidth = 0;
@@ -601,6 +612,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   }
 
   readBuildingShadowMask(): BuildingShadowMask | null {
+    // The frame between `moveend` and the next paint is still the 1× set; render
+    // the settled, supersampled one before reading so the mask never depends on
+    // how recently the camera stopped.
+    if (this.activeTargetKey === 'lo' && this.map && !this.map.isMoving()) this.map.redraw();
     // The FBO may still contain the last daytime pass while the worker processes
     // a sunset tick. Solar night has no painted mask; rain keeps its own readback.
     if (this.hazardMode === "sun") {
@@ -1156,13 +1171,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // the final composite (Pass D) draws at the real canvas viewport, box-
     // downsampling via the LINEAR-filtered fboTexture. Cap each axis so the
     // supersampled buffer can't exceed GPU/memory limits.
-    const cw = gl.canvas.width;
-    const ch = gl.canvas.height;
-    const ssW = Math.min(cw * SHADOW_SUPERSAMPLE, SHADOW_FBO_MAX_DIM);
-    const ssH = Math.min(ch * SHADOW_SUPERSAMPLE, SHADOW_FBO_MAX_DIM);
-    const w = ssW;
-    const h = ssH;
-    this.ensureFBO(gl2, w, h);
+    const moving = this.map.isMoving();
+    const { w, h } = shadowTargetSize(gl.canvas.width, gl.canvas.height, moving);
+    this.ensureFBO(gl2, moving ? 'lo' : 'hi', w, h);
     if (!this.fbo) return;
 
     // Phase 3: Only re-upload buffers when geometry actually changed
@@ -1545,7 +1556,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // framebuffer or the supersampled dimensions.
     const activeFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
-    const target = activeFbo === this.fbo || activeFbo === this.heightFbo ? null : activeFbo;
+    const ours = [this.shadowTargets.lo, this.shadowTargets.hi].some(
+      (t) => t && (activeFbo === t.fbo || activeFbo === t.heightFbo),
+    );
+    const target = ours ? null : activeFbo;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target);
     if (viewport && viewport.length === 4) gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
@@ -1564,12 +1578,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     if (this.program) gl.deleteProgram(this.program);
     if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
-    if (this.fbo) gl.deleteFramebuffer(this.fbo);
-    if (this.fboTexture) gl.deleteTexture(this.fboTexture);
+    for (const t of [this.shadowTargets.lo, this.shadowTargets.hi]) if (t) this.deleteShadowTargets(gl, t);
+    this.shadowTargets = { lo: null, hi: null };
     if (this.heightProgram) gl.deleteProgram(this.heightProgram);
     if (this.shadowHeightBuffer) gl.deleteBuffer(this.shadowHeightBuffer);
-    if (this.heightFbo) gl.deleteFramebuffer(this.heightFbo);
-    if (this.heightFboTexture) gl.deleteTexture(this.heightFboTexture);
     if (this.roofProgram) gl.deleteProgram(this.roofProgram);
     if (this.roofPosBuffer) gl.deleteBuffer(this.roofPosBuffer);
     if (this.roofHeightBuffer) gl.deleteBuffer(this.roofHeightBuffer);
@@ -1657,17 +1669,21 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     ];
   }
 
-  private ensureFBO(gl: WebGL2RenderingContext, w: number, h: number) {
-    if (this.fbo && this.fboWidth === w && this.fboHeight === h) return;
+  /** Make `key`'s target set current, (re)allocating it only when its size changed. */
+  private ensureFBO(gl: WebGL2RenderingContext, key: ShadowTargetKey, w: number, h: number) {
+    this.activeTargetKey = key;
+    const current = this.shadowTargets[key];
+    if (current?.fbo && current.w === w && current.h === h) {
+      this.activateShadowTargets(current);
+      return;
+    }
 
     const prevFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
     const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
 
-    // Clean up old resources
-    if (this.fbo) gl.deleteFramebuffer(this.fbo);
-    if (this.fboTexture) gl.deleteTexture(this.fboTexture);
-    if (this.heightFbo) gl.deleteFramebuffer(this.heightFbo);
-    if (this.heightFboTexture) gl.deleteTexture(this.heightFboTexture);
+    // Clean up this set's old resources (the other set is untouched)
+    if (current) this.deleteShadowTargets(gl, current);
+    this.fbo = this.fboTexture = this.heightFbo = this.heightFboTexture = null;
 
     // Shadow FBO
     this.fbo = gl.createFramebuffer();
@@ -1730,6 +1746,30 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     this.fboWidth = w;
     this.fboHeight = h;
+    this.shadowTargets[key] = {
+      fbo: this.fbo,
+      fboTexture: this.fboTexture,
+      heightFbo: this.heightFbo,
+      heightFboTexture: this.heightFboTexture,
+      w,
+      h,
+    };
+  }
+
+  private activateShadowTargets(t: ShadowTargets) {
+    this.fbo = t.fbo;
+    this.fboTexture = t.fboTexture;
+    this.heightFbo = t.heightFbo;
+    this.heightFboTexture = t.heightFboTexture;
+    this.fboWidth = t.w;
+    this.fboHeight = t.h;
+  }
+
+  private deleteShadowTargets(gl: WebGL2RenderingContext | WebGLRenderingContext, t: ShadowTargets) {
+    if (t.fbo) gl.deleteFramebuffer(t.fbo);
+    if (t.fboTexture) gl.deleteTexture(t.fboTexture);
+    if (t.heightFbo) gl.deleteFramebuffer(t.heightFbo);
+    if (t.heightFboTexture) gl.deleteTexture(t.heightFboTexture);
   }
 
   // ── Canopy ground-protection pass ──────────────────────────────────────────────
