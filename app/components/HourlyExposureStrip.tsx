@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { HourlyExposure } from "../hooks/useHourlyExposure";
 
 interface HourlyExposureStripProps {
@@ -28,22 +29,31 @@ function hourKey(hour: number): string {
  * keylined in ink so a pale step still holds against the panel. Hours without a
  * reading (still sampling, or none came back) show a dash rather than a zero the
  * field never measured.
+ *
+ * Nothing is sampled until the header is tapped (see `useHourlyExposure`): each hour
+ * is a building-shadow sweep on the main thread, and running the day unasked stalled
+ * the map right after a route landed.
  */
 export default function HourlyExposureStrip({
   exposure,
   currentHour,
   onPickHour,
 }: HourlyExposureStripProps) {
-  const { samples, readyCount, best } = exposure;
+  const { samples, readyCount, best, requested, request } = exposure;
+  const hoursRef = useRef<HTMLFieldSetElement>(null);
   if (samples.length === 0) return null;
   const rain = samples[0].objective === "rain";
-  const checking = readyCount < samples.length;
-  const anyUnsampled = !checking && samples.some((sample) => sample.available === false);
+  const checking = requested && readyCount < samples.length;
+  const anyUnsampled = requested && !checking && samples.some((sample) => sample.available === false);
 
   return (
     <div className="border-2" style={{ background: "var(--color-panel)", borderColor: "var(--color-ink)" }}>
+      {/* One 44px header in both states, so the card does not jump when the hours
+          arrive. Before the day is asked for, the whole header is the button —
+          the app is used one-handed, outdoors. The status line is one live region
+          that stays mounted, so "checking…" is announced when it appears. */}
       <div
-        className="flex items-baseline justify-between gap-2 px-2 py-1"
+        className="relative flex min-h-11 items-center justify-between gap-2 px-2 py-1"
         style={{ background: "var(--color-ink)", color: "var(--color-on-ink)", fontSize: "var(--text-caption)" }}
       >
         <span
@@ -52,17 +62,35 @@ export default function HourlyExposureStrip({
         >
           {rain ? "Rain shelter by hour" : "Sun by hour"}
         </span>
+        {!requested && (
+          <button
+            type="button"
+            onClick={() => {
+              request();
+              // The button is about to go; hand focus to the hours it asked for.
+              requestAnimationFrame(() => hoursRef.current?.focus());
+            }}
+            aria-label={rain ? "Check rain shelter on this route by hour" : "Check sun on this route by hour"}
+            className="absolute inset-0 flex items-center justify-end px-2 font-extrabold focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+            style={{ fontFamily: "var(--font-label)" }}
+          >
+            check the day <span aria-hidden="true">&nbsp;›</span>
+          </button>
+        )}
         <span aria-live="polite" className="min-w-0 text-right" style={{ fontFamily: "var(--font-mono)" }}>
           {checking
             ? "checking…"
-            : best
+            : requested && best
               ? rain ? `most sheltered around ${best.label}` : `most shadowed around ${best.label}`
               : null}
         </span>
       </div>
 
+      {requested && (
       <fieldset
-        className="m-0 grid border-0 px-1.5 pt-1.5 pb-1"
+        ref={hoursRef}
+        tabIndex={-1}
+        className="m-0 grid border-0 px-1.5 pt-1.5 pb-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
         style={{ gridTemplateColumns: `repeat(${samples.length}, minmax(0, 1fr))` }}
       >
         <legend className="sr-only">{rain ? "Rain shelter by hour" : "Sun exposure by hour"}</legend>
@@ -141,6 +169,7 @@ export default function HourlyExposureStrip({
           );
         })}
       </fieldset>
+      )}
 
       {anyUnsampled && (
         <div className="px-2 pb-1" style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>

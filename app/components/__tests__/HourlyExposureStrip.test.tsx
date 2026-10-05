@@ -20,8 +20,18 @@ function sample(hour: number, sunExposure: number, extra: Partial<HourlyExposure
   };
 }
 
-function strip(exposure: HourlyExposure, currentHour = 10, onPickHour = vi.fn()) {
-  render(<HourlyExposureStrip exposure={exposure} currentHour={currentHour} onPickHour={onPickHour} />);
+function strip(
+  exposure: Omit<HourlyExposure, "requested" | "request"> & Partial<HourlyExposure>,
+  currentHour = 10,
+  onPickHour = vi.fn(),
+) {
+  render(
+    <HourlyExposureStrip
+      exposure={{ requested: true, request: vi.fn(), ...exposure }}
+      currentHour={currentHour}
+      onPickHour={onPickHour}
+    />,
+  );
   return onPickHour;
 }
 
@@ -73,6 +83,17 @@ describe("HourlyExposureStrip", () => {
     expect((pending as HTMLButtonElement).disabled).toBe(true);
     expect(pending.textContent).toContain("–");
     expect(screen.queryByText(/no reading$/)).toBeNull();
+  });
+
+  it("asks before sampling: a header button, no hour grid, and the tap requests the day", () => {
+    const samples = [sample(10, 0), sample(11, 0)];
+    const request = vi.fn();
+    strip({ samples, readyCount: 0, best: null, requested: false, request });
+    expect(screen.queryAllByRole("button", { name: /AM:/ })).toHaveLength(0);
+    expect(screen.queryByText("checking…")).toBeNull();
+    expect(screen.getByText("Sun by hour")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check sun on this route by hour" }));
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("labels rain hours that have no reading once sampling ends", () => {
