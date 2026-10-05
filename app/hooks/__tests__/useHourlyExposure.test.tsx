@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedExposureContext } from "../../lib/exposure";
 import type { RouteOption } from "../../lib/routing";
 import type { EdgeRef, EdgeShadow, ShadowField } from "../../lib/shadowField/ShadowField";
 import { useHourlyExposure } from "../useHourlyExposure";
@@ -62,6 +63,7 @@ describe("useHourlyExposure", () => {
     const { result } = renderHook(() =>
       useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0)
     );
+    act(() => result.current.request());
 
     // 6:00 through 20:00 inclusive.
     await waitFor(() => expect(result.current.readyCount).toBe(15));
@@ -79,6 +81,7 @@ describe("useHourlyExposure", () => {
     const { result } = renderHook(() =>
       useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0)
     );
+    act(() => result.current.request());
 
     // The schedule is known immediately; the measurements are not.
     await waitFor(() => expect(result.current.readyCount).toBeGreaterThan(0));
@@ -101,6 +104,7 @@ describe("useHourlyExposure", () => {
     const { result } = renderHook(() =>
       useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0)
     );
+    act(() => result.current.request());
     await waitFor(() => expect(result.current.readyCount).toBe(15));
 
     // The right sidewalk is in full sun even though the left is fully shadowed.
@@ -119,6 +123,7 @@ describe("useHourlyExposure", () => {
     const { result } = renderHook(() =>
       useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0)
     );
+    act(() => result.current.request());
     await waitFor(() => expect(result.current.readyCount).toBe(15));
 
     expect(result.current.samples[0].shadowCoverage).toBe(0.5);
@@ -131,6 +136,7 @@ describe("useHourlyExposure", () => {
       ({ date }: { date: Date }) => useHourlyExposure(routeOption, field, date, 0),
       { initialProps: { date: new Date("2026-06-21T09:00:00Z") } }
     );
+    act(() => result.current.request());
 
     await waitFor(() => expect(result.current.readyCount).toBe(15));
     const callsAfterFirstDay = (field.sweep as ReturnType<typeof vi.fn>).mock.calls.length;
@@ -146,6 +152,88 @@ describe("useHourlyExposure", () => {
         callsAfterFirstDay
       )
     );
+  });
+
+  it("samples nothing until asked, then the whole day", async () => {
+    const field = fieldByHour();
+    const stable = route();
+    const { result } = renderHook(() =>
+      useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0)
+    );
+
+    // The day's hours are known up front; no geometry is touched for them.
+    await waitFor(() => expect(result.current.samples).toHaveLength(15));
+    expect(result.current.requested).toBe(false);
+    expect(result.current.readyCount).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(field.ready).not.toHaveBeenCalled();
+    expect(field.sweep).not.toHaveBeenCalled();
+
+    act(() => result.current.request());
+    expect(result.current.requested).toBe(true);
+    await waitFor(() => expect(result.current.readyCount).toBe(15));
+    expect(field.sweep).toHaveBeenCalledTimes(15);
+  });
+
+  it("keeps the request and the day across a rebuilt route object for the same walk", async () => {
+    // The exposure refresh replaces every route object ~250 ms after each timeline
+    // change; that must neither close the strip nor resample the day.
+    const field = fieldByHour();
+    const first = route(["right", "right", "right"]);
+    const { result, rerender } = renderHook(
+      ({ r }: { r: RouteOption }) => useHourlyExposure(r, field, new Date("2026-06-21T12:00:00Z"), 0),
+      { initialProps: { r: first } }
+    );
+    act(() => result.current.request());
+    await waitFor(() => expect(result.current.readyCount).toBe(15));
+    const calls = (field.sweep as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    rerender({ r: { ...first, shadowCoverage: 0.9 } });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.requested).toBe(true);
+    expect(result.current.readyCount).toBe(15);
+    expect(field.sweep).toHaveBeenCalledTimes(calls);
+  });
+
+  it("does not resample the day when only the exposure context's time changes", async () => {
+    // The refresh hands over a new context object for each timeline time; the
+    // hook reads only its reference point, so the same point must not restart it.
+    const field = fieldByHour();
+    const stable = route();
+    const context = (iso: string) =>
+      ({ referenceLocation: { lat: 0, lng: 0.0015 }, time: new Date(iso) }) as unknown as ResolvedExposureContext;
+    const { result, rerender } = renderHook(
+      ({ ctx }: { ctx: ResolvedExposureContext }) =>
+        useHourlyExposure(stable, field, new Date("2026-06-21T12:00:00Z"), 0, "sun", undefined, ctx),
+      { initialProps: { ctx: context("2026-06-21T12:00:00Z") } }
+    );
+    act(() => result.current.request());
+    await waitFor(() => expect(result.current.readyCount).toBe(15));
+    const calls = (field.sweep as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    rerender({ ctx: context("2026-06-21T14:00:00Z") });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.readyCount).toBe(15);
+    expect(field.sweep).toHaveBeenCalledTimes(calls);
+  });
+
+  it("goes back to waiting when a different route is selected", async () => {
+    const field = fieldByHour();
+    const first = route();
+    const second = route(["left", "left", "left"]);
+    const { result, rerender } = renderHook(
+      ({ r }: { r: RouteOption }) => useHourlyExposure(r, field, new Date("2026-06-21T12:00:00Z"), 0),
+      { initialProps: { r: first } }
+    );
+    act(() => result.current.request());
+    await waitFor(() => expect(result.current.readyCount).toBe(15));
+    const calls = (field.sweep as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    rerender({ r: second });
+    await waitFor(() => expect(result.current.readyCount).toBe(0));
+    expect(result.current.requested).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(field.sweep).toHaveBeenCalledTimes(calls);
   });
 
   it("reports nothing without a route or a field", () => {
