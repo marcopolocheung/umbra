@@ -24,6 +24,8 @@ The diagnostic framebuffer encodes each Pass E fragment as:
 Ordinary map pixels retain A = 255. MSAA-resolved silhouette pixels have an alpha
 between those values, so only A == 0 is a whole Pass E fragment and wall-base
 ground probes are accepted only when every intervening pixel has A == 255.
+The map has rendered without MSAA since the fps pass (antialias: false), so the
+fringe no longer occurs; the checks stay as a guard for a run that turns it on.
 
 Usage
 -----

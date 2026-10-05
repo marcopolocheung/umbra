@@ -494,11 +494,11 @@ export default function MapView({
       ...(window.devicePixelRatio > 2 ? { pixelRatio: 2 } : {}),
       // @ts-expect-error — property exists at runtime but is missing from MapLibre types
       maxParallelImageRequests: 6,
-      // antialias enables MSAA on the main drawing buffer → smooths building /
-      // vector-geometry edges. Coexists with preserveDrawingBuffer in WebGL2.
-      // (Shadow-layer edges are AA'd separately via FBO supersampling — see
-      // LocalShadowAdapter.ensureFBO; MSAA can't touch a pre-rasterized texture.)
-      canvasContextAttributes: { preserveDrawingBuffer: true, antialias: true },
+      // No MSAA (MapLibre's default): its per-frame resolve costs most on the
+      // tile-based GPUs in phones, for slightly smoother fill and wall edges.
+      // Shadow edges are unaffected — they are antialiased by FBO supersampling
+      // (LocalShadowAdapter.ensureFBO), which MSAA never touched.
+      canvasContextAttributes: { preserveDrawingBuffer: true, antialias: false },
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
