@@ -28,11 +28,11 @@ with sources. The decisions below cite it as "the report".
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
   - **L3b (#272):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
     −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
-  - **L3c (in review):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
+  - **L3c (#277, in review):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
     crosses as transferable typed arrays (`routingGraphCodec.ts`) and the protocol
     (`routingWorkerProtocol.ts`) is the one A5b and H3 extend. Main-thread fallback when no
     worker. Bench gains `longestSearchTaskMs`.
-- **Open PRs:** L3c (`perf/l3c-routing-worker`), routes identical (same function on a
+- **Open PRs:** #277 — L3c (`perf/l3c-routing-worker`), routes identical (same function on a
   bit-identical rebuilt graph; 161-case parity on the round trip).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
