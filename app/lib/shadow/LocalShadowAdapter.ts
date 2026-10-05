@@ -1197,28 +1197,20 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       this.lastUploadedVersion = this.geomVersion;
     }
 
-    // ── Save GL state ──
+    // ── Capture MapLibre's target ──
+    // Only what the passes below must hand back mid-frame. Everything else (blend,
+    // depth func/mask/clear, cull, front face, textures) is not restored: MapLibre
+    // marks all of its GL state dirty and re-sets it after a custom layer renders
+    // (`draw_custom`: `context.setDirty(); painter.setBaseState()`), and several of
+    // those `getParameter` reads are a synchronous GPU round-trip every frame.
     const prevFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
     const prevViewport = gl.getParameter(gl.VIEWPORT);
-    const wasBlend = gl.isEnabled(gl.BLEND);
-    const wasCull = gl.isEnabled(gl.CULL_FACE);
-    const prevBlendSrcRGB = gl.getParameter(gl.BLEND_SRC_RGB);
-    const prevBlendDstRGB = gl.getParameter(gl.BLEND_DST_RGB);
-    const prevBlendSrcA = gl.getParameter(gl.BLEND_SRC_ALPHA);
-    const prevBlendDstA = gl.getParameter(gl.BLEND_DST_ALPHA);
-    const prevBlendEqRGB = gl.getParameter(gl.BLEND_EQUATION_RGB);
-    const prevBlendEqA = gl.getParameter(gl.BLEND_EQUATION_ALPHA);
-    const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
-    const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
-    const prevFrontFace = gl.getParameter(gl.FRONT_FACE);
-    const wasDepthTest = gl.isEnabled(gl.DEPTH_TEST);
-    const prevDepthFunc = gl.getParameter(gl.DEPTH_FUNC);
-    const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
-    const prevDepthClear = gl.getParameter(gl.DEPTH_CLEAR_VALUE);
     // MapLibre narrows the depth range for a '3d' custom layer to leave room for the
     // sublayers above it. `gl_FragDepth` is clamped to that range, so Pass B has to
     // widen it or every ceiling near the top of the height scale clamps to one value.
-    const prevDepthRange = gl.getParameter(gl.DEPTH_RANGE) as Float32Array;
+    // Read MapLibre's tracked value (it set it just before calling us) rather than
+    // `getParameter(DEPTH_RANGE)`, which stalls on the GPU process.
+    const prevDepthRange = this.map.painter.context.depthRange.get();
 
     // Compute adjusted projection matrix in Float64 to account for center offset.
     // Vertices are stored relative to centerMerc, so we pre-multiply a translation
@@ -1370,6 +1362,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    // Pass B disables blending and only Pass C turns it back on; never composite
+    // with it off because a hazard skipped C.
+    gl2.enable(gl.BLEND);
     this.renderedContextObjective = this.contextObjective;
     this.renderedContextRevision = this.contextRevision;
 
@@ -1532,20 +1527,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
-    // ── Restore GL state ──
-    if (!wasBlend) gl2.disable(gl.BLEND);
-    if (wasCull) gl2.enable(gl.CULL_FACE);
-    else gl2.disable(gl.CULL_FACE);
-    gl2.frontFace(prevFrontFace);
-    gl2.blendEquationSeparate(prevBlendEqRGB, prevBlendEqA);
-    gl2.blendFuncSeparate(prevBlendSrcRGB, prevBlendDstRGB, prevBlendSrcA, prevBlendDstA);
-    gl2.activeTexture(prevActiveTexture);
-    gl2.bindTexture(gl.TEXTURE_2D, prevTexture);
-    if (wasDepthTest) gl2.enable(gl.DEPTH_TEST);
-    else gl2.disable(gl.DEPTH_TEST);
-    gl2.depthFunc(prevDepthFunc);
-    gl2.depthMask(prevDepthMask);
-    gl2.clearDepth(prevDepthClear);
     gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
   }
 
@@ -1831,7 +1812,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
     const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
     const wasBlend = gl.isEnabled(gl.BLEND);
-    const prevBlendEq = gl.getParameter(gl.BLEND_EQUATION_RGB);
 
     try {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.canopyFbo);
@@ -1869,7 +1849,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl.activeTexture(prevActiveTexture);
       gl.bindTexture(gl.TEXTURE_2D, prevTexture);
       if (wasBlend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
-      gl.blendEquation(prevBlendEq);
     }
 
     // Discard superseded results: a previous sun/wind frame must not be published
