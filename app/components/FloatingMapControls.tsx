@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import Sigil from "./ui/Sigil";
 
 /** Pitch the 3D view tilts to. Enough to read building height without losing the street. */

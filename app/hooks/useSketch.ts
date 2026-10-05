@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { fetchBestRoutingGraph } from "../lib/navigationData/routingGraphSource";
 import {

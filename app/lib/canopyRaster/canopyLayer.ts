@@ -12,7 +12,7 @@
  * waiting on the same blocks.
  */
 
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import {
   CANOPY_FILL_OPACITY,
   type CanopyImage,

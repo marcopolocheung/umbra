@@ -7,7 +7,7 @@
  * them. Placement matters for invariant #5 — see `beforeIdFor`.
  */
 
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { token } from "../css-tokens";
 
 export const SHED_SOURCE_ID = "sidewalk-sheds";

@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type { GraphEdge, RoutingGraph } from "./routing";
 import type { EdgeRef } from "./shadowField/ShadowField";
 

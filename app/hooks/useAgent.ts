@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type { LlmContent } from "../lib/agent/llmClient";
 import type { AgentContext, AssistantPin } from "../lib/agent/tools";
 import type { IShadowLayer } from "../lib/shadow/IShadowLayer";

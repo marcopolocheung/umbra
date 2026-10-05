@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, memo } from "react";
 import { UMBRA_DISC_PATH } from "./ui/Sigil";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { stationConnectors, type TrainDrawData } from "../lib/trainGraph";
 import type { LatLng, SketchPoint } from "../lib/routing";
 import SunCalc from "suncalc";
@@ -61,6 +62,10 @@ interface MapViewProps {
   /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
   basemapTheme?: UiTheme;
 }
+
+// MapLibre 6 finds its worker next to its own module, which a bundler renames;
+// point it at the copy Vite emits.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? "";
 const SHADOW_V2_DEBUG = isShadowV2DebugEnabled();
@@ -492,8 +497,6 @@ export default function MapView({
       // basemap and in every shadow pass. At ≤ 2× MapLibre keeps tracking the
       // device ratio itself (monitor moves, browser zoom).
       ...(window.devicePixelRatio > 2 ? { pixelRatio: 2 } : {}),
-      // @ts-expect-error — property exists at runtime but is missing from MapLibre types
-      maxParallelImageRequests: 6,
       // No MSAA (MapLibre's default): its per-frame resolve costs most on the
       // tile-based GPUs in phones, for slightly smoother fill and wall edges.
       // Shadow edges are unaffected — they are antialiased by FBO supersampling

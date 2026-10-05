@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, type ReactNode } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 
 interface AppShellProps {
   /** Content for the desktop sidebar (SideNav wrapping phase content) */

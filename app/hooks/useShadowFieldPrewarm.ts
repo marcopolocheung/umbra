@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { acquireNavigationSnapshot } from "../lib/navigationData/remoteNavigation";
 import type { NavigationSnapshot } from "../lib/navigationData/remoteNavigation";
 import { ROUTE_READINESS_BUDGET_MS } from "../lib/navigationHelpers";
