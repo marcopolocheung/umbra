@@ -49,6 +49,12 @@ export interface RoutingPhaseMs {
    */
   walkPareto?: number; // paretoRoutes (2-pt) or per-leg dijkstra loop (multi-pt)
   /**
+   * L3c: the 2-pt search's absolute window on the `performance.now()` clock,
+   * so the bench can find long tasks that overlap it. Absent when no 2-pt
+   * search ran.
+   */
+  searchWindow?: { start: number; end: number };
+  /**
    * Checkpoint 6 static-navigation split (all optional, 0/absent = phase did
    * not run). These attribute the former combined graph/readiness span:
    * pointer (pointer request + parse) and manifest (manifest request + digest

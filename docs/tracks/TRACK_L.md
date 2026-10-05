@@ -17,9 +17,8 @@ with sources. The decisions below cite it as "the report".
 ## Current state
 
 - **Active checkpoint:** L3 — the walking-route search (#263), with Track H (coordination: #270).
-  L3b (typed-array core) is in review. Next is L3c — the search in
-  `app/workers/routing.worker.ts` (the file A5b and H3 also reserve) — so the remaining
-  1–2.5 s of search stops blocking the main thread.
+  L3c (the search in `app/workers/routing.worker.ts`) is in review. After it, L3's remaining
+  acceptance is met and the next cost is shade work (L2), not search.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
@@ -27,9 +26,14 @@ with sources. The decisions below cite it as "the report".
   - **L3a (#271):** the dominance pre-check, not the destination-front scan, was the hot
     spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
-  - **L3b (in review):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
+  - **L3b (#272):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
     −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
-- **Open PRs:** #272 — L3b (`perf/l3b-typed-search`), routes identical (164-case differential test).
+  - **L3c (in review):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
+    crosses as transferable typed arrays (`routingGraphCodec.ts`) and the protocol
+    (`routingWorkerProtocol.ts`) is the one A5b and H3 extend. Main-thread fallback when no
+    worker. Bench gains `longestSearchTaskMs`.
+- **Open PRs:** L3c (`perf/l3c-routing-worker`), routes identical (same function on a
+  bit-identical rebuilt graph; 161-case parity on the round trip).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.

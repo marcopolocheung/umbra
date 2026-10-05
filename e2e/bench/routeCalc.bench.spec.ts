@@ -141,6 +141,12 @@ interface RunFootprint {
   heapAfterBytes: number;
   /** Resources resolved between the click and the run's arrival. */
   resources: ResourceTotals;
+  /**
+   * L3c: the longest main-thread long task overlapping the walking search's
+   * window (`phases.searchWindow`), 0 when none did. NaN when the run had no
+   * 2-pt search.
+   */
+  longestSearchTaskMs: number;
 }
 
 interface ScenarioResult {
@@ -355,6 +361,16 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootpri
   const find = page.getByRole("button", { name: "Find the shade" });
   await expect(editTrip.or(find).first()).toBeVisible();
   if (await editTrip.isVisible()) await editTrip.click();
+  // L3c: record main-thread long tasks (once per page; a reload starts over).
+  await page.evaluate(() => {
+    const w = window as unknown as { __benchLongTasks?: { start: number; end: number }[] };
+    if (w.__benchLongTasks) return;
+    const tasks: { start: number; end: number }[] = [];
+    w.__benchLongTasks = tasks;
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) tasks.push({ start: e.startTime, end: e.startTime + e.duration });
+    }).observe({ type: "longtask", buffered: true });
+  });
   await find.click();
   await expect
     .poll(
@@ -373,8 +389,22 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootpri
         memory?: { usedJSHeapSize: number };
       }
     ).memory;
+    const w = window as unknown as {
+      __benchLongTasks?: { start: number; end: number }[];
+      __umbraMetrics?: { history: { phases: { searchWindow?: { start: number; end: number } } }[] };
+    };
+    const win = w.__umbraMetrics?.history.at(-1)?.phases.searchWindow;
+    const longestSearchTaskMs = win
+      ? Math.max(
+          0,
+          ...(w.__benchLongTasks ?? [])
+            .filter((t) => t.start < win.end && t.end > win.start)
+            .map((t) => t.end - t.start),
+        )
+      : NaN;
     return {
       heapAfterBytes: mem?.usedJSHeapSize ?? NaN,
+      longestSearchTaskMs,
       resources: (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).map(
         (e) => ({ name: e.name, transferSize: e.transferSize, encodedBodySize: e.encodedBodySize }),
       ),
@@ -394,6 +424,7 @@ async function calculateOnce(page: Page, runsBefore: number): Promise<RunFootpri
   return {
     heapBeforeBytes: before.heapBeforeBytes,
     heapAfterBytes: after.heapAfterBytes,
+    longestSearchTaskMs: after.longestSearchTaskMs,
     resources: {
       count: afterTotals.count - beforeTotals.count,
       transferBytes: afterTotals.transfer - beforeTotals.transfer,
@@ -919,6 +950,7 @@ test.afterAll(() => {
           "req/run p50",
           "transfer p50 (KiB)",
           "encoded p50 (KiB)",
+          "longest search task max (ms)",
         ],
         results.map((r) => {
           const heapDeltas = r.footprints.map(
@@ -934,10 +966,11 @@ test.afterAll(() => {
             String(Math.round(stats(reqs).p50 * 10) / 10),
             ms(stats(transfer).p50),
             ms(stats(encoded).p50),
+            ms(Math.max(...r.footprints.map((f) => f.longestSearchTaskMs))),
           ];
         }),
       ) +
-      "\n\nHeap is usedJSHeapSize sampled around each run (headers apart from the\ndelta are Chromium's transferSize/encodedBodySize sums over the resources\nresolved between the click and the recorded run; navigation-only shard bytes\nare in the per-run record above).\n",
+      "\n\nHeap is usedJSHeapSize sampled around each run (headers apart from the\ndelta are Chromium's transferSize/encodedBodySize sums over the resources\nresolved between the click and the recorded run; navigation-only shard bytes\nare in the per-run record above). The longest search task is the longest\nmain-thread long task (>50 ms) overlapping the walking search, max over runs.\n",
   );
 
   // CLIMB: monotonic degradation across the warm series, as mean(last 3) /
