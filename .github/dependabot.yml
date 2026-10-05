@@ -12,15 +12,8 @@ updates:
     # propose these. The groups below only cover minor/patch, so without these
     # ignores a major bump still arrives as its own PR.
     ignore:
-      # Invariant 1: maplibre-gl must stay at EXACTLY 5.9.0. v5.10+ changed
-      # Texture.update so mapbox-gl-shadow-simulator's {width,height} call
-      # crashes WebGL2 ("Overload resolution failed").
-      - dependency-name: "maplibre-gl"
-      # suncalc 2.x is an ESM rewrite with named exports only (no default), so
-      # `import SunCalc from "suncalc"` fails the build. It also can't coexist
-      # cleanly: mapbox-gl-shadow-simulator depends on suncalc ^1.9.0, so a 2.x
-      # bump installs a second copy and skews solar math between our sampling
-      # and the renderer. Revisit when the simulator supports 2.x.
+      # Invariant 2: suncalc 2.x is an ESM rewrite with named exports only (no
+      # default), so `import SunCalc from "suncalc"` fails the build.
       - dependency-name: "suncalc"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/suncalc"

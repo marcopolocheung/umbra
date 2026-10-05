@@ -31,7 +31,7 @@ from user action to the new code. Trace the call path and say whether it closes.
 
 **2. Does it break a hard invariant?** Root `CLAUDE.md` lists seven. Check each that the diff
 could plausibly touch:
-- `maplibre-gl` pinned at exactly `5.9.0`; `suncalc` on `1.x`; `earcut`, `suncalc` and their
+- `suncalc` on `1.x`; `earcut`, `suncalc` and their
   `@types` still declared as direct dependencies
 - `canvasContextAttributes: { preserveDrawingBuffer: true }` intact
 - `MapView` imported only via `React.lazy` in `app/page.tsx` (type-only imports are fine)
