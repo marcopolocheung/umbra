@@ -488,6 +488,10 @@ export default function MapView({
       center: [-73.9654, 40.7829],
       zoom: 13,
       maxTileCacheSize: 50,
+      // A 3× phone would otherwise shade 9× its CSS pixels every frame, in the
+      // basemap and in every shadow pass. At ≤ 2× MapLibre keeps tracking the
+      // device ratio itself (monitor moves, browser zoom).
+      ...(window.devicePixelRatio > 2 ? { pixelRatio: 2 } : {}),
       // @ts-expect-error — property exists at runtime but is missing from MapLibre types
       maxParallelImageRequests: 6,
       // antialias enables MSAA on the main drawing buffer → smooths building /
