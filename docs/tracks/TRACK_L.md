@@ -63,12 +63,11 @@ with sources. The decisions below cite it as "the report".
   main-thread blocking (L3c), with 100 ms as the stretch target.
 - **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
   deployed environment.
-- **Next action:** L3c — a long-lived `app/workers/routing.worker.ts` (create it, or extend it if
-  A5b landed first) running the CSR search with the `shadowField/v2/workerProtocol.ts` pattern,
-  transferred buffers and a synchronous fallback; acceptance: no main-thread long task during
-  the search, timeline draggable mid-calculation, routes identical.
-- **Last verified:** 2026-10-04 — `perf/l3b-typed-search` on main `0fa4558` (L3a merged): lint 0
-  errors, typecheck, 2,128 tests / 155 files, build.
+- **Next action:** after L3c merges, either the sweep → graphBuild → snap block that still runs
+  unyielded before the search (85–470 ms plus the sweep), or L2 (~4 s of shade work). Measure pack
+  wall time on GPU hardware first (open item in `docs/notes/route-latency.md`, L3c).
+- **Last verified:** 2026-10-05 — `perf/l3c-routing-worker` on main `02ac5d7`: lint 0 errors,
+  typecheck, 2,312 tests / 158 files, build, smoke e2e; bench back to back vs main.
 ---
 
 ## Why this track exists

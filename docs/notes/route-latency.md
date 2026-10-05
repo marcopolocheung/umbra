@@ -402,9 +402,10 @@ search. A CPU profile and the long-task observer gave two causes:
   hotspot. Two changes:
   - explicit field reads instead of keyed tag loads, and loops instead of
     `Array.from(subarray)`: Node pack 109 → 47 ms, worker unpack 206 → 49 ms;
-  - the pack runs as a generator in ≤ 25 ms slices, checking the abort signal between slices. A
-    superseding calculation aborts before it mutates the shared cached graph's virtual nodes,
-    so a pack never reads a half-changed graph.
+  - the pack runs as a generator in ≤ 25 ms slices, checking the abort signal between slices, so
+    a superseded calculation stops packing. Each calculation searches its own graph (Overpass and
+    the static adapter both hand out fresh copies, `routingAdj` is per calculation), so nothing
+    else mutates it mid-pack.
 
 ### Before / after
 
@@ -449,7 +450,7 @@ shadow bases, `--disable-web-security` and SwiftShader. The trip was UES → Ast
 |---|---|---|
 | longest main-thread task during the search | **10,027 ms** (no frame painted) | ~900–1,400 ms, the same as idle |
 | "Finding route choices" visible | never painted | yes |
-| timeline drag mid-search | impossible (main thread frozen) | URL time changed twice inside the search window |
+| timeline drag during the search | impossible (main thread frozen) | URL time changed twice inside the search window |
 
 On this machine the map alone produces ~850–900 ms long tasks with no calculation running (3–5
 per 5 s idle). SwiftShader renders full-NYC shadow frames in software, and the keyless bench
@@ -461,3 +462,8 @@ slices. Here each yield waits behind a ~900 ms software frame, so the pack took 
 wall time. With a reshadow from a mid-search drag it took the longest. On GPU hardware frames
 are ~16 ms and the pack should take a few hundred ms, but that has not been measured. It is the
 first thing to check by hand in `npm run dev`.
+
+**Also open:** L3c clears the search, not the whole calculation. The sweep → graphBuild → snap
+block before it still runs without a yield (85–470 ms graphBuild + snap in the stage table, plus
+the sweep), and `longestSearchTaskMs` starts counting at the search. That block is the next
+main-thread target.

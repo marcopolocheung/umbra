@@ -97,9 +97,13 @@ describe("routing worker client", () => {
     });
   });
 
-  it("falls back to the main-thread search when the worker errors", async () => {
+  it("falls back to the main-thread search when a working worker errors, then starts a new one", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     const { searchParetoRoutes } = await client();
+    const warm = searchParetoRoutes(graphB, 0, 34, opts);
+    await flush();
+    FakeWorker.instances[0].reply(0);
+    await warm;
     const a = searchParetoRoutes(graphA, 0, 35, opts);
     await flush();
     const w = FakeWorker.instances[0];
@@ -107,6 +111,7 @@ describe("routing worker client", () => {
     await expect(a).resolves.toStrictEqual(paretoRoutes(graphA, 0, 35, opts));
     expect(w.terminated).toBe(true);
     searchParetoRoutes(graphB, 0, 34, opts);
+    await flush();
     expect(FakeWorker.instances).toHaveLength(2);
   });
 
@@ -138,6 +143,51 @@ describe("routing worker client", () => {
     FakeWorker.instances[0].reply(0);
     vi.mocked(performance.now).mockRestore();
     await expect(search).resolves.toStrictEqual(paretoRoutes(big, 0, 1599, opts));
+  });
+
+  it("an abort settles the other in-flight request on the main thread", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const { searchParetoRoutes } = await client();
+    const controller = new AbortController();
+    const a = searchParetoRoutes(graphA, 0, 35, opts, { signal: controller.signal });
+    const b = searchParetoRoutes(graphB, 0, 34, opts);
+    await flush();
+    controller.abort();
+    await expect(a).rejects.toMatchObject({ name: "AbortError" });
+    // b's worker was terminated with a; it is answered here instead.
+    await expect(b).resolves.toStrictEqual(paretoRoutes(graphB, 0, 34, opts));
+  });
+
+  it("a worker that fails mid-pack sends the search to the main thread", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const { searchParetoRoutes } = await client();
+    // Warm a worker that has answered once, so a later failure is not "never loads".
+    const first = searchParetoRoutes(graphA, 0, 35, opts);
+    await flush();
+    FakeWorker.instances[0].reply(0);
+    await first;
+    const big = randomGraph(13, 40, 40, 0);
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => (clock += 100));
+    const search = searchParetoRoutes(big, 0, 1599, opts);
+    await flush();
+    FakeWorker.instances[0].onerror?.(new Event("error"));
+    vi.mocked(performance.now).mockRestore();
+    // The pack finishes, finds no live worker, starts a fresh one and posts to it.
+    await vi.waitFor(() => expect(FakeWorker.instances[1]?.posts).toHaveLength(1));
+    FakeWorker.instances[1].reply(0);
+    await expect(search).resolves.toStrictEqual(paretoRoutes(big, 0, 1599, opts));
+  });
+
+  it("stops trying a worker that fails before it ever answers", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const { searchParetoRoutes } = await client();
+    const a = searchParetoRoutes(graphA, 0, 35, opts);
+    await flush();
+    FakeWorker.instances[0].onerror?.(new Event("error"));
+    await expect(a).resolves.toStrictEqual(paretoRoutes(graphA, 0, 35, opts));
+    await expect(searchParetoRoutes(graphB, 0, 34, opts)).resolves.toStrictEqual(paretoRoutes(graphB, 0, 34, opts));
+    expect(FakeWorker.instances).toHaveLength(1);
   });
 
   it("falls back to the main-thread search on an error event", async () => {

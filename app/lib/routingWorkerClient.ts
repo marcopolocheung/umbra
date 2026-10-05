@@ -24,6 +24,9 @@ interface Pending {
 }
 
 let worker: Worker | null = null;
+/** Set once a worker fails before ever answering: the chunk can't load here, so stop retrying. */
+let disabled = false;
+let answered = false;
 let nextRequestId = 1;
 const pending = new Map<number, Pending>();
 let warned = false;
@@ -53,13 +56,14 @@ function dropWorker(): Pending[] {
 
 function getWorker(): Worker | null {
   if (worker) return worker;
-  if (typeof Worker === "undefined") return null;
+  if (disabled || typeof Worker === "undefined") return null;
   try {
     const w = new Worker(new URL("../workers/routing.worker.ts", import.meta.url), { type: "module" });
     w.onmessage = (event: MessageEvent<RoutingWorkerEvent>) => {
       const p = pending.get(event.data.requestId);
       if (!p) return;
       pending.delete(event.data.requestId);
+      answered = true;
       if (event.data.type === "pareto") p.resolve(event.data.routes);
       else {
         warnOnce("worker error event", event.data.error);
@@ -68,6 +72,7 @@ function getWorker(): Worker | null {
     };
     const fail = (event: Event) => {
       warnOnce(event.type, event);
+      if (!answered) disabled = true;
       for (const p of dropWorker()) settleHere(p);
     };
     w.onerror = fail;
@@ -94,7 +99,7 @@ async function packInSlices(graph: RoutingGraph, signal?: AbortSignal): Promise<
     if (step.done) return step.value;
     if (performance.now() - sliceStart < PACK_SLICE_MS) continue;
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    // A superseding calculation aborts before it touches the shared graph.
+    // Superseded: stop packing a graph nobody will search.
     if (signal?.aborted) throw abortError();
     sliceStart = performance.now();
   }

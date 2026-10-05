@@ -82,8 +82,11 @@ describe("routing graph codec", () => {
   });
 
   it("transfers every typed-array buffer, each once", () => {
-    const list = transferList(packRoutingGraph(edgeCaseGraph()));
-    expect(list.length).toBe(23);
+    const packed = packRoutingGraph(edgeCaseGraph());
+    const list = transferList(packed);
+    // Independent of transferList: every typed array anywhere in the packed graph.
+    const typed = [...Object.values(packed), ...Object.values(packed.tags)].filter(ArrayBuffer.isView);
+    expect(new Set(list)).toEqual(new Set(typed.map((a) => a.buffer)));
     expect(new Set(list).size).toBe(list.length);
     for (const b of list) expect(b).toBeInstanceOf(ArrayBuffer);
   });
