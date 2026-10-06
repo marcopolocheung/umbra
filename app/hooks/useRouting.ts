@@ -3,7 +3,6 @@ import type * as maplibregl from "maplibre-gl";
 import { boxAround, fetchStationEntranceBoxes } from "../lib/overpass";
 import {
   dijkstra,
-  paretoRoutes,
   graphToGeoJSON,
   haversineMeters,
   SpatialGrid,
@@ -30,6 +29,7 @@ import {
   navigationRecordFrom,
   recordNavigationDecline,
 } from "../lib/metrics";
+import type { RoutingPhaseMs } from "../lib/metrics";
 import { createBuildingSnapper } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
@@ -97,6 +97,7 @@ import { resolveExposureContext } from "../lib/exposure";
 import { computeExposureMetrics } from "../lib/exposureMetrics";
 import { markExposureUpdating, refreshRouteExposure } from "../lib/routeExposureRefresh";
 import { routeBounds } from "../lib/routeBounds";
+import { searchParetoRoutes } from "../lib/routingWorkerClient";
 import {
   RoutePlanJobCoordinator,
   type RoutePlan,
@@ -505,6 +506,7 @@ export function useRouting({
       // phases that previously fell into `total` unmeasured. All additive —
       // `dijkstraMs` keeps its historic meaning for back-compat readers.
       let walkParetoMs = 0;
+      let searchWindow: RoutingPhaseMs["searchWindow"];
       let transitFetchMs = 0;
       let trainSearchMs = 0;
       let trainSearchSubwayMs = 0;
@@ -1092,11 +1094,21 @@ export function useRouting({
         if ((plan?.via ?? additionalWaypoints).length === 0) {
           updateProgress({ message: "Finding route choices" });
           laps.lap("snap");
+          // L3c: end the graph-build/snap task here so the pack doesn't extend it.
+          await yieldToBrowser();
+          laps.lap("yield");
+          if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
           const tPareto = performance.now();
-          const paretoResults = paretoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts);
+          // L3c: the search runs in the routing worker; only the pack is main-thread work.
+          const paretoResults = await searchParetoRoutes(routingGraph, effectiveStartId, effectiveEndId, opts, {
+            signal: calcSignal,
+            onPacked: () => laps.lap("searchPack"),
+          });
+          searchWindow = { start: tPareto, end: performance.now() };
           walkParetoMs += performance.now() - tPareto;
           dijkstraMs = performance.now() - tDijkstra;
           laps.lap("search");
+          if (myGen !== calcGenRef.current || calcSignal.aborted) return cancelled();
 
           // Results are ordered [shortest, balanced, most exposed] with duplicate
           // paths removed — when only 2 remain, the second is always the exposed
@@ -1926,6 +1938,7 @@ export function useRouting({
             shadowSample: shadowSampleMs,
             dijkstra: dijkstraMs,
             walkPareto: walkParetoMs,
+            searchWindow,
             transitFetch: transitFetchMs,
             trainSearch: trainSearchMs,
             trainSearchSubway: trainSearchSubwayMs,

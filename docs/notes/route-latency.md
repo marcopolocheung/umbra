@@ -374,3 +374,96 @@ searching only for the three representatives shown, which is L4's shape. Both ar
 #270 for Track H and the owner. L's next step is L3c: the search moves to a worker, so the
 remaining 1–2.5 s no longer blocks the main thread. L2 then removes ~4 s of shade work that is
 not search at all.
+
+## L3c — the search in a worker (#263)
+
+`paretoRoutes` now runs in `app/workers/routing.worker.ts`. `useRouting` calls
+`searchParetoRoutes` (`app/lib/routingWorkerClient.ts`), which:
+- packs the post-snap routing graph into typed arrays (`app/lib/routingGraphCodec.ts`);
+- transfers their buffers to the worker, which rebuilds the `Map` graph and runs the unchanged
+  `paretoRoutes`;
+- returns the `RouteResult[]`.
+
+It is the same function on a bit-identical graph, so routes are unchanged by construction. The
+codec test runs all 161 parity seeds plus the virtual-id case on the round-tripped graph. When
+no worker is available (node, tests, construction failure, worker error), the search runs on
+the main thread as before. The protocol (`app/lib/routingWorkerProtocol.ts`) is the one A5b and
+H3 extend.
+
+### Moving the search alone was not enough
+
+The first bench pass after moving the search left 674–1,154 ms main-thread tasks overlapping the
+search. A CPU profile and the long-task observer gave two causes:
+- **The pack extended an existing task.** `graphBuild` → `snap` → pack ran with no yield in
+  between, so the pack sat at the tail of a ~1 s synchronous block. A yield before the pack
+  fixes that.
+- **The pack is itself a long task.** Reading 134k edge objects costs ~50 ms in Node and ~130 ms
+  in Chromium. The cost is spread evenly across numbers, tags and `timeShadow`, with no single
+  hotspot. Two changes:
+  - explicit field reads instead of keyed tag loads, and loops instead of
+    `Array.from(subarray)`: Node pack 109 → 47 ms, worker unpack 206 → 49 ms;
+  - the pack runs as a generator in ≤ 25 ms slices, checking the abort signal between slices, so
+    a superseded calculation stops packing. Each calculation searches its own graph (Overpass and
+    the static adapter both hand out fresh copies, `routingAdj` is per calculation), so nothing
+    else mutates it mid-pack.
+
+### Before / after
+
+`npm run bench:route -g "route-long|cross-borough"`, run back to back on the same machine:
+- **main** = `02ac5d7` plus only the `searchWindow` instrumentation;
+- **L3c** = this branch.
+
+`longest search task` is the longest main-thread long task (> 50 ms) overlapping the search
+window, max over runs. Other cells are p50 ms.
+
+| Scenario | longest search task, main → L3c | search, main | searchPack + search, L3c | total, main → L3c |
+|---|---:|---:|---:|---:|
+| route-long cold | 1,202 → **0** | 316 | 133 + 418 | 4,865 → 5,052 |
+| route-long warm | 969 → **0** | 325 | 100 + 461 | 3,915 → 4,191 |
+| cross-borough cold | 2,379 → **0** | 1,669 | 112 + 1,740 | 6,397 → 6,586 |
+| cross-borough warm | 2,886 → **0** | 2,369 | 84 + 2,546 | 5,925 → 6,701 |
+| nav-static route-long cold | 2,157 → **0** | 1,357 | 50 + 1,409 | 5,707 → 5,906 |
+| nav-static route-long warm | 2,468 → **0** | 1,762 | 68 + 1,543 | 5,062 → 5,144 |
+| nav-static cross-borough cold | 3,344 → **0** | 2,259 | 140 + 2,410 | 7,819 → 7,946 |
+| nav-static cross-borough warm | 4,268 → **0** | 3,379 | 89 + 2,852 | 7,483 → 7,450 |
+
+Graph sizes and route labels are identical in both runs.
+
+- **No main-thread long task overlaps the search in any run.** Before, the main thread was
+  blocked for the whole search, 1–4 s.
+- **Wall time is about the same or slightly longer:**
+  - total median −0.4% to +13%, mostly +2–7%;
+  - the time-sliced pack adds 50–140 ms, and the worker's unpack and transfer add ~100–250 ms
+    on the keyless routes.
+  
+  The main thread is free for all of it. The cross-borough warm +13% also includes +254 ms of
+  `maskRead`, which L3c does not touch. Treat it as session noise.
+- **The search itself is no faster.** 100 ms still needs route-changing options (#270).
+
+### Browser check on real data
+
+This used a production build (`vite build` + `vite preview`) with the staging navigation and
+shadow bases, `--disable-web-security` and SwiftShader. The trip was UES → Astoria (Madison/E
+77th → 40.7643, −73.9377), on a 98,180-node graph.
+
+| | main | L3c |
+|---|---|---|
+| longest main-thread task during the search | **10,027 ms** (no frame painted) | ~900–1,400 ms, the same as idle |
+| "Finding route choices" visible | never painted | yes |
+| timeline drag during the search | impossible (main thread frozen) | URL time changed twice inside the search window |
+
+On this machine the map alone produces ~850–900 ms long tasks with no calculation running (3–5
+per 5 s idle). SwiftShader renders full-NYC shadow frames in software, and the keyless bench
+avoids this by serving fixture tiles. So the L3c column reads "nothing above idle rendering",
+not "no long tasks".
+
+**Open: pack wall time depends on frame cost.** The sliced pack yields to rendering between
+slices. Here each yield waits behind a ~900 ms software frame, so the pack took 2.3–10.9 s of
+wall time. With a reshadow from a mid-search drag it took the longest. On GPU hardware frames
+are ~16 ms and the pack should take a few hundred ms, but that has not been measured. It is the
+first thing to check by hand in `npm run dev`.
+
+**Also open:** L3c clears the search, not the whole calculation. The sweep → graphBuild → snap
+block before it still runs without a yield (85–470 ms graphBuild + snap in the stage table, plus
+the sweep), and `longestSearchTaskMs` starts counting at the search. That block is the next
+main-thread target.
