@@ -29,7 +29,7 @@ import {
   navigationRecordFrom,
   recordNavigationDecline,
 } from "../lib/metrics";
-import type { RoutingPhaseMs } from "../lib/metrics";
+import type { NavigationRecord, RoutingPhaseMs } from "../lib/metrics";
 import { createBuildingSnapper } from "../lib/building-snap";
 import type { MapBuildingQuery } from "../lib/building-snap";
 import {
@@ -534,6 +534,9 @@ export function useRouting({
       let navSnapshotMs = 0;
       let staticStreetsMs = 0;
       let fieldReadyMs = 0;
+      // L2a: whether the H1 block priced from the shade table, and if not, why.
+      // Null when the H1 block did not run.
+      let shadeTableOutcome: NavigationRecord["shadeTable"] = null;
       let readinessAbort: AbortController | null = null;
       // Checkpoint 6: the per-calculation collector that the navigation loaders,
       // the static building provider, and SampleEdges' index build all report
@@ -970,8 +973,10 @@ export function useRouting({
           // When the table does not cover the whole route the sweep runs as
           // before, so a partial table never changes an answer for the worse.
           const shadeTable = await shadeTablePromise;
+          laps.lap("shadeTableLoad");
           const useTable =
             shadeTable !== null && edgeKeys.every((key) => shadeTable.covers(key));
+          shadeTableOutcome = useTable ? "used" : shadeTable === null ? "unavailable" : "coverage-miss";
           const shadeBuckets = useTable
             ? shadeSlotsForDeparture(
                 dateRef.current,
@@ -1992,6 +1997,8 @@ export function useRouting({
             buildingDecode: navPhases.buildingDecodeMs,
             buildingConvert: navPhases.buildingConvertMs,
             shadowIndexPrep: navPhases.shadowIndexPrepMs,
+            shadeIndexTransfer: navPhases.shadeIndexTransferMs,
+            shadePayloadTransfer: navPhases.shadePayloadTransferMs,
             canvasRead: canvasReadMs,
             dedicatedMaskRead: dedicatedMaskReadMs,
             shadowSample: shadowSampleMs,
@@ -2030,7 +2037,7 @@ export function useRouting({
             : null,
           // Checkpoint 6 navigation record — the same per-calculation ledger,
           // re-published through the metrics surface (counts/bytes only).
-          navigation: navigationRecordFrom(navPhases),
+          navigation: { ...navigationRecordFrom(navPhases), shadeTable: shadeTableOutcome },
           canopySourceShares: {
             osm: shareOf(canopyProviders, "osm"),
             raster: shareOf(canopyProviders, "raster"),

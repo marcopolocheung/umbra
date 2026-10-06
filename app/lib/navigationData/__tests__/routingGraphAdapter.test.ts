@@ -268,26 +268,40 @@ describe("routingGraphAdapter conflict rejection", () => {
     );
   });
 
-  it("rejects tag conflicts for a shared directed pair", () => {
+  it("rejects tag conflicts for a shared edge id", () => {
     const other = cellB();
     other.edges = other.edges.map((edge) =>
       edge.id === "w2-102-201-dup"
-        ? { ...edge, tags: { highway: "footway", foot: "no" } }
+        ? { ...edge, id: "w2-102-201", tags: { highway: "footway", foot: "no" } }
         : edge,
     );
     expect(() => buildRoutingGraphFromStreetShards([cellA(), other])).toThrow(
-      /disagree on edge 102→201/,
+      /disagree on edge w2-102-201 102→201/,
     );
   });
 
-  it("rejects distance conflicts for a shared directed pair", () => {
+  it("rejects distance conflicts for a shared edge id", () => {
     const other = cellB();
     other.edges = other.edges.map((edge) =>
-      edge.id === "w2-102-201-dup" ? { ...edge, distanceM: edge.distanceM + 1 } : edge,
+      edge.id === "w2-102-201-dup"
+        ? { ...edge, id: "w2-102-201", distanceM: edge.distanceM + 1 }
+        : edge,
     );
     expect(() => buildRoutingGraphFromStreetShards([cellA(), other])).toThrow(
-      /disagree on edge 102→201/,
+      /disagree on edge w2-102-201 102→201/,
     );
+  });
+
+  it("keeps parallel ways that share a directed pair", () => {
+    // Published z14-4825-6154: two footways over one node pair, differing only
+    // in `surface`. The Overpass builder keeps both; so must the merge.
+    const parallel = cellA();
+    parallel.edges.push(
+      shardEdge("w9-102-201", 102, 201, { highway: "footway", foot: "yes", surface: "concrete" }),
+    );
+    const merged = buildRoutingGraphFromStreetShards([parallel, cellB()]);
+    const out = merged.adj.get(102)!.filter((edge) => edge.toId === 201);
+    expect(out.map((edge) => edge.surface)).toEqual([undefined, "concrete"]);
   });
 
   it("rejects edges referencing unpublished nodes", () => {

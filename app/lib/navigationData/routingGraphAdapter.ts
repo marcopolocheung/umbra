@@ -18,8 +18,9 @@
  *   global question ("appears in ≥2 ways") that no single shard observes
  *   alone;
  * - directed edges dedupe by content identity (endpoints, distance, tags): a
- *   seam edge published by both cells collapses to one, while the same
- *   directed pair with different content is a conflict and throws;
+ *   seam edge published by both cells collapses to one, while one edge id
+ *   published with different content is a conflict and throws. The same
+ *   directed pair with different content is a parallel way and is kept;
  * - shard-carried `distanceM` is used verbatim — it is digest-verified
  *   producer output computed with the same haversine the Overpass builder
  *   uses, so recomputing it here would only add a second opinion.
@@ -106,10 +107,15 @@ export function buildRoutingGraphFromStreetShards(
     if (!adj.has(id)) adj.set(id, []);
   };
 
-  // Directed pair → first-seen content key. An exact repeat (a seam edge both
-  // cells publish) is skipped; the same pair with different content means two
-  // shards describe different streets under one identity.
-  const pairContent = new Map<string, string>();
+  // Edge id → its directed pair + content. The same id with anything different
+  // means two shards describe different streets under one identity. A directed
+  // pair is not an identity: two OSM ways can share both endpoints (parallel
+  // footways tagged `concrete` and `concrete:plates`), and the Overpass builder
+  // keeps both — so a pair with different content is a parallel way, kept, and
+  // only an exact (pair, content) repeat (a seam edge both cells publish) is
+  // skipped.
+  const idContent = new Map<string, string>();
+  const seenEdges = new Set<string>();
 
   for (const shard of shards) {
     for (const edge of shard.edges) {
@@ -120,18 +126,16 @@ export function buildRoutingGraphFromStreetShards(
           `static street edge ${edge.id} references an unpublished node (${shard.generation})`,
         );
       }
-      const pairKey = `${edge.from}>${edge.to}`;
-      const contentKey = edgeContentKey(edge);
-      const prior = pairContent.get(pairKey);
-      if (prior !== undefined) {
-        if (prior !== contentKey) {
-          throw new Error(
-            `static street shards disagree on edge ${edge.from}→${edge.to} (${shard.generation})`,
-          );
-        }
-        continue;
+      const edgeKey = `${edge.from}>${edge.to}\u0000${edgeContentKey(edge)}`;
+      const prior = idContent.get(edge.id);
+      if (prior !== undefined && prior !== edgeKey) {
+        throw new Error(
+          `static street shards disagree on edge ${edge.id} ${edge.from}→${edge.to} (${shard.generation})`,
+        );
       }
-      pairContent.set(pairKey, contentKey);
+      idContent.set(edge.id, edgeKey);
+      if (seenEdges.has(edgeKey)) continue;
+      seenEdges.add(edgeKey);
 
       ensureAdj(edge.from);
       ensureAdj(edge.to);
