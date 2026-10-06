@@ -58,7 +58,12 @@ import {
   type NavigationSnapshot,
 } from "../lib/navigationData/remoteNavigation";
 import { newNavigationPhases } from "../lib/navigationData/navigationPhases";
-import { createShadeTableView, shadeSlotsForDeparture, type ShadeTableView } from "../lib/navigationData/shadeTable";
+import {
+  createShadeTableView,
+  QUARANTINED_SHADE_GENERATIONS,
+  shadeSlotsForDeparture,
+  type ShadeTableView,
+} from "../lib/navigationData/shadeTable";
 import { SHADE_ZONE } from "../lib/navigationData/shadeSlots";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
@@ -626,6 +631,7 @@ export function useRouting({
         // clock time to a table column, computed once for the whole route.
         const shadeTablePromise: Promise<ShadeTableView | null> = (async () => {
           if (!navSnapshot || rainModeRef.current) return null;
+          if (QUARANTINED_SHADE_GENERATIONS.has(navSnapshot.generation)) return null;
           const selection = selectNavigationShards(navSnapshot.manifest, {
             south: coverSouth,
             west: coverWest,

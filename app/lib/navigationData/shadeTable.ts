@@ -27,6 +27,19 @@ import {
 import { toMapLocal } from "../timezone";
 import type { NavigationShadeShard } from "./shardContract";
 
+/**
+ * Generations whose shade table is known bad and must not be read. A route over
+ * one prices with the live sweep instead — slower, but correct.
+ *
+ * `nyc-2026-09-18-b94934cd765a`: the build's frozen building provider declined
+ * any query box reaching past its cell's padded bounds (a seam edge's far
+ * endpoint does), and the declined answer was written as 0 shade — ~half the
+ * cells, most of Midtown, read fully sunny at every hour.
+ */
+export const QUARANTINED_SHADE_GENERATIONS: ReadonlySet<string> = new Set([
+  "nyc-2026-09-18-b94934cd765a",
+]);
+
 /** One loaded shard and the slot blocks fetched for it, keyed by slot index. */
 export interface ShadeTableShard {
   shard: NavigationShadeShard;
