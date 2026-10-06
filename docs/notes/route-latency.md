@@ -467,3 +467,30 @@ first thing to check by hand in `npm run dev`.
 block before it still runs without a yield (85–470 ms graphBuild + snap in the stage table, plus
 the sweep), and `longestSearchTaskMs` starts counting at the search. That block is the next
 main-thread target.
+
+## Update — production does not match this bench (#286)
+
+Every number above comes from `npm run bench:route`, whose fixtures carry a handful of synthetic
+buildings. On **production**, with the app's own phase breakdown, a real 6 km route (UWS→FiDi,
+2026-10-05) took **37.0 s**, split:
+
+| Stage | Transit mode | Walk mode |
+|---|---:|---:|
+| `sweep` (H1 time-aware shadow) | **23,518 ms** | **23,387 ms** |
+| `streets` | 4,682 | 5,401 |
+| `search` | 3,627 | 3,670 |
+| `shadowSample` | 2,339 | 2,277 |
+| `transit` | 1,837 | 2,046 |
+| `graphBuild` | 393 | 414 |
+| **total** | **37,016 ms** | **37,843 ms** |
+
+The sweep is **63% of the calculation**, and walk mode pays it identically, so it is not a
+transit cost. It is `edges × buckets × steps × prisms-per-cell` — a shadow query every 25 m on
+both sidewalks, × up to 8 buckets, ≈ 3.7M queries — so it scales with **real building density**,
+which the fixtures do not have. This bench measures the same sweep at 170–530 ms, a **~50×
+understatement**.
+
+**Read this bench for relative stage movement, never for absolute shade cost.** The production
+phase breakdown (`window.__umbraMetrics.history[].phases`, available in any environment) is the
+one to plan L2 against: killing the sweep plus `shadowSample` takes a long route from 37 s to
+about 11 s.

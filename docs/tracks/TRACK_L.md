@@ -16,9 +16,9 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L3 — the walking-route search (#263), with Track H (coordination: #270).
-  L3c (the search in `app/workers/routing.worker.ts`) is in review. After it, L3's remaining
-  acceptance is met and the next cost is shade work (L2), not search.
+- **Active checkpoint:** L2 — precomputed per-edge shade (#262), with Track H and Track A
+  (coordination: #270). L3 is done: L3c merged (#277). L2's measured prize is far larger than
+  this brief first estimated — see below.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
@@ -28,12 +28,19 @@ with sources. The decisions below cite it as "the report".
     and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
   - **L3b (#272):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
     −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
-  - **L3c (#277, in review):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
+  - **L3c (#277, merged):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
     crosses as transferable typed arrays (`routingGraphCodec.ts`) and the protocol
     (`routingWorkerProtocol.ts`) is the one A5b and H3 extend. Main-thread fallback when no
     worker. Bench gains `longestSearchTaskMs`.
-- **Open PRs:** #277 — L3c (`perf/l3c-routing-worker`), routes identical (same function on a
-  bit-identical rebuilt graph; 161-case parity on the round trip).
+- **Open PRs:** none.
+- **Measured on production, 2026-10-05 (#286):** a real 6 km route took **37 s**, and **63% of it
+  (23.5 s) is H1's time-aware shadow `sweep`** — not transit (1.8 s) and not the search (3.6 s).
+  Walk mode pays the same sweep, so it is not transit-specific. `sweep` is
+  `edges × buckets × steps × prisms-per-cell` (a query every 25 m, both sidewalks, × up to 8
+  buckets ≈ 3.7M queries), so it scales with real building density. **`npm run bench:route`
+  understates it ~50×**: its fixtures have ~4 buildings per cell and measure the same sweep at
+  170–530 ms. The bench's shade numbers are not representative; the production phase breakdown is
+  the one to plan against.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -63,11 +70,13 @@ with sources. The decisions below cite it as "the report".
   main-thread blocking (L3c), with 100 ms as the stretch target.
 - **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
   deployed environment.
-- **Next action:** after L3c merges, either the sweep → graphBuild → snap block that still runs
-  unyielded before the search (85–470 ms plus the sweep), or L2 (~4 s of shade work). Measure pack
-  wall time on GPU hardware first (open item in `docs/notes/route-latency.md`, L3c).
-- **Last verified:** 2026-10-05 — `perf/l3c-routing-worker` on main `02ac5d7`: lint 0 errors,
-  typecheck, 2,312 tests / 158 files, build, smoke e2e; bench back to back vs main.
+- **Next action:** L2 (#262), now justified by killing the 23.5 s sweep plus the 2.3 s
+  `shadowSample` (~25.7 s, 37 s → ~11 s), not by the 2–6 s this brief first assumed. Agree the
+  bucket-resolution seam with Track H first: H1 prices at 15-minute buckets, L2's plan precomputes
+  per (month, hour) — a 4× mismatch. Then L1 removes `streets` (~4.7 s), leaving the search
+  (~3.6 s), which only gets faster by changing routes (#270).
+- **Last verified:** 2026-10-06 — merged main `44f4db9` (#277 + #279 + #280): lint 0 errors,
+  typecheck, 2,318 tests / 159 files, build, smoke + nav-smoke 18/18.
 ---
 
 ## Why this track exists
