@@ -56,6 +56,8 @@ targets. It is a tool you run by hand, before a PR that changes what the map dra
   The disagreement metric skips the one- or two-pixel MSAA silhouette fringe rather than
   classifying it. A separate strict count requires every intervening pixel to have
   `A == 255`; that count must clear the sample-size gate.
+  The map renders without MSAA (`antialias: false` in `MapView.tsx`), so today that fringe
+  is empty and both counts see the same probes.
 
 Run them against a dev server:
 

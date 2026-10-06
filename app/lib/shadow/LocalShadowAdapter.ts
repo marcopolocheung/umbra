@@ -30,14 +30,8 @@ import type { CanopyAtlas } from '../canopyRaster/viewportCanopy';
 import { lonLatToMercator } from '../canopyRaster/tiles';
 import { crownOpacity } from '../shadowField/canopy';
 import { rainOpacityForLightOpacity } from '../rain/opacity';
+import { shadowTargetSize } from './shadowTargetSize';
 
-// Shadow-edge antialiasing via supersampling: the shadow FBO is rendered at
-// SHADOW_SUPERSAMPLE× the canvas resolution, then box-downsampled by the LINEAR
-// composite quad (Pass D). 2 = 4 samples/pixel. Cost is ~4× shadow fragment work
-// and FBO memory, so the supersampled dimension is capped at SHADOW_FBO_MAX_DIM
-// (per-axis) to avoid blowing past GPU limits / memory on hi-DPR displays.
-const SHADOW_SUPERSAMPLE = 2;
-const SHADOW_FBO_MAX_DIM = 4096;
 
 /**
  * Metres spanned by one full unit of Mercator x/y at the equator — MapLibre's
@@ -115,6 +109,18 @@ interface CachedBuildingGeometry {
   bldgVertexCount: number;
 }
 
+type ShadowTargetKey = 'lo' | 'hi';
+
+/** One shadow FBO + its height FBO, allocated at one size. */
+interface ShadowTargets {
+  fbo: WebGLFramebuffer | null;
+  fboTexture: WebGLTexture | null;
+  heightFbo: WebGLFramebuffer | null;
+  heightFboTexture: WebGLTexture | null;
+  w: number;
+  h: number;
+}
+
 /**
  * Local exposure renderer implemented as a MapLibre CustomLayer.
  *
@@ -180,7 +186,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // center, so repeats are dropped here rather than answered and discarded.
   private lastSunRequestKey: string | null = null;
 
-  // Offscreen FBO for single-write shadow compositing
+  // Offscreen FBO for single-write shadow compositing. `fbo`, `fboTexture`,
+  // `heightFbo`, `heightFboTexture` and `fboWidth/Height` point at the active
+  // set in `shadowTargets`: 'hi' (supersampled) when settled, 'lo' (1×) while
+  // the camera moves. Both stay allocated so a gesture never reallocates.
+  private shadowTargets: Record<ShadowTargetKey, ShadowTargets | null> = { lo: null, hi: null };
+  private activeTargetKey: ShadowTargetKey = 'hi';
   private fbo: WebGLFramebuffer | null = null;
   private fboTexture: WebGLTexture | null = null;
   private fboWidth = 0;
@@ -601,6 +612,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   }
 
   readBuildingShadowMask(): BuildingShadowMask | null {
+    // The frame between `moveend` and the next paint is still the 1× set; render
+    // the settled, supersampled one before reading so the mask never depends on
+    // how recently the camera stopped.
+    if (this.activeTargetKey === 'lo' && this.map && !this.map.isMoving()) this.map.redraw();
     // The FBO may still contain the last daytime pass while the worker processes
     // a sunset tick. Solar night has no painted mask; rain keeps its own readback.
     if (this.hazardMode === "sun") {
@@ -1156,13 +1171,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // the final composite (Pass D) draws at the real canvas viewport, box-
     // downsampling via the LINEAR-filtered fboTexture. Cap each axis so the
     // supersampled buffer can't exceed GPU/memory limits.
-    const cw = gl.canvas.width;
-    const ch = gl.canvas.height;
-    const ssW = Math.min(cw * SHADOW_SUPERSAMPLE, SHADOW_FBO_MAX_DIM);
-    const ssH = Math.min(ch * SHADOW_SUPERSAMPLE, SHADOW_FBO_MAX_DIM);
-    const w = ssW;
-    const h = ssH;
-    this.ensureFBO(gl2, w, h);
+    const moving = this.map.isMoving();
+    const { w, h } = shadowTargetSize(gl.canvas.width, gl.canvas.height, moving);
+    this.ensureFBO(gl2, moving ? 'lo' : 'hi', w, h);
     if (!this.fbo) return;
 
     // Phase 3: Only re-upload buffers when geometry actually changed
@@ -1186,28 +1197,20 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       this.lastUploadedVersion = this.geomVersion;
     }
 
-    // ── Save GL state ──
+    // ── Capture MapLibre's target ──
+    // Only what the passes below must hand back mid-frame. Everything else (blend,
+    // depth func/mask/clear, cull, front face, textures) is not restored: MapLibre
+    // marks all of its GL state dirty and re-sets it after a custom layer renders
+    // (`draw_custom`: `context.setDirty(); painter.setBaseState()`), and several of
+    // those `getParameter` reads are a synchronous GPU round-trip every frame.
     const prevFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
     const prevViewport = gl.getParameter(gl.VIEWPORT);
-    const wasBlend = gl.isEnabled(gl.BLEND);
-    const wasCull = gl.isEnabled(gl.CULL_FACE);
-    const prevBlendSrcRGB = gl.getParameter(gl.BLEND_SRC_RGB);
-    const prevBlendDstRGB = gl.getParameter(gl.BLEND_DST_RGB);
-    const prevBlendSrcA = gl.getParameter(gl.BLEND_SRC_ALPHA);
-    const prevBlendDstA = gl.getParameter(gl.BLEND_DST_ALPHA);
-    const prevBlendEqRGB = gl.getParameter(gl.BLEND_EQUATION_RGB);
-    const prevBlendEqA = gl.getParameter(gl.BLEND_EQUATION_ALPHA);
-    const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
-    const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
-    const prevFrontFace = gl.getParameter(gl.FRONT_FACE);
-    const wasDepthTest = gl.isEnabled(gl.DEPTH_TEST);
-    const prevDepthFunc = gl.getParameter(gl.DEPTH_FUNC);
-    const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
-    const prevDepthClear = gl.getParameter(gl.DEPTH_CLEAR_VALUE);
     // MapLibre narrows the depth range for a '3d' custom layer to leave room for the
     // sublayers above it. `gl_FragDepth` is clamped to that range, so Pass B has to
     // widen it or every ceiling near the top of the height scale clamps to one value.
-    const prevDepthRange = gl.getParameter(gl.DEPTH_RANGE) as Float32Array;
+    // Read MapLibre's tracked value (it set it just before calling us) rather than
+    // `getParameter(DEPTH_RANGE)`, which stalls on the GPU process.
+    const prevDepthRange = this.map.painter.context.depthRange.get();
 
     // Compute adjusted projection matrix in Float64 to account for center offset.
     // Vertices are stored relative to centerMerc, so we pre-multiply a translation
@@ -1359,6 +1362,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     if (profile.drawsGround) {
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    // Pass B disables blending and only Pass C turns it back on; never composite
+    // with it off because a hazard skipped C.
+    gl2.enable(gl.BLEND);
     this.renderedContextObjective = this.contextObjective;
     this.renderedContextRevision = this.contextRevision;
 
@@ -1521,20 +1527,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     gl2.bindFramebuffer(gl.FRAMEBUFFER, prevFBO);
     gl2.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
-    // ── Restore GL state ──
-    if (!wasBlend) gl2.disable(gl.BLEND);
-    if (wasCull) gl2.enable(gl.CULL_FACE);
-    else gl2.disable(gl.CULL_FACE);
-    gl2.frontFace(prevFrontFace);
-    gl2.blendEquationSeparate(prevBlendEqRGB, prevBlendEqA);
-    gl2.blendFuncSeparate(prevBlendSrcRGB, prevBlendDstRGB, prevBlendSrcA, prevBlendDstA);
-    gl2.activeTexture(prevActiveTexture);
-    gl2.bindTexture(gl.TEXTURE_2D, prevTexture);
-    if (wasDepthTest) gl2.enable(gl.DEPTH_TEST);
-    else gl2.disable(gl.DEPTH_TEST);
-    gl2.depthFunc(prevDepthFunc);
-    gl2.depthMask(prevDepthMask);
-    gl2.clearDepth(prevDepthClear);
     gl2.depthRange(prevDepthRange[0], prevDepthRange[1]);
   }
 
@@ -1545,7 +1537,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // framebuffer or the supersampled dimensions.
     const activeFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
-    const target = activeFbo === this.fbo || activeFbo === this.heightFbo ? null : activeFbo;
+    const ours = [this.shadowTargets.lo, this.shadowTargets.hi].some(
+      (t) => t && (activeFbo === t.fbo || activeFbo === t.heightFbo),
+    );
+    const target = ours ? null : activeFbo;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target);
     if (viewport && viewport.length === 4) gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
@@ -1564,12 +1559,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     if (this.program) gl.deleteProgram(this.program);
     if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
-    if (this.fbo) gl.deleteFramebuffer(this.fbo);
-    if (this.fboTexture) gl.deleteTexture(this.fboTexture);
+    for (const t of [this.shadowTargets.lo, this.shadowTargets.hi]) if (t) this.deleteShadowTargets(gl, t);
+    this.shadowTargets = { lo: null, hi: null };
     if (this.heightProgram) gl.deleteProgram(this.heightProgram);
     if (this.shadowHeightBuffer) gl.deleteBuffer(this.shadowHeightBuffer);
-    if (this.heightFbo) gl.deleteFramebuffer(this.heightFbo);
-    if (this.heightFboTexture) gl.deleteTexture(this.heightFboTexture);
     if (this.roofProgram) gl.deleteProgram(this.roofProgram);
     if (this.roofPosBuffer) gl.deleteBuffer(this.roofPosBuffer);
     if (this.roofHeightBuffer) gl.deleteBuffer(this.roofHeightBuffer);
@@ -1657,17 +1650,21 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     ];
   }
 
-  private ensureFBO(gl: WebGL2RenderingContext, w: number, h: number) {
-    if (this.fbo && this.fboWidth === w && this.fboHeight === h) return;
+  /** Make `key`'s target set current, (re)allocating it only when its size changed. */
+  private ensureFBO(gl: WebGL2RenderingContext, key: ShadowTargetKey, w: number, h: number) {
+    this.activeTargetKey = key;
+    const current = this.shadowTargets[key];
+    if (current?.fbo && current.w === w && current.h === h) {
+      this.activateShadowTargets(current);
+      return;
+    }
 
     const prevFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
     const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
 
-    // Clean up old resources
-    if (this.fbo) gl.deleteFramebuffer(this.fbo);
-    if (this.fboTexture) gl.deleteTexture(this.fboTexture);
-    if (this.heightFbo) gl.deleteFramebuffer(this.heightFbo);
-    if (this.heightFboTexture) gl.deleteTexture(this.heightFboTexture);
+    // Clean up this set's old resources (the other set is untouched)
+    if (current) this.deleteShadowTargets(gl, current);
+    this.fbo = this.fboTexture = this.heightFbo = this.heightFboTexture = null;
 
     // Shadow FBO
     this.fbo = gl.createFramebuffer();
@@ -1730,6 +1727,30 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     this.fboWidth = w;
     this.fboHeight = h;
+    this.shadowTargets[key] = {
+      fbo: this.fbo,
+      fboTexture: this.fboTexture,
+      heightFbo: this.heightFbo,
+      heightFboTexture: this.heightFboTexture,
+      w,
+      h,
+    };
+  }
+
+  private activateShadowTargets(t: ShadowTargets) {
+    this.fbo = t.fbo;
+    this.fboTexture = t.fboTexture;
+    this.heightFbo = t.heightFbo;
+    this.heightFboTexture = t.heightFboTexture;
+    this.fboWidth = t.w;
+    this.fboHeight = t.h;
+  }
+
+  private deleteShadowTargets(gl: WebGL2RenderingContext | WebGLRenderingContext, t: ShadowTargets) {
+    if (t.fbo) gl.deleteFramebuffer(t.fbo);
+    if (t.fboTexture) gl.deleteTexture(t.fboTexture);
+    if (t.heightFbo) gl.deleteFramebuffer(t.heightFbo);
+    if (t.heightFboTexture) gl.deleteTexture(t.heightFboTexture);
   }
 
   // ── Canopy ground-protection pass ──────────────────────────────────────────────
@@ -1791,7 +1812,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
     const prevTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
     const wasBlend = gl.isEnabled(gl.BLEND);
-    const prevBlendEq = gl.getParameter(gl.BLEND_EQUATION_RGB);
 
     try {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.canopyFbo);
@@ -1829,7 +1849,6 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl.activeTexture(prevActiveTexture);
       gl.bindTexture(gl.TEXTURE_2D, prevTexture);
       if (wasBlend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
-      gl.blendEquation(prevBlendEq);
     }
 
     // Discard superseded results: a previous sun/wind frame must not be published
