@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { geocodeReverse } from "../lib/nominatim";
 import { haversineMeters } from "../lib/routing";
 import { MIN_TRANSIT_DISTANCE_M } from "../lib/trainGraph";

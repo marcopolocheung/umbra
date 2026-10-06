@@ -10,7 +10,7 @@
  * React layer (see useAgent.ts) so they can read/write app state without the
  * agent code importing React.
  */
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type { IShadowLayer } from "../shadow/IShadowLayer";
 import { geocodeForward, geocodeNear, type NominatimResult } from "../nominatim";
 import { haversineMeters } from "../routing";

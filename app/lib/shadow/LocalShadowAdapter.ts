@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import SunCalc from 'suncalc';
 import type { BuildingShadowMask, IShadowLayer } from './IShadowLayer';
 import {

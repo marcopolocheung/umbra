@@ -254,7 +254,7 @@ into P4.
 
 ## Invariants that bite this thread
 
-- **#1** `maplibre-gl` stays at exactly **5.9.0**. Never run `npm audit fix --force` (see #211).
+- **#1** retired: `maplibre-gl` moved to 6.x with the simulator gone, which also cleared #211.
 - **#2** `suncalc` stays on **1.x**, imported directly, single copy.
 - **#3** `preserveDrawingBuffer: true` — shadow sampling reads the canvas back.
 - **#5** shadow detection couples to shadow colour via `isBlueDominantShadowPixel`. H4 has a

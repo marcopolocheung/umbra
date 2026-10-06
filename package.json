@@ -30,10 +30,9 @@
   },
   "dependencies": {
     "@photostructure/tz-lookup": "^11.6.1",
-    "earcut": "3.2.3",
+    "earcut": "3.2.4",
     "geotiff": "^3.0.5",
-    "mapbox-gl-shadow-simulator": "^0.68.2",
-    "maplibre-gl": "5.9.0",
+    "maplibre-gl": "6.12.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router-dom": "^7.18.2",

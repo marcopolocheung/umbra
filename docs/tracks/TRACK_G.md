@@ -95,7 +95,8 @@ A's fixtures), ⚠️ E (G6 rewrites E's biggest file). **G6 runs alone.**
   (`?lat/lng/z/date/time/a/b`) rather than driving the geocoder, and stubs `/api/overpass` with a
   synthetic street grid. It runs as two projects. `smoke` intercepts the MapTiler style request
   and serves a synthetic style whose `maptiler_planet` **geojson** source carries the building
-  footprints — maplibre 5.9.0 resolves a tile's layers as `_geojsonTileLayer || [sourceLayer]`,
+  footprints — maplibre (5.9 and 6.x alike) resolves a tile's layers as
+  `_geojsonTileLayer || [sourceLayer]`,
   so every `querySourceFeatures("maptiler_planet", { sourceLayer: "building" })` caller works
   unchanged and no production code moved. That project needs no key, so it runs on forks. Its
   fixture palette is pure greys, because a blue-dominant basemap would make the unshadowed baseline
@@ -245,9 +246,9 @@ the cross-track compatibility matrix in `docs/tracks/README.md` is full of ⚠�
 
 ## Hard invariants that bite this track
 
-- **maplibre-gl pinned at 5.9.0** and **suncalc at 1.x** — Dependabot is configured to stop
-  proposing them (#118). Any dependency work must preserve those ignores. #60 (unfreeze
-  maplibre via `patch-package`) is a real option but it is a *proposal*, not a licence.
+- **suncalc at 1.x** — Dependabot is configured to stop proposing it (#118); keep that ignore.
+  `maplibre-gl` was unpinned to 6.x in #280, so its dependabot ignore is gone and the #60
+  `patch-package` proposal is moot.
 - CI must keep working **without secrets** for anyone without repo access.
 - `MapView` only via `React.lazy` (invariant #4) — G6's split must not introduce a static import.
 

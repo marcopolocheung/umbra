@@ -6,7 +6,7 @@
  * The one thing the app actually needs from the basemap is building footprints:
  * the shadow renderer, the shadow providers and the building snapper all call
  * `querySourceFeatures("maptiler_planet", { sourceLayer: "building" })`. In the
- * pinned maplibre-gl 5.9.0 a tile's layers resolve as
+ * maplibre-gl (5.9 and 6.12 alike) a tile's layers resolve as
  * `vtLayers._geojsonTileLayer || vtLayers[sourceLayer]`, so a *geojson* source
  * named `maptiler_planet` satisfies every one of those calls unchanged — the
  * `sourceLayer` argument is simply ignored for GeoJSON tiles.

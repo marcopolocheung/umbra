@@ -71,7 +71,7 @@ terrain/canopy normalization unless a new finding proves the physical planes the
 
 ## Invariants for every PR
 
-- Keep MapLibre pinned at exactly 5.9.0 and preserve `preserveDrawingBuffer: true`.
+- Preserve `preserveDrawingBuffer: true` on the map canvas.
 - `LocalShadowAdapter` remains the shipping fallback until PR 8 activates a qualified pair.
 - No partial or missing remote coverage may be presented as clear/unshadowed.
 - Pin generation, recipe, datum, hierarchy, solar, tree-model, and receiver identities through

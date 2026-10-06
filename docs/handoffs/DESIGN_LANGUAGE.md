@@ -56,7 +56,7 @@ sessions are quiet around those files.
 ## 2. Standing context (a design session must know this)
 
 - Umbra: shadowed-route navigation, fully client-side. React 19 + Vite + TS + **Tailwind v4**
-  + MapLibre GL (pinned 5.9.0). Fonts in `index.html`: Inter (300–800) + Material Symbols
+  + MapLibre GL 6. Fonts in `index.html`: Inter (300–800) + Material Symbols
   Outlined. The map is the content; panels float over it.
 - **The review standard already exists:** `.claude/agents/interface-reviewer.md` — outdoors,
   bright-sun, one-handed, walking; 44px touch targets (`docs/notes/touch-target-audit.md`).

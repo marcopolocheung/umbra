@@ -400,15 +400,13 @@ plainly that our gap is not yet published, because it has not been measured.
 **The speedup was unqualified (#207).** ~1,000–2,200× is a Node microbenchmark of one function,
 not end-to-end browser route time. §4.1 carries the qualification wherever the number goes.
 
-**A shipped dependency carries a critical advisory (#211).** `maplibre-gl` is pinned at exactly
-`5.9.0` because v5.10+ breaks the shadow simulator's WebGL2 texture call — hard invariant #1.
-That pin holds a package with a real critical XSS advisory. Stated precisely in both directions:
-the advisory is real and unfixed in this app's dependency tree (`npm audit` reports
-GHSA-jrc7-96c5-q579, critical, affecting `<= 6.4.0`); there is **no demonstrated exploit path in
-this app**, because all three `setHTML` call sites (`MapView.tsx:500`, `:532`, `:537`) render
-through one escaping helper (`placePopup.ts:57`); and the upstream fix is a semver major the
-invariant forbids. It is a live accepted risk, not a
-non-issue and not a compromise.
+**A shipped dependency carried a critical advisory (#211) — resolved.** `maplibre-gl` was pinned
+at exactly `5.9.0` for the shadow simulator (hard invariant #1), which held GHSA-jrc7-96c5-q579
+(critical XSS, affecting `<= 6.4.0`). The simulator was no longer imported, so the pin went with
+it and the app moved to `maplibre-gl` 6.12.0; `npm audit` reports no vulnerabilities. There was
+never a demonstrated exploit path: every `setHTML` call (`MapView.tsx:429`, `:461`, `:466`)
+renders through one escaping helper in `placePopup.ts`. That helper still matters —
+`Popup.setHTML` does not sanitise in 6.x either.
 
 **The shadow source was described wrongly.** Routing is not "a pixel sampler". It is a
 geometry-backed `ShadowField` with a per-edge canvas fallback, and §1.1 is the measurement that

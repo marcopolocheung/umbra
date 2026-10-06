@@ -43,18 +43,12 @@ esac
 
 base=${file##*/}
 
-# ── Invariants 1 + 2: the two version pins ────────────────────────────────────
+# ── Invariant 2: the suncalc version pin (invariant 1, the maplibre pin, is retired) ──
 if [[ "$base" == "package.json" ]]; then
-  if adds '"maplibre-gl"' && ! grep -qE '"maplibre-gl"[[:space:]]*:[[:space:]]*"5\.9\.0"' <<<"$new"; then
-    decide deny "CLAUDE.md invariant 1: maplibre-gl stays pinned at exactly 5.9.0. v5.10+
-changes Texture.update so mapbox-gl-shadow-simulator's {width,height} call crashes WebGL2
-('Overload resolution failed'). The pin is also enforced in .github/dependabot.yml."
-  fi
   if adds '"suncalc"' && ! grep -qE '"suncalc"[[:space:]]*:[[:space:]]*"?[\^~]?1\.' <<<"$new"; then
     decide deny "CLAUDE.md invariant 2: suncalc stays on 1.x. 2.x is an ESM rewrite with
 named exports only, so 'import SunCalc from \"suncalc\"' in sunPosition.worker.ts,
-LocalShadowAdapter.ts and offscreenShadow.ts fails the rollup build. It would also install a
-second copy alongside mapbox-gl-shadow-simulator's suncalc ^1.9.0 and skew the solar math."
+LocalShadowAdapter.ts and offscreenShadow.ts fails the rollup build."
   fi
   for dep in earcut suncalc '@types/suncalc' '@types/earcut'; do
     if strips "\"$dep\""; then

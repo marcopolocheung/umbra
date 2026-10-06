@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { parseZ18Tile } from "../shadowField/v2/artifacts";
 
 type TileTexture = { texture: WebGLTexture; bytes: number };

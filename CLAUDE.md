@@ -99,21 +99,20 @@ runs on every `Edit`/`Write` and denies the edit. #5 escalates to a prompt inste
 is a judgment call. A hook denial is not an obstacle to route around with `sed` — it means the
 approach needs to change.
 
-1. **`maplibre-gl` stays pinned at exactly `5.9.0`.** v5.10+ changes `Texture.update`
-   so `mapbox-gl-shadow-simulator`'s `{width,height}` call crashes WebGL2
-   ("Overload resolution failed").
-2. **`LocalShadowAdapter.ts` directly imports `suncalc` and `earcut`.** Both arrive
-   transitively too (via `mapbox-gl-shadow-simulator` and `maplibre-gl`), but PR #10
-   pinned them as direct `dependencies` alongside `@types/suncalc` / `@types/earcut`,
-   so the import is typed and survives a provider-package swap. Keep them declared —
+1. *(Retired.)* `maplibre-gl` was pinned at exactly `5.9.0` for
+   `mapbox-gl-shadow-simulator`, which crashed on 5.10+. Nothing imported the simulator any
+   more, so the pin and the package went with the move to MapLibre 6. The number is kept so
+   the invariants below keep theirs.
+2. **`suncalc` and `earcut` stay declared direct `dependencies`.** The shadow code imports
+   them directly (`LocalShadowAdapter.ts`, `offscreenShadow.ts`, `sunPosition.worker.ts` for
+   suncalc; `shadowField/geometry.ts`, `shadowField/shadowIndex.ts` for earcut), alongside
+   `@types/suncalc` / `@types/earcut`. earcut also arrives transitively via `maplibre-gl`, but
    dropping either back to a transitive-only dep re-breaks both the build and `tsc`.
    **`suncalc` also stays on `1.x`.** 2.x is an ESM rewrite exporting only named
    functions, so the `import SunCalc from "suncalc"` in `sunPosition.worker.ts`,
    `LocalShadowAdapter.ts`, and `offscreenShadow.ts` fails the Vite/rollup build
-   ("default is not exported by node_modules/suncalc/index.js"). Independently,
-   `mapbox-gl-shadow-simulator` depends on `suncalc ^1.9.0`, so bumping ours to 2.x
-   installs a *second* copy and skews solar math between our sampling and the
-   renderer. Both this and the maplibre pin are enforced in `.github/dependabot.yml`.
+   ("default is not exported by node_modules/suncalc/index.js"). The suncalc major is held
+   back in `.github/dependabot.yml`.
 3. **Map must keep `canvasContextAttributes: { preserveDrawingBuffer: true }`** —
    shadow sampling and GeoTIFF export read the canvas back.
 4. **`MapView` is only imported via `React.lazy`** in `app/page.tsx` (code-splits MapLibre).

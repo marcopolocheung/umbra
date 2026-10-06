@@ -295,7 +295,8 @@ Five consequences, all of which are somebody else's blocked checkpoint:
   shadow colors to improve the field** — the field must not depend on them at all.
 - **Invariant #3 — `preserveDrawingBuffer: true`** stays; GeoTIFF export and the fallback both read back.
 - **Invariant #2 — `suncalc` stays on 1.x** and is imported as a default import.
-- **Invariant #1 — `maplibre-gl` pinned at 5.9.0.**
+- **Invariant #1 is retired** — `maplibre-gl` moved to 6.x once the unused simulator it was
+  pinned for was removed (#280).
 - Overpass calls need a `User-Agent` (invariant #6) and polite rate limiting + caching.
 
 ## The contract this track publishes

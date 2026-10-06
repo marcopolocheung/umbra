@@ -13,10 +13,9 @@ answer. A subtle error here is invisible and contaminates every number the produ
 
 ## The layout
 
-- `IShadowLayer.ts` — the interface both adapters satisfy
+- `IShadowLayer.ts` — the shadow-layer interface
 - `LocalShadowAdapter.ts` — the local WebGL renderer, a MapLibre `CustomLayerInterface`
-- `UmbraAdapter.ts` — the third-party `mapbox-gl-shadow-simulator` path
-- `createShadowLayer.ts` — selects between them
+- `createShadowLayer.ts` — constructs it
 - `offscreenShadow.ts` — viewport-independent shadow queries (no camera move)
 - `app/workers/sunPosition.worker.ts` — sun position, imported by Vite `?worker`
 
@@ -25,9 +24,7 @@ answer. A subtle error here is invisible and contaminates every number the produ
 **`import SunCalc from "suncalc"` — the default import.** `suncalc` is pinned to `1.x`
 *because* of this line, in this file and in `LocalShadowAdapter.ts` and `offscreenShadow.ts`.
 2.x is an ESM rewrite exporting only named functions and fails the rollup build with
-"default is not exported by node_modules/suncalc/index.js". Independently,
-`mapbox-gl-shadow-simulator` depends on `suncalc ^1.9.0`, so bumping ours installs a *second*
-copy and skews solar math between our sampling and the renderer.
+"default is not exported by node_modules/suncalc/index.js".
 
 **`suncalc` and `earcut` stay direct dependencies**, with their `@types` packages, even though
 both also arrive transitively. That is what keeps these imports typed and survivable across a
@@ -44,9 +41,6 @@ Colours here must stay blue-dominant enough to satisfy that predicate **after co
 the basemap** — not in isolation. Changing a colour without re-checking the predicate silently
 re-scores every route in the app. If you touch either side, check both in the same change; a
 `PreToolUse` hook will stop and ask you to confirm.
-
-**`maplibre-gl` is pinned at exactly `5.9.0`.** v5.10+ changes `Texture.update` so the
-simulator's `{width, height}` call crashes WebGL2 with "Overload resolution failed".
 
 **The canvas keeps `preserveDrawingBuffer: true`.** Shadow sampling and GeoTIFF export read it
 back; without it they return empty pixels rather than failing loudly.

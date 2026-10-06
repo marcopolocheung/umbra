@@ -10,7 +10,7 @@
  * at the map centre's wind (from-bearing, m/s).
  */
 
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type { BBox, RainGrid } from "../shadowField/ShadowField";
 import { RAIN_WET_ALPHA, RAIN_WET_RGB } from "./rainComposite";
 

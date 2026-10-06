@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Tilt3DButton } from "../FloatingMapControls";
 
