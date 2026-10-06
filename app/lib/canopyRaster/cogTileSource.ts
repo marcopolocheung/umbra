@@ -103,12 +103,26 @@ export interface CanopyTileSource {
   open(quadkey: string, signal?: AbortSignal): Promise<CanopyTileHandle>;
 }
 
-export function createCogTileSource(opts: { baseUrl?: string } = {}): CanopyTileSource {
+export function createCogTileSource(opts: {
+  baseUrl?: string;
+  /**
+   * How to turn a `baseUrl/quadkey.tif` reference into a `GeoTIFF`.
+   *
+   * Defaults to `fromUrl` with the block-aligned fetch options — the browser's
+   * live path. The offline shade producer overrides it to open the same
+   * `{quadkey}.tif` files from a local directory, so the store above this file
+   * stitches, masks and caches the local tiles through exactly the code the app
+   * runs in production. Nothing else differs.
+   */
+  openTiff?: (url: string, signal?: AbortSignal) => Promise<GeoTIFF>;
+} = {}): CanopyTileSource {
   const baseUrl = opts.baseUrl ?? CANOPY_COG_BASE_URL;
+  const openTiff =
+    opts.openTiff ?? ((url: string, signal?: AbortSignal) => fromUrl(url, COG_FETCH_OPTIONS, signal));
 
   return {
     async open(quadkey, signal) {
-      const tiff = await fromUrl(`${baseUrl}/${quadkey}.tif`, COG_FETCH_OPTIONS, signal);
+      const tiff = await openTiff(`${baseUrl}/${quadkey}.tif`, signal);
       const { tileBbox, heights, masks } = await listCanopyLevels(tiff);
       return createHandle(tiff, quadkey, tileBbox, heights, masks);
     },

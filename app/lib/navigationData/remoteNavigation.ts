@@ -25,15 +25,19 @@ import {
   parseNavigationBuildingShard,
   parseNavigationManifest,
   parseNavigationPointer,
+  parseNavigationShadeShard,
   parseNavigationStreetShard,
   type GeoBounds,
   type NavigationBuildingShard,
   type NavigationBuildingShardRef,
   type NavigationManifest,
   type NavigationPointer,
+  type NavigationShadeShard,
+  type NavigationShadeShardRef,
   type NavigationStreetShard,
   type NavigationStreetShardRef,
 } from "./shardContract";
+import { shadeSlotByteLength, shadeSlotByteOffset } from "./shadeSlots";
 
 /** A route-scoped pin: one verified pointer plus its manifest, one generation. */
 export interface NavigationSnapshot {
@@ -296,6 +300,120 @@ export async function loadNavigationStreetShard(
   return withCallerSignal(shared, options?.signal);
 }
 
+/**
+ * Fetches one cell's shade **index** and verifies it.
+ *
+ * The index is small (one `[lo,hi]` per segment plus the payload identity); the
+ * payload is not fetched here. A route range-fetches only the time blocks it
+ * needs through `loadShadeSlotBlocks`, so the cell's whole 6–13 MB table is
+ * never pulled just to price eight buckets.
+ */
+export async function loadNavigationShadeShard(
+  snapshot: NavigationSnapshot,
+  ref: NavigationShadeShardRef,
+  options?: NavigationRequestOptions,
+): Promise<NavigationShadeShard> {
+  if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
+  const fetchFn = options?.fetchFn ?? globalThis.fetch;
+  const url = shardUrl(snapshot.base, snapshot.generation, ref.key);
+  const report = options?.report;
+  const shared = getOrFetch(url, async () => {
+    const now = () => globalThis.performance?.now?.() ?? 0;
+    const tTransfer = now();
+    const response = await fetchFn(url, {
+      headers: { Accept: "application/json" },
+      cache: "force-cache",
+    });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (report) report.shadeIndexTransferMs += now() - tTransfer;
+    if (!response.ok)
+      throw new Error(`NYC navigation shade shard request failed (${ref.key}, ${response.status})`);
+    const tVerify = now();
+    if (bytes.byteLength !== ref.bytes)
+      throw new Error(`NYC navigation shade shard byte contract mismatch (${ref.key})`);
+    if ((await sha256Hex(bytes)) !== ref.sha256)
+      throw new Error(`NYC navigation shade shard hash mismatch (${ref.key})`);
+    if (report) report.shadeIndexVerifyMs += now() - tVerify;
+    const tDecode = now();
+    const shard = parseNavigationShadeShard(
+      decodeJson(bytes, `NYC navigation shade shard (${ref.key})`),
+      ref,
+      snapshot.generation,
+    );
+    if (!boundsEqual(shard.geometryBounds, ref.geometryBounds))
+      throw new Error(`NYC navigation shade shard bounds mismatch (${ref.key})`);
+    if (report) {
+      report.shadeIndexDecodeMs += now() - tDecode;
+      report.shadeShardsFetched += 1;
+      report.shadeSegments += shard.segments.length;
+    }
+    return shard;
+  });
+  return withCallerSignal(shared, options?.signal);
+}
+
+/**
+ * Range-fetches selected slot blocks of one shade payload.
+ *
+ * The payload is slot-major, so slot `s`'s block is `[s·segments·2,
+ * (s+1)·segments·2)` — a route asks for the ~8 blocks its buckets snap to and
+ * nothing else. Returns the blocks keyed by slot index.
+ *
+ * A range response carries no whole-object digest to check (the index already
+ * published the payload's SHA-256), so integrity here is the transport's plus
+ * the length contract; the bytes are trusted the same way every other
+ * content-addressed shard is, one layer up. A server that ignores `Range`
+ * answers 200 with the whole object, which is sliced to the requested window.
+ */
+export async function loadShadeSlotBlocks(
+  snapshot: NavigationSnapshot,
+  shard: NavigationShadeShard,
+  slots: number[],
+  options?: NavigationRequestOptions,
+): Promise<Map<number, Uint8Array>> {
+  if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
+  const fetchFn = options?.fetchFn ?? globalThis.fetch;
+  const report = options?.report;
+  const url = shardUrl(snapshot.base, snapshot.generation, shard.payload.key);
+  const segments = shard.segments.length;
+  const length = shadeSlotByteLength(segments);
+  const blocks = new Map<number, Uint8Array>();
+
+  await Promise.all(
+    [...new Set(slots)].map(async (slot) => {
+      const start = shadeSlotByteOffset(slot, segments);
+      const end = start + length;
+      const now = () => globalThis.performance?.now?.() ?? 0;
+      const tTransfer = now();
+      const response = await fetchFn(url, {
+        headers: { Accept: "application/octet-stream", Range: `bytes=${start}-${end - 1}` },
+        cache: "force-cache",
+        signal: options?.signal,
+      });
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (report) {
+        report.shadePayloadTransferMs += now() - tTransfer;
+        report.shadePayloadBytes += bytes.byteLength;
+      }
+      if (!response.ok)
+        throw new Error(`NYC navigation shade payload request failed (${shard.payload.key}, ${response.status})`);
+      let block: Uint8Array;
+      if (response.status === 206) {
+        if (bytes.byteLength !== length)
+          throw new Error(`NYC navigation shade payload range mismatch (${shard.payload.key})`);
+        block = bytes;
+      } else {
+        // The server ignored the range and sent the whole object.
+        block = bytes.subarray(start, end);
+        if (block.byteLength !== length)
+          throw new Error(`NYC navigation shade payload is short (${shard.payload.key})`);
+      }
+      blocks.set(slot, block);
+    }),
+  );
+  return blocks;
+}
+
 /** Same integrity chain as the street shards, for one building shard. */
 export async function loadNavigationBuildingShard(
   snapshot: NavigationSnapshot,
@@ -480,6 +598,8 @@ function expandBounds(bbox: GeoBounds, meters: number): GeoBounds {
 export interface NavigationShardSelection {
   streets: NavigationStreetShardRef[];
   buildings: NavigationBuildingShardRef[];
+  /** Same owner-cell intersection as the streets: a cell has a shade shard or it does not. */
+  shadeShards: NavigationShadeShardRef[];
 }
 
 /**
@@ -540,6 +660,9 @@ export function selectNavigationShardsForBoxes(
     ),
     buildings: manifest.buildingShards.filter((ref) =>
       casterBoxes.some((box) => boundsIntersect(ref.geometryBounds, box)),
+    ),
+    shadeShards: (manifest.shadeShards ?? []).filter((ref) =>
+      boxes.some((box) => boundsIntersect(ref.geometryBounds, box)),
     ),
   };
 }

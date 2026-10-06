@@ -156,7 +156,14 @@ function r2Store(bucket: string): S3PublishStore {
 
 // ─── Publication plan ───────────────────────────────────────────────────────
 
-export type PublishObjectKind = "manifest" | "notices" | "streetShard" | "buildingShard" | "pointer";
+export type PublishObjectKind =
+  | "manifest"
+  | "notices"
+  | "streetShard"
+  | "buildingShard"
+  | "shadeIndex"
+  | "shadePayload"
+  | "pointer";
 
 export interface PublishObject {
   kind: PublishObjectKind;
@@ -281,6 +288,37 @@ export async function publishPlan(generation: string): Promise<PublishPlan> {
   if (localBuildings.size > 0)
     throw new Error(`unclaimed building files must not be published: ${[...localBuildings].join(", ")}`);
 
+  // Each shade ref claims two objects: its JSON index and its binary payload.
+  // The payload is range-fetched by the client, but the whole object must still
+  // be published — a range request can only read what is stored.
+  const localShades = new Set<string>(
+    await readdir(join(nested, "shades")).catch(() => [] as string[]),
+  );
+  for (const ref of manifest.shadeShards ?? []) {
+    for (const [kind, key, bytes, sha256] of [
+      ["shadeIndex", ref.key, ref.bytes, ref.sha256],
+      ["shadePayload", ref.payloadKey, ref.payloadBytes, ref.payloadSha256],
+    ] as const) {
+      const fileName = key.split("/")[1];
+      if (!localShades.delete(fileName)) throw new Error(`manifest ref ${key} has no local file`);
+      const file = join(nested, key);
+      const stored = await readExact(file);
+      if (stored.byteLength !== bytes) throw new Error(`${key}: byte count drifted`);
+      if (sha256Hex(stored) !== sha256) throw new Error(`${key}: digest drifted`);
+      objects.push({
+        kind,
+        key: `${PREFIX}/${generation}/${key}`,
+        file,
+        bytes: stored.byteLength,
+        sha256,
+        cacheControl: IMMUTABLE_CACHE_CONTROL,
+      });
+      payloadBytes += stored.byteLength;
+    }
+  }
+  if (localShades.size > 0)
+    throw new Error(`unclaimed shade files must not be published: ${[...localShades].join(", ")}`);
+
   // Planned strictly last so the order itself enforces pointer-last
   // promotion, and promoted from these exact verified bytes.
   objects.push({
@@ -358,6 +396,7 @@ export interface PublishReport {
     objects: number;
     streetShards: number;
     buildingShards: number;
+    shadeShards: number;
     totalBytes: number;
   };
   objects: {
@@ -495,9 +534,16 @@ export async function publishExecute(
 
   const publishedGeneration = verified.generation;
   const shardObjects = plan.objects.filter(
-    (object) => object.kind === "streetShard" || object.kind === "buildingShard",
+    (object) =>
+      object.kind === "streetShard" ||
+      object.kind === "buildingShard" ||
+      object.kind === "shadeIndex" ||
+      object.kind === "shadePayload",
   );
-  if (shardObjects.length !== verified.streetShards + verified.buildingShards) {
+  if (
+    shardObjects.length !==
+    verified.streetShards + verified.buildingShards + verified.shadeShards * 2
+  ) {
     throw new Error("object plan does not match the verified shard count");
   }
   if (plan.payloadBytes !== verified.budgets.actual.totalBytes) {
@@ -573,6 +619,7 @@ export async function publishExecute(
       objects: verified.objects,
       streetShards: verified.streetShards,
       buildingShards: verified.buildingShards,
+      shadeShards: verified.shadeShards,
       totalBytes: verified.budgets.actual.totalBytes,
     },
     objects: {
@@ -630,6 +677,7 @@ export async function publishRollback(
       objects: verified.objects,
       streetShards: verified.streetShards,
       buildingShards: verified.buildingShards,
+      shadeShards: verified.shadeShards,
       totalBytes: verified.budgets.actual.totalBytes,
     },
     objects: {

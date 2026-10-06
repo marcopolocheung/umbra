@@ -51,10 +51,15 @@ import { createLapTimer } from "../lib/metrics";
 import type { NycStaticBuildingProvider } from "../lib/navigationData/buildingProvider";
 import {
   acquireNavigationSnapshot,
+  loadNavigationShadeShard,
+  loadShadeSlotBlocks,
+  selectNavigationShards,
   zoneAround,
   type NavigationSnapshot,
 } from "../lib/navigationData/remoteNavigation";
 import { newNavigationPhases } from "../lib/navigationData/navigationPhases";
+import { createShadeTableView, shadeSlotsForDeparture, type ShadeTableView } from "../lib/navigationData/shadeTable";
+import { SHADE_ZONE } from "../lib/navigationData/shadeSlots";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
@@ -611,6 +616,39 @@ export function useRouting({
         )!;
         const field = shadowFieldRef.current!;
 
+        // L2a: the precomputed shade table, when the pinned generation carries
+        // one. Started here so its index + slot-block fetches overlap the graph
+        // and field work; null (absent, partial, aborted, or rain) leaves the
+        // H1 sweep below exactly as it was. `perBucket` maps each H1 bucket's
+        // clock time to a table column, computed once for the whole route.
+        const shadeTablePromise: Promise<ShadeTableView | null> = (async () => {
+          if (!navSnapshot || rainModeRef.current) return null;
+          const selection = selectNavigationShards(navSnapshot.manifest, {
+            south: coverSouth,
+            west: coverWest,
+            north: coverNorth,
+            east: coverEast,
+          });
+          if (!selection || selection.shadeShards.length === 0) return null;
+          const departure = dateRef.current;
+          const utcOffsetMin = utcOffsetMinAt(SHADE_ZONE, departure);
+          const { slotIndices } = shadeSlotsForDeparture(departure, MAX_TIME_BUCKETS, utcOffsetMin);
+          const shards = await Promise.all(
+            selection.shadeShards.map((ref) =>
+              loadNavigationShadeShard(navSnapshot!, ref, { signal: calcSignal, report: navPhases }),
+            ),
+          );
+          const blocks = await Promise.all(
+            shards.map((shard) =>
+              loadShadeSlotBlocks(navSnapshot!, shard, slotIndices, {
+                signal: calcSignal,
+                report: navPhases,
+              }),
+            ),
+          );
+          return createShadeTableView(shards.map((shard, index) => ({ shard, blocks: blocks[index] })));
+        })().catch(() => null);
+
         readinessAbort = new AbortController();
         const readinessSignal = AbortSignal.any([calcSignal, readinessAbort.signal]);
         const readyOptions = {
@@ -926,14 +964,35 @@ export function useRouting({
             { length: timeBucketCount },
             (_, b) => new Date(startMs + b * TIME_BUCKET_MS),
           );
-          const sweep = field.sweep(edgeRefs, bucketDates);
+          // L2a: prefer the precomputed table. It answers only for segments it
+          // holds and slots whose blocks arrived; anything missing falls back to
+          // the static sample, exactly like a low-confidence sweep answer does.
+          // When the table does not cover the whole route the sweep runs as
+          // before, so a partial table never changes an answer for the worse.
+          const shadeTable = await shadeTablePromise;
+          const useTable =
+            shadeTable !== null && edgeKeys.every((key) => shadeTable.covers(key));
+          const shadeBuckets = useTable
+            ? shadeSlotsForDeparture(
+                dateRef.current,
+                timeBucketCount,
+                utcOffsetMinAt(SHADE_ZONE, dateRef.current),
+              ).perBucket
+            : null;
+          const sweep = useTable ? null : field.sweep(edgeRefs, bucketDates);
           for (let i = 0; i < edgeRefs.length; i++) {
             const key = edgeKeys[i];
             const fallback = edgeShadowCache.get(key);
             const left: number[] = [];
             const right: number[] = [];
             for (let b = 0; b < timeBucketCount; b++) {
-              const sample = sweep[b]?.[i];
+              if (useTable) {
+                const fromTable = shadeTable!.shadowFor(key, shadeBuckets![b]);
+                left.push(fromTable ? fromTable.left : (fallback?.left ?? 0));
+                right.push(fromTable ? fromTable.right : (fallback?.right ?? 0));
+                continue;
+              }
+              const sample = sweep![b]?.[i];
               const trusted =
                 sample != null && (sample.confidence >= LOW_CONFIDENCE || !buildingMask);
               left.push(trusted ? sample!.left : (fallback?.left ?? 0));

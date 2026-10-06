@@ -321,6 +321,7 @@ export function buildFixtureGeneration(): FixtureGeneration {
     budgets: {
       streetShardBytes: streetRefs.reduce((sum, ref) => sum + ref.bytes, 0),
       buildingShardBytes: buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0),
+      shadeShardBytes: 0,
       totalBytes:
         streetRefs.reduce((sum, ref) => sum + ref.bytes, 0) +
         buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0) +

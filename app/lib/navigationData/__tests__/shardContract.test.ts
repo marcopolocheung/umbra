@@ -48,7 +48,7 @@ function manifest(overrides: Partial<NavigationManifest> = {}): NavigationManife
     noticesSha256: "d".repeat(64),
     streetShards: [streetRef],
     buildingShards: [buildingRef],
-    budgets: { streetShardBytes: 200, buildingShardBytes: 300, totalBytes: 500 },
+    budgets: { streetShardBytes: 200, buildingShardBytes: 300, shadeShardBytes: 0, totalBytes: 500 },
     ...overrides,
   };
 }

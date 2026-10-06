@@ -2,12 +2,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MAX_BUILDING_SHARD_BYTES,
+  MAX_SHADE_SHARD_BYTES,
   MAX_STREET_SHARD_BYTES,
   MAX_TOTAL_BYTES,
   type NavigationBuildingShardRef,
   type NavigationManifest,
   type NavigationNotices,
   type NavigationPointer,
+  type NavigationShadeShardRef,
   type NavigationSourceReceipt,
   type NavigationStreetShardRef,
 } from "../../../app/lib/navigationData/shardContract";
@@ -15,6 +17,7 @@ import { PREP_BOUNDS, type GridZoom } from "./boundary";
 import { buildingsFromNdjson } from "./buildings";
 import { canonicalJson, jsonBytes, sha256Hex } from "./canonical";
 import { readReceipts } from "./acquire";
+import { loadBuiltShadeShards } from "./shade";
 import { shardBuildings, shardStreets } from "./sharding";
 import { rootPath } from "./util";
 
@@ -46,14 +49,17 @@ export interface BuildResult {
   dryRun: boolean;
   streetShards: number;
   buildingShards: number;
+  shadeShards: number;
   budgets: {
     streetShardBytes: number;
     buildingShardBytes: number;
+    shadeShardBytes: number;
     totalBytes: number;
   };
   budgetsEnforced: {
     maxStreetShardBytes: number;
     maxBuildingShardBytes: number;
+    maxShadeShardBytes: number;
     maxTotalBytes: number;
   };
   budgetViolations: string[];
@@ -125,6 +131,9 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
   const streets = shardStreets(graph, options.grid);
   const buildingsShards = shardBuildings(buildings, options.grid);
+  // The shade table, if the `shade` stage has run. Absent is a valid generation
+  // (the client falls back to live sampling), so this never blocks a build.
+  const shadeShards = await loadBuiltShadeShards();
 
   // Phase A: content digests without the generation label.
   const labelFree = new Map<string, string>();
@@ -140,6 +149,10 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     // JSON.stringify drops undefined properties, so this is the same shape the
     // verifier recovers by deleting `generation` from the final bytes.
     labelFree.set(key, sha256Hex(jsonBytes({ ...shard, generation: undefined })));
+  }
+  for (const built of shadeShards) {
+    labelFree.set(built.indexKey, sha256Hex(jsonBytes({ ...built.index, generation: undefined })));
+    labelFree.set(built.payloadKey, sha256Hex(built.payloadBytes));
   }
   const sortedKeys = [...labelFree.keys()].sort();
   const generationHash = sha256Hex(
@@ -161,6 +174,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
   setGenerations(streets.shards, generationId);
   setGenerations(buildingsShards.shards, generationId);
+  for (const built of shadeShards) built.index.generation = generationId;
 
   const bytesMap = new Map<string, Uint8Array>();
   const streetRefs: NavigationStreetShardRef[] = [];
@@ -199,6 +213,25 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     });
   }
 
+  const shadeRefs: NavigationShadeShardRef[] = [];
+  for (const built of shadeShards) {
+    const indexBytes = jsonBytes(built.index);
+    bytesMap.set(built.indexKey, indexBytes);
+    bytesMap.set(built.payloadKey, built.payloadBytes);
+    shadeRefs.push({
+      key: built.indexKey,
+      bytes: indexBytes.byteLength,
+      sha256: sha256Hex(indexBytes),
+      geometryBounds: built.index.geometryBounds,
+      supportBounds: built.index.supportBounds,
+      segments: built.index.segments.length,
+      slots: built.index.slots,
+      payloadKey: built.payloadKey,
+      payloadBytes: built.payloadBytes.byteLength,
+      payloadSha256: sha256Hex(built.payloadBytes),
+    });
+  }
+
   const notices: NavigationNotices = {
     version: 1,
     dataset: "nyc-navigation",
@@ -229,6 +262,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     jsonBytes(notices).length,
     streetRefs,
     buildingRefs,
+    shadeRefs,
   );
   const pointer: NavigationPointer = {
     version: 1,
@@ -241,6 +275,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
   const budgetViolations = enforceBudgets(
     streetRefs,
     buildingRefs,
+    shadeRefs,
     manifest.budgets.totalBytes,
     Boolean(options.reportOnly),
   );
@@ -254,6 +289,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     const nested = join(directory, "navigation", "nyc", generationId);
     await mkdir(join(nested, "streets"), { recursive: true });
     await mkdir(join(nested, "buildings"), { recursive: true });
+    if (shadeRefs.length > 0) await mkdir(join(nested, "shades"), { recursive: true });
     await writeFile(join(nested, "manifest.json"), Buffer.from(jsonBytes(manifest)));
     await writeFile(join(nested, "notices.json"), Buffer.from(jsonBytes(notices)));
     for (const key of [...bytesMap.keys()].sort()) {
@@ -276,10 +312,12 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     dryRun: Boolean(options.dryRun),
     streetShards: streetRefs.length,
     buildingShards: buildingRefs.length,
+    shadeShards: shadeRefs.length,
     budgets: manifest.budgets,
     budgetsEnforced: {
       maxStreetShardBytes: MAX_STREET_SHARD_BYTES,
       maxBuildingShardBytes: MAX_BUILDING_SHARD_BYTES,
+      maxShadeShardBytes: MAX_SHADE_SHARD_BYTES,
       maxTotalBytes: MAX_TOTAL_BYTES,
     },
     budgetViolations,
@@ -310,7 +348,14 @@ function assembleManifest(
   noticesBytes: number,
   streetRefs: NavigationStreetShardRef[],
   buildingRefs: NavigationBuildingShardRef[],
+  shadeRefs: NavigationShadeShardRef[],
 ): NavigationManifest {
+  const streetBytes = streetRefs.reduce((sum, ref) => sum + ref.bytes, 0);
+  const buildingBytes = buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0);
+  const shadeBytes = shadeRefs.reduce(
+    (sum, ref) => sum + ref.bytes + ref.payloadBytes,
+    0,
+  );
   return {
     version: 1,
     dataset: "nyc-navigation",
@@ -330,13 +375,12 @@ function assembleManifest(
     noticesSha256: sha256Hex(jsonBytes(notices)),
     streetShards: streetRefs,
     buildingShards: buildingRefs,
+    ...(shadeRefs.length > 0 ? { shadeShards: shadeRefs } : {}),
     budgets: {
-      streetShardBytes: streetRefs.reduce((sum, ref) => sum + ref.bytes, 0),
-      buildingShardBytes: buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0),
-      totalBytes:
-        streetRefs.reduce((sum, ref) => sum + ref.bytes, 0) +
-        buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0) +
-        noticesBytes,
+      streetShardBytes: streetBytes,
+      buildingShardBytes: buildingBytes,
+      shadeShardBytes: shadeBytes,
+      totalBytes: streetBytes + buildingBytes + shadeBytes + noticesBytes,
     },
   };
 }
@@ -344,12 +388,14 @@ function assembleManifest(
 function enforceBudgets(
   streetRefs: NavigationStreetShardRef[],
   buildingRefs: NavigationBuildingShardRef[],
+  shadeRefs: NavigationShadeShardRef[],
   totalBytes: number,
   reportOnly: boolean,
 ): string[] {
   const violations: string[] = [];
   const overStreet = streetRefs.filter((ref) => ref.bytes > MAX_STREET_SHARD_BYTES);
   const overBuilding = buildingRefs.filter((ref) => ref.bytes > MAX_BUILDING_SHARD_BYTES);
+  const overShade = shadeRefs.filter((ref) => ref.payloadBytes > MAX_SHADE_SHARD_BYTES);
   if (overStreet.length > 0) {
     violations.push(
       `street shard budget: ${overStreet.map((ref) => `${ref.key}=${ref.bytes}`).join(", ")}`,
@@ -358,6 +404,11 @@ function enforceBudgets(
   if (overBuilding.length > 0) {
     violations.push(
       `building shard budget: ${overBuilding.map((ref) => `${ref.key}=${ref.bytes}`).join(", ")}`,
+    );
+  }
+  if (overShade.length > 0) {
+    violations.push(
+      `shade shard budget: ${overShade.map((ref) => `${ref.key}=${ref.payloadBytes}`).join(", ")}`,
     );
   }
   if (totalBytes > MAX_TOTAL_BYTES) {

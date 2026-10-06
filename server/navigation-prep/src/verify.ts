@@ -2,18 +2,22 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MAX_BUILDING_SHARD_BYTES,
+  MAX_SHADE_SHARD_BYTES,
   MAX_STREET_SHARD_BYTES,
   MAX_TOTAL_BYTES,
   parseNavigationBuildingShard,
   parseNavigationManifest,
   parseNavigationNotices,
   parseNavigationPointer,
+  parseNavigationShadeShard,
   parseNavigationStreetShard,
   type GeoBounds,
   type NavigationBuildingShard,
   type NavigationBuildingShardRef,
   type NavigationManifest,
   type NavigationPointer,
+  type NavigationShadeShard,
+  type NavigationShadeShardRef,
   type NavigationStreetShard,
   type NavigationStreetShardRef,
 } from "../../../app/lib/navigationData/shardContract";
@@ -109,9 +113,20 @@ export interface VerifyResult {
   objects: number;
   streetShards: number;
   buildingShards: number;
+  shadeShards: number;
   budgets: {
-    enforced: { maxStreetShard: number; maxBuildingShard: number; maxTotal: number };
-    actual: { streetBytes: number; buildingBytes: number; totalBytes: number };
+    enforced: {
+      maxStreetShard: number;
+      maxBuildingShard: number;
+      maxShadeShard: number;
+      maxTotal: number;
+    };
+    actual: {
+      streetBytes: number;
+      buildingBytes: number;
+      shadeBytes: number;
+      totalBytes: number;
+    };
   };
   requests: Array<{
     borough: string;
@@ -165,8 +180,10 @@ async function readArtifacts(
   notices: unknown;
   streetRefs: Map<string, NavigationStreetShardRef>;
   buildingRefs: Map<string, NavigationBuildingShardRef>;
+  shadeRefs: Map<string, NavigationShadeShardRef>;
   streetShards: Map<string, NavigationStreetShard>;
   buildingShards: Map<string, NavigationBuildingShard>;
+  shadeShards: Map<string, NavigationShadeShard>;
   bytes: Map<string, Uint8Array>;
 }> {
   const nested = join(directory, "navigation", "nyc", generation);
@@ -186,11 +203,14 @@ async function readArtifacts(
 
   const streetRefs = new Map<string, NavigationStreetShardRef>();
   const buildingRefs = new Map<string, NavigationBuildingShardRef>();
+  const shadeRefs = new Map<string, NavigationShadeShardRef>();
   for (const ref of manifest.streetShards) streetRefs.set(ref.key, ref);
   for (const ref of manifest.buildingShards) buildingRefs.set(ref.key, ref);
+  for (const ref of manifest.shadeShards ?? []) shadeRefs.set(ref.key, ref);
 
   const streetShards = new Map<string, NavigationStreetShard>();
   const buildingShards = new Map<string, NavigationBuildingShard>();
+  const shadeShards = new Map<string, NavigationShadeShard>();
   const bytes = new Map<string, Uint8Array>();
 
   for (const [key, ref] of streetRefs) {
@@ -213,14 +233,30 @@ async function readArtifacts(
     );
     bytes.set(key, raw);
   }
+  for (const [key, ref] of shadeRefs) {
+    const raw = await readFile(join(nested, key));
+    if (raw.byteLength !== ref.bytes) throw new Error(`${key}: byte count drifted`);
+    if (sha256Hex(raw) !== ref.sha256) throw new Error(`${key}: digest drifted`);
+    shadeShards.set(
+      key,
+      parseNavigationShadeShard(JSON.parse(raw.toString("utf8")), ref, generation),
+    );
+    bytes.set(key, raw);
+    const payload = await readFile(join(nested, ref.payloadKey));
+    if (payload.byteLength !== ref.payloadBytes) throw new Error(`${ref.payloadKey}: byte count drifted`);
+    if (sha256Hex(payload) !== ref.payloadSha256) throw new Error(`${ref.payloadKey}: digest drifted`);
+    bytes.set(ref.payloadKey, payload);
+  }
   return {
     pointer,
     manifest,
     notices: JSON.parse(noticesBytes.toString("utf8")),
     streetRefs,
     buildingRefs,
+    shadeRefs,
     streetShards,
     buildingShards,
+    shadeShards,
     bytes,
   };
 }
@@ -233,12 +269,16 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
   if (!name) throw new Error("no generations to verify");
   const directory = join(normalized, name);
   const artifacts = await readArtifacts(directory, name);
-  const { manifest, streetRefs, buildingRefs, streetShards, buildingShards } = artifacts;
+  const { manifest, streetRefs, buildingRefs, shadeRefs, streetShards, buildingShards } = artifacts;
 
   // ── Generation id must be the hash of receipts + grid + shard content ─────
   const { receipts } = await readReceipts();
   const labelFree = new Map<string, string>();
-  for (const [key, raw] of artifacts.bytes) labelFree.set(key, labelFreeDigest(raw));
+  for (const [key, raw] of artifacts.bytes) {
+    // Shade payloads are raw bytes; only the JSON documents carry a generation
+    // label to strip.
+    labelFree.set(key, key.endsWith(".bin") ? sha256Hex(raw) : labelFreeDigest(raw));
+  }
   // Grid is derivable from the published shard keys ("streets/z13-/z14-" prefixes).
   const gridZooms = new Set<number>(
     [...streetRefs.keys()].map((key) => Number(/\/z(13|14)-/.exec(key)?.[1] ?? Number.NaN)),
@@ -279,19 +319,26 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
   const budgets = {
     streetBytes: [...streetRefs.values()].reduce((sum, ref) => sum + ref.bytes, 0),
     buildingBytes: [...buildingRefs.values()].reduce((sum, ref) => sum + ref.bytes, 0),
+    shadeBytes: [...shadeRefs.values()].reduce((sum, ref) => sum + ref.bytes + ref.payloadBytes, 0),
   };
   const totalBytes =
     budgets.streetBytes +
     budgets.buildingBytes +
+    budgets.shadeBytes +
     (await stat(join(directory, "navigation", "nyc", name, "notices.json"))).size;
   if (budgets.streetBytes !== manifest.budgets.streetShardBytes)
     throw new Error("street budget does not match the manifest");
   if (budgets.buildingBytes !== manifest.budgets.buildingShardBytes)
     throw new Error("building budget does not match the manifest");
+  if (budgets.shadeBytes !== manifest.budgets.shadeShardBytes)
+    throw new Error("shade budget does not match the manifest");
   if (totalBytes !== manifest.budgets.totalBytes)
     throw new Error("total budget does not match the manifest");
   if (manifest.budgets.totalBytes > MAX_TOTAL_BYTES)
     throw new Error(`total budget exceeded: ${manifest.budgets.totalBytes}`);
+  const overShade = [...shadeRefs.values()].filter((ref) => ref.payloadBytes > MAX_SHADE_SHARD_BYTES);
+  if (overShade.length > 0)
+    throw new Error(`shade shard budget exceeded: ${overShade.map((ref) => ref.key).join(", ")}`);
 
   // ── Per-request budgets over retained samples in every borough ────────────
   const requests = BOROUGH_SAMPLES.map((sample) =>
@@ -318,15 +365,18 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     objects: artifacts.bytes.size + 3,
     streetShards: streetRefs.size,
     buildingShards: buildingRefs.size,
+    shadeShards: shadeRefs.size,
     budgets: {
       enforced: {
         maxStreetShard: MAX_STREET_SHARD_BYTES,
         maxBuildingShard: MAX_BUILDING_SHARD_BYTES,
+        maxShadeShard: MAX_SHADE_SHARD_BYTES,
         maxTotal: MAX_TOTAL_BYTES,
       },
       actual: {
         streetBytes: budgets.streetBytes,
         buildingBytes: budgets.buildingBytes,
+        shadeBytes: budgets.shadeBytes,
         totalBytes,
       },
     },
