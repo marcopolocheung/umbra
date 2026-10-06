@@ -16,20 +16,26 @@ function bucketWith(objects: Record<string, { body: string; etag: string }>) {
       const object = objects[objectKey];
       return object ? { httpEtag: object.etag } : null;
     },
-    async get(objectKey: string) {
+    async get(objectKey: string, options?: { range?: { offset?: number; length?: number; suffix?: number } }) {
       this.calls.push(`get:${objectKey}`);
       const object = objects[objectKey];
-      return object
-        ? {
-            httpEtag: object.etag,
-            body: new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode(object.body));
-                controller.close();
-              },
-            }),
-          }
-        : null;
+      if (!object) return null;
+      const all = new TextEncoder().encode(object.body);
+      const stream = (bytes: Uint8Array) =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        });
+      const range = options?.range;
+      if (range) {
+        const length = range.suffix ?? range.length ?? all.length;
+        const offset = range.suffix !== undefined ? all.length - length : (range.offset ?? 0);
+        const slice = all.slice(offset, offset + length);
+        return { httpEtag: object.etag, size: all.length, range: { offset, length: slice.length }, body: stream(slice) };
+      }
+      return { httpEtag: object.etag, size: all.length, body: stream(all) };
     },
   };
 }
@@ -39,6 +45,8 @@ function envWith(objects: Record<string, { body: string; etag: string }>) {
     "navigation/nyc/current.json": { body: '{"version":1}', etag: '"pointer-etag"' },
     [`navigation/nyc/${generation}/manifest.json`]: { body: '{"version":1}', etag: '"manifest-etag"' },
     [`navigation/nyc/${generation}/streets/z14-4829-6165.json`]: { body: '{"version":1}', etag: '"street-etag"' },
+    [`navigation/nyc/${generation}/shades/z14-4829-6165.json`]: { body: '{"version":1}', etag: '"shade-index-etag"' },
+    [`navigation/nyc/${generation}/shades/z14-4829-6165.bin`]: { body: "0123456789", etag: '"shade-bin-etag"' },
   });
   const shadow = bucketWith(objects);
   return {
@@ -59,7 +67,7 @@ function request(path: string, method = "GET", origin?: string): Request {
 }
 
 describe("navigation allow-list", () => {
-  it("serves the pointer, manifest, notices, and both shard kinds", () => {
+  it("serves the pointer, manifest, notices, and every shard kind", () => {
     expect(navigationKey("/navigation/nyc/current.json")).toBe("navigation/nyc/current.json");
     expect(navigationKey(`/navigation/nyc/${generation}/manifest.json`)).toBe(
       `navigation/nyc/${generation}/manifest.json`,
@@ -73,6 +81,13 @@ describe("navigation allow-list", () => {
     expect(navigationKey(`/navigation/nyc/${generation}/buildings/z13-2300-3000.json`)).toBe(
       `navigation/nyc/${generation}/buildings/z13-2300-3000.json`,
     );
+    // L2a: the shade table's index and its slot-major payload.
+    expect(navigationKey(`/navigation/nyc/${generation}/shades/z14-4829-6165.json`)).toBe(
+      `navigation/nyc/${generation}/shades/z14-4829-6165.json`,
+    );
+    expect(navigationKey(`/navigation/nyc/${generation}/shades/z14-4829-6165.bin`)).toBe(
+      `navigation/nyc/${generation}/shades/z14-4829-6165.bin`,
+    );
   });
 
   it("rejects listing, sibling prefixes, and arbitrary keys", () => {
@@ -85,6 +100,8 @@ describe("navigation allow-list", () => {
       "/_shadow/current.json",
       `/navigation/nyc/${generation}/raw/private.json`,
       `/navigation/nyc/${generation}/streets/z14-4829-6165.json.bak`,
+      `/navigation/nyc/${generation}/shades/z14-4829-6165.txt`,
+      `/navigation/nyc/${generation}/shades/z14-4829-6165.bin.bak`,
       "/navigation/nyc/current.json/extra",
       `/_shadow/navigation/nyc/${generation}/manifest.json`,
     ]) {
@@ -158,6 +175,36 @@ describe("navigation fetch routing", () => {
     );
     expect(shard.status).toBe(200);
     expect(shard.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+  });
+
+  it("passes Range through to R2 and answers 206 for the shade payload", async () => {
+    const { env } = envWith({});
+    const binPath = `/navigation/nyc/${generation}/shades/z14-4829-6165.bin`;
+    const withRange = (value: string) =>
+      new Request(`https://data.example.com${binPath}`, { headers: new Headers({ Range: value }) });
+
+    const ranged = await worker.fetch(withRange("bytes=2-5"), env);
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers.get("Content-Range")).toBe("bytes 2-5/10");
+    expect(ranged.headers.get("Content-Length")).toBe("4");
+    expect(ranged.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(await ranged.text()).toBe("2345");
+
+    // A suffix range resolves against the object's own size.
+    const suffix = await worker.fetch(withRange("bytes=-3"), env);
+    expect(suffix.status).toBe(206);
+    expect(suffix.headers.get("Content-Range")).toBe("bytes 7-9/10");
+    expect(await suffix.text()).toBe("789");
+
+    // Open-ended range, and no Range header at all.
+    expect((await worker.fetch(withRange("bytes=8-"), env)).headers.get("Content-Range")).toBe("bytes 8-9/10");
+    const full = await worker.fetch(request(binPath), env);
+    expect(full.status).toBe(200);
+    expect(full.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(await full.text()).toBe("0123456789");
+
+    // A malformed range falls back to the whole object rather than erroring.
+    expect((await worker.fetch(withRange("bytes=abc"), env)).status).toBe(200);
   });
 
   it("keeps shadow keys on SHADOW_TILES even when NAVIGATION_DATA has no such key", async () => {
