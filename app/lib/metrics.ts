@@ -77,6 +77,13 @@ export interface RoutingPhaseMs {
   buildingDecode?: number;
   buildingConvert?: number;
   shadowIndexPrep?: number;
+  /**
+   * L2a shade table: summed per-request wait on the shade indexes and on the
+   * range-fetched slot blocks. They run concurrently with the street fetch, so
+   * the contiguous `shadeTableLoad` stage is what the route actually waited.
+   */
+  shadeIndexTransfer?: number;
+  shadePayloadTransfer?: number;
   transitFetch?: number; // fetchBestTrainGraph (shards or Overpass)
   trainSearch?: number; // findBestTrainRoute across subway+bus
   trainSearchSubway?: number; // subway slice of trainSearch
@@ -163,6 +170,16 @@ export interface NavigationRecord {
   buildingPrismCount: number;
   /** The provider's synchronous prism cache answered the load call. */
   buildingPrismCacheHit: boolean;
+  /** L2a shade indexes fetched, the segments they hold, and slot-block bytes read. */
+  shadeShardsFetched: number;
+  shadeSegments: number;
+  shadePayloadBytes: number;
+  /**
+   * Whether the H1 block priced from the shade table: `unavailable` = no table
+   * (none published, load failed, rain), `coverage-miss` = a table that does
+   * not hold every routed edge. Null when the H1 block did not run.
+   */
+  shadeTable?: "used" | "unavailable" | "coverage-miss" | null;
 }
 
 export function navigationRecordFrom(phases: NavigationPhases): NavigationRecord {
@@ -188,6 +205,9 @@ export function navigationRecordFrom(phases: NavigationPhases): NavigationRecord
     streetMergedEdges: phases.streetMergedEdges,
     buildingPrismCount: phases.buildingPrismCount,
     buildingPrismCacheHit: phases.buildingPrismCacheHit,
+    shadeShardsFetched: phases.shadeShardsFetched,
+    shadeSegments: phases.shadeSegments,
+    shadePayloadBytes: phases.shadePayloadBytes,
   };
 }
 
