@@ -513,6 +513,12 @@ vegetation snapshot, and the acquired Meta/WRI CHMv2 COGs (read through the app'
 `CanopyTileStore`, transport swapped to local files). Agreement with the live field is therefore
 true by construction; the only approximation is the slot model.
 
+**Same raster as the live field.** The build reads the `dataforgood-fb-data` CHMv2 COGs the
+`shadow-prep` acquisition froze; the browser reads `source.coop`'s republication. Checked on an NYC
+tile (`0320101103.tif`): identical content-length (76,557,388) and identical SHA-256 over both the
+first 1 MiB and the last 64 KiB — the same object, so the table's canopy is the canopy the live
+field resolves.
+
 **Measured on one real cell** (`z14-4827-6164`, Brooklyn; 6,651 segments, 10.2 MB payload,
 `NAVIGATION_PREP_ROOT=~/shade-prep-data-nyc-navigation`):
 
@@ -532,5 +538,5 @@ distribution L2's acceptance asks for, not a pass/fail gate.
 **Outstanding.** The full-city build (386 cells) has not been run here — it is one unattended
 `navigation-prep shade --execute` (per-cell child processes, default 8 concurrent, resumable,
 `work/shade-progress.json` + `work/shade-build.log`). The #286 production phase re-measurement is
-the end-to-end proof and lands with that build. Sheds (L2b) are deferred: no frozen permit snapshot
-exists yet, and their agreement delta is expected on shed-covered sidewalks only.
+the end-to-end proof and lands with that build. Sheds (L2b, #289) are deferred: no frozen permit
+snapshot exists yet, and their agreement delta is expected on shed-covered sidewalks only.
