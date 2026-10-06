@@ -29,15 +29,15 @@
     "bench:canopy": "playwright test --config=playwright.canopy.config.ts"
   },
   "dependencies": {
-    "@photostructure/tz-lookup": "^11.6.1",
+    "@photostructure/tz-lookup": "^11.7.0",
     "earcut": "3.2.4",
     "geotiff": "^3.0.5",
     "maplibre-gl": "6.12.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-router-dom": "^7.18.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "^7.18.4",
     "suncalc": "1.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.9",
