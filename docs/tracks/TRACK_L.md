@@ -16,67 +16,64 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L2 — precomputed per-edge shade (#262), with Track H and Track A
-  (coordination: #270). L3 is done: L3c merged (#277). L2's measured prize is far larger than
-  this brief first estimated — see below.
+- **Active checkpoint:** L2, which is **blocked on a data rebuild**. L2a's client and table
+  shipped (#288, #292, #293), but the published table is wrong in about half its cells (#294).
+  The client quarantines it (#295), so production prices with the live sweep again: correct,
+  ~24 s of `sweep`.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
   - **#266 (#268):** yields on elapsed time, removing 1.5–3 s per long route.
   - **L3a (#271):** the dominance pre-check, not the destination-front scan, was the hot
     spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
-    and a typed-array heap. Before/after in `docs/notes/route-latency.md`.
+    and a typed-array heap.
   - **L3b (#272):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
-    −30% to −51% on top of L3a, same session (nav-static cross-borough warm 5,028 → 2,579 ms).
-  - **L3c (#277, merged):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; the graph
-    crosses as transferable typed arrays (`routingGraphCodec.ts`) and the protocol
-    (`routingWorkerProtocol.ts`) is the one A5b and H3 extend. Main-thread fallback when no
-    worker. Bench gains `longestSearchTaskMs`.
-- **Open PRs:** none.
-- **Measured on production, 2026-10-05 (#286):** a real 6 km route took **37 s**, and **63% of it
-  (23.5 s) is H1's time-aware shadow `sweep`** — not transit (1.8 s) and not the search (3.6 s).
-  Walk mode pays the same sweep, so it is not transit-specific. `sweep` is
-  `edges × buckets × steps × prisms-per-cell` (a query every 25 m, both sidewalks, × up to 8
-  buckets ≈ 3.7M queries), so it scales with real building density. **`npm run bench:route`
-  understates it ~50×**: its fixtures have ~4 buildings per cell and measure the same sweep at
-  170–530 ms. The bench's shade numbers are not representative; the production phase breakdown is
-  the one to plan against.
+    −30% to −51% on top of L3a.
+  - **L3c (#277):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; no main-thread long
+    task during the search. It re-packs the whole graph per calculation, which L3d fixes.
+  - **L2a client (#288), worker (#292), static merge fix (#293).** #293 was why the table was
+    never read: parallel OSM ways made the static street merge throw, so every route fell back
+    to Overpass (#275). With the table read, `sweep` drops from ~24 s to ~0.1–0.2 s. Measured
+    saving: **21.7 s** on a UES → Murray Hill walk, and 41.3 → 20.3 s total on the #286 route.
+- **Open PRs:**
+  - **#295** — quarantine the bad generation. Merge first: production showed 0% shade on
+    Midtown routes.
+  - The build fix for #294: provider coverage gate removed, casters sliced to the edges' real
+    span, and a cell fails on any unresolved sunlit sample.
+- **Next actions, in order** (owner's estimate of ~6 s on their machine, without changing
+  routes):
+  1. **Rebuild the shade table** with the #294 fix. Run a zero-cell audit: no cell may read 0 on
+     every edge in a sunlit slot. Re-run the agreement harness against an independent provider,
+     publish a new generation (owner OK — it is the bucket production reads), and lift the
+     quarantine. This restores the ~20 s saving.
+  2. **L2 completion (#296), about −4.5 s.** Answer the departure-time sample from the table too,
+     and skip `fieldReady`, `sampleEdges` and the canvas fallback (37.7% of edges on the
+     measured route) when the table covers the route. Decide sheds (#289) first.
+  3. **L3d (#297), about −3 s.** Pack the street graph once and keep it in the worker; on the
+     82k-node static graph the per-calculation pack (`searchPack`, 6.0 s here) outweighs the
+     search.
+  4. **L1 (#261), about −1 s on repeat routes.** Cache street shards on the device and prefetch
+     them.
+  5. Then `search` (~1.6 s on the owner's machine) gets faster only by changing routes: L4 or an
+     approximate front, which are Track H's and the owner's call (#270).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
-  - **No WASM rewrite, no SharedArrayBuffer.** At 17k–34k nodes a typed-array search in
-    plain TypeScript is single-digit milliseconds (the report's Node microbenchmark: 3.3 ms vs
-    28.6 ms for the current `Map`-of-objects layout). SharedArrayBuffer needs cross-origin
-    isolation, which Safari supports only in the strict form that breaks every cross-origin
-    tile, shard and proxy fetch.
-  - **Shade is precomputed, not resampled.** Every comparable shade router stores per-edge shade
-    per time slot offline (shadewalker: per hour per month, 288 B/edge, ~4.5 h for NYC);
-    Umbra alone recomputes it from building geometry per request (1.8–3.7 s).
-  - **Measure before optimizing.** The 2026-09-20 phase split leaves ~3–4 s of a long route
-    unattributed, and predates H1/H2's time-aware search.
-- **Order, revised by L0's measurement:** L3 → L2 → L1.
-  - **L3 first:** `search` is now the largest stage on six of eight long-route scenarios
-    (3.2–7.9 s), up to 3.3× slower since H1/H2.
-  - **L2 second:** precomputed per-edge shade is justified by removing `fieldReady` (1–2 s) and
-    the canvas fallback (up to ~5 s), not by sampling cost (0.4–0.8 s).
-  - **L1 last.**
+  - **No WASM rewrite, no SharedArrayBuffer.** At 17k–34k nodes a typed-array search in plain
+    TypeScript is single-digit milliseconds. SharedArrayBuffer needs cross-origin isolation,
+    which breaks every cross-origin tile, shard and proxy fetch on Safari.
+  - **Shade is precomputed, not resampled** (L2a): 768 slots = 12 representative days × 64
+    fifteen-minute clock slots, so H1's 15-minute buckets read the table directly.
+  - **Plan against production, not the bench.** `npm run bench:route` understates shade cost
+    ~50× (#286). Use `window.__umbraMetrics.history[].phases` on production. The harness in
+    `route-latency.md` is reproducible from any machine.
+  - **A data artifact needs an audit that does not share the build's code path.** #294's
+    agreement figure compared the build with itself and reported p90 = 0 over a half-zero table.
 - **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
-  Fixing #246 is a Track H PR.
-- **The 100 ms search target is out of reach without changing routes.** After L3b the cost is
-  the label count (~67 per node from the per-bucket fronts), and exact pruning bounds were
-  prototyped and do not reduce it (route-latency.md, L3b section). Getting under ~1 s needs an
-  approximate front or L4's three-representative search — both change routes, so they are Track
-  H's and the owner's call (#270). Until then L3's acceptance is measured reduction plus no
-  main-thread blocking (L3c), with 100 ms as the stretch target.
-- **Blocked on:** nothing. L1 still needs the owner to confirm `VITE_NAVIGATION_BASE` in the
-  deployed environment.
-- **Next action:** L2 (#262), now justified by killing the 23.5 s sweep plus the 2.3 s
-  `shadowSample` (~25.7 s, 37 s → ~11 s), not by the 2–6 s this brief first assumed. Agree the
-  bucket-resolution seam with Track H first: H1 prices at 15-minute buckets, L2's plan precomputes
-  per (month, hour) — a 4× mismatch. Then L1 removes `streets` (~4.7 s), leaving the search
-  (~3.6 s), which only gets faster by changing routes (#270).
-- **Last verified:** 2026-10-06 — merged main `44f4db9` (#277 + #279 + #280): lint 0 errors,
-  typecheck, 2,318 tests / 159 files, build, smoke + nav-smoke 18/18.
+- **Blocked on:** the shade rebuild (#294), which needs the owner's OK to publish.
+- **Last verified:** 2026-10-06 — production measurements in `route-latency.md` ("L2a in
+  production"); gates on the #293 / #295 branches: lint 0 errors, typecheck, 2,340 tests, build.
+
 ---
 
 ## Why this track exists

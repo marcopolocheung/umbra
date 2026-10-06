@@ -150,17 +150,22 @@ function bboxContains(outer: BBox, inner: BBox): boolean {
  *
  * Mirrors `createNycStaticPrismProvider`'s conversion (whole footprints, one
  * prism per ring) but answers synchronously from memory: the build pre-slices
- * every building within caster reach of the cell, so there is no snapshot to
- * bind and no network to reach.
+ * every building within caster reach of the cell's edges, so there is no
+ * snapshot to bind and no network to reach.
+ *
+ * It answers every query. The slice already decides what can reach the cell,
+ * and the field's query box spans every edge endpoint in a 2 km sun cell plus
+ * its pad — a seam edge's far end lies outside the cell, so a coverage gate
+ * declined whole cells and the build wrote "no geometry" as 0 shade (#294).
  */
-function frozenBuildingProvider(buildings: FrozenBuilding[], coverage: BBox): PrismProvider {
+function frozenBuildingProvider(buildings: FrozenBuilding[]): PrismProvider {
   const set: PrismSet = prismsFromFootprints(
     buildings.map((building) => ({ heightM: building.heightM, rings: building.rings })),
   );
   return {
     source: "nyc-static",
-    prismsFor(bbox) {
-      return bboxContains(coverage, bbox) ? set : null;
+    prismsFor() {
+      return set;
     },
   };
 }
@@ -172,12 +177,11 @@ function frozenBuildingProvider(buildings: FrozenBuilding[], coverage: BBox): Pr
  * memoized per leaf state (month), and the same array handed back for the same
  * month so the field's prepared-caster cache hits.
  */
-function frozenCanopyProvider(features: CanopyFeature[], coverage: BBox): CanopyProvider {
+function frozenCanopyProvider(features: CanopyFeature[]): CanopyProvider {
   const byMonth = new Map<number, PrismSet>();
   return {
     source: "canopy",
-    prismsFor(bbox, when) {
-      if (!bboxContains(coverage, bbox)) return null;
+    prismsFor(_bbox, when) {
       const key = when.getUTCMonth();
       const hit = byMonth.get(key);
       if (hit) return hit;
@@ -284,6 +288,26 @@ function expandBounds(bounds: GeoBounds, meters: number): GeoBounds {
     north: bounds.north + dLat,
     east: bounds.east + dLon,
   };
+}
+
+/**
+ * Everything a cell's samples can query: its bounds widened to every edge
+ * endpoint (a seam edge's far end lies outside the cell), plus the field's
+ * query pad and a margin. The field asks about the bbox of all endpoints in a
+ * sun cell padded by `QUERY_PAD_M`, so the inputs and the raster must reach at
+ * least this far or the far end of a seam edge reads as no geometry (#294).
+ */
+export function cellQueryBounds(bounds: GeoBounds, edges: ShadeCellInput["edges"]): GeoBounds {
+  const span = { ...bounds };
+  for (const edge of edges) {
+    for (const [lng, lat] of [edge.from, edge.to]) {
+      span.west = Math.min(span.west, lng);
+      span.east = Math.max(span.east, lng);
+      span.south = Math.min(span.south, lat);
+      span.north = Math.max(span.north, lat);
+    }
+  }
+  return expandBounds(span, QUERY_PAD_M + 50);
 }
 
 /** Parse the acquired OSM vegetation snapshot the way `fetchCanopyAround` parses Overpass. */
@@ -401,7 +425,6 @@ export async function prepareShadeInputs(
     const cellX = Number(match?.[1] ?? 0);
     const cellY = Number(match?.[2] ?? 0);
     const bounds = shard.supportBounds;
-    const coverage = expandBounds(bounds, QUERY_PAD_M + 50);
     const nodeOf = new Map(shard.nodes.map((node) => [node.id, node]));
 
     const segmentSet = new Map<string, [number, number]>();
@@ -418,12 +441,25 @@ export async function prepareShadeInputs(
       if (!from || !to) throw new Error(`${key}: segment ${lo},${hi} has a missing endpoint`);
       edges.push({ from: [from.lon, from.lat], to: [to.lon, to.lat] });
     }
+    // Casters are sliced against what the edges actually span, not the cell:
+    // a seam edge's far endpoint lies outside `supportBounds`, and its samples
+    // need the casters around it too (#294).
+    const coverage = cellQueryBounds(bounds, edges);
 
     // Two cells of margin (~600 m at z14) covers the ~450 m query pad and the
-    // caster reach beyond it.
+    // caster reach beyond it; a seam edge reaching further widens the scan.
+    const cellW = bounds.east - bounds.west;
+    const cellH = bounds.north - bounds.south;
+    const reach = Math.max(
+      2,
+      Math.ceil((bounds.west - coverage.west) / cellW),
+      Math.ceil((coverage.east - bounds.east) / cellW),
+      Math.ceil((bounds.south - coverage.south) / cellH),
+      Math.ceil((coverage.north - bounds.north) / cellH),
+    );
     const cellBuildings: FrozenBuilding[] = [];
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dx = -reach; dx <= reach; dx++) {
         const neighbour = buildingsByCell.get(`${cellX + dx},${cellY + dy}`);
         if (!neighbour) continue;
         for (const candidate of neighbour.buildings) {
@@ -471,21 +507,12 @@ export async function computeShadeCell(
   input: ShadeCellInput,
   canopyInputs: ShadeCanopyInputs,
 ): Promise<ShadeCellResult> {
-  const bounds = input.supportBounds;
-  // The field pads every query bbox by QUERY_PAD_M before asking a provider, so
-  // a provider whose coverage stops at the cell edge declines the cell it was
-  // built for and the sweep answers "no geometry". The coverage must include
-  // the pad (and the caster reach beyond it) — the same box the input slice was
-  // filtered against in `prepareShadeInputs`.
-  const providerCoverage = expandBounds(bounds, QUERY_PAD_M + 50);
-  const providerBBox: BBox = {
-    west: providerCoverage.west,
-    south: providerCoverage.south,
-    east: providerCoverage.east,
-    north: providerCoverage.north,
-  };
-  const buildingProvider = frozenBuildingProvider(input.buildings, providerBBox);
-  const canopyProvider = frozenCanopyProvider(input.canopy, providerBBox);
+  // The raster answers only inside the patch it loaded, so load the whole box
+  // the field will query — the same box the input slice was filtered against
+  // in `prepareShadeInputs`.
+  const providerBBox: BBox = cellQueryBounds(input.supportBounds, input.edges);
+  const buildingProvider = frozenBuildingProvider(input.buildings);
+  const canopyProvider = frozenCanopyProvider(input.canopy);
   const rasterProvider = frozenRasterProvider(canopyInputs.chmv2Dir);
   const field: ShadowField = createGeometryShadowField(
     [buildingProvider],
@@ -512,6 +539,12 @@ export async function computeShadeCell(
       let offset = slotIndex * segments * SHADE_BYTES_PER_SEGMENT;
       for (let e = 0; e < segments; e++) {
         const shadow = row[e];
+        // "none" at zero confidence means no provider resolved the query — the
+        // field's 0 is a placeholder, not a measurement. Writing it would
+        // publish a sunny street that nothing measured (#294), so the cell
+        // fails instead. (Night is also "none", but certain: confidence 1.)
+        if (shadow?.source === "none" && shadow.confidence === 0)
+          throw new Error(`${input.key}: segment ${e} unresolved at slot ${slotIndex}`);
         payload[offset++] = shadeFractionToByte(shadow ? shadow.left : 1);
         payload[offset++] = shadeFractionToByte(shadow ? shadow.right : 1);
       }
@@ -567,18 +600,11 @@ export async function shadeAgreement(
   ) as ShadeCellInput;
   const payload = new Uint8Array(await readFile(join(shadeOutputDirectory(), `${key}.bin`)));
 
-  const bounds = input.supportBounds;
-  const providerCoverage = expandBounds(bounds, QUERY_PAD_M + 50);
-  const providerBBox: BBox = {
-    west: providerCoverage.west,
-    south: providerCoverage.south,
-    east: providerCoverage.east,
-    north: providerCoverage.north,
-  };
+  const providerBBox: BBox = cellQueryBounds(input.supportBounds, input.edges);
   const rasterProvider = frozenRasterProvider(canopyInputs.chmv2Dir);
   const field = createGeometryShadowField(
-    [frozenBuildingProvider(input.buildings, providerBBox)],
-    [frozenCanopyProvider(input.canopy, providerBBox)],
+    [frozenBuildingProvider(input.buildings)],
+    [frozenCanopyProvider(input.canopy)],
     [rasterProvider],
     [],
   );
