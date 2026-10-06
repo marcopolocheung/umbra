@@ -66,6 +66,39 @@ test("a night slot is fully shadowed (255) and a summer noon slot is not", async
   assert.ok(left < 255 || right < 255, `expected a lit noon side, got ${left}/${right}`);
 });
 
+test("a seam edge reaching past the cell still sees its casters (#294)", async () => {
+  // The owner cell publishes a seam edge whose far endpoint lies ~800 m outside
+  // its bounds. The field's query box spans every endpoint plus its pad, so a
+  // provider gated on the cell's padded bounds declined it — and the build
+  // wrote that "no geometry" answer as 0 shade. Here a 200 m tower stands
+  // south of the edge's near end: in January at noon it must shade it.
+  const input = fixtureInput();
+  const near: [number, number] = [-73.9852, 40.7555];
+  const far: [number, number] = [-73.9852, 40.7627];
+  input.segments = [[1, 2]];
+  input.edges = [{ from: near, to: far }];
+  input.buildings = [
+    {
+      rings: [
+        [
+          [-73.9856, 40.7550],
+          [-73.9848, 40.7550],
+          [-73.9848, 40.7553],
+          [-73.9856, 40.7553],
+          [-73.9856, 40.7550],
+        ],
+      ],
+      heightM: 200,
+    },
+  ];
+  const result = await computeShadeCell(input, canopyInputs);
+  // January (month 0), 12:00 → slot 28.
+  const offset = (0 * 64 + 28) * SHADE_BYTES_PER_SEGMENT;
+  const left = result.bytes[offset];
+  const right = result.bytes[offset + 1];
+  assert.ok(left > 0 || right > 0, `expected the tower's shadow, got ${left}/${right}`);
+});
+
 test("the same cell builds to identical bytes (determinism)", async () => {
   const first = await computeShadeCell(fixtureInput(), canopyInputs);
   const second = await computeShadeCell(fixtureInput(), canopyInputs);

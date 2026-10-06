@@ -530,6 +530,10 @@ field resolves.
 | Table vs live sweep | mean **0.0100**, p90 **0**, worst **1.00** (6,000 samples: 100 segments × 30 actual instants × 2 sides) |
 | `build` + `verify` | generation `nyc-2026-09-18-0618e6f34382` reproduces from final bytes; budgets and per-borough requests `ok` |
 
+> **Void (#294):** both sides of this comparison used the build's own frozen provider, which
+> declined seam-edge query boxes, so it could not see the bug that zeroed half the table. See
+> "L2a in production" below.
+
 The worst case is a single sidewalk point flipping across a small crown's shadow edge between the
 representative day and the query instant — the 15-minute snap and mid-month day are the whole
 source of the delta, and p90 = 0 says 90% of samples agree exactly. This is the reported
@@ -540,3 +544,64 @@ distribution L2's acceptance asks for, not a pass/fail gate.
 `work/shade-progress.json` + `work/shade-build.log`). The #286 production phase re-measurement is
 the end-to-end proof and lands with that build. Sheds (L2b, #289) are deferred: no frozen permit
 snapshot exists yet, and their agreement delta is expected on shed-covered sidewalks only.
+
+## L2a in production — the table removes the sweep, and exposed two bugs (2026-10-06)
+
+Generation `nyc-2026-09-18-b94934cd765a` (street 386 / building 303 / shade 386) was promoted to
+the staging navigation bucket, which production reads. Every number here is production with the
+app's own phase breakdown, on this box (SwiftShader, so map-bound stages run ~2× a GPU machine's).
+
+**1. The table was never read (#275, fixed by #293).** All 24 indexes and 192 slot blocks arrived
+within 2.25 s of the click, yet `sweep` stayed at 24.5 s. `navigation.streetSource` was
+`overpass`: shard `z14-4825-6154` carries two OSM footways over one node pair (`w1049726474` /
+`w1049726475`, differing only in `surface`), the static adapter keyed edge identity on the
+directed pair and threw, and the route fell back to Overpass, whose segments the table cannot
+cover. #293 keys conflicts on edge id and adds the stage split (`shadeTableLoad`) and the
+`navigation.shadeTable` outcome (`used` / `unavailable` / `coverage-miss`), so this cannot hide
+again.
+
+**After #293, on the #286 route (walk):**
+
+| stage | before L2a | after #293 |
+|---|---:|---:|
+| `sweep` | 23,518 | **180** |
+| `shadeTableLoad` | — | 0 (overlapped by `streets`) |
+| `search` + `searchPack` | 3,627 | 6,085 |
+| `streets` | 4,682 | 2,717 |
+| **total** | **37,016** | **20,256** |
+
+The graph is now the static one, 118,571 nodes against Overpass's 49,620, so search grew.
+Blocking the shade requests on the same route and machine is the clean counterfactual. On the
+UES → Murray Hill walk (82,314 nodes) it costs **21.7 s**: `sweep` 23,128 → 103 ms, total 52.7 →
+31.0 s.
+
+**2. The published table is wrong in about half its cells (#294).** With the table read, that
+route's three walking options showed 0 / 0 / 1.2% shadow at 16:03 in October. With it blocked
+they showed 45 / 51 / 66%. Chelsea (`z14-4824-6158`) and most Midtown cells hold 0 for every
+edge at every sunlit slot.
+- **Cause.** The build's frozen building provider answered only when the field's query box sat
+  inside the cell's support bounds + 450 m. The field's box spans every edge endpoint in a 2 km
+  sun cell, plus 400 m, and a seam edge's far endpoint lies outside the cell. The provider
+  declined, the field answered `{0, source "none", confidence 0}`, and the build encoded that
+  as 0 shade and logged `ok`.
+- **The agreement figure above was not evidence.** `shadeAgreement` built the same declining
+  provider for its "live" side, so it compared 0 with 0. Treat mean 0.0100 / p90 0 as void until
+  it is re-run against an independent provider.
+- **Handling.** #295 quarantines the generation on the client, so routes take the live sweep
+  again: correct, ~24 s. The build fix drops the coverage gate, slices casters to the edges'
+  real span (`cellQueryBounds`), and fails a cell on any unresolved sunlit sample. A rebuilt
+  generation then has to pass a zero-cell audit before the quarantine lifts.
+
+**What is left after the sweep** (UES → Murray Hill, table used, 31.0 s here, ~15 s on the
+owner's machine):
+
+| stage | ms | owner |
+|---|---:|---|
+| `yield` | 6,520 | mostly SwiftShader frame cost |
+| `searchPack` | 5,999 | L3d (#297): the whole graph is re-packed per calculation |
+| `shadowSample` | 4,162 | L2 completion (#296) |
+| `mapIdleWait` | 3,982 | L2 completion (#296): 37.7% canvas fallback |
+| `search` | 3,323 | L4 / #270 (changes routes) |
+| `transit` | 2,550 | later |
+| `streets` | 1,809 | L1 (#261) |
+| `fieldReady` | 1,211 | L2 completion (#296) |
