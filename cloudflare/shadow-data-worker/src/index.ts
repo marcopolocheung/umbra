@@ -20,9 +20,12 @@ const rootGatedFiles = new Set(["generation.json", "coverage.json", "bounds.json
 // is pointer → manifest → shards, verified client-side, and the producer
 // promotes current.json only after every immutable object reconciles. The
 // same generator/cell grammar the shardContract parser accepts is pinned:
-// nyc-<date>-<12 hex> / manifest|notices / streets|buildings/<cell>.json.
+// nyc-<date>-<12 hex> / manifest|notices / streets|buildings/<cell>.json, plus
+// the L2a shade table: shades/<cell>.json (index) and shades/<cell>.bin
+// (slot-major payload, read with Range).
 const navigationGenerationPattern = "nyc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-f0-9]{12}";
-const navigationShardKey = "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json";
+const navigationShardKey =
+  "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json|shades/[a-z0-9-]{1,64}\\.(?:json|bin)";
 const navigationPointerKey = "navigation/nyc/current.json";
 const navigationAsset = new RegExp(
   `^navigation\\/nyc\\/(?:current\\.json|${navigationGenerationPattern}\\/(?:manifest\\.json|notices\\.json|${navigationShardKey}))$`,
@@ -101,6 +104,20 @@ export function generationNeedsMarker(
  * every generation asset except a grandfathered manifest/tile requires that
  * generation's published root marker. `generation.json` is its own marker.
  */
+/** A single `bytes=` range, or undefined for a full response. */
+export function parseByteRange(header: string | null): { offset?: number; length?: number; suffix?: number } | undefined {
+  if (!header) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return undefined;
+  const [, start, end] = match;
+  if (start === "" && end === "") return undefined;
+  if (start === "") return { suffix: Number(end) };
+  const offset = Number(start);
+  if (end === "") return { offset };
+  const last = Number(end);
+  return last < offset ? undefined : { offset, length: last - offset + 1 };
+}
+
 async function generationAllowed(env: Env, key: string): Promise<boolean> {
   const match = generationAsset.exec(key);
   if (!match) return true;
@@ -129,13 +146,23 @@ export default {
       headers.set("Cache-Control", cacheControlFor(key));
       return new Response(null, { headers });
     }
-    const object = await bucket.get(key);
+    // The shade payloads are read with Range: a route wants ~8 slot blocks out
+    // of a multi-megabyte file. Pass the range through to R2 and answer 206.
+    const range = parseByteRange(request.headers.get("range"));
+    const object = await bucket.get(key, range ? { range } : undefined);
     // Do not cache a miss: R2 can become immediately consistent after an
     // upload, while an intermediary-cached 404 would hide the new object.
     if (!object) return new Response("Not found", { status: 404, headers: new Headers({ ...Object.fromEntries(headers), "Cache-Control": "no-store" }) });
     headers.set("Content-Type", key.endsWith(".json") ? "application/json" : "application/octet-stream");
     headers.set("ETag", object.httpEtag);
+    headers.set("Accept-Ranges", "bytes");
     headers.set("Cache-Control", cacheControlFor(key));
+    if (range && object.range && "offset" in object.range) {
+      const { offset, length } = object.range;
+      headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+      headers.set("Content-Length", String(length));
+      return new Response(object.body, { status: 206, headers });
+    }
     return new Response(object.body, { headers });
   },
 } satisfies ExportedHandler<Env>;
