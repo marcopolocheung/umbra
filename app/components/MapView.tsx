@@ -493,6 +493,13 @@ export default function MapView({
       center: [-73.9654, 40.7829],
       zoom: 13,
       maxTileCacheSize: 50,
+      // 6.x defaults this to 4, which splits vector tiles up to 4 zoom levels
+      // below maxZoom instead of overscaling them — more tile requests at high
+      // zoom, and (per its own docs) different label placement and different
+      // querySourceFeatures results, which the shadow renderer and the building
+      // snapper read. `undefined` is 5.x's behaviour: overscale from the
+      // source's maxzoom. Revisit as its own change.
+      zoomLevelsToOverscale: undefined,
       // A 3× phone would otherwise shade 9× its CSS pixels every frame, in the
       // basemap and in every shadow pass. At ≤ 2× MapLibre keeps tracking the
       // device ratio itself (monitor moves, browser zoom).
