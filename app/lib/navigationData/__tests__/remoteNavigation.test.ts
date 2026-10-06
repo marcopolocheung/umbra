@@ -9,13 +9,16 @@ import {
   clearNavigationCache,
   loadNavigationPointer,
   loadNavigationSelection,
+  loadNavigationShadeShard,
   loadNavigationStreetShard,
+  loadShadeSlotBlocks,
   navigationApiBase,
   selectNavigationShards,
   selectNavigationShardsForBoxes,
   zoneAround,
   type NavigationSnapshot,
 } from "../remoteNavigation";
+import type { NavigationShadeShardRef } from "../shardContract";
 
 const generation = "nyc-2026-09-18-abcdef123456";
 const nextGeneration = "nyc-2026-10-01-abcdef123456";
@@ -903,5 +906,112 @@ describe("navigation shard loading", () => {
     const pinned = await loadNavigationSelection(oldSnapshot, bbox, { fetchFn });
     expect(pinned?.streets.get("streets/cell-a.json")?.generation).toBe(generation);
     expect(pinned?.buildings.get("buildings/cell-b.json")?.generation).toBe(generation);
+  });
+});
+
+// ─── Shade table (L2a) ────────────────────────────────────────────────────────
+
+describe("navigation shade shard loading", () => {
+  const shadeBounds = { south: 40.73, west: -74.0, north: 40.76, east: -73.98 };
+  const segments: Array<[number, number]> = [
+    [101, 102],
+    [201, 202],
+  ];
+  const payload = new Uint8Array(segments.length * 768 * 2);
+  for (let i = 0; i < payload.length; i++) payload[i] = i % 256;
+
+  async function shadeIndexBody(gen: string) {
+    return {
+      version: 1,
+      dataset: "nyc-navigation",
+      generation: gen,
+      kind: "shade",
+      geometryBounds: shadeBounds,
+      supportBounds: shadeBounds,
+      slots: 768,
+      segments,
+      payload: {
+        key: "shades/cell-a.bin",
+        bytes: payload.byteLength,
+        sha256: await sha256Hex(payload),
+      },
+    };
+  }
+
+  async function shadeRef(gen: string): Promise<NavigationShadeShardRef> {
+    const indexBytes = new TextEncoder().encode(JSON.stringify(await shadeIndexBody(gen)));
+    return {
+      key: "shades/cell-a.json",
+      bytes: indexBytes.byteLength,
+      sha256: await sha256Hex(indexBytes),
+      geometryBounds: shadeBounds,
+      supportBounds: shadeBounds,
+      segments: segments.length,
+      slots: 768,
+      payloadKey: "shades/cell-a.bin",
+      payloadBytes: payload.byteLength,
+      payloadSha256: await sha256Hex(payload),
+    };
+  }
+
+  it("fetches and verifies the index, then range-fetches only the slots asked for", async () => {
+    const ref = await shadeRef(generation);
+    const indexBytes = new TextEncoder().encode(JSON.stringify(await shadeIndexBody(generation)));
+    const ranges: string[] = [];
+    const fetchFn = (async (url: unknown, init?: { headers?: Record<string, string> }) => {
+      const href = String(url);
+      if (href.endsWith("/shades/cell-a.json")) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => indexBytes.buffer.slice(0),
+        };
+      }
+      const range = init?.headers?.Range ?? "";
+      ranges.push(range);
+      const match = /bytes=(\d+)-(\d+)/.exec(range);
+      const start = Number(match?.[1] ?? 0);
+      const end = Number(match?.[2] ?? 0) + 1;
+      const slice = payload.slice(start, end);
+      return {
+        ok: true,
+        status: 206,
+        arrayBuffer: async () => slice.buffer.slice(0),
+      };
+    }) as unknown as typeof fetch;
+
+    const snapshot: NavigationSnapshot = {
+      generation,
+      base,
+      manifest: {} as NavigationSnapshot["manifest"],
+    };
+    const shard = await loadNavigationShadeShard(snapshot, ref, { fetchFn });
+    expect(shard.segments).toEqual(segments);
+
+    const blocks = await loadShadeSlotBlocks(snapshot, shard, [3, 3, 5], { fetchFn });
+    // One request per distinct slot.
+    expect(ranges).toHaveLength(2);
+    expect(ranges[0]).toBe(`bytes=${3 * segments.length * 2}-${4 * segments.length * 2 - 1}`);
+    expect(blocks.get(3)).toEqual(payload.slice(3 * 4, 4 * 4));
+    expect(blocks.get(5)).toEqual(payload.slice(5 * 4, 6 * 4));
+  });
+
+  it("rejects an index whose bytes disagree with the ref digest", async () => {
+    const ref = await shadeRef(generation);
+    const tampered = { ...ref, sha256: "f".repeat(64) };
+    const indexBytes = new TextEncoder().encode(JSON.stringify(await shadeIndexBody(generation)));
+    const fetchFn = (async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => indexBytes.buffer.slice(0),
+    })) as unknown as typeof fetch;
+    const snapshot: NavigationSnapshot = {
+      generation,
+      base,
+      manifest: {} as NavigationSnapshot["manifest"],
+    };
+    await expect(loadNavigationShadeShard(snapshot, tampered, { fetchFn })).rejects.toThrow(
+      /hash mismatch/,
+    );
   });
 });

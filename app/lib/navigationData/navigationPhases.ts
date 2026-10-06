@@ -66,6 +66,15 @@ export class NavigationPhases {
   buildingDecodeMs = 0;
   buildingConvertMs = 0;
   shadowIndexPrepMs = 0;
+  shadeIndexTransferMs = 0;
+  shadeIndexVerifyMs = 0;
+  shadeIndexDecodeMs = 0;
+  shadePayloadTransferMs = 0;
+  shadePayloadBytes = 0;
+  /** Shade indexes fetched (each names one cell's payload and segment columns). */
+  shadeShardsFetched = 0;
+  /** Segments the loaded shade indexes cover. */
+  shadeSegments = 0;
 
   /** Selected street refs answered by the decoded generation cache. */
   streetShardsServed = 0;

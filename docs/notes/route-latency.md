@@ -494,3 +494,49 @@ understatement**.
 phase breakdown (`window.__umbraMetrics.history[].phases`, available in any environment) is the
 one to plan L2 against: killing the sweep plus `shadowSample` takes a long route from 37 s to
 about 11 s.
+
+## L2a — precomputed per-edge shade (buildings + canopy)
+
+The H1 sweep is a static function of (edge, clock slot): the same building and canopy geometry
+answers the same question at the same hour every day. L2a computes it once, offline, and ships it
+as a lookup beside the street shards.
+
+**Artifact.** Per z14 cell, slot-major binary: 768 slots (12 representative days × 64 fifteen-minute
+clock slots, 05:00–20:45 America/New_York) × the cell's canonical undirected segments × 2 bytes
+`[left, right]`, each a 0–255 shadow fraction. A small JSON index beside each payload carries the
+segment columns and the payload's identity; a route range-fetches only the ~8 slot blocks its H1
+buckets snap to, so it pulls ~0.5 MB regardless of the table's total size.
+
+**Reuse, not a second model.** The build calls the app's own
+`createGeometryShadowField(...).sweep(...)` over the generation's building shards, the acquired OSM
+vegetation snapshot, and the acquired Meta/WRI CHMv2 COGs (read through the app's own
+`CanopyTileStore`, transport swapped to local files). Agreement with the live field is therefore
+true by construction; the only approximation is the slot model.
+
+**Same raster as the live field.** The build reads the `dataforgood-fb-data` CHMv2 COGs the
+`shadow-prep` acquisition froze; the browser reads `source.coop`'s republication. Checked on an NYC
+tile (`0320101103.tif`): identical content-length (76,557,388) and identical SHA-256 over both the
+first 1 MiB and the last 64 KiB — the same object, so the table's canopy is the canopy the live
+field resolves.
+
+**Measured on one real cell** (`z14-4827-6164`, Brooklyn; 6,651 segments, 10.2 MB payload,
+`NAVIGATION_PREP_ROOT=~/shade-prep-data-nyc-navigation`):
+
+| Check | Result |
+|---|---|
+| Compute one cell | ~3.1 s (incl. tsx start), buildings + OSM canopy + CHMv2 raster |
+| Determinism | build twice → identical sha256 `75ed3a474e5d…` |
+| Raster contributes | dropping the CHMv2 dir changes the digest |
+| Table vs live sweep | mean **0.0100**, p90 **0**, worst **1.00** (6,000 samples: 100 segments × 30 actual instants × 2 sides) |
+| `build` + `verify` | generation `nyc-2026-09-18-0618e6f34382` reproduces from final bytes; budgets and per-borough requests `ok` |
+
+The worst case is a single sidewalk point flipping across a small crown's shadow edge between the
+representative day and the query instant — the 15-minute snap and mid-month day are the whole
+source of the delta, and p90 = 0 says 90% of samples agree exactly. This is the reported
+distribution L2's acceptance asks for, not a pass/fail gate.
+
+**Outstanding.** The full-city build (386 cells) has not been run here — it is one unattended
+`navigation-prep shade --execute` (per-cell child processes, default 8 concurrent, resumable,
+`work/shade-progress.json` + `work/shade-build.log`). The #286 production phase re-measurement is
+the end-to-end proof and lands with that build. Sheds (L2b, #289) are deferred: no frozen permit
+snapshot exists yet, and their agreement delta is expected on shed-covered sidewalks only.

@@ -63,6 +63,52 @@ export interface NavigationBuildingShardRef {
   maxHeightM: number;
 }
 
+/**
+ * One z14 cell's precomputed per-edge shade table (Track L, L2a).
+ *
+ * The ref points at a small JSON **index** and, through it, a large binary
+ * **payload**. The index carries the cell's canonical segment list (the column
+ * order of the payload) and the payload's identity; the payload is slot-major
+ * bytes the client range-fetches one time block at a time. Both live under the
+ * same z14 grid as the street shards, so a route that selects a street shard
+ * selects its shade shard the same way.
+ */
+export interface NavigationShadeShardRef {
+  /** Key of the JSON index, `shades/<grid>-<x>-<y>.json`. */
+  key: string;
+  /** Bytes of the JSON index. */
+  bytes: number;
+  sha256: string;
+  geometryBounds: GeoBounds;
+  supportBounds: GeoBounds;
+  /** Segments in the payload's column order. */
+  segments: number;
+  /** Slots per segment (768). */
+  slots: number;
+  /** Key of the binary payload, `shades/<grid>-<x>-<y>.bin`. */
+  payloadKey: string;
+  payloadBytes: number;
+  payloadSha256: string;
+}
+
+/** The parsed JSON index of one shade shard. */
+export interface NavigationShadeShard {
+  version: 1;
+  dataset: "nyc-navigation";
+  generation: string;
+  kind: "shade";
+  geometryBounds: GeoBounds;
+  supportBounds: GeoBounds;
+  slots: number;
+  /** Canonical undirected segments, ascending, in payload column order. */
+  segments: Array<[number, number]>;
+  payload: {
+    key: string;
+    bytes: number;
+    sha256: string;
+  };
+}
+
 export interface NavigationManifest {
   version: 1;
   dataset: "nyc-navigation";
@@ -75,9 +121,12 @@ export interface NavigationManifest {
   noticesSha256: string;
   streetShards: NavigationStreetShardRef[];
   buildingShards: NavigationBuildingShardRef[];
+  /** Absent on generations built before L2a; present once the table ships. */
+  shadeShards?: NavigationShadeShardRef[];
   budgets: {
     streetShardBytes: number;
     buildingShardBytes: number;
+    shadeShardBytes: number;
     totalBytes: number;
   };
 }
@@ -166,12 +215,26 @@ export const MAX_NOTICES_BYTES = 128_000;
  */
 export const MAX_STREET_SHARD_BYTES = 5_000_000;
 export const MAX_BUILDING_SHARD_BYTES = 5_000_000;
-export const MAX_TOTAL_BYTES = 2_000_000_000;
+/**
+ * The shade payload is a different order of object from a street shard: one
+ * cell is 768 slots × its segments × 2 bytes, and the densest z14 cell in the
+ * first citywide generation holds a few thousand segments, so ~10–13 MB. The
+ * cap leaves headroom for source growth rather than being a tuning knob.
+ */
+export const MAX_SHADE_SHARD_BYTES = 32_000_000;
+/**
+ * Citywide total: the first generation measured 855.4 MB of streets + buildings;
+ * the L2a shade table adds on the order of 2.5 GB (768 slots × 1.6 M segments ×
+ * 2 bytes). 6 GB leaves ~1.7× headroom before the next measured adjustment.
+ */
+export const MAX_TOTAL_BYTES = 6_000_000_000;
 
 const generationPattern = /^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const streetShardKeyPattern = /^streets\/[a-z0-9-]{1,64}\.json$/;
 const buildingShardKeyPattern = /^buildings\/[a-z0-9-]{1,64}\.json$/;
+const shadeIndexKeyPattern = /^shades\/[a-z0-9-]{1,64}\.json$/;
+const shadePayloadKeyPattern = /^shades\/[a-z0-9-]{1,64}\.bin$/;
 const noticesPathPattern = /^navigation\/nyc\/nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}\/notices\.json$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -398,6 +461,60 @@ function parseBuildingShardRef(value: unknown): NavigationBuildingShardRef {
   };
 }
 
+function parseShadeShardRef(value: unknown): NavigationShadeShardRef {
+  if (!isRecord(value)) throw new Error("invalid NYC navigation shade shard ref");
+  assertKeys(
+    value,
+    [
+      "key",
+      "bytes",
+      "sha256",
+      "geometryBounds",
+      "supportBounds",
+      "segments",
+      "slots",
+      "payloadKey",
+      "payloadBytes",
+      "payloadSha256",
+    ],
+    "invalid NYC navigation shade shard ref",
+  );
+  if (
+    typeof value.key !== "string" ||
+    !shadeIndexKeyPattern.test(value.key) ||
+    !isPositiveInt(value.bytes) ||
+    typeof value.payloadKey !== "string" ||
+    !shadePayloadKeyPattern.test(value.payloadKey) ||
+    !isPositiveInt(value.payloadBytes) ||
+    value.payloadBytes > MAX_SHADE_SHARD_BYTES ||
+    !isPositiveInt(value.segments) ||
+    !isPositiveInt(value.slots)
+  )
+    throw new Error("invalid NYC navigation shade shard ref");
+  const geometryBounds = parseGeoBounds(
+    value.geometryBounds,
+    "invalid NYC navigation shade shard ref",
+  );
+  const supportBounds = parseGeoBounds(
+    value.supportBounds,
+    "invalid NYC navigation shade shard ref",
+  );
+  if (!boundsContain(supportBounds, geometryBounds))
+    throw new Error("invalid NYC navigation shade shard ref");
+  return {
+    key: value.key,
+    bytes: value.bytes,
+    sha256: parseSha256(value.sha256, "invalid NYC navigation shade shard ref"),
+    geometryBounds,
+    supportBounds,
+    segments: value.segments,
+    slots: value.slots,
+    payloadKey: value.payloadKey,
+    payloadBytes: value.payloadBytes,
+    payloadSha256: parseSha256(value.payloadSha256, "invalid NYC navigation shade shard ref"),
+  };
+}
+
 export function parseNavigationManifest(value: unknown, generation: string): NavigationManifest {
   if (!isRecord(value)) throw new Error("invalid NYC navigation manifest");
   assertKeys(
@@ -414,6 +531,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
       "noticesSha256",
       "streetShards",
       "buildingShards",
+      "shadeShards",
       "budgets",
     ],
     "invalid NYC navigation manifest",
@@ -430,6 +548,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     value.streetShards.length === 0 ||
     !Array.isArray(value.buildingShards) ||
     value.buildingShards.length === 0 ||
+    (value.shadeShards !== undefined && !Array.isArray(value.shadeShards)) ||
     typeof value.recipe !== "string" ||
     value.recipe.length === 0 ||
     typeof value.noticesPath !== "string" ||
@@ -448,10 +567,12 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
   if (
     !isRecord(budgets) ||
     Object.keys(budgets).some(
-      (key) => !["streetShardBytes", "buildingShardBytes", "totalBytes"].includes(key),
+      (key) =>
+        !["streetShardBytes", "buildingShardBytes", "shadeShardBytes", "totalBytes"].includes(key),
     ) ||
     !isNonNegativeInt(budgets.streetShardBytes) ||
     !isNonNegativeInt(budgets.buildingShardBytes) ||
+    (budgets.shadeShardBytes !== undefined && !isNonNegativeInt(budgets.shadeShardBytes)) ||
     !isNonNegativeInt(budgets.totalBytes) ||
     budgets.streetShardBytes + budgets.buildingShardBytes > MAX_TOTAL_BYTES ||
     budgets.totalBytes > MAX_TOTAL_BYTES
@@ -460,14 +581,24 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
 
   const streetShards = value.streetShards.map(parseStreetShardRef);
   const buildingShards = value.buildingShards.map(parseBuildingShardRef);
+  const shadeShards = (value.shadeShards as unknown[] | undefined)?.map(parseShadeShardRef) ?? [];
   const streetKeys = new Set(streetShards.map((ref) => ref.key));
   const buildingKeys = new Set(buildingShards.map((ref) => ref.key));
-  if (streetKeys.size !== streetShards.length || buildingKeys.size !== buildingShards.length)
+  const shadeKeys = new Set(shadeShards.map((ref) => ref.key));
+  const shadePayloadKeys = new Set(shadeShards.map((ref) => ref.payloadKey));
+  if (
+    streetKeys.size !== streetShards.length ||
+    buildingKeys.size !== buildingShards.length ||
+    shadeKeys.size !== shadeShards.length ||
+    shadePayloadKeys.size !== shadeShards.length
+  )
     throw new Error("duplicate NYC navigation shard key");
   if (streetShards.some((ref) => !boundsContain(supportBounds, ref.supportBounds)))
     throw new Error("NYC navigation street shard outside dataset support");
   if (buildingShards.some((ref) => !boundsContain(supportBounds, ref.supportBounds)))
     throw new Error("NYC navigation building shard outside dataset support");
+  if (shadeShards.some((ref) => !boundsContain(supportBounds, ref.supportBounds)))
+    throw new Error("NYC navigation shade shard outside dataset support");
 
   return {
     version: 1,
@@ -481,10 +612,103 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     noticesSha256: parseSha256(value.noticesSha256, "invalid NYC navigation manifest"),
     streetShards,
     buildingShards,
+    ...(value.shadeShards !== undefined ? { shadeShards } : {}),
     budgets: {
       streetShardBytes: budgets.streetShardBytes,
       buildingShardBytes: budgets.buildingShardBytes,
+      shadeShardBytes: budgets.shadeShardBytes ?? 0,
       totalBytes: budgets.totalBytes,
+    },
+  };
+}
+
+// ─── Shade shard index ──────────────────────────────────────────────────────
+
+export function parseNavigationShadeShard(
+  value: unknown,
+  ref: NavigationShadeShardRef,
+  expectedGeneration?: string,
+): NavigationShadeShard {
+  if (!isRecord(value)) throw new Error(`invalid NYC navigation shade shard (${ref.key})`);
+  assertKeys(
+    value,
+    ["version", "dataset", "generation", "kind", "geometryBounds", "supportBounds", "slots", "segments", "payload"],
+    `invalid NYC navigation shade shard (${ref.key})`,
+  );
+  if (
+    value.version !== 1 ||
+    value.dataset !== "nyc-navigation" ||
+    typeof value.generation !== "string" ||
+    (expectedGeneration !== undefined && value.generation !== expectedGeneration) ||
+    value.kind !== "shade" ||
+    !isPositiveInt(value.slots) ||
+    value.slots !== ref.slots ||
+    !Array.isArray(value.segments) ||
+    value.segments.length !== ref.segments ||
+    !isRecord(value.payload)
+  )
+    throw new Error(`invalid NYC navigation shade shard (${ref.key})`);
+  const rawSegments = value.segments as unknown[];
+
+  const generation = parseGeneration(
+    value.generation,
+    `invalid NYC navigation shade shard (${ref.key})`,
+  );
+  const geometryBounds = parseGeoBounds(
+    value.geometryBounds,
+    `invalid NYC navigation shade shard (${ref.key})`,
+  );
+  const supportBounds = parseGeoBounds(
+    value.supportBounds,
+    `invalid NYC navigation shade shard (${ref.key})`,
+  );
+  if (!boundsContain(supportBounds, geometryBounds))
+    throw new Error(`invalid NYC navigation shade shard (${ref.key})`);
+
+  // Segments are canonical undirected keys, strictly ascending — the payload's
+  // column order, and the only thing tying a byte pair to a graph edge.
+  const segments = rawSegments.map((entry, index) => {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      !isPositiveInt(entry[0]) ||
+      !isPositiveInt(entry[1]) ||
+      entry[0] >= entry[1]
+    )
+      throw new Error(`invalid NYC navigation shade segment (${ref.key})`);
+    if (index > 0) {
+      const previous = rawSegments[index - 1] as number[];
+      if (previous[0] > entry[0] || (previous[0] === entry[0] && previous[1] >= entry[1]))
+        throw new Error(`unordered NYC navigation shade segment (${ref.key})`);
+    }
+    return [entry[0], entry[1]] as [number, number];
+  });
+
+  const payload = value.payload;
+  assertKeys(payload, ["key", "bytes", "sha256"], `invalid NYC navigation shade shard (${ref.key})`);
+  if (
+    payload.key !== ref.payloadKey ||
+    payload.bytes !== ref.payloadBytes ||
+    typeof payload.sha256 !== "string" ||
+    payload.sha256 !== ref.payloadSha256
+  )
+    throw new Error(`invalid NYC navigation shade payload ref (${ref.key})`);
+  if (ref.payloadBytes !== ref.segments * ref.slots * 2)
+    throw new Error(`NYC navigation shade payload size mismatch (${ref.key})`);
+
+  return {
+    version: 1,
+    dataset: "nyc-navigation",
+    generation,
+    kind: "shade",
+    geometryBounds,
+    supportBounds,
+    slots: value.slots,
+    segments,
+    payload: {
+      key: ref.payloadKey,
+      bytes: ref.payloadBytes,
+      sha256: parseSha256(ref.payloadSha256, `invalid NYC navigation shade payload (${ref.key})`),
     },
   };
 }

@@ -18,7 +18,7 @@
     "publish": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts publish",
     "publish:execute": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts publish --execute",
     "publish:rollback": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts publish --rollback",
-    "test": "tsx --test test/fixture.test.ts test/buildings.test.ts test/sharding.test.ts test/buildDeterminism.test.ts test/publish.test.ts && vitest run --config vitest.parity.config.ts"
+    "test": "tsx --test test/fixture.test.ts test/buildings.test.ts test/sharding.test.ts test/buildDeterminism.test.ts test/publish.test.ts test/shade.test.ts && vitest run --config vitest.parity.config.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

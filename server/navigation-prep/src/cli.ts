@@ -13,13 +13,14 @@ import { buildFixtureGeneration } from "./fixture";
 import { publishExecute, publishPlan, publishRollback } from "./publish";
 import { normalize } from "./normalize";
 import { navigationAcquisitionPlan } from "./sources";
+import { defaultCanopyInputs, shadeAgreement, shadeCellMain, shadeExecute } from "./shade";
 import { validate } from "./validate";
 import { verifyGeneration } from "./verify";
 import { writeEvidence } from "./evidence";
 import type { GridZoom } from "./boundary";
 
 const usage =
-  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|verify [generation]|publish [generation] [--execute|--rollback]>";
+  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|shade [--plan|--execute] [--grid z13|z14] [--concurrency N] [--cells a,b]|verify [generation]|publish [generation] [--execute|--rollback]>";
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -103,6 +104,47 @@ async function main(): Promise<void> {
     const reportOnly = has("--report-only");
     const options: BuildOptions = { grid, dryRun: has("--dry-run") || reportOnly, reportOnly };
     await writeEvidence(command, await build(options));
+    return;
+  }
+  if (command === "shade") {
+    const rawGrid = has("--grid") ? flags[flags.indexOf("--grid") + 1] : "14";
+    const gridValue = rawGrid.replace(/^z/, "");
+    let grid: GridZoom = 14;
+    if (gridValue === "13") grid = 13;
+    else if (gridValue === "14") grid = 14;
+    else throw new Error("--grid requires z13|z14");
+
+    // Internal worker mode: one cell, no evidence record (the parent owns it).
+    const cell = has("--cell") ? flags[flags.indexOf("--cell") + 1] : undefined;
+    if (cell) {
+      await shadeCellMain(cell, defaultCanopyInputs());
+      return;
+    }
+
+    // L2 acceptance: table vs live sweep on one built cell.
+    if (has("--agreement")) {
+      const target = flags[flags.indexOf("--agreement") + 1];
+      const summary = await shadeAgreement(target, defaultCanopyInputs());
+      process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+      return;
+    }
+
+    const only = has("--cells")
+      ? flags[flags.indexOf("--cells") + 1].split(",").filter(Boolean)
+      : undefined;
+    const concurrency = has("--concurrency") ? Number(flags[flags.indexOf("--concurrency") + 1]) : 8;
+    if (!Number.isInteger(concurrency) || concurrency < 1)
+      throw new Error("--concurrency requires a positive integer");
+    const dryRun = has("--plan") || has("--dry-run");
+    const progress = await shadeExecute({ grid, concurrency, dryRun, only });
+    if (dryRun) process.stdout.write(`${JSON.stringify(progress, null, 2)}\n`);
+    else await writeEvidence(command, progress);
+    if (progress.failed.length > 0) {
+      process.stderr.write(
+        `shade failed for ${progress.failed.length} cell(s): ${progress.failed.join(", ")}\n`,
+      );
+      process.exitCode = 1;
+    }
     return;
   }
   if (command === "verify") {
