@@ -1821,15 +1821,20 @@ export function snapRouteStopsToReachableEdges(
     const reachableToDestination = bfsReachable(graph, ids[i + 1], travelMode);
     if (reachableToDestination.has(ids[i])) continue;
 
-    if (ids[i] < 0) removeVirtualNode(graph, ids[i]);
-    const fallback = snapToReachableEdge(
-      coords[i],
-      graph,
-      reachableToDestination,
-      virtualIdFor(i),
-      travelMode
-    );
-    const label = describeStop(i, coords.length);
+    // Move the stop that sits in the smaller piece of the network. Trusting
+    // the later stop's snap dragged the earlier one to whatever fragment the
+    // later stop happened to be nearest — a 2-node footway cut off by tagging,
+    // 1.4 km away in production (#305) — when moving the fragment's stop a few
+    // metres onto the street grid connects them. Equal pieces keep the old
+    // behaviour (move the earlier stop). A via stop moved forward is re-checked
+    // against its predecessor on the next iteration, as before.
+    const reachableFromStop = bfsReachable(graph, ids[i], travelMode);
+    const moved = reachableToDestination.size < reachableFromStop.size ? i + 1 : i;
+    const target = moved === i ? reachableToDestination : reachableFromStop;
+
+    if (ids[moved] < 0) removeVirtualNode(graph, ids[moved]);
+    const fallback = snapToReachableEdge(coords[moved], graph, target, virtualIdFor(moved), travelMode);
+    const label = describeStop(moved, coords.length);
     if (!fallback) {
       throw new Error(
         `No connected walkable streets found near ${label}. Move it closer to a public street or footpath.`
@@ -1840,8 +1845,8 @@ export function snapRouteStopsToReachableEdges(
         `${label} is ${Math.round(fallback.distM)} m from the nearest connected walkable street. Move it closer to a public street or footpath.`
       );
     }
-    ids[i] = fallback.id;
-    snapDistancesM[i] = fallback.distM;
+    ids[moved] = fallback.id;
+    snapDistancesM[moved] = fallback.distM;
   }
 
   return { ids, snapDistancesM };

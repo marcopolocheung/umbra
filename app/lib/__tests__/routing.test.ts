@@ -784,6 +784,34 @@ describe("snapRouteStopsToReachableEdges", () => {
     expect(dijkstra(graph, result.ids[1], result.ids[2], 0)).not.toBeNull();
   });
 
+  it("moves a destination off a footway fragment instead of dragging the start to it (#305)", () => {
+    // The destination is nearest the 2-node island; the start sits on the main
+    // street. Trusting the destination's snap moved the *start* toward the
+    // island — 1.4 km in production — and failed the route. The stop in the
+    // smaller piece of the network is the one to move.
+    // Production's shape: the street the start is on is part of a large
+    // network (59k nodes there), the fragment is 2 nodes.
+    const graph = makeNearbyDisconnectedWaypointGraph();
+    for (let k = 0; k < 4; k++) {
+      const id = 10 + k;
+      graph.nodes.set(id, { id, lat: -0.001 * (k + 1), lon: 0.0 });
+      const from = k === 0 ? 1 : id - 1;
+      const d = haversineMeters([0, from === 1 ? 0 : -0.001 * k], [0, -0.001 * (k + 1)]);
+      graph.adj.get(from)!.push({ toId: id, distanceM: d, shadowFactor: 0 });
+      graph.adj.set(id, [{ toId: from, distanceM: d, shadowFactor: 0 }]);
+    }
+    const stops: [number, number][] = [
+      [0.001, 0],
+      [0.010, 0.0002],
+    ];
+
+    const result = snapRouteStopsToReachableEdges(stops, graph, { maxSnapDistanceM: 50 });
+
+    expect(result.snapDistancesM[0]).toBeLessThan(5);
+    expect(result.snapDistancesM[1]).toBeLessThan(50);
+    expect(dijkstra(graph, result.ids[0], result.ids[1], 0)).not.toBeNull();
+  });
+
   it("fails fast when a disconnected via stop is too far from the route component", () => {
     const graph = makeNearbyDisconnectedWaypointGraph();
     const stops: [number, number][] = [
