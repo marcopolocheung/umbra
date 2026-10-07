@@ -65,6 +65,20 @@ the previous pointer serving:
 5. promotes `navigation/nyc/current.json` strictly last, then verifies the
    promoted pointer by re-download.
 
+**Before `--execute`, run the shade audit.** It is the gate (#294, #300): it recomputes the
+generation through the app's own providers and fails a table that disagrees with them:
+
+```sh
+NAVIGATION_PREP_ROOT=$HOME/shade-prep-data-nyc-navigation SHADE_AUDIT_GENERATION=<generation> \
+NODE_OPTIONS=--max-old-space-size=8192 npm run audit:shade -- shadeAudit   # ~5 min, 386 cells
+```
+
+`routeReplay` (same command, second file) prices two known routes from the table, for a quick
+"does it look like a city" check. A `shade --execute` run needs about 4.6 GB for the parent
+plus ~0.5 GB per worker, and up to 6 GB for the densest cell (`z14-4825-6166`, #299). On a 15 GB
+machine use `--concurrency 6`, or resume a failed cell with `--concurrency 1`; resuming skips
+cells already built.
+
 Every run writes a publication report under `$NAVIGATION_PREP_ROOT/evidence/`
 (mode, generation, public base, manifest/pointer SHA-256, object counts and
 bytes, specimens, reconciliation, the previous pointer, and the exact
