@@ -649,3 +649,32 @@ The build ran the same mask code, so the table was rebuilt on #301 before it was
 **Known limit of the audit:** it compares the table with the app, so an assumption both share is
 invisible to it. Two examples: the 15th of the month as the representative day, and the CHMv2
 raster's own accuracy.
+
+## Search cap 8 and transit prefetch (2026-10-07)
+
+After #303 the shade work is gone (`fieldReady` 7 ms, `shadowSample` 74 ms on the owner's
+machine), and **the search is the cost**: 10.2 of 18 s on the owner's LES → Kips Bay walk
+(8.4 km, 102k nodes, three near-identical options at 59–60% shade).
+
+**Search cap.** `paretoRoutes` keeps up to `maxLabelsPerNode` labels per node (library
+default 20), and H1's eight 15-minute buckets multiply the near-ties. Measured offline on the
+published table, search only:
+
+| setting | LES → Kips Bay | UES → Murray Hill | UWS → FiDi |
+|---|---:|---:|---:|
+| shipped (8 buckets, cap 20) | 6.6 s | 3.5 s | 7.6 s |
+| **cap 8** | **2.5 s** | **1.2 s** | **2.2 s** |
+| cap 4 | 1.4 s | 0.7 s | 1.2 s |
+| no time buckets | 1.1 s | 0.9 s | 1.5 s |
+
+At cap 8 the shortest route is unchanged on all three, the other options move by a few points
+of shade, and UWS → FiDi loses its 9.9 km most-shadowed detour. **Owner's call (2026-10-07):
+cap 8**, set from `useRouting` (`SEARCH_LABELS_PER_NODE`). The library default and the parity
+oracle stay at 20.
+
+**Transit prefetch.** `fetchBestTrainGraph` (1.6–1.8 s of a 2.3–2.5 s `transit` stage) now
+starts before the walk search, which runs in the worker, and is awaited where it always was.
+
+**On this box, LES → Kips Bay:** total 18.9–19.1 s → 9.6–11.2 s; `search` 12.0 → 4.2–4.4 s;
+`transit` 2.5 → 0.6 s. The next critical-path item is `shadeTableLoad` (0.4–2.1 s, noisy): the
+20 shade indexes are hashed and parsed on the main thread after the street merge.

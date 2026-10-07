@@ -144,6 +144,8 @@ const TIME_BUCKET_MS = 15 * 60 * 1000;
  * `docs/notes/time-aware-routing-h1.md`).
  */
 const MAX_TIME_BUCKETS = 8;
+/** Pareto labels kept per node in the walk search (library default 20). */
+const SEARCH_LABELS_PER_NODE = 8;
 
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
@@ -1135,6 +1137,32 @@ export function useRouting({
             },
           });
         let snappedStops: ReturnType<typeof snapRouteStopsToReachableEdges>;
+        // The train graph is a network fetch the walk search does not need, and
+        // the walk search runs in a worker — so the fetch rides alongside it
+        // instead of after it (it was 1.6 s of a 2.3 s transit stage). Its
+        // result is awaited where it always was; a route that turns out
+        // partial simply leaves it unread.
+        const transitPrefetch = straightLineDistM > MIN_TRANSIT_DISTANCE_M
+          ? (() => {
+              const trainPadding = Math.max(padding, 0.015);
+              const tTransitFetch = performance.now();
+              // Started inside `then` so even a synchronous throw becomes a
+              // rejection the transit branch's catch handles, as before.
+              const graphPromise = Promise.resolve().then(() => fetchBestTrainGraph(
+                Math.min(a[1], b[1]) - trainPadding,
+                Math.min(a[0], b[0]) - trainPadding,
+                Math.max(a[1], b[1]) + trainPadding,
+                Math.max(a[0], b[0]) + trainPadding,
+                calcSignal,
+              )).then((graph) => {
+                transitFetchMs += performance.now() - tTransitFetch;
+                return graph;
+              });
+              graphPromise.catch(() => {});
+              void Promise.resolve().then(ensureZoneLookup).catch(() => {});
+              return graphPromise;
+            })()
+          : null;
         let forcedPartial: PartialRouteInfo | null = null;
         try {
           snappedStops = snapStops(routeStops);
@@ -1178,6 +1206,11 @@ export function useRouting({
         const travelMode = travelModeRef.current;
         const opts = {
           crossingPenaltyM: CROSSING_PENALTY_M,
+          // Candidate routes kept per corner. The library default (20) made a
+          // long H1 search 6.6 s; 8 measured 2.5 s with the same shortest route
+          // and the other options within a few points of shade (owner's call,
+          // 2026-10-07 — see docs/notes/route-latency.md, "search cap").
+          maxLabelsPerNode: SEARCH_LABELS_PER_NODE,
           solarIntensity,
           straightLineDistM,
           travelMode,
@@ -1479,28 +1512,7 @@ export function useRouting({
           transitTried = true;
           try {
             updateProgress({ message: "Checking transit option" });
-            const trainPadding = Math.max(padding, 0.015);
-            const trainSouth = Math.min(a[1], b[1]) - trainPadding;
-            const trainNorth = Math.max(a[1], b[1]) + trainPadding;
-            const trainWest = Math.min(a[0], b[0]) - trainPadding;
-            const trainEast = Math.max(a[0], b[0]) + trainPadding;
-
-            if (import.meta.env.DEV)
-              console.log("[transit] Fetching train graph for bbox:", {
-                trainSouth,
-                trainWest,
-                trainNorth,
-                trainEast,
-              });
-            const tTransitFetch = performance.now();
-            const trainGraph = await fetchBestTrainGraph(
-              trainSouth,
-              trainWest,
-              trainNorth,
-              trainEast,
-              calcSignal,
-            );
-            transitFetchMs += performance.now() - tTransitFetch;
+            const trainGraph = await transitPrefetch!;
             if (trainGraph) {
               transitStationCount = trainGraph.stations.size;
               transitLineCount = trainGraph.lineColors.size;
