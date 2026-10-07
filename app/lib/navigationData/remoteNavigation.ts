@@ -379,10 +379,21 @@ export async function loadShadeSlotBlocks(
   const length = shadeSlotByteLength(segments);
   const blocks = new Map<number, Uint8Array>();
 
+  // Consecutive slots share one range: a route's buckets are adjacent
+  // 15-minute slots, and the payload is slot-major, so their blocks are one
+  // contiguous byte run. One request per run, not per slot — 160 small range
+  // requests queued 2.4 s behind the street fetch on a 20-cell route.
+  const runs: Array<[first: number, last: number]> = [];
+  for (const slot of [...new Set(slots)].sort((a, b) => a - b)) {
+    const run = runs[runs.length - 1];
+    if (run && slot === run[1] + 1) run[1] = slot;
+    else runs.push([slot, slot]);
+  }
+
   await Promise.all(
-    [...new Set(slots)].map(async (slot) => {
-      const start = shadeSlotByteOffset(slot, segments);
-      const end = start + length;
+    runs.map(async ([first, last]) => {
+      const start = shadeSlotByteOffset(first, segments);
+      const end = shadeSlotByteOffset(last, segments) + length;
       const now = () => globalThis.performance?.now?.() ?? 0;
       const tTransfer = now();
       const response = await fetchFn(url, {
@@ -397,18 +408,21 @@ export async function loadShadeSlotBlocks(
       }
       if (!response.ok)
         throw new Error(`NYC navigation shade payload request failed (${shard.payload.key}, ${response.status})`);
-      let block: Uint8Array;
+      let window: Uint8Array;
       if (response.status === 206) {
-        if (bytes.byteLength !== length)
+        if (bytes.byteLength !== end - start)
           throw new Error(`NYC navigation shade payload range mismatch (${shard.payload.key})`);
-        block = bytes;
+        window = bytes;
       } else {
         // The server ignored the range and sent the whole object.
-        block = bytes.subarray(start, end);
-        if (block.byteLength !== length)
+        window = bytes.subarray(start, end);
+        if (window.byteLength !== end - start)
           throw new Error(`NYC navigation shade payload is short (${shard.payload.key})`);
       }
-      blocks.set(slot, block);
+      for (let slot = first; slot <= last; slot++) {
+        const offset = (slot - first) * length;
+        blocks.set(slot, window.subarray(offset, offset + length));
+      }
     }),
   );
   return blocks;
