@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createShadeTableView, shadeSlotsForDeparture } from "../shadeTable";
+import { createShadeTableView, departureFromShadeTable, shadeSlotsForDeparture } from "../shadeTable";
 import { SHADE_FULL, shadeSlotIndex } from "../shadeSlots";
 import type { NavigationShadeShard } from "../shardContract";
 
@@ -81,6 +81,40 @@ describe("shadeSlotsForDeparture", () => {
     const departure = new Date(Date.UTC(2026, 6, 15, 17, 5));
     const { perBucket } = shadeSlotsForDeparture(departure, 1, -300);
     expect(perBucket[0]).toBe(shadeSlotIndex(6, 28));
+  });
+});
+
+describe("departureFromShadeTable", () => {
+  const segments: Array<[number, number]> = [
+    [3, 9],
+    [10, 14],
+  ];
+  // 2026-07-15 16:00 EDT → July (month 6), slot (960 − 300) / 15 = 44.
+  const afternoon = new Date("2026-07-15T20:00:00Z");
+  const view = createShadeTableView([
+    {
+      shard: shard(segments, "shades/a.bin"),
+      blocks: new Map([[shadeSlotIndex(6, 44), block(segments, 51, 204)]]),
+    },
+  ]);
+
+  it("reads the departure slot, as a confident static-building sample", () => {
+    const [first, second] = departureFromShadeTable(view, ["3,9", "10,14"], afternoon, 40.755, -73.995);
+    expect(first.left).toBeCloseTo(0.2, 10);
+    expect(first.right).toBeCloseTo(0.8, 10);
+    expect(second.left).toBeCloseTo(0.2, 10);
+    expect(first.source).toBe("nyc-static");
+    expect(first.buildingSource).toBe("nyc-static");
+    // Above LOW_CONFIDENCE, so the route never falls back to the canvas.
+    expect(first.confidence).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("reads night as fully shaded and certain", () => {
+    const night = new Date("2026-07-15T06:00:00Z"); // 02:00 EDT
+    const [edge] = departureFromShadeTable(view, ["3,9"], night, 40.755, -73.995);
+    expect(edge.source).toBe("none");
+    expect(edge.confidence).toBe(1);
+    expect(edge.left).toBe(1);
   });
 });
 
