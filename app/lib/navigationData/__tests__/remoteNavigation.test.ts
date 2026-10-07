@@ -994,6 +994,18 @@ describe("navigation shade shard loading", () => {
     expect(ranges[0]).toBe(`bytes=${3 * segments.length * 2}-${4 * segments.length * 2 - 1}`);
     expect(blocks.get(3)).toEqual(payload.slice(3 * 4, 4 * 4));
     expect(blocks.get(5)).toEqual(payload.slice(5 * 4, 6 * 4));
+
+    // Consecutive slots — a route's buckets are adjacent 15-minute slots —
+    // arrive as one range per run, not one per slot (160 requests became 20).
+    ranges.length = 0;
+    const run = await loadShadeSlotBlocks(snapshot, shard, [6, 4, 5, 9], { fetchFn });
+    expect(ranges).toEqual([
+      `bytes=${4 * segments.length * 2}-${7 * segments.length * 2 - 1}`,
+      `bytes=${9 * segments.length * 2}-${10 * segments.length * 2 - 1}`,
+    ]);
+    for (const slot of [4, 5, 6, 9]) {
+      expect(run.get(slot)).toEqual(payload.slice(slot * 4, (slot + 1) * 4));
+    }
   });
 
   it("rejects an index whose bytes disagree with the ref digest", async () => {
