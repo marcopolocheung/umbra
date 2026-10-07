@@ -250,6 +250,26 @@ describe("canopy height field — footprint subtraction", () => {
     expect(masked.shadeFor(0, Math.PI / 4, JULY).opacityAt(...offset(12))).toBeGreaterThan(0);
   });
 
+  it("leaves the patch alone for a building beside it, on the same rows", () => {
+    // A footprint wholly west of the patch clamps to an empty span. An empty span
+    // must fill nothing — but on the top rows its end index went negative, and a
+    // negative `fill` end counts from the array's end, so one building beside a
+    // patch erased nearly all of its canopy (#300).
+    const field = createCanopyHeightField(oneTallPixel());
+    const edgeM = (SIZE / 2) * RES_M;
+    // On the patch's first rows, far enough west that `row·width + end` < 0.
+    const masked = field.masked([
+      {
+        ring: ringAround(6).map(
+          ([lng, lat]) => [lng - (edgeM + 600) / 84_000, lat + (edgeM - 8) / 111_195] as [number, number],
+        ),
+      },
+    ]);
+
+    expect(masked.maxHeightM).toBe(TREE_M);
+    expect(masked.shadeFor(0, Math.PI / 4, JULY).opacityAt(...offset(12))).toBeGreaterThan(0);
+  });
+
   it("hands back the same field when there is nothing to subtract", () => {
     const field = createCanopyHeightField(oneTallPixel());
     expect(field.masked([])).toBe(field);

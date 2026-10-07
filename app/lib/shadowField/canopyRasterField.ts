@@ -456,6 +456,9 @@ function subtractFootprints(
       for (let k = 0; k + 1 < xs.length; k += 2) {
         const from = Math.max(0, Math.ceil(xs[k] - 0.5));
         const to = Math.min(width - 1, Math.floor(xs[k + 1] - 0.5));
+        // A span wholly off the patch clamps to `to < from`. Skip it: on the top
+        // rows its end index is negative, and `fill` counts that from the array's end.
+        if (to < from) continue;
         out.fill(0, row * width + from, row * width + to + 1);
       }
     }

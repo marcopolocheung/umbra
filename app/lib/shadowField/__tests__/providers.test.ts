@@ -519,6 +519,19 @@ describe("createRasterCanopyProvider", () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps every sun cell a route loads, not just the last two", async () => {
+    // `readyEdges` loads one area per 2 km sun cell, all at once. A cache smaller than
+    // a route evicted the first cells before sampling read them, and those streets
+    // silently lost their canopy (#300).
+    const read = vi.fn(async (aoi: LonLatBbox) => flatPatch(aoi));
+    const provider = createRasterCanopyProvider({ store: fakeStore(read) });
+    const cells = Array.from({ length: 8 }, (_, i) => bboxAroundPoint(LNG + i * 0.02, LAT, 200));
+
+    await Promise.all(cells.map((cell) => provider.load?.(cell)));
+
+    for (const cell of cells) expect(provider.fieldFor(cell)).not.toBeNull();
+  });
+
   it("declines an area too large for the store's pixel guard, without asking", async () => {
     // `CanopyTileStore.read` throws rather than degrading, and a provider that fires a
     // doomed read is worse than one that says it cannot speak for the area.
