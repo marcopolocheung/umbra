@@ -313,6 +313,15 @@ export interface DijkstraOptions {
    * default) → no constraint.
    */
   maxContinuousExposureSec?: number;
+  /**
+   * paretoRoutes only: how the destination front is found (L4, #270).
+   * "pareto" (default) keeps up to `maxLabelsPerNode` non-dominated labels per
+   * (node, bucket) — complete, and the cost on long time-aware routes.
+   * "direct" runs a ladder of single-label searches, each minimising
+   * `exposure + λ·distance`, and feeds their routes to the same selection: the
+   * supported points of the front, at the cost of a few Dijkstras.
+   */
+  searchStrategy?: "pareto" | "direct";
   /** Deprecated compatibility input. Rain no longer has an intensity scale. */
   precipIntensity?: number;
 }
@@ -936,8 +945,12 @@ export function paretoRoutes(
   endId: number,
   options: DijkstraOptions = {}
 ): RouteResult[] {
-  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = DEFAULT_MAX_DETOUR_FACTOR, maxLabelsPerNode = 20, travelMode = "walk", objective = "sun", maxContinuousExposureSec } = options;
+  const { crossingPenaltyM = 0, straightLineDistM = 0, maxDetourFactor = DEFAULT_MAX_DETOUR_FACTOR, travelMode = "walk", objective = "sun", maxContinuousExposureSec } = options;
   const rain = objective === "rain";
+  // L4 (#270): sun routes found by a ladder of scalar searches instead of the
+  // front (see the ladder below). Rain keeps the front.
+  const direct = options.searchStrategy === "direct" && !rain;
+  const maxLabelsPerNode = options.maxLabelsPerNode ?? 20;
   // Time-aware pricing is a sun feature (rain shelter is wind/overhead cover,
   // not sun geometry), and only when the caller swept a horizon in.
   const ta = !rain && options.timeAware ? options.timeAware : undefined;
@@ -1169,6 +1182,96 @@ export function paretoRoutes(
     return true;
   };
 
+  if (direct) {
+    // The ladder: one scalar Dijkstra per weight, each keeping one label per
+    // (node, arrival bucket) — the least `sun + λ·distance` — under the same
+    // budget, prohibited edges and sun-streak cap as the front. Each finds a
+    // supported point of the front in roughly one plain search's time, and
+    // their destination labels replace the front for the selection below.
+    //
+    // Why not the front: its per-node cap evicts the longest labels first,
+    // which are exactly the long shaded detours, so on long routes it returned
+    // near-identical short options (8.4 km at 58% three times on LES → Kips
+    // Bay, where the ladder finds 8.9 km at 78% and 9.9 km at 82%). Seeding a
+    // capped front with the ladder does not help — the destination set evicts
+    // the ladder's long routes the same way — and an uncapped front ran for
+    // minutes. The ladder is not exact either: a least-sun route in a concave
+    // dent of the front is invisible to a weighted sum (5 of 276 seeded
+    // production-setting lattices, `directRoutes.test.ts`). Sun only: rain's
+    // criterion is a gain, so a weighted sum could fall along a path.
+    // λ is sun-seconds per mode-metre; one walk metre in full sun is ~0.72 s,
+    // so the ladder spans "only shade matters" to "only distance matters"
+    // around that scale. The last weight is effectively "shortest": any metre
+    // outweighs any sun, yet equal-length paths still break toward shade.
+    const LAMBDAS = [0, 0.02, 0.06, 0.15, 0.3, 0.5, 0.75, 1.1, 1.6, 2.5, 5, 1e6];
+    // One label per (node, arrival bucket), the front's own state space: an
+    // arrival in a later bucket can see shadier edges downstream, so it is not
+    // dominated by an earlier, cheaper one (with B = 1 this is per node).
+    const best = new Float64Array(N * B);
+    const bestLabel = new Int32Array(N * B);
+    for (const lambda of LAMBDAS) {
+      best.fill(Infinity);
+      bestLabel.fill(-1);
+      // A sliver of distance on every weight: a tie in sun must resolve to the
+      // shorter path, or the longer one occupies the node and the detour
+      // budget prunes its continuation where the shorter one would have fit.
+      const weightOf = (distM: number, crit: number) => crit + (lambda + 1e-6) * distM;
+      const root = mkLabel(0, 0, 0, 0, startIdx, -1, -1);
+      best[startIdx * B] = 0;
+      bestLabel[startIdx * B] = root;
+      const slotOf = (arrivalSec: number) =>
+        ta ? Math.min(Math.floor((arrivalSec * 1000) / bucketMs), B - 1) : 0;
+      let reached = -1;
+      const queue = new NumericMinHeap();
+      queue.push(root, 0);
+      while (queue.size > 0) {
+        const label = queue.pop();
+        const node = lNode[label];
+        if (bestLabel[node * B + slotOf(lArrival[label])] !== label) continue; // superseded
+        // The first destination label popped is the least weight over every
+        // arrival bucket — weights only grow along a path.
+        if (node === endIdx) { reached = label; break; }
+        const distM = lDist[label];
+        const exposureCrit = lCrit[label];
+        const arrivalSec = lArrival[label];
+        const streakSec = lStreak[label];
+        // No U-turn ban here: with one label per node and non-negative
+        // weights a U-turn can never improve a path, and the ban would make a
+        // node's next edges depend on which neighbour its one label came from
+        // — losing the true optimum (it is the Pareto search's loop guard).
+        for (let e = offsets[node], last = offsets[node + 1]; e < last; e++) {
+          const to = targets[e];
+          if (prohibited[e]) continue;
+          const crossing =
+            effectiveCrossingM > 0 && isIntersection[to] && to !== endIdx ? effectiveCrossingM : 0;
+          const newDistM = distM + edgeCost[e] + crossing;
+          if (newDistM + hCost[to] > budgetM) continue;
+          const newArrivalSec = ta ? arrivalSec + edgeSecs[e] : 0;
+          const bucket = ta ? Math.min(Math.floor((newArrivalSec * 1000) / bucketMs), B - 1) : 0;
+          const inc = expInc[e * B + bucket];
+          const newStreakSec = shaded[e * B + bucket] ? 0 : streakSec + inc;
+          if (maxContinuousExposureSec != null && newStreakSec > maxContinuousExposureSec) continue;
+          const w = weightOf(newDistM, exposureCrit + inc);
+          const slot = to * B + bucket;
+          if (w >= best[slot]) continue;
+          best[slot] = w;
+          const next = mkLabel(newDistM, exposureCrit + inc, newArrivalSec, newStreakSec, to, label, e);
+          bestLabel[slot] = next;
+          queue.push(next, w);
+        }
+      }
+      if (reached >= 0) {
+        // Kept whole: the selection below reads every ladder route, so none is
+        // evicted for room the way a capped Pareto set would.
+        const slot = endIdx * B + slotOf(lArrival[reached]);
+        if (!sets[slot]) {
+          sets[slot] = [];
+          destBucketOrder.push(slot - endIdx * B);
+        }
+        sets[slot]!.push(reached);
+      }
+    }
+  } else {
   const startLabel = mkLabel(0, 0, 0, 0, startIdx, -1, -1);
   insertPareto(startLabel, startIdx * B);
 
@@ -1276,6 +1379,8 @@ export function paretoRoutes(
       }
     }
   }
+
+  } // end of the Pareto search
 
   // A destination label, as the result selection below reads it.
   interface PLabel {

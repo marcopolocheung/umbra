@@ -678,3 +678,54 @@ starts before the walk search, which runs in the worker, and is awaited where it
 **On this box, LES → Kips Bay:** total 18.9–19.1 s → 9.6–11.2 s; `search` 12.0 → 4.2–4.4 s;
 `transit` 2.5 → 0.6 s. The next critical-path item is `shadeTableLoad` (0.4–2.1 s, noisy): the
 20 shade indexes are hashed and parsed on the main thread after the street merge.
+
+## L4 — the routes from a ladder of single-label searches (2026-10-07)
+
+**Cap 8 (#304) is reverted.** The front's per-node cap evicts its *longest* labels first, and
+those are exactly the long shaded detours. At cap 8 UWS → FiDi lost its most-shadowed option.
+At cap 20 the same eviction already happens on long routes: on the owner's LES → Kips Bay walk
+the shipped search returned 8.40 km at 58–59% shade three times.
+
+**What replaces it (`searchStrategy: "direct"`, sun only).** A ladder of 12 scalar Dijkstras,
+each minimising `sun-seconds + λ·mode-metres` with one label per (node, arrival bucket). Each
+run keeps the front's detour budget, prohibited edges and streak cap; there is no U-turn ban,
+because one label per state makes it unnecessary and harmful. Their routes feed the unchanged
+shortest / knee / least-sun selection. Rain keeps the front.
+
+**Measured with `audit/routeCompare.audit.ts`.** It builds each route exactly as `useRouting`
+does: the static selection plus the 2 km access zones (the app's 62k–119k-node graphs, not the
+54k of earlier replays), table-priced sidewalk edges at the app's bucket count, and the app's
+snapper. A cap-20 reference is checked against production, and sun is re-priced edge by edge,
+independently of either search.
+
+| route | cap 20 (ms, routes) | direct (ms, routes) | least sun, cap 20 → direct |
+|---|---|---|---|
+| LES → Kips Bay | 10,125 · 8.40/58 8.40/58 8.40/59 | 3,393 · 8.40/58 8.94/78 9.85/82 | 2,489 → 1,263 s |
+| UES → Murray Hill | 3,907 · 5.32/69 5.45/72 6.86/78 | 1,195 · 5.32/69 5.52/79 6.47/83 | 1,079 → 770 s |
+| UWS → FiDi | 8,197 · 7.29/55 7.34/55 10.04/71 | 1,777 · 7.29/55 7.57/93 7.99/98 | 2,072 → 103 s |
+| Harlem → UWS | 2,111 | 695 | 454 → 217 s |
+| Park Slope → Bklyn Hts | 1,777 | 757 | 962 → 527 s |
+| Williamsburg → Greenpoint | 632 | 510 | 138 → 52 s |
+| Midtown → Central Park | 1,170 | 832 | 512 → 269 s |
+| FiDi → Chinatown | 614 | 353 | 178 → 82 s |
+| Bed-Stuy → Crown Hts | 478 | 315 | 424 → 348 s |
+| Inwood → Washington Hts | 832 | 412 | 1,329 → 918 s |
+
+Across the 10 routes the shortest route is the same, least sun is lower every time, and no
+cap-20 route beats a direct trade-off route on both length and sun. Chelsea → Union Sq and
+Astoria → LIC are unroutable in production too (#305).
+
+**Not exact.** On 276 seeded lattices at production settings, the ladder misses the exact
+least-sun route on 5, by 12–36 s each: a least-sun route in a concave dent of the front is
+invisible to a weighted sum. `directRoutes.test.ts` holds that count. Two attempts at exactness
+failed:
+- a capped front seeded with the ladder evicts the ladder's long routes at the destination,
+  the original bug;
+- an uncapped front ran for over 11 minutes on LES → Kips Bay.
+
+The shipped front is not exact either. Even uncapped, its U-turn guard hides a 580 m / 5.4 s
+route on seed 147 that the ladder finds.
+
+**End to end** (local production build vs production, same SwiftShader box). LES → Kips Bay
+now shows 8.4 km/59% · 8.9 km/78% · 9.9 km/82%; production (cap 8) shows three 8.4 km/59%
+routes. Total 14.5 s against production's 12.2 s at cap 8, or about 18 s at cap 20.
