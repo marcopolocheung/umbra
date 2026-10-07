@@ -144,8 +144,6 @@ const TIME_BUCKET_MS = 15 * 60 * 1000;
  * `docs/notes/time-aware-routing-h1.md`).
  */
 const MAX_TIME_BUCKETS = 8;
-/** Pareto labels kept per node in the walk search (library default 20). */
-const SEARCH_LABELS_PER_NODE = 8;
 
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
@@ -1206,11 +1204,12 @@ export function useRouting({
         const travelMode = travelModeRef.current;
         const opts = {
           crossingPenaltyM: CROSSING_PENALTY_M,
-          // Candidate routes kept per corner. The library default (20) made a
-          // long H1 search 6.6 s; 8 measured 2.5 s with the same shortest route
-          // and the other options within a few points of shade (owner's call,
-          // 2026-10-07 — see docs/notes/route-latency.md, "search cap").
-          maxLabelsPerNode: SEARCH_LABELS_PER_NODE,
+          // L4 (#270): the shortest / balanced / least-sun routes from a ladder
+          // of single-label searches instead of the capped Pareto front. On 10
+          // real routes it keeps the same shortest, finds equal-or-less sun on
+          // every one, and runs in 0.3–1.5 s where the front took 0.5–11 s
+          // (route-latency.md, "L4"). Sun only; rain keeps the front.
+          searchStrategy: "direct" as const,
           solarIntensity,
           straightLineDistM,
           travelMode,

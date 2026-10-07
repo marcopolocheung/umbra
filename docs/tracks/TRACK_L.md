@@ -42,7 +42,8 @@ with sources. The decisions below cite it as "the report".
      street merge, on the critical path.
   3. **L1 (#261), about −1.5–2 s on repeat routes.** Cache street shards on the device.
   4. **L3d (#297)** is now small (`searchPack` 0.3–0.4 s).
-  5. Below that: `search` (~4 s here at cap 8). Next is an approximate front or L4 (#270).
+  5. **L4 (#270) shipped as the ladder.** The search is now 0.3–3.4 s on real routes. Next
+     candidate: fewer ladder rungs, or bucket-keying only where buckets differ.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -56,9 +57,11 @@ with sources. The decisions below cite it as "the report".
     `route-latency.md` is reproducible from any machine.
   - **A data artifact needs an audit that does not share the build's code path.** #294's
     agreement figure compared the build with itself and reported p90 = 0 over a half-zero table.
-  - **Search cap 8** (owner, 2026-10-07): `useRouting` passes `maxLabelsPerNode: 8`. The
-    shortest route is unchanged; other options move a few points, and a long detour option can
-    drop (measured in `route-latency.md`).
+  - **No search cap below 20; the walk routes come from the L4 ladder** (owner, 2026-10-07).
+    Cap 8 (#304) dropped long shaded detours. The front at cap 20 drops them too on long routes,
+    so sun routing uses `searchStrategy: "direct"`. On 10 real routes it keeps the same shortest
+    route with less sun every time; it is not exact (5 of 276 seeded lattices), see
+    `route-latency.md`, "L4".
   - **A generation is published only after `audit:shade` passes.** Two of the three bugs found
     this week were caught only by comparing the table with the app's own code path.
 - **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
