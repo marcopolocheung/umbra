@@ -513,8 +513,14 @@ export function createOverpassCanopyProvider(opts?: {
  */
 const MAX_RASTER_RADIUS_M = 4000;
 
-/** Fetched areas to keep. Each holds a decoded height field; two is a route and a pan. */
-const RASTER_CACHE_ENTRIES = 2;
+/**
+ * Fetched areas to keep. Each holds a decoded height field (~1–3 MB with its masks).
+ *
+ * `readyEdges` loads one area per 2 km sun cell, all at once, and sampling reads them
+ * after; a long route spans up to ~15. Two evicted all but the last pair before they
+ * were read, and those streets silently lost their canopy (#300).
+ */
+const RASTER_CACHE_ENTRIES = 16;
 
 /**
  * How long `load()` will make a caller wait for a cold read, in milliseconds.
