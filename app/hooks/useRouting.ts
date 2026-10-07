@@ -60,6 +60,7 @@ import {
 import { newNavigationPhases } from "../lib/navigationData/navigationPhases";
 import {
   createShadeTableView,
+  departureFromShadeTable,
   QUARANTINED_SHADE_GENERATIONS,
   shadeSlotsForDeparture,
   type ShadeTableView,
@@ -81,7 +82,7 @@ import {
   createGeometryShadowField,
   edgeSampleCount,
 } from "../lib/shadowField/ShadowField";
-import type { ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
+import type { EdgeShadow, ShadowField, ShadowSource } from "../lib/shadowField/ShadowField";
 import {
   type NycShedProvider,
   createOverpassCanopyProvider,
@@ -667,8 +668,13 @@ export function useRouting({
 
         // The broad route-bbox preload starts beside the street fetch instead
         // of after the edge-cell readiness — both slide under the same budget
-        // and deadline so neither can outlive the calculation.
-        const broadPreload = field.ready(shadowBbox, readyOptions).catch(() => {});
+        // and deadline so neither can outlive the calculation. L2 completion
+        // (#296): a route the shade table answers needs no building geometry,
+        // so the preload waits on the table (which settles well before the
+        // street graph) and runs only when there is none.
+        const broadPreload = shadeTablePromise.then((table) =>
+          table ? undefined : field.ready(shadowBbox, readyOptions).catch(() => {}),
+        );
         let graph: RoutingGraph;
         const tStaticStreets = performance.now();
         try {
@@ -691,21 +697,32 @@ export function useRouting({
         const edgeKeys = edgeBatch.keys;
         const edgeDistances = edgeBatch.distances;
         const directedEdgeCount = edgeBatch.directedCount;
+        // L2 completion (#296): when the table holds every edge, the departure
+        // sample is its first bucket too, and nothing below needs building
+        // geometry, the canvas, or the live sample. Rain and a partial table
+        // take the path below unchanged.
+        const shadeTable = await shadeTablePromise;
+        laps.lap("shadeTableLoad");
+        const departureFromTable =
+          shadeTable !== null && edgeKeys.every((key) => shadeTable.covers(key));
         const tFieldReady = performance.now();
         // Readiness for the exact cells the graph actually holds, not the big
         // enclosing rectangle (A2 PR 2). The broad preload launched beside the
         // street fetch waits here; the broad `shadowBbox` load below is a
         // fallback that only runs when a subset of those cells cannot speak —
         // same deadline object, same budget, same abort wiring as before.
-        await Promise.all([
-          broadPreload,
-          field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
-        ]);
-        const coverage =
-          field.coverageEdges?.(edgeRefs, dateRef.current) ??
-          field.coverage(shadowBbox, dateRef.current);
-        if (coverage.confidence < LOW_CONFIDENCE) {
-          await field.ready(shadowBbox, readyOptions).catch(() => {});
+        let coverage = { confidence: 1 };
+        if (!departureFromTable) {
+          await Promise.all([
+            broadPreload,
+            field.readyEdges?.(edgeRefs, readyOptions).catch(() => {}),
+          ]);
+          coverage =
+            field.coverageEdges?.(edgeRefs, dateRef.current) ??
+            field.coverage(shadowBbox, dateRef.current);
+          if (coverage.confidence < LOW_CONFIDENCE) {
+            await field.ready(shadowBbox, readyOptions).catch(() => {});
+          }
         }
         fieldReadyMs = performance.now() - tFieldReady;
         laps.lap("fieldReady");
@@ -849,13 +866,30 @@ export function useRouting({
           total: edgeRefs.length,
         });
         laps.lap("exposureContext");
-        const fieldShadow = edgeRefs.length > 0
-          ? rainObjective
-            ? field.sampleRainEdges(edgeRefs, rainDirection, dateRef.current)
-            : field.sampleEdges(edgeRefs, dateRef.current, navPhases)
-          : [];
+        const fieldShadow: EdgeShadow[] = edgeRefs.length === 0
+          ? []
+          : departureFromTable
+            ? departureFromShadeTable(shadeTable!, edgeKeys, dateRef.current, midLat, midLng)
+            : rainObjective
+              ? field.sampleRainEdges(edgeRefs, rainDirection, dateRef.current)
+              : field.sampleEdges(edgeRefs, dateRef.current, navPhases);
         if (myGen !== calcGenRef.current) return cancelled();
-        setShedRings(shedsRef.current?.drawnRings() ?? []);
+        if (departureFromTable) {
+          // Sheds are drawn, not priced, on a table route (they enter pricing
+          // with L2b, #289): load them after the route rather than before it.
+          const sheds = shedsRef.current;
+          if (sheds) {
+            void sheds.load?.(shadowBbox).then(() => {
+              if (myGen !== calcGenRef.current) return;
+              // `prismsFor` places the loaded permits against the bound edges,
+              // which is what fills `drawnRings`.
+              sheds.prismsFor(shadowBbox);
+              setShedRings(sheds.drawnRings());
+            });
+          }
+        } else {
+          setShedRings(shedsRef.current?.drawnRings() ?? []);
+        }
 
         // Per edge: trust the geometry, or fall back to pixels for that edge alone.
         // When the canvas was never read — the field covered the route — a weak edge
@@ -978,10 +1012,7 @@ export function useRouting({
           // the static sample, exactly like a low-confidence sweep answer does.
           // When the table does not cover the whole route the sweep runs as
           // before, so a partial table never changes an answer for the worse.
-          const shadeTable = await shadeTablePromise;
-          laps.lap("shadeTableLoad");
-          const useTable =
-            shadeTable !== null && edgeKeys.every((key) => shadeTable.covers(key));
+          const useTable = departureFromTable;
           shadeTableOutcome = useTable ? "used" : shadeTable === null ? "unavailable" : "coverage-miss";
           const shadeBuckets = useTable
             ? shadeSlotsForDeparture(

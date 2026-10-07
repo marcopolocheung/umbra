@@ -18,13 +18,16 @@
 import {
   SHADE_MONTHS,
   SHADE_SLOT_COUNT,
+  SHADE_ZONE,
   shadeByteToFraction,
   shadeMonthIndex,
   shadeSlotForLocalMinutes,
   shadeSlotIndex,
   shadeSegmentKey,
 } from "./shadeSlots";
-import { toMapLocal } from "../timezone";
+import SunCalc from "suncalc";
+import { confidenceFor, type EdgeShadow } from "../shadowField/ShadowField";
+import { toMapLocal, utcOffsetMinAt } from "../timezone";
 import type { NavigationShadeShard } from "./shardContract";
 
 /**
@@ -116,6 +119,32 @@ export function shadeSlotsForDeparture(
     unique.add(slot);
   }
   return { perBucket, slotIndices: [...unique].sort((a, b) => a - b) };
+}
+
+/**
+ * The departure-time sample for a route the table fully covers (L2 completion, #296).
+ *
+ * The same answer `field.sampleEdges` gives over the same geometry, read from
+ * the departure's clock slot instead of recomputed — the audit (#302) holds the
+ * two to a cell-mean disagreement of 0.002. Confidence is what the static
+ * building source earns at this sun altitude with geometry present, which is
+ * what the live field reports when its buildings have loaded. Callers must
+ * check `covers` for every key first; an uncovered key reads as night (1).
+ */
+export function departureFromShadeTable(
+  table: ShadeTableView,
+  keys: string[],
+  departure: Date,
+  lat: number,
+  lng: number,
+): EdgeShadow[] {
+  const [slot] = shadeSlotsForDeparture(departure, 1, utcOffsetMinAt(SHADE_ZONE, departure)).perBucket;
+  const altitude = SunCalc.getPosition(departure, lat, lng).altitude;
+  const confidence = altitude <= 0 ? 1 : confidenceFor("nyc-static", altitude, 1);
+  return keys.map((key) => {
+    const value = table.shadowFor(key, slot) ?? { left: 1, right: 1 };
+    return { ...value, source: altitude <= 0 ? "none" : "nyc-static", confidence, buildingSource: "nyc-static" };
+  });
 }
 
 /** Every slot index in the table, for a caller that wants the whole year. */
