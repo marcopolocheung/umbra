@@ -729,3 +729,47 @@ route on seed 147 that the ladder finds.
 **End to end** (local production build vs production, same SwiftShader box). LES → Kips Bay
 now shows 8.4 km/59% · 8.9 km/78% · 9.9 km/82%; production (cap 8) shows three 8.4 km/59%
 routes. Total 14.5 s against production's 12.2 s at cap 8, or about 18 s at cap 20.
+
+## L4 rungs as A* over exact bounds (2026-10-07)
+
+**Trimming the ladder changes routes, so the rungs got cheaper instead.** Each λ run alone on
+the 12 `routeCompare` routes gives a contiguous run of routes, but the knee comes from a
+different rung on each route: λ 0.3 on LES → Kips Bay, 0.5 on Chelsea → Union Sq, 0.75 on
+UWS → FiDi. The λ = 0 route is often dominated, yet it sets the distance range the knee is
+normalised in. LES → Kips Bay yields 9 distinct routes from 12 rungs. Fixed 6-, 5- and 4-rung
+ladders changed a representative on 2–3 of the first 4 routes, and bisection or skipping a
+repeated route cannot save much when nearly every adjacent rung differs.
+
+**What shipped.** Two backward Dijkstras run once per search from the destination: least mode
+cost, crossings included, and least sun, each edge at its shadiest bucket. Each rung is then an
+A* with key `w + hSun + λ·hDist`. Both bounds are exact over the graph and consistent, so each
+rung settles the same least weight per (node, bucket) slot as before. The budget prune keeps the
+haversine bound: tightening it to `hDist` moved which label held a slot and changed 3 of the 12
+routes.
+
+**Routes: identical.** Every route's node paths match `umbra/main` on all 12 routes. Run alone,
+each of the 144 rungs returned the same route. `routeCompare` passes on all 12, and
+`directRoutes.test.ts` still passes.
+
+| route | search before → after (Node, ms) |
+|---|---|
+| LES → Kips Bay | 3,590 → 1,272 |
+| UWS → FiDi | 2,122 → 1,013 |
+| UES → Murray Hill | 1,127 → 600 |
+| Harlem → UWS | 832 → 567 |
+| Midtown → Central Park | 752 → 607 |
+| Park Slope → Bklyn Hts | 724 → 572 |
+| Inwood → Washington Hts | 556 → 439 |
+| Astoria → LIC | 575 → 472 |
+| Williamsburg → Greenpoint | 429 → 366 |
+| FiDi → Chinatown, Bed-Stuy → Crown Hts, Chelsea → Union Sq | unchanged (260–370) |
+
+The short routes' remaining time is the setup before the ladder, not the ladder. On LES →
+Kips Bay that setup is ~0.8 s: the plain `dijkstra` for the budget (~0.39 s), `toCompactGraph`
+(~0.24 s) and the per-edge arrays (~0.15 s).
+
+**Browser** (local production builds of `umbra/main` and this change, same SwiftShader box,
+owner's LES → Kips Bay route, two runs each, back to back): `search` 4.6 / 5.0 s → 1.6 / 1.5 s,
+calculation total 9.6 / 10.4 s → 6.9 / 6.5 s, click → options visible (`zz-ux.mjs`) 11.3 s →
+8.6 s. The returned routes are the same: Shortest 59%, Balanced 78%, Most shadowed 82%, Via
+Subway 73%.

@@ -42,8 +42,12 @@ with sources. The decisions below cite it as "the report".
      street merge, on the critical path.
   3. **L1 (#261), about −1.5–2 s on repeat routes.** Cache street shards on the device.
   4. **L3d (#297)** is now small (`searchPack` 0.3–0.4 s).
-  5. **L4 (#270) shipped as the ladder.** The search is now 0.3–3.4 s on real routes. Next
-     candidate: fewer ladder rungs, or bucket-keying only where buckets differ.
+  5. **L4 (#270) shipped as the ladder; its rungs are now A* over exact bounds** (routes
+     identical on all 12 `routeCompare` routes). The owner's route search went 4.6–5.0 s →
+     1.5–1.6 s in the browser, and click → options 11.3 s → 8.6 s. Trimming rungs changed
+     routes and was dropped. Next: the ~1.1 s after the calculation (step C), then L1. The
+     search's remaining setup (~0.8 s: budget `dijkstra`, `toCompactGraph`, edge arrays) is
+     a later candidate.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.

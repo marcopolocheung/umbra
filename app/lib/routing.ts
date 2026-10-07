@@ -1209,6 +1209,62 @@ export function paretoRoutes(
     // dominated by an earlier, cheaper one (with B = 1 this is per node).
     const best = new Float64Array(N * B);
     const bestLabel = new Int32Array(N * B);
+    // Exact lower bounds to the destination, for every rung's A*: the least
+    // mode cost (crossings included, as the forward search charges them) and
+    // the least sun (each edge at its shadiest bucket). Each is consistent,
+    // so `hSun + λ·hDist` is too, and a rung's first destination pop is still
+    // its optimum: the same least weight per slot as plain Dijkstra, settling
+    // far fewer labels. Uncapped by the budget on purpose — only nodes that
+    // cannot reach the destination at all sort last, and their successors
+    // cannot either, so no slot on a real path changes hands. The budget
+    // prune below stays on the haversine bound for the same reason:
+    // tightening it to `hDist` moves which label holds a slot, and changed 3
+    // of the 12 `routeCompare` routes.
+    const edgeFrom = new Int32Array(E);
+    const inCount = new Int32Array(N + 1);
+    for (let u = 0; u < N; u++) {
+      for (let e = offsets[u]; e < offsets[u + 1]; e++) {
+        edgeFrom[e] = u;
+        inCount[targets[e] + 1]++;
+      }
+    }
+    for (let v = 0; v < N; v++) inCount[v + 1] += inCount[v];
+    const inEdges = new Int32Array(E);
+    const fill = inCount.slice(0, N);
+    for (let e = 0; e < E; e++) inEdges[fill[targets[e]]++] = e;
+    const backward = (h: Float64Array, stepOf: (e: number, v: number) => number) => {
+      h.fill(Infinity);
+      h[endIdx] = 0;
+      const heap = new NumericMinHeap();
+      heap.push(endIdx, 0);
+      const done = new Uint8Array(N);
+      while (heap.size > 0) {
+        const v = heap.pop();
+        if (done[v]) continue;
+        done[v] = 1;
+        for (let i = inCount[v], last = inCount[v + 1]; i < last; i++) {
+          const e = inEdges[i];
+          if (prohibited[e]) continue;
+          const u = edgeFrom[e];
+          const hu = h[v] + stepOf(e, v);
+          if (hu < h[u]) {
+            h[u] = hu;
+            heap.push(u, hu);
+          }
+        }
+      }
+    };
+    const hDist = new Float64Array(N);
+    const hSun = new Float64Array(N);
+    backward(hDist, (e, v) =>
+      edgeCost[e] + (effectiveCrossingM > 0 && isIntersection[v] && v !== endIdx ? effectiveCrossingM : 0));
+    const minInc = new Float64Array(E);
+    for (let e = 0; e < E; e++) {
+      let m = Infinity;
+      for (let b = 0; b < B; b++) m = Math.min(m, expInc[e * B + b]);
+      minInc[e] = m;
+    }
+    backward(hSun, (e) => minInc[e]);
     for (const lambda of LAMBDAS) {
       best.fill(Infinity);
       bestLabel.fill(-1);
@@ -1223,7 +1279,8 @@ export function paretoRoutes(
         ta ? Math.min(Math.floor((arrivalSec * 1000) / bucketMs), B - 1) : 0;
       let reached = -1;
       const queue = new NumericMinHeap();
-      queue.push(root, 0);
+      const lam = lambda + 1e-6;
+      queue.push(root, hSun[startIdx] + lam * hDist[startIdx]);
       while (queue.size > 0) {
         const label = queue.pop();
         const node = lNode[label];
@@ -1257,7 +1314,7 @@ export function paretoRoutes(
           best[slot] = w;
           const next = mkLabel(newDistM, exposureCrit + inc, newArrivalSec, newStreakSec, to, label, e);
           bestLabel[slot] = next;
-          queue.push(next, w);
+          queue.push(next, w + hSun[to] + lam * hDist[to]);
         }
       }
       if (reached >= 0) {
