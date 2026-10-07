@@ -16,46 +16,35 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L2, which is **blocked on a data rebuild**. L2a's client and table
-  shipped (#288, #292, #293), but the published table is wrong in about half its cells (#294).
-  The client quarantines it (#295), so production prices with the live sweep again: correct,
-  ~24 s of `sweep`.
+- **Active checkpoint:** L2 completion (#296). The departure-time sample still runs live and
+  falls back to reading map pixels on 64% of edges; it is the largest remaining cost.
+- **Goal set by the owner (2026-10-07): sub-6 s** on the owner's machine without changing
+  routes. Production (SwiftShader box, roughly 2× the owner's machine) is 27–29 s on UES →
+  Murray Hill; 37–55 s before L2a.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
   - **#266 (#268):** yields on elapsed time, removing 1.5–3 s per long route.
-  - **L3a (#271):** the dominance pre-check, not the destination-front scan, was the hot
-    spot (28M iterations vs 0.65M); sorted-boundary early exits, one dominance pass per label,
-    and a typed-array heap.
-  - **L3b (#272):** CSR graph (`compactGraph.ts`) + struct-of-arrays labels; search
-    −30% to −51% on top of L3a.
-  - **L3c (#277):** `paretoRoutes` runs in `app/workers/routing.worker.ts`; no main-thread long
-    task during the search. It re-packs the whole graph per calculation, which L3d fixes.
-  - **L2a client (#288), worker (#292), static merge fix (#293).** #293 was why the table was
-    never read: parallel OSM ways made the static street merge throw, so every route fell back
-    to Overpass (#275). With the table read, `sweep` drops from ~24 s to ~0.1–0.2 s. Measured
-    saving: **21.7 s** on a UES → Murray Hill walk, and 41.3 → 20.3 s total on the #286 route.
-- **Open PRs:**
-  - **#295** — quarantine the bad generation. Merge first: production showed 0% shade on
-    Midtown routes.
-  - The build fix for #294: provider coverage gate removed, casters sliced to the edges' real
-    span, and a cell fails on any unresolved sunlit sample.
-- **Next actions, in order** (owner's estimate of ~6 s on their machine, without changing
-  routes):
-  1. **Rebuild the shade table** with the #294 fix. Run a zero-cell audit: no cell may read 0 on
-     every edge in a sunlit slot. Re-run the agreement harness against an independent provider,
-     publish a new generation (owner OK — it is the bucket production reads), and lift the
-     quarantine. This restores the ~20 s saving.
-  2. **L2 completion (#296), about −4.5 s.** Answer the departure-time sample from the table too,
-     and skip `fieldReady`, `sampleEdges` and the canvas fallback (37.7% of edges on the
-     measured route) when the table covers the route. Decide sheds (#289) first.
-  3. **L3d (#297), about −3 s.** Pack the street graph once and keep it in the worker; on the
-     82k-node static graph the per-calculation pack (`searchPack`, 6.0 s here) outweighs the
-     search.
-  4. **L1 (#261), about −1 s on repeat routes.** Cache street shards on the device and prefetch
-     them.
-  5. Then `search` (~1.6 s on the owner's machine) gets faster only by changing routes: L4 or an
-     approximate front, which are Track H's and the owner's call (#270).
+  - **L3a (#271), L3b (#272), L3c (#277):** dominance pre-check fix, CSR graph + typed labels,
+    and the search in a worker. L3c re-packs the whole graph per calculation, which L3d fixes.
+  - **L2a — the shade table, live since 2026-10-07.** Client (#288), worker (#292), static
+    merge fix (#293, closed #275), build fixes (#298 for #294), the live canopy fixes the audit
+    found (#301 for #300). Published generation `nyc-2026-09-18-393d4cd24a30` passed the
+    independent audit (cell-mean disagreement median 0.002, p99 0.025, worst 0.059, none
+    unresolved). Production: table `used` on both measured routes, `sweep` 24–26 s → 0.1–0.2 s.
+  - **The publish gate:** `npm --prefix server/navigation-prep run audit:shade` recomputes a
+    generation through the app's own providers and fails a table that disagrees.
+- **Open PRs:** none on L.
+- **Next actions, in order** (estimates on this box, where a route is 27 s):
+  1. **L2 completion (#296), about −10 s.** When the table covers the route, take the departure
+     sample from it and skip `fieldReady`, `sampleEdges` and the canvas fallback (`shadowSample`
+     4.2 s + `mapIdleWait` 3.8 s + `fieldReady` 1.4 s + part of `yield`). Decided: sheds draw
+     after the route, not before it (they stay out of pricing until L2b, #289).
+  2. **L3d (#297), about −3 s.** Pack the street graph once and keep it in the worker.
+  3. **Transit beside the walk search, about −2 s.** The transit branch waits for walk options.
+  4. **L1 (#261), about −1.5 s on repeat routes.** Cache street shards on the device.
+  5. Then `search` (~3.4 s here) gets faster only by changing routes: L4 or an approximate
+     front, which are Track H's and the owner's call (#270).
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -69,10 +58,12 @@ with sources. The decisions below cite it as "the report".
     `route-latency.md` is reproducible from any machine.
   - **A data artifact needs an audit that does not share the build's code path.** #294's
     agreement figure compared the build with itself and reported p90 = 0 over a half-zero table.
+  - **A generation is published only after `audit:shade` passes.** Two of the three bugs found
+    this week were caught only by comparing the table with the app's own code path.
 - **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
-- **Blocked on:** the shade rebuild (#294), which needs the owner's OK to publish.
-- **Last verified:** 2026-10-06 — production measurements in `route-latency.md` ("L2a in
-  production"); gates on the #293 / #295 branches: lint 0 errors, typecheck, 2,340 tests, build.
+- **Blocked on:** nothing.
+- **Last verified:** 2026-10-07 — production after publishing `nyc-2026-09-18-393d4cd24a30`
+  (`route-latency.md`, "L2a published"); gates: lint 0 errors, typecheck, 2,342 tests, build.
 
 ---
 

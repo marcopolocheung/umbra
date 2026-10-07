@@ -605,3 +605,47 @@ owner's machine):
 | `transit` | 2,550 | later |
 | `streets` | 1,809 | L1 (#261) |
 | `fieldReady` | 1,211 | L2 completion (#296) |
+
+## L2a published — the audit, two live canopy bugs, and the numbers (2026-10-07)
+
+**The independent audit** (`npm --prefix server/navigation-prep run audit:shade`) recomputes
+150 edges per cell at 12 representative slots (Jan/Apr/Jul/Oct × 08:00/12:00/16:00) through the
+providers the app runs: the static building provider over the published shards via
+`acquireNavigationSnapshot`, and the OSM and raster canopy providers over local copies of the
+frozen inputs. It compares each sample with the table byte, 1.33M samples across 386 cells.
+
+It found that **the live app, not the table, was dropping street-tree shade (#300, fixed in
+#301)**:
+- `subtractFootprints` filled a clamped, empty span for a footprint beside the patch. On the
+  top rows its end index went negative, and `Uint8Array.fill` read that from the array's end,
+  so one building erased almost the whole patch. In Flushing it took canopy shade from 70% of
+  sample points to 0%.
+- `RASTER_CACHE_ENTRIES = 2` evicted all but the last two sun cells a route loads before they
+  were sampled. In Central Park, 2 of 4 sun cells had no raster at all.
+
+The build ran the same mask code, so the table was rebuilt on #301 before it was published.
+
+| audit, cell-mean disagreement | median | p90 | p99 | worst | cells > 0.05 |
+|---|---:|---:|---:|---:|---:|
+| table vs app before #301 | 0.127 | 0.287 | — | 0.511 | 260 |
+| table built before #301 vs app after #301 | 0.002 | 0.010 | — | 0.257 | 12 |
+| **published `393d4cd24a30` vs app after #301** | **0.002** | **0.009** | **0.025** | **0.059** | **1** |
+
+**Production after publishing** (SwiftShader box, same method as above):
+
+| | UES → Murray Hill 16:03 | UWS → FiDi 15:12 |
+|---|---|---|
+| `navigation.shadeTable` | `used` | `used` |
+| shadow, shortest / balanced / most shadowed | 69 / 72 / 78% | 55 / 55 / 71% |
+| offline replay of the same generation | 69 / 72 / 78% | 54 / 55 / 69% |
+| total | 27.0–29.4 s (55.6 s quarantined) | 20.5 s |
+| `sweep` | 0.1 s | 0.2 s |
+
+**Stages left on UES → Murray Hill (27.0 s):** `yield` 5,826 · `shadowSample` 4,231 ·
+`mapIdleWait` 3,765 · `search` 3,397 · `searchPack` 3,252 · `transit` 2,340 · `streets` 1,608 ·
+`fieldReady` 1,413 · `graphBuild` 728 · `snap` 259 · `sweep` 114. The canvas fallback covers
+63% of edges, which is the departure sample #296 removes.
+
+**Known limit of the audit:** it compares the table with the app, so an assumption both share is
+invisible to it. Two examples: the 15th of the month as the representative day, and the CHMv2
+raster's own accuracy.
