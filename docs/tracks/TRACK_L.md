@@ -45,9 +45,12 @@ with sources. The decisions below cite it as "the report".
   5. **L4 (#270) shipped as the ladder; its rungs are now A* over exact bounds** (routes
      identical on all 12 `routeCompare` routes). The owner's route search went 4.6–5.0 s →
      1.5–1.6 s in the browser, and click → options 11.3 s → 8.6 s. Trimming rungs changed
-     routes and was dropped. Next: the ~1.1 s after the calculation (step C), then L1. The
+     routes and was dropped. Next: L1, now that the gap after the calculation is item 6. The
      search's remaining setup (~0.8 s: budget `dijkstra`, `toCompactGraph`, edge arrays) is
      a later candidate.
+  6. **The post-calculation gap: 1.1–1.3 s → 0.4–0.5 s** on this box (no redundant shadow
+     re-extrude for an unchanged exposure context; the camera fit waits one frame). The rest
+     is one SwiftShader map frame, unmeasured on a real GPU.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.

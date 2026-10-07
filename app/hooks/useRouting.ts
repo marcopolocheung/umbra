@@ -2121,7 +2121,13 @@ export function useRouting({
         // The panel shows one mode's list, and selection resets to its first
         // entry — so frame that, not whichever option happens to be first
         // overall.
-        fitMapToRoute(routesForMode(options, routeModeRef.current)[0] ?? options[0]);
+        // After the frame that paints the route cards: started in the same
+        // frame, the fit's first camera step re-renders the map before they
+        // show (~0.6 s on the SwiftShader box).
+        const fitTarget = routesForMode(options, routeModeRef.current)[0] ?? options[0];
+        requestAnimationFrame(() => setTimeout(() => {
+          if (calcGenRef.current === myGen) fitMapToRoute(fitTarget);
+        }, 0));
         const metrics = options.map((option) => ({
           label: option.label,
           distanceM: option.distanceM,
