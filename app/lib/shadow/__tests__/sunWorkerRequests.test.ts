@@ -107,7 +107,6 @@ describe("sun worker requests", () => {
     (layer as any).u_color = {};
     (layer as any).quadProgram = {};
     (layer as any).quadBuffer = {};
-    (layer as any).cachedGeometry = { shadowVerts: new Float32Array([0, 0, 1, 0, 1, 1]) };
     (layer as any).dirty = false;
     layer.setDate(new Date("2026-06-22T02:00:00Z"));
     expect(repaint).toHaveBeenCalledTimes(1);
@@ -115,20 +114,11 @@ describe("sun worker requests", () => {
     expect((layer as any).dirty).toBe(true); // no stale geometry pass ran
   });
 
-  it("keeps solar night empty while rain still extrudes and reads its mask", () => {
+  it("keeps solar night empty while rain still draws and reads its mask", () => {
     const layer = adapterAt({ lat: 40.754, lng: -73.984 });
-    const cache = {
-      centerMerc: [0, 0],
-      buildings: [{
-        prism: { ring: [[-73.984, 40.754], [-73.9839, 40.754], [-73.9839, 40.7541], [-73.984, 40.7541]], heightM: 20 },
-        normalizedH: 1,
-        mercatorRoofVerts: new Float32Array([0, 0, 1, 0, 0, 1]),
-      }],
-    };
-    const night = (layer as any).extrudeShadows(cache, { azimuthRad: 0, altitudeRad: -0.01, sunBelow: true });
-    expect(night.sunBelowHorizon).toBe(true);
-    expect(night.shadowVerts).toHaveLength(0);
-    expect(night.roofVerts).toHaveLength(0);
+    // The mesh no longer depends on the ray; what night changes is whether it is drawn.
+    (layer as any).recordSunState({ azimuthRad: 0, altitudeRad: -0.01, sunBelow: true });
+    expect((layer as any).sunBelowHorizon).toBe(true);
 
     const gl = {
       FRAMEBUFFER_BINDING: 1, FRAMEBUFFER: 2, RGBA: 3, UNSIGNED_BYTE: 4,
@@ -146,9 +136,8 @@ describe("sun worker requests", () => {
     layer.setHazard("rain");
     const rainDirection = (layer as any).hazardDirection();
     expect(rainDirection.sunBelow).toBe(false);
-    const rain = (layer as any).extrudeShadows(cache, rainDirection);
-    expect(rain.sunBelowHorizon).toBe(false);
-    expect(rain.shadowVerts.length).toBeGreaterThan(0);
+    (layer as any).recordSunState(rainDirection);
+    expect((layer as any).sunBelowHorizon).toBe(false);
     expect(layer.readBuildingShadowMask()?.data[0]).toBeGreaterThan(0);
   });
 
