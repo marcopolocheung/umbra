@@ -5,6 +5,8 @@ import {
   ceilingFieldScale,
   normalizedCeilingLift,
   normalizedShadowHeightBias,
+  WALL_NUDGE_MAX_M,
+  wallShadowNudgeM,
 } from "../heightField";
 
 /** What the RGBA8 height field could represent, one 1/255 step per level. */
@@ -186,6 +188,42 @@ describe("normalizedCeilingLift", () => {
         10 * normalizedShadowHeightBias(MAX_H_M),
       );
     }
+  });
+});
+
+describe("wallShadowNudgeM", () => {
+  /**
+   * How far a neighbour's shadow edge slides along a wall when the sample steps
+   * `d` along a normal `theta` off the sun: the edge runs parallel to the sun, so
+   * the step's cross-sun component is all of the error.
+   */
+  const edgeSlideM = (d: number, theta: number) => d * Math.tan(theta);
+  const SEVENTY_DEG = (70 * Math.PI) / 180;
+
+  it("slid shadow edges metres along a wall at the old fixed 1.5 m", () => {
+    // The reported gap: a wall 70° off the sun, in a street-level view.
+    expect(edgeSlideM(1.5, SEVENTY_DEG)).toBeGreaterThan(4);
+  });
+
+  it("keeps the slide inside a few centimetres in a street-level view", () => {
+    // z≈21 at NYC's latitude, a 2× supersampled field: ~3 cm per texel.
+    const d = wallShadowNudgeM(0.03);
+    expect(edgeSlideM(d, SEVENTY_DEG)).toBeLessThan(0.3);
+  });
+
+  it("still clears the caster by a few texels at every resolution", () => {
+    for (const texel of [0.01, 0.03, 0.1, 0.32]) {
+      expect(wallShadowNudgeM(texel)).toBeGreaterThanOrEqual(2 * texel);
+    }
+  });
+
+  it("is the old 1.5 m once the field is coarse, and never more", () => {
+    expect(wallShadowNudgeM(1)).toBe(WALL_NUDGE_MAX_M);
+    expect(wallShadowNudgeM(100)).toBe(WALL_NUDGE_MAX_M);
+  });
+
+  it("never drops below the metric height tolerance", () => {
+    expect(wallShadowNudgeM(0)).toBe(SHADOW_HEIGHT_BIAS_M);
   });
 });
 

@@ -26,6 +26,7 @@ import {
   ceilingFieldScale,
   normalizedCeilingLift,
   normalizedShadowHeightBias,
+  wallShadowNudgeM,
 } from './heightField';
 
 import { directionForWindReport } from '../rain/direction';
@@ -70,31 +71,6 @@ const SHADOW_POS_GLSL = `
         return base + vec2(d.x / 360.0, -dLat / (2.0 * SHADOW_PI * cos(latMid)));
       }
 `;
-
-/**
- * How far off the wall the building pass samples the shadow-ceiling field.
- *
- * A prism's ground shadow starts at its own sun-facing wall and its swept quads
- * run back across its own footprint, so sampling the field directly under a wall
- * fragment reports that every wall of every building is inside its own shadow.
- * The sample is therefore nudged out of the caster before it is taken: toward the
- * sun, which clears the swept quads, and along the wall's outward normal, which
- * clears the footprint even on a wall that runs nearly parallel to the sun. That
- * second step is what stops such a wall from dithering along the edge of its own
- * shadow. Both are small enough to barely move within a *neighbour's* shadow.
- *
- * Nudging toward the sun means nudging closer to every caster, so the field reads a
- * *higher* ceiling there — by exactly the sunward part of the step times tan(alt),
- * since within any caster's shadow the ceiling falls at that slope and the per-pixel
- * MAX preserves it. The wall pass therefore raises its own threshold by the same
- * amount (`normalizedCeilingLift`, uploaded as `u_ceilLift`), which makes the nudge
- * geometrically free: the wall's terminator lands where the ground shadow at its
- * base says it should, while the sample still escapes the near cap. Left
- * uncompensated, the raised ceiling meets an unraised threshold and every wall
- * shadows 1–2 m too high — which is what made a shadow step as it crossed onto a wall.
- */
-const WALL_SHADOW_SUN_OFFSET_M = 1.5;
-const WALL_SHADOW_NORMAL_OFFSET_M = 1.5;
 
 /** Light grey the extruded buildings are painted before any shading. */
 const BUILDING_RGB: [number, number, number] = [0.87, 0.87, 0.88];
@@ -1547,19 +1523,21 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.uniformMatrix4fv(u.u_matrix, false, matrix);
       gl2.uniform1f(u.u_mercZPerMeter, mercPerMeter);
       gl2.uniform1f(u.u_maxH, cache.maxH);
+      // One ceiling-field texel on the ground at the view centre: CSS pixels to field
+      // texels, widened by the field's zoom-out.
+      const fieldTexelM = (EARTH_CIRCUMFERENCE_M * Math.cos((this.map.getCenter().lat * Math.PI) / 180)
+        / (512 * 2 ** this.map.getZoom())) * (this.map.getCanvas().clientWidth / w) * fieldScale;
+      const nudgeM = wallShadowNudgeM(fieldTexelM);
       gl2.uniform2f(
         u.u_sunOffset,
-        sunX * WALL_SHADOW_SUN_OFFSET_M * mercPerMeter,
-        sunY * WALL_SHADOW_SUN_OFFSET_M * mercPerMeter,
+        sunX * nudgeM * mercPerMeter,
+        sunY * nudgeM * mercPerMeter,
       );
-      gl2.uniform1f(u.u_normalOffset, WALL_SHADOW_NORMAL_OFFSET_M * mercPerMeter);
+      gl2.uniform1f(u.u_normalOffset, nudgeM * mercPerMeter);
       // The height each step's sunward component buys back, so the nudged sample
       // decides what an un-nudged one at the fragment's own base would have.
-      gl2.uniform2f(
-        u.u_ceilLift,
-        normalizedCeilingLift(WALL_SHADOW_SUN_OFFSET_M, alt, cache.maxH),
-        normalizedCeilingLift(WALL_SHADOW_NORMAL_OFFSET_M, alt, cache.maxH),
-      );
+      const lift = normalizedCeilingLift(nudgeM, alt, cache.maxH);
+      gl2.uniform2f(u.u_ceilLift, lift, lift);
       gl2.uniform3f(u.u_sunDir, sunX * Math.cos(alt), sunY * Math.cos(alt), Math.sin(alt));
       // Blue always denotes protection. Rain changes the incident ray, never the
       // receiver polarity or the surface palette.
