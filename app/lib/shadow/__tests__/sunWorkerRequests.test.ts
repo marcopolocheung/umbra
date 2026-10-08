@@ -12,6 +12,7 @@ vi.mock("../../../workers/sunPosition.worker?worker", () => ({
 }));
 
 const { LocalShadowAdapter } = await import("../LocalShadowAdapter");
+const { resolveExposureContext } = await import("../../exposure");
 
 function adapterAt(center: { lat: number; lng: number }) {
   const layer = new LocalShadowAdapter();
@@ -47,6 +48,39 @@ describe("sun worker requests", () => {
     layer.setHazard("sun");
     expect(posts).toHaveLength(3);
     expect(posts[2]).toMatchObject({ lat: center.lat, timestamp: t.getTime() + 120_000 });
+  });
+
+  it("a new exposure context re-extrudes only once the sun has moved", () => {
+    const center = { lat: 40.754, lng: -73.984 };
+    const layer = adapterAt(center);
+    const t = new Date("2026-06-21T17:00:00Z");
+    const at = (time: Date, objective: "sun" | "rain" = "sun") =>
+      resolveExposureContext({ objective }, { time, mapCenter: [center.lng, center.lat] });
+
+    layer.setExposureContext(at(t));
+    sunReply(layer, 50);
+    (layer as any).dirty = false;
+
+    // A pan re-sends the context with a new revision and the same ray.
+    center.lng += 0.0005;
+    layer.setExposureContext(at(t));
+    expect((layer as any).dirty).toBe(false);
+
+    // A new time: the ray is still the old one until the worker answers.
+    layer.setExposureContext(at(new Date(t.getTime() + 60_000)));
+    expect((layer as any).dirty).toBe(false);
+
+    sunReply(layer, 50.1); // under the 0.15° tolerance
+    expect((layer as any).dirty).toBe(false);
+    sunReply(layer, 50.5);
+    expect((layer as any).dirty).toBe(true);
+
+    (layer as any).dirty = false;
+    layer.setExposureContext(at(t, "rain"));
+    expect((layer as any).dirty).toBe(true);
+    (layer as any).dirty = false;
+    layer.setExposureContext(at(t, "sun"));
+    expect((layer as any).dirty).toBe(true);
   });
 
   it("repaints at sunset and sunrise even across a sub-threshold angle change", () => {
@@ -118,8 +152,7 @@ describe("sun worker requests", () => {
     expect(layer.readBuildingShadowMask()?.data[0]).toBeGreaterThan(0);
   });
 
-  it("does not re-extrude for the exposure context it already holds", async () => {
-    const { resolveExposureContext } = await import("../../exposure");
+  it("does not re-extrude for the exposure context it already holds", () => {
     const layer = adapterAt({ lat: 40.754, lng: -73.984 });
     const at = (time: Date) => resolveExposureContext({ objective: "sun" }, { time, mapCenter: [-73.984, 40.754] });
     const t = new Date("2026-10-01T16:43:00Z");
@@ -130,15 +163,19 @@ describe("sun worker requests", () => {
     layer.setExposureContext(at(new Date(t)));
     expect((layer as any).dirty).toBe(false);
 
-    // setDate moved the clock alone: the same context must restore it.
+    // setDate moved the clock alone: the same context must restore it, and ask
+    // the worker for that sun — whose reply is what invalidates the mesh.
     layer.setDate(new Date(t.getTime() + 3_600_000));
+    sunReply(layer, 40);
     (layer as any).dirty = false;
     layer.setExposureContext(at(new Date(t)));
-    expect((layer as any).dirty).toBe(true);
     expect((layer as any).currentDate.getTime()).toBe(t.getTime());
+    expect(posts.at(-1)).toMatchObject({ timestamp: t.getTime() });
+    sunReply(layer, 30);
+    expect((layer as any).dirty).toBe(true);
 
     (layer as any).dirty = false;
     layer.setExposureContext(at(new Date(t.getTime() + 60_000)));
-    expect((layer as any).dirty).toBe(true);
+    expect(posts.at(-1)).toMatchObject({ timestamp: t.getTime() + 60_000 });
   });
 });
