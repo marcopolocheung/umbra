@@ -479,6 +479,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       && context.objective === this.hazardMode
       && context.time.getTime() === this.currentDate.getTime()
     ) return;
+    const objectiveChanged = context.objective !== this.hazardMode;
     this.currentDate = new Date(context.time.getTime());
     this.contextRevision = context.revision;
     this.contextObjective = context.objective;
@@ -491,7 +492,13 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // Time/wind/objective move the canopy's march direction and strength, never
     // its geometry — a new atlas upload, not a new read, is all that follows.
     this.canopyDirty = true;
-    this.dirty = true;
+    // The building mesh depends only on the ray, so only an objective switch
+    // invalidates it here. A new time reaches it through the worker reply and its
+    // 0.15° check, and wind through `setRainWind`. The context is re-sent whenever
+    // the map centre, a waypoint or the forecast changes, and marking the mesh
+    // unconditionally re-extruded every building on each of those — once per pan —
+    // for a ray that had not moved.
+    if (objectiveChanged) this.dirty = true;
     this.map?.triggerRepaint();
   }
 
