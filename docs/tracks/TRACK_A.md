@@ -10,6 +10,11 @@
 
 ## Current state
 
+- **Renderer, off-checkpoint (#313):** building ground shadows are placed on the GPU. The
+  mesh is uploaded once per building cache, and a sun change sets one uniform. `render()` per
+  slider tick dropped from ~46 ms to ~0.2 ms (p50, 3,868 Midtown buildings, SwiftShader), and
+  `shadow_truth.py` counts match `main` exactly at 16:13 and 07:20. Routing still reads
+  `buildShadowTriangles`/`shadowIndex` on the CPU, unchanged.
 - **Active checkpoint:** A8f (paint the raster canopy, closes #275), then A8e or A5. **A8a–A8d
   are landed** — see the A8 bullet below. **A7c is deprioritised** — the census says painting OSM's
   tree points would misrepresent what Umbra knows, so #275 closes at A8f instead. **A7a+A7b are landed** — canopy is fetched,

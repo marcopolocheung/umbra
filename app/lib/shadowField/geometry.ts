@@ -9,7 +9,8 @@
  * `ShadowField` that will sit on top of both — reads prisms, not source formats.
  *
  * This module is pure: no map, no WebGL, no network. Mercator conversion and
- * buffer packing stay in the renderer, because they are rendering concerns.
+ * buffer packing stay in the renderer, because they are rendering concerns — except
+ * `shadowShiftMercator`, the JS twin of a shader formula, kept here so it is tested.
  */
 
 import earcut from "earcut";
@@ -332,6 +333,102 @@ export function pointInPolygon(lng: number, lat: number, ring: [number, number][
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+/**
+ * Flat vertex arrays for a sun-independent ground-shadow mesh, filled by
+ * `appendShadowMesh`. The renderer's vertex shader places each vertex for the
+ * current sun, so the mesh is built and uploaded once per building cache.
+ */
+export interface ShadowMesh {
+  /** Projected x/y per vertex, before any sun shift. */
+  base: number[];
+  /** Metres of height to shift by per vertex: 0 at the footprint, the prism's height at the tip. */
+  shiftM: number[];
+  /** Normalized shadow ceiling per vertex — `buildShadowTriangles`' `ceilingOut` weights times `normalizedH`. */
+  ceil: number[];
+}
+
+/**
+ * Append one ground-standing prism's shadow to a sun-independent mesh.
+ *
+ * The triangles are `buildShadowTriangles`' in the same order: a quad per ring
+ * edge, then the near cap, then the far cap. What differs is that no vertex has
+ * been moved. A footprint corner carries `shiftM` 0 and a tip corner the prism's
+ * height, and `shadowShiftMercator` (or its GLSL twin) moves it by that many metres
+ * of height for whatever sun is current.
+ *
+ * The far cap reuses the near cap's triangles. `buildShadowTriangles` earcuts the
+ * translated ring afresh, and floating point can make that cut different — but a
+ * translated polygon covers the same region however it is cut, and the renderer
+ * composes both passes by per-pixel maximum, so the pixels cannot tell.
+ *
+ * `ring` and `capTris` are in the caller's planar frame, as for `appendPrismMesh`;
+ * the renderer passes the roof triangles it already cached rather than earcutting
+ * again. Only ground-standing prisms are supported: a raised `baseM` would move the
+ * near cap too, and the renderer has none.
+ */
+export function appendShadowMesh(
+  ring: [number, number][],
+  heightM: number,
+  normalizedH: number,
+  capTris: ArrayLike<number>,
+  out: ShadowMesh
+): void {
+  const pts = openRing(ring);
+  if (pts.length < 3) return;
+
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    const [ix, iy] = pts[i];
+    const [jx, jy] = pts[j];
+    // (i, j, i') and (j, j', i'), the order buildShadowTriangles emits.
+    out.base.push(ix, iy, jx, jy, ix, iy, jx, jy, jx, jy, ix, iy);
+    out.shiftM.push(0, 0, heightM, 0, heightM, heightM);
+    out.ceil.push(normalizedH, normalizedH, 0, normalizedH, 0, 0);
+  }
+
+  const capVerts = Math.floor(capTris.length / 2);
+  for (let cap = 0; cap < 2; cap++) {
+    const shift = cap === 0 ? 0 : heightM;
+    const weight = cap === 0 ? normalizedH : 0;
+    for (let v = 0; v < capVerts; v++) {
+      out.base.push(capTris[v * 2], capTris[v * 2 + 1]);
+      out.shiftM.push(shift);
+      out.ceil.push(weight);
+    }
+  }
+}
+
+/**
+ * Per-metre sun shift in degrees, `[dLng, dLat]`: multiply by a prism's height to get
+ * the offset `buildShadowTriangles` applies to its tip. `mPerLat`/`mPerLng` are the
+ * renderer's, taken at the view centre, which is what keeps the two paths identical.
+ */
+export function shadowShiftDegPerMetre(
+  azimuth: number,
+  altitude: number,
+  mPerLat: number,
+  mPerLng: number
+): [number, number] {
+  const perMetre = 1 / Math.tan(altitude);
+  return [(Math.sin(azimuth) * perMetre) / mPerLng, (Math.cos(azimuth) * perMetre) / mPerLat];
+}
+
+/**
+ * A degree shift expressed in Web Mercator at one vertex — the JS twin of the
+ * renderer's `shadowPos` GLSL, so tests can pin the formula the shader runs.
+ *
+ * Longitude is linear in Mercator x. Latitude is not, so the y step uses the
+ * secant at the shift's midpoint latitude; over a 2.9 km shadow at a 3° sun that
+ * lands within 0.06 mm of projecting the shifted corner exactly. `mercY` is the
+ * vertex's absolute Mercator y (0 at the north edge of the world).
+ */
+export function shadowShiftMercator(mercY: number, dLngDeg: number, dLatDeg: number): [number, number] {
+  const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * mercY)));
+  const dLatRad = (dLatDeg * Math.PI) / 180;
+  const latMid = lat + dLatRad / 2;
+  return [dLngDeg / 360, -dLatRad / (2 * Math.PI * Math.cos(latMid))];
 }
 
 /** Flat vertex arrays for the extruded-building pass, filled by `appendPrismMesh`. */

@@ -9,10 +9,13 @@ import {
 import {
   type BuildingPrism,
   type PrismMesh,
+  type ShadowMesh,
   appendPrismMesh,
-  buildShadowTriangles,
+  appendShadowMesh,
   metersPerDegree,
+  openRing,
   prismsFromTileFeatures,
+  shadowShiftDegPerMetre,
   triangulateRing,
 } from '../shadowField/geometry';
 import { buildShadowIndex } from '../shadowField/shadowIndex';
@@ -42,6 +45,31 @@ import { shadowTargetSize } from './shadowTargetSize';
 const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
 
 /**
+ * Places a shadow-mesh vertex for the current ray — the GLSL twin of
+ * `shadowShiftMercator` in `../shadowField/geometry`, which pins the formula in tests.
+ *
+ * `u_shiftDeg` is the tip's offset per metre of height in degrees, `[dLng, dLat]`,
+ * computed exactly as `buildShadowTriangles` does at the view centre. Longitude is
+ * linear in Mercator; latitude takes the secant at the shift's midpoint, which keeps
+ * a 2.9 km shadow under a 3° sun within 0.06 mm of the CPU path. `u_centerMercY`
+ * restores the vertex's absolute Mercator y for its latitude — float32 there costs
+ * ~1 m of latitude, harmless inside a cosine, while the position itself stays
+ * centre-relative and keeps its precision.
+ */
+const SHADOW_POS_GLSL = `
+      uniform highp vec2 u_shiftDeg;
+      uniform highp float u_centerMercY;
+      const highp float SHADOW_PI = 3.141592653589793;
+      highp vec2 shadowPos(highp vec2 base, highp float shiftM) {
+        highp vec2 d = u_shiftDeg * shiftM;
+        highp float lat = atan(sinh(SHADOW_PI * (1.0 - 2.0 * (base.y + u_centerMercY))));
+        highp float dLat = radians(d.y);
+        highp float latMid = lat + 0.5 * dLat;
+        return base + vec2(d.x / 360.0, -dLat / (2.0 * SHADOW_PI * cos(latMid)));
+      }
+`;
+
+/**
  * How far off the wall the building pass samples the shadow-ceiling field.
  *
  * A prism's ground shadow starts at its own sun-facing wall and its swept quads
@@ -69,21 +97,6 @@ const WALL_SHADOW_NORMAL_OFFSET_M = 1.5;
 /** Light grey the extruded buildings are painted before any shading. */
 const BUILDING_RGB: [number, number, number] = [0.87, 0.87, 0.88];
 
-interface ShadowGeometry {
-  shadowVerts: Float32Array;    // Mercator (x,y) shadow triangles
-  /**
-   * Per-vertex *shadow ceiling*, normalized by `maxH`: the highest point the
-   * caster still shadows at that spot — its own height under its roofline,
-   * falling to 0 at the shadow's tip. Interpolated across a triangle this is
-   * exact (see `buildShadowTriangles`), which is what lets Pass C decide a roof
-   * and Pass E decide a wall fragment with one screen-space texture.
-   */
-  shadowHeights: Float32Array;
-  roofVerts: Float32Array;      // Mercator (x,y) building footprint triangles (un-offset)
-  roofHeights: Float32Array;    // normalized height per roof vertex (h/maxH)
-  sunBelowHorizon: boolean;
-}
-
 interface CachedBuildingGeometry {
   /** One entry per prism ring, ordered shortest building first (see `prismsFromTileFeatures`). */
   buildings: Array<{
@@ -107,6 +120,23 @@ interface CachedBuildingGeometry {
   bldgHeightM: Float32Array;
   bldgNormal: Float32Array;
   bldgVertexCount: number;
+  /**
+   * The ground shadow of every prism, before any sun: `appendShadowMesh`'s base
+   * position (Mercator offset to `centerMerc`), metres of height to shift by, and
+   * the *shadow ceiling* — normalized by `maxH`, the highest point the caster still
+   * shadows there: its own height under its roofline, falling to 0 at the tip.
+   * Interpolated across a triangle that ceiling is exact (see `buildShadowTriangles`),
+   * which is what lets Pass C decide a roof and Pass E a wall fragment from one
+   * screen-space texture. Passes A and B place each vertex for the current sun in
+   * their vertex shader, so a new sun is a uniform, not a rebuild and re-upload.
+   */
+  shadowBase: Float32Array;
+  shadowShiftM: Float32Array;
+  shadowCeil: Float32Array;
+  shadowVertexCount: number;
+  /** Pass C's roof footprints, Mercator offset to `centerMerc`, and their normalized heights. */
+  roofVerts: Float32Array;
+  roofHeights: Float32Array;
 }
 
 type ShadowTargetKey = 'lo' | 'hi';
@@ -151,26 +181,27 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private program: WebGLProgram | null = null;
   private positionBuffer: WebGLBuffer | null = null;
   private a_pos = -1;
+  private a_shift = -1;
   private u_matrix: WebGLUniformLocation | null = null;
   private u_color: WebGLUniformLocation | null = null;
+  private u_shiftDeg: WebGLUniformLocation | null = null;
+  private u_centerMercY: WebGLUniformLocation | null = null;
+  /** Per-vertex metres of height to shift by, shared by Passes A and B. */
+  private shadowShiftBuffer: WebGLBuffer | null = null;
 
-  // Geometry cache
-  private vertexCount = 0;
+  /**
+   * Set when the ray, objective, viewport or data changed since the last frame. The
+   * mesh no longer depends on the sun, so this now only re-places it (a uniform),
+   * recomputes the canopy, and announces `idle`.
+   */
   private dirty = true;
-  private cachedGeometry: ShadowGeometry = {
-    shadowVerts: new Float32Array(),
-    shadowHeights: new Float32Array(),
-    roofVerts: new Float32Array(),
-    roofHeights: new Float32Array(),
-    sunBelowHorizon: false,
-  };
+  /** Whether the frame last drawn had the sun below the horizon. */
+  private sunBelowHorizon = false;
 
   // Phase 2: Building geometry cache — invalidated on sourcedata/moveend/zoomend
   private buildingCache: CachedBuildingGeometry | null = null;
-
-  // Phase 3: Buffer upload versioning — skip re-upload when geometry unchanged
-  private geomVersion = 0;
-  private lastUploadedVersion = -1;
+  /** The `cacheVersion` the shadow and roof buffers hold, so they upload once per cache. */
+  private lastUploadedShadowVersion = -1;
 
   // Phase 1 + 4: Sun position tracking
   private lastSunAzDeg: number | null = null;
@@ -212,6 +243,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   private heightProgram: WebGLProgram | null = null;
   private heightAttrPos = -1;
   private heightAttrH = -1;
+  private heightAttrShift = -1;
+  private heightUShiftDeg: WebGLUniformLocation | null = null;
+  private heightUCenterMercY: WebGLUniformLocation | null = null;
   private heightUMatrix: WebGLUniformLocation | null = null;
   private heightUFieldScale: WebGLUniformLocation | null = null;
   private shadowHeightBuffer: WebGLBuffer | null = null;
@@ -777,39 +811,50 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     map.on('zoomend', this.onZoomEnd);
     map.on('moveend', this.onMoveEnd);
 
-    // Compile minimal shader program
-    const vsSrc = `
-      attribute vec2 a_pos;
+    // Ground fill (Pass A). It and Pass B draw the cache's sun-independent shadow
+    // mesh and place each vertex here for the current ray, so a new sun costs a
+    // uniform rather than an extrusion and an upload. `#version` has to be the
+    // first thing in the source — not every driver tolerates the leading newline a
+    // normally-indented template literal would put in front of it.
+    const vsSrc = `#version 300 es
+      in vec2 a_pos;
+      in float a_shift;
       uniform mat4 u_matrix;
+      ${SHADOW_POS_GLSL}
       void main() {
-        gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0);
+        gl_Position = u_matrix * vec4(shadowPos(a_pos, a_shift), 0.0, 1.0);
       }
     `;
-    const fsSrc = `
+    const fsSrc = `#version 300 es
       precision mediump float;
       uniform vec4 u_color;
+      out vec4 fragColor;
       void main() {
-        gl_FragColor = u_color;
+        fragColor = u_color;
       }
     `;
 
     this.program = createProgram(gl, vsSrc, fsSrc);
     this.positionBuffer = gl.createBuffer();
+    this.shadowShiftBuffer = gl.createBuffer();
     this.a_pos = gl.getAttribLocation(this.program, 'a_pos');
+    this.a_shift = gl.getAttribLocation(this.program, 'a_shift');
     this.u_matrix = gl.getUniformLocation(this.program, 'u_matrix');
     this.u_color = gl.getUniformLocation(this.program, 'u_color');
+    this.u_shiftDeg = gl.getUniformLocation(this.program, 'u_shiftDeg');
+    this.u_centerMercY = gl.getUniformLocation(this.program, 'u_centerMercY');
 
     // Compile height shader (Pass B): writes the normalized ceiling as fragment depth.
-    // `#version` has to be the first thing in the source — not every driver tolerates
-    // the leading newline a normally-indented template literal would put in front of it.
     const heightVsSrc = `#version 300 es
       in vec2 a_pos;
+      in float a_shift;
       in float a_height;
       uniform mat4 u_matrix;
       uniform float u_fieldScale;
       out highp float v_height;
+      ${SHADOW_POS_GLSL}
       void main() {
-        gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0);
+        gl_Position = u_matrix * vec4(shadowPos(a_pos, a_shift), 0.0, 1.0);
         // Zoom the field out far enough to hold the footprints of the buildings
         // Pass E draws, which under a tilted camera reach past the viewport.
         gl_Position.xy /= u_fieldScale;
@@ -825,9 +870,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     `;
     this.heightProgram = createProgram(gl, heightVsSrc, heightFsSrc);
     this.heightAttrPos = gl.getAttribLocation(this.heightProgram, 'a_pos');
+    this.heightAttrShift = gl.getAttribLocation(this.heightProgram, 'a_shift');
     this.heightAttrH = gl.getAttribLocation(this.heightProgram, 'a_height');
     this.heightUMatrix = gl.getUniformLocation(this.heightProgram, 'u_matrix');
     this.heightUFieldScale = gl.getUniformLocation(this.heightProgram, 'u_fieldScale');
+    this.heightUShiftDeg = gl.getUniformLocation(this.heightProgram, 'u_shiftDeg');
+    this.heightUCenterMercY = gl.getUniformLocation(this.heightProgram, 'u_centerMercY');
     this.shadowHeightBuffer = gl.createBuffer();
 
     // Compile roof exclusion shader (Pass C): conditionally erases self-shadow
@@ -1210,14 +1258,14 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         this.buildingCache = this.buildBuildingGeometryCache();
         this.cacheVersion++;
       }
-      this.cachedGeometry = this.extrudeShadows(this.buildingCache, hazardDir);
-      this.geomVersion++;
+      this.recordSunState(hazardDir);
       this.dirty = false;
       this.emit('idle');
     }
 
-    const geo = this.cachedGeometry;
-    if (geo.shadowVerts.length === 0) return;
+    const cache = this.buildingCache;
+    // Solar night is already shown by the dark basemap: no solar geometry is drawn.
+    if (!cache || cache.shadowVertexCount === 0 || this.sunBelowHorizon) return;
 
     // FBO passes (A/B/C) render at supersampled resolution for shadow-edge AA;
     // the final composite (Pass D) draws at the real canvas viewport, box-
@@ -1230,26 +1278,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.ensureFBO(gl2, moving ? 'lo' : 'hi', w, h);
     if (!this.fbo) return;
 
-    // Phase 3: Only re-upload buffers when geometry actually changed
-    if (this.geomVersion !== this.lastUploadedVersion) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, geo.shadowVerts, gl.DYNAMIC_DRAW);
-      this.vertexCount = geo.shadowVerts.length / 2;
-
-      if (this.shadowHeightBuffer) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowHeightBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, geo.shadowHeights, gl.DYNAMIC_DRAW);
-      }
-      if (this.roofPosBuffer) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.roofPosBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, geo.roofVerts, gl.DYNAMIC_DRAW);
-      }
-      if (this.roofHeightBuffer) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.roofHeightBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, geo.roofHeights, gl.DYNAMIC_DRAW);
-      }
-      this.lastUploadedVersion = this.geomVersion;
+    // The shadow mesh and roofs depend on the buildings, not the sun: upload them
+    // once per cache. Every later frame only sets `u_shiftDeg`.
+    if (this.cacheVersion !== this.lastUploadedShadowVersion) {
+      this.uploadShadowMesh(gl2, cache);
+      this.lastUploadedShadowVersion = this.cacheVersion;
     }
+    // The same metre scales, at the same centre, that `buildShadowTriangles` uses.
+    const { mPerLat, mPerLng } = metersPerDegree(this.map.getCenter().lat);
+    const [shiftLng, shiftLat] = shadowShiftDegPerMetre(
+      hazardDir.azimuthRad, hazardDir.altitudeRad, mPerLat, mPerLng,
+    );
 
     // ── Capture MapLibre's target ──
     // Only what the passes below must hand back mid-frame. Everything else (blend,
@@ -1301,19 +1340,19 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     gl2.useProgram(this.program);
     gl2.uniformMatrix4fv(this.u_matrix, false, matrix);
-    const raw = this.computeShadowColor(geo.sunBelowHorizon);
+    gl2.uniform2f(this.u_shiftDeg, shiftLng, shiftLat);
+    gl2.uniform1f(this.u_centerMercY, cache.centerMerc[1]);
+    const raw = this.computeShadowColor(this.sunBelowHorizon);
     gl2.uniform4f(this.u_color, raw[0], raw[1], raw[2], raw[3]);
 
-    gl2.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-    gl2.enableVertexAttribArray(this.a_pos);
-    gl2.vertexAttribPointer(this.a_pos, 2, gl.FLOAT, false, 0, 0);
+    this.bindShadowMesh(gl2, this.a_pos, this.a_shift);
 
     gl2.enable(gl.BLEND);
     gl2.blendEquation(gl2.MAX);
     gl2.blendFunc(gl.ONE, gl.ONE);
     gl2.disable(gl.CULL_FACE);
 
-    gl2.drawArrays(gl.TRIANGLES, 0, this.vertexCount);
+    gl2.drawArrays(gl.TRIANGLES, 0, cache.shadowVertexCount);
     }
 
     // ── Canopy ground-protection pass ──────────────────────────────────────────
@@ -1330,11 +1369,11 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // Both hazards need the ceiling field — it shades the extruded buildings in
     // Pass E — and both erase a caster's own roof footprint so a roof is not
     // credited with protection from itself.
-    const roofVertexCount = geo.roofVerts.length / 2;
-    const buildCeiling = !geo.sunBelowHorizon && roofVertexCount > 0 &&
+    const roofVertexCount = cache.roofVerts.length / 2;
+    const buildCeiling = roofVertexCount > 0 &&
         this.heightProgram && this.shadowHeightBuffer &&
         this.heightFbo && this.heightFboTexture;
-    const eraseRoof = buildCeiling && profile.erasesRoofs && !geo.sunBelowHorizon &&
+    const eraseRoof = buildCeiling && profile.erasesRoofs &&
         this.roofProgram && this.roofPosBuffer && this.roofHeightBuffer;
     if (buildCeiling) {
 
@@ -1353,18 +1392,18 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.useProgram(this.heightProgram);
       gl2.uniformMatrix4fv(this.heightUMatrix, false, matrix);
       gl2.uniform1f(this.heightUFieldScale, fieldScale);
+      gl2.uniform2f(this.heightUShiftDeg, shiftLng, shiftLat);
+      gl2.uniform1f(this.heightUCenterMercY, cache.centerMerc[1]);
 
-      // Bind shadow position buffer (same geometry as Pass A)
-      gl2.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-      gl2.enableVertexAttribArray(this.heightAttrPos);
-      gl2.vertexAttribPointer(this.heightAttrPos, 2, gl.FLOAT, false, 0, 0);
+      // The same mesh as Pass A, placed by the same shader function.
+      this.bindShadowMesh(gl2, this.heightAttrPos, this.heightAttrShift);
 
       // Bind shadow height buffer
       gl2.bindBuffer(gl.ARRAY_BUFFER, this.shadowHeightBuffer);
       gl2.enableVertexAttribArray(this.heightAttrH);
       gl2.vertexAttribPointer(this.heightAttrH, 1, gl.FLOAT, false, 0, 0);
 
-      gl2.drawArrays(gl.TRIANGLES, 0, this.vertexCount);
+      gl2.drawArrays(gl.TRIANGLES, 0, cache.shadowVertexCount);
     }
 
     if (eraseRoof) {
@@ -1441,7 +1480,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         x0, y1, 0, 1,  x1, y0, 1, 0,  x0, y0, 0, 0,
       ]);
       const a = LocalShadowAdapter.SHADOW_ALPHA;
-      const tint = this.computeShadowColor(geo.sunBelowHorizon);
+      const tint = this.computeShadowColor(this.sunBelowHorizon);
       gl2.useProgram(this.canopyCompositeProgram);
       gl2.uniformMatrix4fv(this.canopyCompositeMatrixLoc!, false, matrix);
       gl2.activeTexture(gl.TEXTURE0);
@@ -1480,8 +1519,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // basemap already draws those — so this only runs once the camera is tilted.
     // That also keeps the canvas the shadow sampler reads (invariant #5, always at
     // pitch 0) exactly as it was.
-    const cache = this.buildingCache;
-    if (cache && cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
+    if (cache.bldgVertexCount > 0 && this.map.getPitch() > 0 &&
         this.bldgProgram && this.bldgPosBuffer && this.bldgHeightBuffer &&
         this.bldgNormalBuffer && this.heightFboTexture) {
       if (this.cacheVersion !== this.lastUploadedCacheVersion) {
@@ -1503,7 +1541,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       const sunX = -Math.sin(az);
       const sunY = Math.cos(az);
       const u = this.bldgUniforms;
-      const [pr, pg, pb, alpha] = this.computeShadowColor(geo.sunBelowHorizon);
+      const [pr, pg, pb, alpha] = this.computeShadowColor(this.sunBelowHorizon);
 
       gl2.useProgram(this.bldgProgram);
       gl2.uniformMatrix4fv(u.u_matrix, false, matrix);
@@ -1528,7 +1566,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       gl2.uniform3f(u.u_shadowTint, pr / alpha, pg / alpha, pb / alpha);
       gl2.uniform2f(u.u_sunFlat, sunX, sunY);
       gl2.uniform3f(u.u_wallColor, BUILDING_RGB[0], BUILDING_RGB[1], BUILDING_RGB[2]);
-      gl2.uniform1f(u.u_sunBelow, geo.sunBelowHorizon ? 1 : 0);
+      gl2.uniform1f(u.u_sunBelow, this.sunBelowHorizon ? 1 : 0);
       gl2.uniform1f(u.u_bias, heightBias);
       gl2.uniform1f(u.u_fieldScale, fieldScale);
 
@@ -1615,6 +1653,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     if (this.program) gl.deleteProgram(this.program);
     if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
+    if (this.shadowShiftBuffer) gl.deleteBuffer(this.shadowShiftBuffer);
     for (const t of [this.shadowTargets.lo, this.shadowTargets.hi]) if (t) this.deleteShadowTargets(gl, t);
     this.shadowTargets = { lo: null, hi: null };
     if (this.heightProgram) gl.deleteProgram(this.heightProgram);
@@ -1642,6 +1681,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.canopyAtlas = null;
     this.program = null;
     this.positionBuffer = null;
+    this.shadowShiftBuffer = null;
     this.fbo = null;
     this.fboTexture = null;
     this.heightProgram = null;
@@ -1656,6 +1696,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     this.bldgHeightBuffer = null;
     this.bldgNormalBuffer = null;
     this.lastUploadedCacheVersion = -1;
+    this.lastUploadedShadowVersion = -1;
     this.quadProgram = null;
     this.quadBuffer = null;
     this.buildingCache = null;
@@ -2046,6 +2087,12 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       bldgHeightM: new Float32Array(),
       bldgNormal: new Float32Array(),
       bldgVertexCount: 0,
+      shadowBase: new Float32Array(),
+      shadowShiftM: new Float32Array(),
+      shadowCeil: new Float32Array(),
+      shadowVertexCount: 0,
+      roofVerts: new Float32Array(),
+      roofHeights: new Float32Array(),
     };
     const emptyCache: CachedBuildingGeometry = {
       buildings: [], maxH: 1, centerMerc: [0, 0], anchor, ...emptyMesh,
@@ -2064,23 +2111,30 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       buildings: [], maxH: maxHeightM, centerMerc: [cx, cy], anchor, ...emptyMesh,
     };
 
-    // Pass E's mesh, accumulated alongside the roofs it shares its source with.
+    // Pass E's mesh, accumulated alongside the roofs it shares its source with,
+    // and the ground-shadow mesh Passes A and B place per sun.
     const mesh: PrismMesh = { pos: [], heightM: [], normal: [] };
+    const shadow: ShadowMesh = { base: [], shiftM: [], ceil: [] };
+    const roofHeights: number[] = [];
+    const roofs: number[] = [];
 
     for (const prism of prisms) {
       // Roof footprint triangulation, Mercator-projected and centered once here
-      // so Pass C can memcpy it straight into the vertex buffer every frame.
+      // so Pass C's buffer is built once per cache, not per frame.
       const roofVerts: number[] = [];
       for (const [lng, lat] of triangulateRing(prism.ring)) {
         const [x, y] = lngLatToMercator(lng, lat);
         roofVerts.push(x - cx, y - cy);
       }
+      const normalizedH = prism.heightM / maxHeightM;
 
       cached.buildings.push({
         prism,
-        normalizedH: prism.heightM / maxHeightM,
+        normalizedH,
         mercatorRoofVerts: new Float32Array(roofVerts),
       });
+      for (let i = 0; i < roofVerts.length; i++) roofs.push(roofVerts[i]);
+      for (let i = 0; i < roofVerts.length / 2; i++) roofHeights.push(normalizedH);
 
       // Walls, in the same Mercator-centered frame the roof triangles are already in.
       const ringMerc = prism.ring.map(([lng, lat]) => {
@@ -2088,101 +2142,71 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
         return [x - cx, y - cy] as [number, number];
       });
       appendPrismMesh(ringMerc, prism.heightM, roofVerts, mesh);
+
+      // The shadow's caps are cut from the *opened* ring, as `buildShadowTriangles`
+      // cuts them, so its near cap matches the CPU path vertex for vertex.
+      const capVerts: number[] = [];
+      for (const [lng, lat] of triangulateRing(openRing(prism.ring))) {
+        const [x, y] = lngLatToMercator(lng, lat);
+        capVerts.push(x - cx, y - cy);
+      }
+      appendShadowMesh(ringMerc, prism.heightM, normalizedH, capVerts, shadow);
     }
 
     cached.bldgPos = new Float32Array(mesh.pos);
     cached.bldgHeightM = new Float32Array(mesh.heightM);
     cached.bldgNormal = new Float32Array(mesh.normal);
     cached.bldgVertexCount = mesh.heightM.length;
+    cached.shadowBase = new Float32Array(shadow.base);
+    cached.shadowShiftM = new Float32Array(shadow.shiftM);
+    cached.shadowCeil = new Float32Array(shadow.ceil);
+    cached.shadowVertexCount = shadow.shiftM.length;
+    cached.roofVerts = new Float32Array(roofs);
+    cached.roofHeights = new Float32Array(roofHeights);
 
     return cached;
   }
 
   /**
-   * Phase 2: Extrude shadows from cached building geometry using current sun position.
-   * This is the fast path — no querySourceFeatures, no earcut, just shadow offset math.
+   * Note what a frame's ray means for the passes: whether the sun is down (nothing
+   * is drawn — solar night is already the dark basemap), and, when the worker never
+   * answered, the synchronous sun, so the dirty-check has a trace to compare with.
+   * The mesh itself no longer depends on the ray; the vertex shaders place it.
    */
-  private extrudeShadows(
-    cache: CachedBuildingGeometry,
-    hazard: HazardDirection
-  ): ShadowGeometry {
-    const empty: ShadowGeometry = {
-      shadowVerts: new Float32Array(),
-      shadowHeights: new Float32Array(),
-      roofVerts: new Float32Array(),
-      roofHeights: new Float32Array(),
-      sunBelowHorizon: false,
-    };
-    if (!this.map) return empty;
-
-    // Phase 4: The worker's sun position, or the wind-fed rain ray — the extrude
-    // math below is direction-agnostic; only the callers' semantic differs.
-    const sunAzimuth = hazard.azimuthRad;
-    const sunAltitude = hazard.altitudeRad;
+  private recordSunState(hazard: HazardDirection) {
     if (this.hazardMode === "sun" && this.lastSunAzRad == null) {
-      // A sun that was never computed (worker disabled) leaves its trace for the
-      // dirty-check the same way the old synchronous path did.
-      this.lastSunAzDeg = sunAzimuth * 180 / Math.PI;
-      this.lastSunAltDeg = sunAltitude * 180 / Math.PI;
-      this.lastSunAzRad = sunAzimuth;
-      this.lastSunAltRad = sunAltitude;
+      this.lastSunAzDeg = hazard.azimuthRad * 180 / Math.PI;
+      this.lastSunAltDeg = hazard.altitudeRad * 180 / Math.PI;
+      this.lastSunAzRad = hazard.azimuthRad;
+      this.lastSunAltRad = hazard.altitudeRad;
     }
+    this.sunBelowHorizon = hazard.sunBelow;
+  }
 
-    // Solar night is already shown by the dark basemap. Keep the semantic flag
-    // for the renderer, but submit no solar geometry to its ground or wall passes.
-    if (hazard.sunBelow) {
-      return {
-        shadowVerts: new Float32Array(),
-        shadowHeights: new Float32Array(),
-        roofVerts: new Float32Array(),
-        roofHeights: new Float32Array(),
-        sunBelowHorizon: true,
-      };
+  /** Upload a cache's sun-independent shadow mesh and roofs. Once per cache. */
+  private uploadShadowMesh(gl: WebGL2RenderingContext, cache: CachedBuildingGeometry) {
+    const uploads: Array<[WebGLBuffer | null, Float32Array]> = [
+      [this.positionBuffer, cache.shadowBase],
+      [this.shadowShiftBuffer, cache.shadowShiftM],
+      [this.shadowHeightBuffer, cache.shadowCeil],
+      [this.roofPosBuffer, cache.roofVerts],
+      [this.roofHeightBuffer, cache.roofHeights],
+    ];
+    for (const [buffer, data] of uploads) {
+      if (!buffer) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
     }
+  }
 
-    if (cache.buildings.length === 0) return empty;
-
-    const center = this.map.getCenter();
-    const { mPerLat, mPerLng } = metersPerDegree(center.lat);
-
-    const shadowVertsList: number[] = [];
-    const shadowHeightsList: number[] = [];
-    const roofVertsList: number[] = [];
-    const roofHeightsList: number[] = [];
-
-    const [cx, cy] = cache.centerMerc;
-
-    for (const bldg of cache.buildings) {
-      // Shadow geometry: edge-by-edge side-wall extrusion + earcut caps
-      const ceilings: number[] = [];
-      const shadowTris = buildShadowTriangles(
-        bldg.prism.ring, bldg.prism.heightM, sunAzimuth, sunAltitude, mPerLat, mPerLng,
-        ceilings
-      );
-      for (let i = 0; i < shadowTris.length; i++) {
-        const [x, y] = lngLatToMercator(shadowTris[i][0], shadowTris[i][1]);
-        shadowVertsList.push(x - cx, y - cy);
-        shadowHeightsList.push(bldg.normalizedH * ceilings[i]);
-      }
-
-      // Roof verts from cache (already triangulated and in Mercator)
-      const rv = bldg.mercatorRoofVerts;
-      for (let i = 0; i < rv.length; i++) {
-        roofVertsList.push(rv[i]);
-      }
-      const roofTriCount = rv.length / 2; // number of xy pairs = vertex count
-      for (let i = 0; i < roofTriCount; i++) {
-        roofHeightsList.push(bldg.normalizedH);
-      }
-    }
-
-    return {
-      shadowVerts: new Float32Array(shadowVertsList),
-      shadowHeights: new Float32Array(shadowHeightsList),
-      roofVerts: new Float32Array(roofVertsList),
-      roofHeights: new Float32Array(roofHeightsList),
-      sunBelowHorizon: false,
-    };
+  /** Point a program's base-position and shift attributes at the shadow mesh. */
+  private bindShadowMesh(gl: WebGL2RenderingContext, posAttr: number, shiftAttr: number) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    gl.enableVertexAttribArray(posAttr);
+    gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowShiftBuffer);
+    gl.enableVertexAttribArray(shiftAttr);
+    gl.vertexAttribPointer(shiftAttr, 1, gl.FLOAT, false, 0, 0);
   }
 
   private emit(event: string) {
