@@ -117,4 +117,28 @@ describe("sun worker requests", () => {
     expect(rain.shadowVerts.length).toBeGreaterThan(0);
     expect(layer.readBuildingShadowMask()?.data[0]).toBeGreaterThan(0);
   });
+
+  it("does not re-extrude for the exposure context it already holds", async () => {
+    const { resolveExposureContext } = await import("../../exposure");
+    const layer = adapterAt({ lat: 40.754, lng: -73.984 });
+    const at = (time: Date) => resolveExposureContext({ objective: "sun" }, { time, mapCenter: [-73.984, 40.754] });
+    const t = new Date("2026-10-01T16:43:00Z");
+    layer.setExposureContext(at(t));
+    (layer as any).dirty = false;
+
+    // A finished route re-sends the same context as a new object.
+    layer.setExposureContext(at(new Date(t)));
+    expect((layer as any).dirty).toBe(false);
+
+    // setDate moved the clock alone: the same context must restore it.
+    layer.setDate(new Date(t.getTime() + 3_600_000));
+    (layer as any).dirty = false;
+    layer.setExposureContext(at(new Date(t)));
+    expect((layer as any).dirty).toBe(true);
+    expect((layer as any).currentDate.getTime()).toBe(t.getTime());
+
+    (layer as any).dirty = false;
+    layer.setExposureContext(at(new Date(t.getTime() + 60_000)));
+    expect((layer as any).dirty).toBe(true);
+  });
 });

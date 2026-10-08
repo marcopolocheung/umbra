@@ -773,3 +773,36 @@ owner's LES → Kips Bay route, two runs each, back to back): `search` 4.6 / 5.0
 calculation total 9.6 / 10.4 s → 6.9 / 6.5 s, click → options visible (`zz-ux.mjs`) 11.3 s →
 8.6 s. The returned routes are the same: Shortest 59%, Balanced 78%, Most shadowed 82%, Via
 Subway 73%.
+
+## The gap between calculation and options on screen (2026-10-07)
+
+**What filled it.** A CPU profile of the owner's LES → Kips Bay route, windowed exactly from
+`phases.total` to the floating cards becoming visible (1.12–1.26 s on this box), shows ~0.14 s
+of JavaScript and ~1 s of native frame work. `setNavRoutes`, the route layers and shed
+placement barely register. Two map frames filled the gap:
+- **A redundant shadow re-extrude (~0.28 s, plus the frame that draws it).** `page.tsx`'s
+  exposure effect depends on `routeExposureContext`, so a finished route re-sends the
+  exposure context. In sun mode that context is identical (same revision, time and hazard),
+  but `LocalShadowAdapter.setExposureContext` marked the whole mesh dirty anyway. It now
+  returns early for the context it already holds; date and hazard are checked too because
+  `setDate`/`setHazard` move them alone.
+- **The camera fit starting in the cards' own frame.** `fitMapToRoute`'s first camera step
+  re-rendered the map before the cards could paint. The fit now starts one frame later, and
+  is skipped if a newer calculation has begun.
+
+**Measured** with `zz-ux.mjs`, local production builds of `umbra/main` and this change,
+interleaved, fresh servers:
+
+| | gap, calculation → options visible (5 runs) |
+|---|---|
+| `umbra/main` | 1,169 · 1,140 · 1,178 · 1,261 · 1,153 ms |
+| this change | 420 · 496 · 515 · 508 · 497 ms |
+
+An earlier batch had one 2.6 s outlier out of 8 runs, and it did not reappear in the
+interleaved runs. Screenshots 6 s after the click are identical: the camera still frames the
+route.
+
+**Not at the ≤ 0.3 s target.** What remains is one map frame (~0.45 s), almost all native
+time. On this box WebGL runs on SwiftShader, the CPU rasteriser, where every map frame costs
+~350–400 ms, so a GPU should render that frame in milliseconds. That last frame has not been
+measured on real hardware.

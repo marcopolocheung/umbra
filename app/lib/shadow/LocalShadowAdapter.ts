@@ -468,6 +468,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
   /** Apply objective, date, wind, and revision as one renderer transaction. */
   setExposureContext(context: ResolvedExposureContext) {
+    // page.tsx re-sends the context whenever any of its inputs changes identity
+    // — a finished route calculation does, in sun mode, with nothing changed.
+    // The revision fingerprints objective, time, place and wind; date and
+    // hazard are checked too because `setDate`/`setHazard` move them alone.
+    // Re-extruding the whole mesh for it cost ~0.3 s before the route cards
+    // could paint.
+    if (
+      context.revision === this.contextRevision
+      && context.objective === this.hazardMode
+      && context.time.getTime() === this.currentDate.getTime()
+    ) return;
     this.currentDate = new Date(context.time.getTime());
     this.contextRevision = context.revision;
     this.contextObjective = context.objective;
