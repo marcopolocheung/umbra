@@ -7,9 +7,10 @@ export const SHADOW_SUPERSAMPLE = 2;
 export const SHADOW_FBO_MAX_DIM = 4096;
 
 /**
- * The shadow FBO size for a canvas. While the camera moves the passes render at
- * 1× — a quarter of the fragment work, with aliased edges for the length of the
- * gesture — and the settled frame goes back to SHADOW_SUPERSAMPLE×, antialiased.
+ * The shadow FBO size for a canvas. While the camera moves or the clock is being
+ * scrubbed the passes render at 1× — a quarter of the fragment work, with aliased
+ * edges for the length of the gesture — and the settled frame goes back to
+ * SHADOW_SUPERSAMPLE×, antialiased.
  */
 export function shadowTargetSize(canvasWidth: number, canvasHeight: number, moving: boolean): { w: number; h: number } {
   const scale = moving ? 1 : SHADOW_SUPERSAMPLE;
