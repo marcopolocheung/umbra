@@ -506,3 +506,147 @@ export function appendPrismMesh(
     for (let k = 0; k < 6; k++) out.normal.push(nx, ny, 0);
   }
 }
+
+/**
+ * Earcut an open `[lng, lat]` ring, returning triangle indices into it — the same cut
+ * `triangulateRing` makes, without materialising a coordinate pair per vertex.
+ */
+export function triangulateRingIndices(ring: [number, number][]): number[] {
+  if (ring.length < 3) return [];
+  const flat = new Array<number>(ring.length * 2);
+  for (let i = 0; i < ring.length; i++) {
+    flat[i * 2] = ring[i][0];
+    flat[i * 2 + 1] = ring[i][1];
+  }
+  return earcut(flat, [], 2);
+}
+
+/** Output arrays and their write cursors (in vertices) for `writePrismMesh`. */
+export interface PrismMeshWriter {
+  pos: Float32Array;
+  heightM: Float32Array;
+  normal: Float32Array;
+  at: number;
+}
+
+/** Vertices `writePrismMesh` emits for a ring of `n` open points with `roofIndices` roof indices. */
+export function prismMeshVertexCount(n: number, roofIndexCount: number): number {
+  return roofIndexCount + (n >= 3 ? 6 * n : 0);
+}
+
+/**
+ * `appendPrismMesh` into preallocated typed arrays: the same triangles, order,
+ * winding, heights and normals, float for float — pinned by a test against it.
+ *
+ * `ring` is the open ring, projected, flat `[x0, y0, x1, y1, …]`, and `n` its point
+ * count; `roofIndices` index into it. Projecting the ring once and indexing it reads
+ * exactly the floats the tuple path projected per triangle vertex, without the
+ * intermediate arrays that made a cache rebuild allocate millions of numbers.
+ */
+export function writePrismMesh(
+  ring: ArrayLike<number>,
+  n: number,
+  heightM: number,
+  roofIndices: ArrayLike<number>,
+  out: PrismMeshWriter
+): void {
+  const { pos, heightM: hOut, normal } = out;
+  let v = out.at;
+  for (let i = 0; i + 2 < roofIndices.length; i += 3) {
+    const i0 = roofIndices[i] * 2;
+    const i1 = roofIndices[i + 1] * 2;
+    const i2 = roofIndices[i + 2] * 2;
+    const x0 = ring[i0], y0 = ring[i0 + 1], x1 = ring[i1], y1 = ring[i1 + 1], x2 = ring[i2], y2 = ring[i2 + 1];
+    const area2 = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+    const flip = area2 < 0;
+    pos[v * 2] = x0; pos[v * 2 + 1] = y0;
+    pos[v * 2 + 2] = flip ? x2 : x1; pos[v * 2 + 3] = flip ? y2 : y1;
+    pos[v * 2 + 4] = flip ? x1 : x2; pos[v * 2 + 5] = flip ? y1 : y2;
+    for (let k = 0; k < 3; k++) {
+      hOut[v + k] = heightM;
+      normal[(v + k) * 3] = 0; normal[(v + k) * 3 + 1] = 0; normal[(v + k) * 3 + 2] = 1;
+    }
+    v += 3;
+  }
+
+  if (n >= 3) {
+    let area2 = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      area2 += ring[i * 2] * ring[j * 2 + 1] - ring[j * 2] * ring[i * 2 + 1];
+    }
+    const forward = area2 > 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const a = (forward ? i : j) * 2;
+      const b = (forward ? j : i) * 2;
+      const ax = ring[a], ay = ring[a + 1], bx = ring[b], by = ring[b + 1];
+      const nLen = Math.hypot(by - ay, bx - ax) || 1;
+      const nx = (by - ay) / nLen;
+      const ny = -(bx - ax) / nLen;
+      const p = v * 2;
+      pos[p] = ax; pos[p + 1] = ay; pos[p + 2] = bx; pos[p + 3] = by; pos[p + 4] = bx; pos[p + 5] = by;
+      pos[p + 6] = ax; pos[p + 7] = ay; pos[p + 8] = bx; pos[p + 9] = by; pos[p + 10] = ax; pos[p + 11] = ay;
+      hOut[v] = 0; hOut[v + 1] = 0; hOut[v + 2] = heightM; hOut[v + 3] = 0; hOut[v + 4] = heightM; hOut[v + 5] = heightM;
+      for (let k = 0; k < 6; k++) {
+        normal[(v + k) * 3] = nx; normal[(v + k) * 3 + 1] = ny; normal[(v + k) * 3 + 2] = 0;
+      }
+      v += 6;
+    }
+  }
+  out.at = v;
+}
+
+/** Output arrays and their write cursor (in vertices) for `writeShadowMesh`. */
+export interface ShadowMeshWriter {
+  base: Float32Array;
+  shiftM: Float32Array;
+  ceil: Float32Array;
+  at: number;
+}
+
+/** Vertices `writeShadowMesh` emits for a ring of `n` open points with `capIndices` cap indices. */
+export function shadowMeshVertexCount(n: number, capIndexCount: number): number {
+  return n >= 3 ? 6 * n + 2 * capIndexCount : 0;
+}
+
+/**
+ * `appendShadowMesh` into preallocated typed arrays — same layout and values, pinned
+ * by a test against it. `ring` and `n` are as for `writePrismMesh`; `capIndices` index
+ * the open ring, the cut `buildShadowTriangles` makes.
+ */
+export function writeShadowMesh(
+  ring: ArrayLike<number>,
+  n: number,
+  heightM: number,
+  normalizedH: number,
+  capIndices: ArrayLike<number>,
+  out: ShadowMeshWriter
+): void {
+  if (n < 3) return;
+  const { base, shiftM, ceil } = out;
+  let v = out.at;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const ix = ring[i * 2], iy = ring[i * 2 + 1], jx = ring[j * 2], jy = ring[j * 2 + 1];
+    const p = v * 2;
+    base[p] = ix; base[p + 1] = iy; base[p + 2] = jx; base[p + 3] = jy; base[p + 4] = ix; base[p + 5] = iy;
+    base[p + 6] = jx; base[p + 7] = jy; base[p + 8] = jx; base[p + 9] = jy; base[p + 10] = ix; base[p + 11] = iy;
+    shiftM[v] = 0; shiftM[v + 1] = 0; shiftM[v + 2] = heightM; shiftM[v + 3] = 0; shiftM[v + 4] = heightM; shiftM[v + 5] = heightM;
+    ceil[v] = normalizedH; ceil[v + 1] = normalizedH; ceil[v + 2] = 0; ceil[v + 3] = normalizedH; ceil[v + 4] = 0; ceil[v + 5] = 0;
+    v += 6;
+  }
+  for (let cap = 0; cap < 2; cap++) {
+    const shift = cap === 0 ? 0 : heightM;
+    const weight = cap === 0 ? normalizedH : 0;
+    for (let k = 0; k < capIndices.length; k++) {
+      const c = capIndices[k] * 2;
+      base[v * 2] = ring[c];
+      base[v * 2 + 1] = ring[c + 1];
+      shiftM[v] = shift;
+      ceil[v] = weight;
+      v++;
+    }
+  }
+  out.at = v;
+}

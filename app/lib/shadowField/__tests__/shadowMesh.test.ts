@@ -10,14 +10,23 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  type PrismMesh,
+  type PrismMeshWriter,
   type ShadowMesh,
+  type ShadowMeshWriter,
+  appendPrismMesh,
   appendShadowMesh,
   buildShadowTriangles,
   metersPerDegree,
   openRing,
+  prismMeshVertexCount,
+  shadowMeshVertexCount,
   shadowShiftDegPerMetre,
   shadowShiftMercator,
   triangulateRing,
+  triangulateRingIndices,
+  writePrismMesh,
+  writeShadowMesh,
 } from "../geometry";
 
 const LAT = 40.754;
@@ -177,5 +186,59 @@ describe("appendShadowMesh", () => {
     const mesh: ShadowMesh = { base: [], shiftM: [], ceil: [] };
     appendShadowMesh([[0, 0], [1, 1]], 20, 1, [], mesh);
     expect(mesh.base).toHaveLength(0);
+  });
+});
+
+describe("typed mesh writers", () => {
+  // The renderer's cache rebuild writes straight into typed arrays. These pin it to
+  // the readable builders above, float for float, over the same random corpus.
+  it("write exactly what appendPrismMesh and appendShadowMesh append", () => {
+    const rand = rng(2718);
+    const center = toMercator(LNG, LAT);
+    let compared = 0;
+    for (let b = 0; b < 80; b++) {
+      const ring = starRing(rand, b % 2 === 0, (rand() - 0.5) * 1500);
+      const heightM = 10 + rand() * 300;
+      const normalizedH = heightM / 320;
+      const project = ([lng, lat]: [number, number]) => {
+        const [x, y] = toMercator(lng, lat);
+        return [x - center[0], y - center[1]] as [number, number];
+      };
+
+      // Reference: the tuple builders, fed exactly as the renderer fed them before.
+      const roofRef: number[] = [];
+      for (const p of triangulateRing(ring)) roofRef.push(...project(p));
+      const prismRef: PrismMesh = { pos: [], heightM: [], normal: [] };
+      appendPrismMesh(ring.map(project), heightM, roofRef, prismRef);
+      const capRef: number[] = [];
+      for (const p of triangulateRing(openRing(ring))) capRef.push(...project(p));
+      const shadowRef: ShadowMesh = { base: [], shiftM: [], ceil: [] };
+      appendShadowMesh(ring.map(project), heightM, normalizedH, capRef, shadowRef);
+
+      // Typed path: project the open ring once, earcut to indices.
+      const open = openRing(ring);
+      const n = open.length;
+      const flat = new Float64Array(n * 2);
+      open.forEach((p, i) => { const [x, y] = project(p); flat[i * 2] = x; flat[i * 2 + 1] = y; });
+      const roofIdx = triangulateRingIndices(ring).map((i) => (i === n ? 0 : i));
+      const capIdx = triangulateRingIndices(open);
+      const pv = prismMeshVertexCount(n, roofIdx.length);
+      const sv = shadowMeshVertexCount(n, capIdx.length);
+      const prism: PrismMeshWriter = { pos: new Float32Array(pv * 2), heightM: new Float32Array(pv), normal: new Float32Array(pv * 3), at: 0 };
+      const shadow: ShadowMeshWriter = { base: new Float32Array(sv * 2), shiftM: new Float32Array(sv), ceil: new Float32Array(sv), at: 0 };
+      writePrismMesh(flat, n, heightM, roofIdx, prism);
+      writeShadowMesh(flat, n, heightM, normalizedH, capIdx, shadow);
+
+      expect(prism.at).toBe(pv);
+      expect(shadow.at).toBe(sv);
+      expect(prism.pos).toEqual(new Float32Array(prismRef.pos));
+      expect(prism.heightM).toEqual(new Float32Array(prismRef.heightM));
+      expect(prism.normal).toEqual(new Float32Array(prismRef.normal));
+      expect(shadow.base).toEqual(new Float32Array(shadowRef.base));
+      expect(shadow.shiftM).toEqual(new Float32Array(shadowRef.shiftM));
+      expect(shadow.ceil).toEqual(new Float32Array(shadowRef.ceil));
+      compared += pv + sv;
+    }
+    expect(compared).toBeGreaterThan(10000);
   });
 });
