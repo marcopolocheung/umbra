@@ -39,6 +39,49 @@ export function normalizedCeilingLift(
   return (sunwardOffsetM * Math.tan(sunAltitudeRad)) / maxHeightM;
 }
 
+/** Largest distance the wall pass moves its ceiling sample off the wall, in metres. */
+export const WALL_NUDGE_MAX_M = 1.5;
+
+/** How many ceiling-field texels the wall sample has to clear its own caster by. */
+export const WALL_NUDGE_TEXELS = 3;
+
+/**
+ * How far the wall pass moves its ceiling sample off the wall, in metres.
+ *
+ * A prism's ground shadow starts at its own sun-facing wall and its swept quads
+ * run back across its own footprint, so sampling the field directly under a wall
+ * fragment reports that every wall of every building is inside its own shadow.
+ * The sample is therefore nudged out of the caster before it is taken: toward the
+ * sun, which clears the swept quads, and along the wall's outward normal, which
+ * clears the footprint even on a wall that runs nearly parallel to the sun. That
+ * second step is what stops such a wall from dithering along the edge of its own
+ * shadow.
+ *
+ * Nudging toward the sun means nudging closer to every caster, so the field reads a
+ * *higher* ceiling there — by exactly the sunward part of the step times tan(alt),
+ * since within any caster's shadow the ceiling falls at that slope and the per-pixel
+ * MAX preserves it. The wall pass therefore raises its own threshold by the same
+ * amount (`normalizedCeilingLift`, uploaded as `u_ceilLift`), which makes the nudge
+ * geometrically free: the wall's terminator lands where the ground shadow at its
+ * base says it should, while the sample still escapes the near cap. Left
+ * uncompensated, the raised ceiling meets an unraised threshold and every wall
+ * shadows 1–2 m too high — which is what made a shadow step as it crossed onto a wall.
+ *
+ * The normal step has no such compensation, and cannot: shadow edges on the ground run
+ * parallel to the sun, so stepping `d` along a normal that sits at angle θ to the sun
+ * slides every vertical shadow edge on that wall sideways by `d·tan θ`. At a fixed
+ * 1.5 m that is ~4 m on a wall 70° off the sun — the gap between where a shadow
+ * meets a wall's base and where it ends on the wall. The step only has to clear the
+ * caster's own footprint by a few texels of the field, so it follows the field's
+ * ground resolution instead: centimetres zoomed in, where the slide was visible, and
+ * the old 1.5 m once a texel is half a metre, where it is sub-pixel.
+ *
+ * `fieldTexelM` is the ground width of one ceiling-field texel at the view centre.
+ */
+export function wallShadowNudgeM(fieldTexelM: number): number {
+  return Math.min(WALL_NUDGE_MAX_M, Math.max(SHADOW_HEIGHT_BIAS_M, WALL_NUDGE_TEXELS * fieldTexelM));
+}
+
 /**
  * Widest the ceiling field may be zoomed out, as a multiple of the viewport's NDC
  * half-extent. The field keeps the framebuffer it already had, so every unit of
