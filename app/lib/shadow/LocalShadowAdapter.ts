@@ -8,15 +8,17 @@ import {
 } from '../shadowField/cachePolicy';
 import {
   type BuildingPrism,
-  type PrismMesh,
-  type ShadowMesh,
-  appendPrismMesh,
-  appendShadowMesh,
+  type PrismMeshWriter,
+  type ShadowMeshWriter,
   metersPerDegree,
   openRing,
+  prismMeshVertexCount,
   prismsFromTileFeatures,
+  shadowMeshVertexCount,
   shadowShiftDegPerMetre,
-  triangulateRing,
+  triangulateRingIndices,
+  writePrismMesh,
+  writeShadowMesh,
 } from '../shadowField/geometry';
 import { buildShadowIndex } from '../shadowField/shadowIndex';
 import SunWorker from '../../workers/sunPosition.worker?worker';
@@ -102,8 +104,6 @@ interface CachedBuildingGeometry {
   buildings: Array<{
     prism: BuildingPrism;
     normalizedH: number;
-    /** Roof footprint, pre-triangulated and pre-offset to `centerMerc`. */
-    mercatorRoofVerts: Float32Array;
   }>;
   maxH: number;
   centerMerc: [number, number];
@@ -2111,58 +2111,84 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
       buildings: [], maxH: maxHeightM, centerMerc: [cx, cy], anchor, ...emptyMesh,
     };
 
-    // Pass E's mesh, accumulated alongside the roofs it shares its source with,
-    // and the ground-shadow mesh Passes A and B place per sun.
-    const mesh: PrismMesh = { pos: [], heightM: [], normal: [] };
-    const shadow: ShadowMesh = { base: [], shiftM: [], ceil: [] };
-    const roofHeights: number[] = [];
-    const roofs: number[] = [];
-
+    // A rebuild runs synchronously inside a map frame, after every pan past the cache
+    // threshold, so it allocates as little as it can: each ring is opened and
+    // projected once, earcut returns indices into it, and every output is a typed
+    // array sized exactly by a first pass and filled by a second. Growing JS arrays
+    // and copying them out at the end made a dense rebuild mostly allocation and GC.
+    interface Prepared {
+      ring: Float64Array;
+      n: number;
+      roof: number[];
+      cap: number[];
+      heightM: number;
+      normalizedH: number;
+    }
+    const prepared: Prepared[] = [];
+    let prismVerts = 0;
+    let shadowVerts = 0;
+    let roofVerts = 0;
     for (const prism of prisms) {
-      // Roof footprint triangulation, Mercator-projected and centered once here
-      // so Pass C's buffer is built once per cache, not per frame.
-      const roofVerts: number[] = [];
-      for (const [lng, lat] of triangulateRing(prism.ring)) {
-        const [x, y] = lngLatToMercator(lng, lat);
-        roofVerts.push(x - cx, y - cy);
+      const open = openRing(prism.ring);
+      const n = open.length;
+      const ring = new Float64Array(n * 2);
+      for (let i = 0; i < n; i++) {
+        const [x, y] = lngLatToMercator(open[i][0], open[i][1]);
+        ring[i * 2] = x - cx;
+        ring[i * 2 + 1] = y - cy;
       }
+      // The roof is cut from the ring as delivered (closed, usually), which is the cut
+      // `tileGeometryParity` pins; its closing index is the first point again. The
+      // shadow cap is cut from the open ring, as `buildShadowTriangles` cuts it.
+      const roof = triangulateRingIndices(prism.ring);
+      for (let i = 0; i < roof.length; i++) if (roof[i] >= n) roof[i] = 0;
+      const cap = triangulateRingIndices(open);
       const normalizedH = prism.heightM / maxHeightM;
-
-      cached.buildings.push({
-        prism,
-        normalizedH,
-        mercatorRoofVerts: new Float32Array(roofVerts),
-      });
-      for (let i = 0; i < roofVerts.length; i++) roofs.push(roofVerts[i]);
-      for (let i = 0; i < roofVerts.length / 2; i++) roofHeights.push(normalizedH);
-
-      // Walls, in the same Mercator-centered frame the roof triangles are already in.
-      const ringMerc = prism.ring.map(([lng, lat]) => {
-        const [x, y] = lngLatToMercator(lng, lat);
-        return [x - cx, y - cy] as [number, number];
-      });
-      appendPrismMesh(ringMerc, prism.heightM, roofVerts, mesh);
-
-      // The shadow's caps are cut from the *opened* ring, as `buildShadowTriangles`
-      // cuts them, so its near cap matches the CPU path vertex for vertex.
-      const capVerts: number[] = [];
-      for (const [lng, lat] of triangulateRing(openRing(prism.ring))) {
-        const [x, y] = lngLatToMercator(lng, lat);
-        capVerts.push(x - cx, y - cy);
-      }
-      appendShadowMesh(ringMerc, prism.heightM, normalizedH, capVerts, shadow);
+      prepared.push({ ring, n, roof, cap, heightM: prism.heightM, normalizedH });
+      cached.buildings.push({ prism, normalizedH });
+      prismVerts += prismMeshVertexCount(n, roof.length);
+      shadowVerts += shadowMeshVertexCount(n, cap.length);
+      roofVerts += roof.length;
     }
 
-    cached.bldgPos = new Float32Array(mesh.pos);
-    cached.bldgHeightM = new Float32Array(mesh.heightM);
-    cached.bldgNormal = new Float32Array(mesh.normal);
-    cached.bldgVertexCount = mesh.heightM.length;
-    cached.shadowBase = new Float32Array(shadow.base);
-    cached.shadowShiftM = new Float32Array(shadow.shiftM);
-    cached.shadowCeil = new Float32Array(shadow.ceil);
-    cached.shadowVertexCount = shadow.shiftM.length;
-    cached.roofVerts = new Float32Array(roofs);
-    cached.roofHeights = new Float32Array(roofHeights);
+    const mesh: PrismMeshWriter = {
+      pos: new Float32Array(prismVerts * 2),
+      heightM: new Float32Array(prismVerts),
+      normal: new Float32Array(prismVerts * 3),
+      at: 0,
+    };
+    const shadow: ShadowMeshWriter = {
+      base: new Float32Array(shadowVerts * 2),
+      shiftM: new Float32Array(shadowVerts),
+      ceil: new Float32Array(shadowVerts),
+      at: 0,
+    };
+    const roofs = new Float32Array(roofVerts * 2);
+    const roofHeights = new Float32Array(roofVerts);
+    let r = 0;
+    for (const b of prepared) {
+      // Pass C's roof footprints, in the same order and frame as before.
+      for (let k = 0; k < b.roof.length; k++) {
+        const c = b.roof[k] * 2;
+        roofs[r * 2] = b.ring[c];
+        roofs[r * 2 + 1] = b.ring[c + 1];
+        roofHeights[r] = b.normalizedH;
+        r++;
+      }
+      writePrismMesh(b.ring, b.n, b.heightM, b.roof, mesh);
+      writeShadowMesh(b.ring, b.n, b.heightM, b.normalizedH, b.cap, shadow);
+    }
+
+    cached.bldgPos = mesh.pos;
+    cached.bldgHeightM = mesh.heightM;
+    cached.bldgNormal = mesh.normal;
+    cached.bldgVertexCount = mesh.at;
+    cached.shadowBase = shadow.base;
+    cached.shadowShiftM = shadow.shiftM;
+    cached.shadowCeil = shadow.ceil;
+    cached.shadowVertexCount = shadow.at;
+    cached.roofVerts = roofs;
+    cached.roofHeights = roofHeights;
 
     return cached;
   }
