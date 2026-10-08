@@ -186,6 +186,17 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   // center, so repeats are dropped here rather than answered and discarded.
   private lastSunRequestKey: string | null = null;
 
+  /**
+   * True while the clock is being scrubbed, and for `TIME_SETTLE_MS` after the
+   * last change. The shadow passes treat it like a camera gesture and render to
+   * the 1× set; the timer's repaint then draws the settled, supersampled frame.
+   */
+  private timeScrubbing = false;
+  private timeSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The last time `setDate` saw — kept apart from `currentDate`, which `setExposureContext` also writes. */
+  private lastScrubTime: number | null = null;
+  private static readonly TIME_SETTLE_MS = 150;
+
   // Offscreen FBO for single-write shadow compositing. `fbo`, `fboTexture`,
   // `heightFbo`, `heightFboTexture` and `fboWidth/Height` point at the active
   // set in `shadowTargets`: 'hi' (supersampled) when settled, 'lo' (1×) while
@@ -404,6 +415,7 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
   setDate(date: Date) {
     this.currentDate = date;
+    this.noteTimeScrub(date.getTime());
 
     // Rain does not read the ephemeris. Keep the date, though, so switching back
     // to sun recomputes the current solar direction rather than showing the old
@@ -446,6 +458,26 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
 
     this.dirty = true;
     this.map?.triggerRepaint();
+  }
+
+  /** Enter (or extend) the scrub window when the clock actually moved. */
+  private noteTimeScrub(time: number) {
+    if (time === this.lastScrubTime) return;
+    this.lastScrubTime = time;
+    this.timeScrubbing = true;
+    if (this.timeSettleTimer) clearTimeout(this.timeSettleTimer);
+    this.timeSettleTimer = setTimeout(() => {
+      this.timeSettleTimer = null;
+      this.timeScrubbing = false;
+      this.map?.triggerRepaint();
+    }, LocalShadowAdapter.TIME_SETTLE_MS);
+  }
+
+  /** Leave the scrub window now, without waiting for its timer. */
+  private endTimeScrub() {
+    if (this.timeSettleTimer) clearTimeout(this.timeSettleTimer);
+    this.timeSettleTimer = null;
+    this.timeScrubbing = false;
   }
 
   resize() {
@@ -632,7 +664,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
   readBuildingShadowMask(): BuildingShadowMask | null {
     // The frame between `moveend` and the next paint is still the 1× set; render
     // the settled, supersampled one before reading so the mask never depends on
-    // how recently the camera stopped.
+    // how recently the camera stopped. A clock scrub still inside its settle window
+    // ends here for the same reason: a reader is not a gesture.
+    this.endTimeScrub();
     if (this.activeTargetKey === 'lo' && this.map && !this.map.isMoving()) this.map.redraw();
     // The FBO may still contain the last daytime pass while the worker processes
     // a sunset tick. Solar night has no painted mask; rain keeps its own readback.
@@ -1189,7 +1223,9 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // the final composite (Pass D) draws at the real canvas viewport, box-
     // downsampling via the LINEAR-filtered fboTexture. Cap each axis so the
     // supersampled buffer can't exceed GPU/memory limits.
-    const moving = this.map.isMoving();
+    // A clock scrub re-renders every pass each tick just as a camera gesture does,
+    // so it takes the same 1× set until it settles.
+    const moving = this.map.isMoving() || this.timeScrubbing;
     const { w, h } = shadowTargetSize(gl.canvas.width, gl.canvas.height, moving);
     this.ensureFBO(gl2, moving ? 'lo' : 'hi', w, h);
     if (!this.fbo) return;
@@ -1561,6 +1597,8 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     const target = ours ? null : activeFbo;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target);
     if (viewport && viewport.length === 4) gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    this.endTimeScrub();
 
     // Unregister map listeners
     if (this.map) {

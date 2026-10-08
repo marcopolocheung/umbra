@@ -95,6 +95,48 @@ describe("shadow target sets", () => {
     expect(layer.readBuildingShadowMask()).toMatchObject({ width: 600, height: 400, pixelRatioX: 2 });
   });
 
+  it("treats a clock scrub as a gesture until it settles", () => {
+    vi.useFakeTimers();
+    try {
+      const repaint = vi.fn();
+      const { layer } = adapter({ triggerRepaint: repaint });
+      const t = new Date("2026-06-21T17:00:00Z");
+      layer.setDate(t);
+      expect((layer as any).timeScrubbing).toBe(true);
+      vi.advanceTimersByTime(100);
+      layer.setDate(new Date(t.getTime() + 60_000)); // extends the window
+      vi.advanceTimersByTime(100);
+      expect((layer as any).timeScrubbing).toBe(true);
+      repaint.mockClear();
+      vi.advanceTimersByTime(50);
+      expect((layer as any).timeScrubbing).toBe(false);
+      expect(repaint).toHaveBeenCalledTimes(1); // the settled, supersampled frame
+
+      // The same instant again (the exposure effect re-sends it) is not a scrub.
+      layer.setDate(new Date(t.getTime() + 60_000));
+      expect((layer as any).timeScrubbing).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends a scrub before reading a mask, so the read is the supersampled frame", () => {
+    vi.useFakeTimers();
+    try {
+      let scrubbingAtRedraw: boolean | null = null;
+      const { layer, ensure, map } = adapter();
+      map.redraw = vi.fn(() => { scrubbingAtRedraw = (layer as any).timeScrubbing; });
+      layer.setDate(new Date("2026-06-21T17:00:00Z"));
+      ensure(true); // the last paint was a scrub frame on the 1× set
+      layer.readBuildingShadowMask();
+      expect(map.redraw).toHaveBeenCalledTimes(1);
+      expect(scrubbingAtRedraw).toBe(false);
+      expect((layer as any).timeSettleTimer).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders the settled frame before reading a mask left on the 1× set", () => {
     const { layer, ensure, map } = adapter();
     ensure(true); // last paint happened mid-gesture; the map has since stopped
