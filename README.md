@@ -53,23 +53,18 @@ browser checks that shadows paint, that the timeline moves them, and that a rout
 ## How good is it?
 
 Every number the project has produced is on one page, with its method, its sample size and its
-worst case: **[docs/notes/evidence.md](docs/notes/evidence.md)**. Five of them:
+worst case: **[docs/notes/evidence.md](docs/notes/evidence.md)**. The headline four:
 
-- **Shade against NYC LiDAR:** across 8 blocks, 3 dates and 5 hours, a sidewalk segment's shade
-  fraction is off by **34.7 points on average**. Trees are the largest single source of misses.
-  This compares Umbra's geometry with LiDAR geometry, not with a person standing in the sun.
-  ([shade-accuracy.md](docs/notes/shade-accuracy.md))
-- **Two shadow models against each other:** the geometry field and the pixel renderer agree to a
-  mean of **2.6 points** over 150 cases, with a worst case of **62.5**. CI holds ceilings on the
-  mean, the p90 and the tail. ([harness][agreement])
-- **The route search against a brute-force oracle:** exact on static fixtures. With time-aware
-  pricing it misses one Pareto option, finishing **2 s (3.6%)** sunnier than the true best.
-  ([sun-budget-model.md](docs/notes/sun-budget-model.md))
-- **The assistant on a live model:** **25 of 25** scenarios grounded on the default Gemini
-  models. ([agent-live-eval](docs/notes/agent-live-eval-2026-09-11.md))
-- **Where each route's number came from:** routes show whether their shade figure came from
-  building geometry, the map view, a mix, or nothing. Two routes can show the same percentage on
-  very different evidence. ([`shadowProvenance.ts`][provenance])
+| What was checked | Result | What it does not say | Source |
+|---|---|---|---|
+| Shade vs NYC LiDAR, 8 blocks × 3 dates × 5 hours | **34.7 pp** mean error per sidewalk segment; trees are the largest miss | Geometry against geometry, not a person standing in the sun | [shade-accuracy](docs/notes/shade-accuracy.md) |
+| Geometry field vs pixel renderer, 150 cases | **2.6 pp** mean, **62.5 pp** worst; CI holds the ceilings | Two of Umbra's own models agreeing, not accuracy | [harness][agreement] |
+| Route search vs brute-force oracle | Exact on static fixtures; time-aware, **2 s (3.6%)** off the best | Small fixtures only, no bound on a real city graph | [sun-budget-model](docs/notes/sun-budget-model.md) |
+| Assistant on a live Gemini model | **25 / 25** scenarios grounded | One run, stubbed tools; grades grounding, not plan quality | [agent-live-eval](docs/notes/agent-live-eval-2026-09-11.md) |
+
+Every route also says where its shade figure came from — building geometry, the map view, a mix,
+or nothing — because two routes can show the same percentage on very different evidence
+([`shadowProvenance.ts`][provenance]).
 
 Not measured: accuracy against real, observed shadows; how the search's gap grows on a real
 city graph; browser latency budgets.
