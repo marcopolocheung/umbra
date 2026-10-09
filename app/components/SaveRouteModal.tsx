@@ -17,6 +17,8 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
   const [folderId, setFolderId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
+  // Set when localStorage refuses a write (full or disabled): the save must say so, not do nothing.
+  const [storageError, setStorageError] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,11 +32,25 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
 
   function handleAddFolder() {
     if (!newFolderName.trim()) return;
-    const f = createFolder(newFolderName.trim());
+    let f: SavedFolder;
+    try {
+      f = createFolder(newFolderName.trim());
+    } catch {
+      setStorageError(true);
+      return;
+    }
     setFolders(prev => [...prev, f]);
     setFolderId(f.id);
     setNewFolderName("");
     setShowNewFolder(false);
+  }
+
+  function handleSave() {
+    try {
+      onSave(name.trim() || defaultName, folderId);
+    } catch {
+      setStorageError(true);
+    }
   }
 
   return (
@@ -127,10 +143,16 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
           </button>
         )}
 
+        {storageError && (
+          <p role="alert" className="text-xs" style={{ color: "var(--color-danger)" }}>
+            Couldn't save — this browser's storage is full or turned off. Delete a saved route and try again.
+          </p>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2 pt-1">
           <button type="button"
-            onClick={() => onSave(name.trim() || defaultName, folderId)}
+            onClick={handleSave}
             disabled={!name.trim()}
             className="flex-1 py-1.5 rounded text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             style={{ background: "var(--color-ink)", color: "var(--color-on-ink)" }}
