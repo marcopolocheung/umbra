@@ -8,7 +8,7 @@ which checkpoint it goes to.
 the three ships software, all three withhold data behind "on request", and two of them describe
 architectures this roadmap has already correctly declined. What they supply is the set of
 numbers that let this project state what its model is worth and where it breaks — which §2 says
-is the most hireable thing in the repository.
+is the strongest thing in the repository.
 
 ---
 

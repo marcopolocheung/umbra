@@ -46,7 +46,7 @@ api/agent.js:36   DEFAULT_ALLOWED_MODELS = ["gpt-oss-120b", "zai-glm-4.7"]  ← 
 anti-goal** that breaks the free-tier guardrail.
 
 **So perception runs offline and the agent selects among its outputs.** That is not a
-consolation prize — it is `ROADMAP.md` §7's Tier 1, and it is the same shape as Google's IRL
+consolation prize — it is `ROADMAP.md` §6's Tier 1, and it is the same shape as Google's IRL
 routing work: expensive inference offline, stored, fast online search over the result.
 
 **Say so plainly. Never imply the model looked at a photograph when it read a precomputed

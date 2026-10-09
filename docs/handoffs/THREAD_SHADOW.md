@@ -1,7 +1,7 @@
 # Handoff — the shadow thread: ~~G2~~ → ~~A6~~ → ~~A7a/A7b~~ → A7c/A8 → A5 → H1–H5
 
 **Mission.** Build the differentiator. `ROADMAP.md` §2: everything else is table stakes or
-catch-up; **this is the part a hiring manager asks a second question about.**
+catch-up; **this is the part nobody else has.**
 
 **Verified 2026-09-09 at `f159b25`; A6 section rewritten 2026-09-09 against its own measurement.**
 Briefs: `TRACK_G.md`, `TRACK_A.md`, `TRACK_H.md`.

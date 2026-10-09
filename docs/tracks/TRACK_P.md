@@ -13,8 +13,8 @@
 
 ## Current state
 
-- **Active checkpoint:** none — P2 and P4 are both implemented and in review. P3, P5 and P6 stay
-  in Wave 3.
+- **Active checkpoint:** none — P2 and P4 are both implemented and in review. P3 and P5 stay
+  in Wave 3. P6 was dropped on 2026-10-09 with the ROADMAP ledger it filled.
 - **Done:** P1 — `.github/workflows/mirror.yml` pushes `main` to the public repo on every merge
   and then fails if a doc the app links to 404s there. **P4** (pending merge) —
   `docs/notes/evidence.md` carries every measurement with its method, worst case and sample
@@ -39,7 +39,7 @@
   - **The checks also run on the PR, minus the push.** A link added without its doc, or a
     committed key, fails at review instead of turning the mirror red after merge.
 - **Blocked on:** P3 still wants two finished Wave-1 tracks and H3 rendering; P5 wants H2's
-  objective correction; P6 cannot be filled before H4 produces a gap.
+  objective correction.
 - **Next action:** merge #238, then P2. After that the track is parked until Wave 3.
 - **Last verified:** 2026-09-09 at `6a4b58f` — the mirror is at `6a4b58f`, has **no open PRs and
   no workflow runs**, and `docs/notes/{browser-verification,heat-model,heat-score,timezone,
@@ -52,15 +52,15 @@
 
 ## Why this track exists
 
-`docs/ROADMAP.md` §2 names four things a hiring manager must conclude. Three are half-built and
-owned by other tracks. The fourth — *"this person is honest about what they measured"* — is
+`docs/ROADMAP.md` §2 names four things the project must prove. Three are half-built and
+owned by other tracks. The fourth — *honesty about what was measured* — is
 **already true and completely invisible**:
 
 - The A3 agreement harness publishes `150 cases · mean 2.6pp · p90 0.0pp · worst 62.5pp ·
   severe 3.3%` against committed regression ceilings. Nobody outside the repo can see it.
 - The shadow index was measured at ~1,000–2,200× on `sampleEdges` (#166). Unpublished.
 - `ShadowField.ts:199` labels its own confidence values *"priors, not measured ground truth"* in
-  a source comment. That is the rarest sentence in a portfolio project, and it is buried.
+  a source comment. That is the rarest sentence in a shade router, and it is buried.
 
 Meanwhile the public surface is actively wrong. `origin` is private; `public`
 (`github.com/marcopolocheung/shademapnav`) is what the world sees, and it lags — the proof is
@@ -70,8 +70,8 @@ it (#199). The consequence: D3 and D4 render a health-adjacent UV number into th
 method must be linked. And the README is 19 lines of setup that still advertises per-directory
 `CLAUDE.md` files `.claude/rules/` replaced.
 
-**Two of the six resume lines in `ROADMAP.md` §6 are already earned and merely unpublished.**
-That is the cheapest value available anywhere on the board, and it is this track's whole point.
+**Two of those proofs are already earned and merely unpublished.** That is the cheapest value
+available anywhere on the board, and it is this track's whole point.
 
 ---
 
@@ -129,7 +129,7 @@ G2/G3 budgets when they exist, and H4's approximation gap when it exists. For ea
 measured, on what data, on what hardware, and what it does **not** say. Record sample counts and
 missing data. Many adjacent samples from one walk are not many independent walks.
 **Keep the evaluation layers separate — they have different oracles and different failure
-modes, and merging them is how a portfolio number becomes a lie:**
+modes, and merging them is how a published number becomes a lie:**
 
 | Layer | Oracle | Measure | The failure to avoid |
 |---|---|---|---|
@@ -143,7 +143,7 @@ limitations; each figure names the commit or fixture version it came from; it is
 README and resolves publicly (needs **P1**); no number appears without its method.
 **Files.** `docs/notes/evidence.md`, `README.md`. **Size.** Medium.
 **Why it is first among the publication work:** the measurements already exist. This is
-transcription and framing, not engineering, and it moves two resume lines from ⬜ to ✅.
+transcription and framing, not engineering.
 
 ### P5 — Three design notes
 **Goal.** Show ownership through decisions, including a wrong one corrected.
@@ -161,14 +161,8 @@ and a rejected alternative, and is linked from the README. A note that only desc
 built without the alternative does not count.
 **Files.** `docs/notes/`. **Size.** Medium (one PR each).
 
-### P6 — The resume ledger, filled from measurement
-**Goal.** Close the loop: `ROADMAP.md` §6 stops being templates.
-**Approach.** For each earned line, fill the brackets from P4's page and tick it. **No estimate
-ever substitutes for a missing measurement** — a smaller auditable result beats a larger
-unverifiable one, and a reviewer who reproduces one number will try a second.
-**Acceptance.** Every ticked line's artifact is live on the public mirror and its number appears
-on P4's evidence page. Unearned lines stay unticked.
-**Files.** `docs/ROADMAP.md` §6. **Size.** Small, recurring.
+### ~~P6 — The resume ledger~~ *(dropped 2026-10-09)*
+The ledger it filled was removed from `ROADMAP.md`. Measured results go on P4's evidence page.
 
 ---
 
@@ -204,5 +198,4 @@ on P4's evidence page. Unearned lines stay unticked.
 
 ## Owns
 
-`README.md`, `docs/notes/evidence.md`, the design notes in `docs/notes/`, the mirror workflow,
-and `docs/ROADMAP.md` §6.
+`README.md`, `docs/notes/evidence.md`, the design notes in `docs/notes/`, and the mirror workflow.

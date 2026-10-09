@@ -43,7 +43,7 @@ sessions are quiet around those files.
 | D1 | **Redesign is on the table.** The Material tokens are not sacred. The language is re-decided: research first, then a decision doc with **visual candidates**, then owner sign-off, then implementation. |
 | D2 | **The owner reviews every design PR.** Nothing merges without visual sign-off. The PR body carries before/after phone screenshots. |
 | D3 | **References** are the eight links in §5. Mine them for palette, map hierarchy, and tone. |
-| D4 | Justification: **mix hiring-evidence reasoning and "cool polish"** — the track aims both, and keeps what survives product review. |
+| D4 | Justification: **mix evidence-first reasoning and "cool polish"** — the track aims both, and keeps what survives product review. |
 | D5 | **Biggest offenders first:** the navigation card (route options — "looks like AI slop and is confusing to use") and the bottom timeline controls + the search bar sliding window interplay. |
 | D6 | Copy: **content over microcopy-first**, sessions may rewrite user-facing text freely within guardrails: every number traceable with uncertainty stated, **never lie-flat marketing words**. Assistants choose the rest; the honesty guardrail is non-negotiable. |
 | D7 | **Search gets richer, for real:** Foursquare typeahead/autocomplete, richer result rows (category, hours, photo, rating), better assistant `search_places` results and pin presentation. **Dev and prod work against the same keys — Foursquare details are not dev-only.** The OSMF no-autocomplete invariant still stands: the *manual* search bar may autocomplete via Foursquare only, never via Nominatim (which anyway stays submit-triggered). |
