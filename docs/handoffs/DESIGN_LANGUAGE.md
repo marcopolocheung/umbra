@@ -10,7 +10,7 @@ If this file disagrees with the code, **the code wins** — fix it in the same P
   deleted, **Canopy** is the registry in `app/globals.css` (the owner re-picked it during
   U2 review after a first pass in Strata/Carmine), every literal from the U0 inventory
   migrated, the deprecated `NavigationPanel.tsx` deleted, before/after phone shots in
-  `docs/design/shots/u2/`. Merged design work supersedes older line refs here.
+  `docs/design/shots/u2/` (in git history since 2026-10-09). Merged design work supersedes older line refs here.
 - **Track brief:** `docs/tracks/TRACK_U.md` (checkpoints + acceptance criteria). This handoff
   carries *why and where*; the brief carries *build that, like this*.
 
@@ -137,7 +137,7 @@ the closest product kinship to Umbra.
 
 Each PR: `/gates`, `npm run shots`, curated screenshots committed to
 `docs/design/shots/u<n>/` and linked from the PR body (GitHub resolves branch-relative
-links). PR prose stays ≤4 sentences; image links and "what to look at" are part of the body.
+links); the PR deletes the previous round's folder, so only the latest stays in the tree. PR prose stays ≤4 sentences; image links and "what to look at" are part of the body.
 
 ## 6. Harness seeded with this handoff (this is what the sessions get for free)
 
