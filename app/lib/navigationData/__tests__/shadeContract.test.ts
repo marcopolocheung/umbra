@@ -168,3 +168,45 @@ describe("navigation shade shard contract", () => {
     ).toThrow();
   });
 });
+
+describe("navigation signature contract", () => {
+  const signatures = {
+    key: "signatures/index.json",
+    bytes: 100,
+    sha256: generationSha,
+    model: "signatures-v1",
+    cells: 1,
+    payloadBytes: 68,
+  };
+  const withSignatures = (overrides: Record<string, unknown> = {}, signatureBytes = 168) =>
+    manifest({
+      shadeShards: [shadeRef()],
+      signatures: { ...signatures, ...overrides },
+      budgets: {
+        streetShardBytes: 100,
+        buildingShardBytes: 100,
+        shadeShardBytes: 3072,
+        signatureBytes,
+        totalBytes: 3440,
+      },
+    });
+
+  it("parses a manifest carrying signatures, and one without keeps no signature budget", () => {
+    const parsed = parseNavigationManifest(withSignatures(), generation);
+    expect(parsed.signatures?.model).toBe("signatures-v1");
+    expect(parsed.budgets.signatureBytes).toBe(168);
+    const plain = parseNavigationManifest(manifest(), generation);
+    expect(plain.signatures).toBeUndefined();
+    expect("signatureBytes" in plain.budgets).toBe(false);
+  });
+
+  it("rejects signatures that do not cover the shade table or disagree with their budget", () => {
+    expect(() => parseNavigationManifest(withSignatures({ cells: 2 }), generation)).toThrow();
+    expect(() => parseNavigationManifest(withSignatures({}, 167), generation)).toThrow();
+    expect(() => parseNavigationManifest(withSignatures({ key: "signatures/x.json" }), generation)).toThrow();
+    expect(() => parseNavigationManifest(withSignatures({ model: "v1" }), generation)).toThrow();
+    const strayBudget = withSignatures();
+    delete strayBudget.signatures;
+    expect(() => parseNavigationManifest(strayBudget, generation)).toThrow();
+  });
+});

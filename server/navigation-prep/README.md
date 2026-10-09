@@ -25,6 +25,7 @@ npm run acquire:plan   # HEAD/count checks; no writes
 npm run acquire        # download PBF + all building pages, write raw/source-receipts.json
 npm run validate       # receipts vs bytes, page counts, ordered OBJECTID pagination
 npm run normalize      # PBF → work/streets.json; pages → work/buildings.ndjson (+ stats)
+npx tsx src/cli.ts signatures   # project every built shade cell with the frozen model (~1 min)
 npm run build          # shards + notices + manifest + pointer candidate (default --grid z14)
 npm run build:dry      # same, no writes
 npm run verify         # re-reads final serialized bytes only (see src/verify.ts)
@@ -107,6 +108,23 @@ normalized/<generation>/navigation/nyc/<generation>/{manifest,notices,streets/*,
 normalized/<generation>/pointer-candidate.json
 evidence/*.json
 ```
+
+## Shade signatures
+
+`signatures` (#321) compresses each sidewalk side's 581 daylight slots of the
+built shade table into 16 int8 PCA components and one of 8 types, 17 bytes per
+side, written to `work/signatures/`. `build` folds them in as
+`signatures/<cell>.bin` (rows in the shade index's segment order, `[left,
+right]`) plus one `signatures/index.json` carrying the frozen model, and the
+manifest gets a single `signatures` ref. Like the shade table it is optional,
+and `build` refuses a cell whose shade bytes or model changed since projection.
+
+The model is **frozen**: `models/signatures-v1.json` was fitted once by
+`tools/fit_signatures.py` (seeded, single-threaded, byte-reproducible) and is
+never refitted per build, so type ids mean the same thing across generations.
+A refit is a new model version. `tools/check_signature_types.py <generation>`
+reads the built bytes and checks the Midtown type shares against phase 0.
+Routing never reads signatures; the shade table stays the source of truth.
 
 ## Budgets and policies
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   MAX_BUILDING_SHARD_BYTES,
   MAX_SHADE_SHARD_BYTES,
+  MAX_SIGNATURE_SHARD_BYTES,
   MAX_STREET_SHARD_BYTES,
   MAX_TOTAL_BYTES,
   parseNavigationBuildingShard,
@@ -30,6 +31,7 @@ import {
 import { canonicalJson, jsonBytes, sha256Hex } from "./canonical";
 import { readReceipts } from "./acquire";
 import { RECIPE_ID } from "./build";
+import { SIGNATURE_BYTES_PER_SIDE, type SignatureIndex } from "./signatures";
 import { percentileSummary } from "./stats";
 
 /**
@@ -114,6 +116,7 @@ export interface VerifyResult {
   streetShards: number;
   buildingShards: number;
   shadeShards: number;
+  signatureCells: number;
   budgets: {
     enforced: {
       maxStreetShard: number;
@@ -125,6 +128,7 @@ export interface VerifyResult {
       streetBytes: number;
       buildingBytes: number;
       shadeBytes: number;
+      signatureBytes: number;
       totalBytes: number;
     };
   };
@@ -184,6 +188,7 @@ async function readArtifacts(
   streetShards: Map<string, NavigationStreetShard>;
   buildingShards: Map<string, NavigationBuildingShard>;
   shadeShards: Map<string, NavigationShadeShard>;
+  signatures: SignatureIndex | null;
   bytes: Map<string, Uint8Array>;
 }> {
   const nested = join(directory, "navigation", "nyc", generation);
@@ -247,6 +252,9 @@ async function readArtifacts(
     if (sha256Hex(payload) !== ref.payloadSha256) throw new Error(`${ref.payloadKey}: digest drifted`);
     bytes.set(ref.payloadKey, payload);
   }
+  const signatures = manifest.signatures
+    ? await readSignatures(nested, manifest, shadeRefs, generation, bytes)
+    : null;
   return {
     pointer,
     manifest,
@@ -257,8 +265,65 @@ async function readArtifacts(
     streetShards,
     buildingShards,
     shadeShards,
+    signatures,
     bytes,
   };
+}
+
+/**
+ * The signature index and every payload it names, re-read from the final
+ * bytes: each cell must sit beside a published shade cell with exactly
+ * 17 bytes per side of its segments, and every type byte must name a type.
+ */
+async function readSignatures(
+  nested: string,
+  manifest: NavigationManifest,
+  shadeRefs: Map<string, NavigationShadeShardRef>,
+  generation: string,
+  bytes: Map<string, Uint8Array>,
+): Promise<SignatureIndex> {
+  const ref = manifest.signatures!;
+  const raw = await readFile(join(nested, ref.key));
+  if (raw.byteLength !== ref.bytes) throw new Error(`${ref.key}: byte count drifted`);
+  if (sha256Hex(raw) !== ref.sha256) throw new Error(`${ref.key}: digest drifted`);
+  bytes.set(ref.key, raw);
+  const index = JSON.parse(raw.toString("utf8")) as SignatureIndex;
+  if (
+    index.version !== 1 ||
+    index.dataset !== "nyc-navigation" ||
+    index.generation !== generation ||
+    index.kind !== "signatures" ||
+    index.model?.version !== ref.model ||
+    index.bytesPerSide !== SIGNATURE_BYTES_PER_SIDE ||
+    !Array.isArray(index.cells) ||
+    index.cells.length !== ref.cells
+  )
+    throw new Error(`${ref.key}: invalid signature index`);
+  const types = index.model.types.length;
+  const claimedShades = new Set<string>();
+  let payloadBytes = 0;
+  for (const cell of index.cells) {
+    const shade = shadeRefs.get(cell.shadeKey);
+    if (!shade || claimedShades.has(cell.shadeKey))
+      throw new Error(`${cell.payloadKey}: no unique shade cell ${cell.shadeKey}`);
+    claimedShades.add(cell.shadeKey);
+    if (
+      cell.payloadKey !== `signatures/${cell.key}.bin` ||
+      cell.shadeKey !== `shades/${cell.key}.json` ||
+      cell.segments !== shade.segments ||
+      cell.bytes !== shade.segments * 2 * SIGNATURE_BYTES_PER_SIDE
+    )
+      throw new Error(`${cell.payloadKey}: rows do not line up with ${cell.shadeKey}`);
+    const payload = await readFile(join(nested, cell.payloadKey));
+    if (payload.byteLength !== cell.bytes) throw new Error(`${cell.payloadKey}: byte count drifted`);
+    if (sha256Hex(payload) !== cell.sha256) throw new Error(`${cell.payloadKey}: digest drifted`);
+    for (let i = SIGNATURE_BYTES_PER_SIDE - 1; i < payload.byteLength; i += SIGNATURE_BYTES_PER_SIDE)
+      if (payload[i] >= types) throw new Error(`${cell.payloadKey}: type byte out of range`);
+    bytes.set(cell.payloadKey, payload);
+    payloadBytes += payload.byteLength;
+  }
+  if (payloadBytes !== ref.payloadBytes) throw new Error(`${ref.key}: payload bytes drifted`);
+  return index;
 }
 
 export async function verifyGeneration(generation?: string): Promise<VerifyResult> {
@@ -320,11 +385,15 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     streetBytes: [...streetRefs.values()].reduce((sum, ref) => sum + ref.bytes, 0),
     buildingBytes: [...buildingRefs.values()].reduce((sum, ref) => sum + ref.bytes, 0),
     shadeBytes: [...shadeRefs.values()].reduce((sum, ref) => sum + ref.bytes + ref.payloadBytes, 0),
+    signatureBytes: manifest.signatures
+      ? manifest.signatures.bytes + manifest.signatures.payloadBytes
+      : 0,
   };
   const totalBytes =
     budgets.streetBytes +
     budgets.buildingBytes +
     budgets.shadeBytes +
+    budgets.signatureBytes +
     (await stat(join(directory, "navigation", "nyc", name, "notices.json"))).size;
   if (budgets.streetBytes !== manifest.budgets.streetShardBytes)
     throw new Error("street budget does not match the manifest");
@@ -332,6 +401,8 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     throw new Error("building budget does not match the manifest");
   if (budgets.shadeBytes !== manifest.budgets.shadeShardBytes)
     throw new Error("shade budget does not match the manifest");
+  if (budgets.signatureBytes !== (manifest.budgets.signatureBytes ?? 0))
+    throw new Error("signature budget does not match the manifest");
   if (totalBytes !== manifest.budgets.totalBytes)
     throw new Error("total budget does not match the manifest");
   if (manifest.budgets.totalBytes > MAX_TOTAL_BYTES)
@@ -339,6 +410,13 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
   const overShade = [...shadeRefs.values()].filter((ref) => ref.payloadBytes > MAX_SHADE_SHARD_BYTES);
   if (overShade.length > 0)
     throw new Error(`shade shard budget exceeded: ${overShade.map((ref) => ref.key).join(", ")}`);
+  const overSignature = (artifacts.signatures?.cells ?? []).filter(
+    (cell) => cell.bytes > MAX_SIGNATURE_SHARD_BYTES,
+  );
+  if (overSignature.length > 0)
+    throw new Error(
+      `signature shard budget exceeded: ${overSignature.map((cell) => cell.key).join(", ")}`,
+    );
 
   // ── Per-request budgets over retained samples in every borough ────────────
   const requests = BOROUGH_SAMPLES.map((sample) =>
@@ -366,6 +444,7 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     streetShards: streetRefs.size,
     buildingShards: buildingRefs.size,
     shadeShards: shadeRefs.size,
+    signatureCells: artifacts.signatures?.cells.length ?? 0,
     budgets: {
       enforced: {
         maxStreetShard: MAX_STREET_SHARD_BYTES,
@@ -377,6 +456,7 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
         streetBytes: budgets.streetBytes,
         buildingBytes: budgets.buildingBytes,
         shadeBytes: budgets.shadeBytes,
+        signatureBytes: budgets.signatureBytes,
         totalBytes,
       },
     },

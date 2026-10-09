@@ -10,7 +10,8 @@
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:** phase 0 (go/no-go analysis) is **done: qualified GO**, issue **#321**. Phase 1 (the
-pipeline stage) has not started. Take one phase per PR; the first session does **Phase 1** and stops.
+pipeline stage) is **built, in review**: local generation `nyc-2026-09-18-e6718823bbb3`, not
+published. Take one phase per PR; the next session does **Phase 2** after the owner merges phase 1.
 
 ---
 
@@ -115,16 +116,17 @@ never as "kinds of street".
 
 ---
 
-## Phase 1: the pipeline stage (next session: do this, then stop)
+## Phase 1: the pipeline stage (built; in review)
 
 **Goal.** A deterministic `signatures` stage in `server/navigation-prep` that reads the built shade
 cells and writes one small signature artifact per cell, folded into the generation like shades.
 
-**Contract (proposal; settle it in the PR):**
-- **Per z14 cell:** `signatures/<cell>.bin` plus an entry in the manifest (or a field on the existing shade ref; keep the manifest small).
-- **Row order:** the shade index's segment order, `[left, right]` per segment. Payload is `segments × 2 × (16 × int8 + 1 × uint8 type)`, 17 B/side, about 55 MB city-wide. Quantize each component to int8 with a per-component scale stored once.
-- **A small generation-level JSON** carrying `mean` (per daylight slot), `components` (16 × D), the int8 scales, `centers` (K × 16), `daySlots`, per-type names and hour summaries, and the model version.
-- **All of it hashed into the generation id**, like the shade shards (`canonical.ts` `sha256Hex`, `jsonBytes`).
+**Contract (settled):**
+- **Per z14 cell:** `signatures/<cell>.bin`. Rows follow `shades/<cell>.json` `segments`, `[left, right]` per segment, **17 B/side**: 16 int8 components (`z = q × scales[c]`), then the type byte. City-wide: **54.7 MB** of payload over 386 cells.
+- **One `signatures/index.json`** (208 KB) carrying the whole frozen model (`daySlots`, `mean`, `components`, `scales`, `centers`, `types` with names and summer shade/sun clock windows, fit provenance) and the per-cell list (`key`, `shadeKey`, `segments`, `payloadKey`, `bytes`, `sha256`).
+- **Manifest:** one optional `signatures` ref (`key`, `bytes`, `sha256`, `model`, `cells`, `payloadBytes`) and an optional `budgets.signatureBytes`. Per-cell refs stay out of the manifest: it is at 478 KB of its 512 KB cap. `MAX_SIGNATURE_SHARD_BYTES` = 1.5 MB per cell (densest is 448 KB). Both fields are absent without the stage, so older generations parse and verify unchanged.
+- **All of it is hashed into the generation id** through the same label-free digest loop as the shade shards. The verifier, the publish plan (`signatureIndex`/`signaturePayload` objects) and the unclaimed-file guard all cover it.
+- **Pipeline:** `npx tsx src/cli.ts signatures` projects every built shade cell into `work/signatures/` (52 s for the city, single process). `build` folds them in, and refuses a cell whose shade sha or model sha changed since projection.
 
 **Decisions phase 1 must make, with the recommended default:**
 1. **Freeze the model.** Fit PCA and centroids **once** on a fixed stratified sample with a fixed seed, and commit the fitted parameters (small: ~40 KB as JSON) as a versioned input. **Don't refit per build.** That fixes stability (ARI 0.73) and keeps type ids meaningful across generations. Refit only on a deliberate version bump.
@@ -138,20 +140,31 @@ cells and writes one small signature artifact per cell, folded into the generati
 - **Shape and budget:** payload bytes = segments × 2 × 17; a budget constant like `MAX_SHADE_SHARD_BYTES`.
 - **Row alignment:** a cell's signature rows line up with its shade index's `segments` (pattern: `shade.test.ts`).
 
-**Verification beyond tests:** rerun `~/umbra-phase0/maps.py`-style labelling from the **built
-artifact** (not the Python model) on Midtown and Park Slope. The type shares must match phase 0's
-cross-tab (`~/umbra-phase0/orientation.json`):
-- **Midtown streets:** `[299, 184, 325, 306, 208, 950, 6345, 413]`
-- **Midtown avenues:** `[128, 250, 411, 524, 185, 814, 3809, 211]`
+**Decisions as taken:** all four defaults. `models/signatures-v1.json` is fitted by the committed
+`tools/fit_signatures.py` (phase 0's fit step for step, K = 8, seed 20261008, numpy 2.2.3,
+scikit-learn 1.9.0), and TS only projects. One change from phase 0: the fit is pinned to **one
+thread**. Phase 0's multithreaded k-means moved centroids ~3e-7 run to run, so its model could not
+be reproduced. The single-threaded refit is byte-identical across runs; its centroids sit up to
+0.019 from phase 0's, and 0.125% of Midtown sides change type. Names and hours are identical. The
+int8 scale per component is the largest |z| any input can reach, so nothing clamps.
 
-These differ only if the frozen fit changes.
+**Verification beyond tests (done):** `tools/check_signature_types.py <generation>` labels Midtown
+from the **built bytes** with phase 0's orientation logic. It equals the frozen model's own
+cross-tab exactly (derived independently in Python from the published shade bytes):
+- **Midtown streets:** `[299, 185, 326, 306, 204, 949, 6347, 414]` (phase 0: `[299, 184, 325, 306, 208, 950, 6345, 413]`)
+- **Midtown avenues:** `[128, 250, 411, 526, 182, 816, 3808, 211]` (phase 0: `[128, 250, 411, 524, 185, 814, 3809, 211]`)
 
-**Not in phase 1:** any `app/` change, any publish. Build locally, verify, open the PR, stop.
+The TS build and the Python model agree on all 46,224 sides of four Midtown cells. `verify` accepts
+the new generation (1,851 objects) and still accepts the published `393d4cd24a30`.
+
+**Not in phase 1:** any client loader, any publish. The one `app/` change is the shared manifest
+parser in `shardContract.ts`, because it rejects unknown keys: without it the client would refuse
+any generation that carries signatures.
 
 ---
 
 ## Later phases (sketch; one PR each, after the owner reviews phase 1)
-- **Phase 2, client loader.** `loadNavigationSignatureShard` next to `loadNavigationShadeShard` in `app/lib/navigationData/remoteNavigation.ts`, with the same hash and bounds checks and the same disk-cache behaviour. Add a pure `nearestSignatures(view, key, k)` (brute force, < 3 ms / 100k rows; run in the routing worker if it ever shows on the main thread).
+- **Phase 2, client loader.** `loadNavigationSignatureShard` next to `loadNavigationShadeShard` in `app/lib/navigationData/remoteNavigation.ts`, with the same hash and bounds checks and the same disk-cache behaviour. The delivery Worker's key allowlist (`cloudflare/shadow-data-worker/src/index.ts`, `navigationShardKey`) only admits `streets|buildings|shades`, so it needs `signatures/<cell>.bin` and `signatures/index.json` before a published generation's signatures are reachable. Add a pure `nearestSignatures(view, key, k)` (brute force, < 3 ms / 100k rows; run in the routing worker if it ever shows on the main thread).
 - **Phase 3, street-type map layer** in `app/components/MapView.tsx`. That file is contested (see `.claude/rules/components-and-map.md`), so do it in the main session, not a builder.
   - Colour the existing street lines by type with one expression; it's not new geometry.
   - Show it at zoom ≥ 15, off by default, legend from the frozen names.

@@ -35,6 +35,7 @@ import {
 } from "../../../app/lib/navigationData/shardContract";
 import { BOROUGH_SAMPLES, CASTER_REACH_M, expandBounds, type BoroughSample } from "./boundary";
 import { sha256Hex } from "./util";
+import type { SignatureIndex } from "./signatures";
 import { verifyGeneration } from "./verify";
 
 /** The publication prefix is part of the wire contract, not configuration. */
@@ -163,6 +164,8 @@ export type PublishObjectKind =
   | "buildingShard"
   | "shadeIndex"
   | "shadePayload"
+  | "signatureIndex"
+  | "signaturePayload"
   | "pointer";
 
 export interface PublishObject {
@@ -318,6 +321,44 @@ export async function publishPlan(generation: string): Promise<PublishPlan> {
   }
   if (localShades.size > 0)
     throw new Error(`unclaimed shade files must not be published: ${[...localShades].join(", ")}`);
+
+  // The signature ref claims its index, and the index claims every payload.
+  const localSignatures = new Set<string>(
+    await readdir(join(nested, "signatures")).catch(() => [] as string[]),
+  );
+  if (manifest.signatures) {
+    const ref = manifest.signatures;
+    const indexBytes = await readExact(join(nested, ref.key));
+    if (indexBytes.byteLength !== ref.bytes) throw new Error(`${ref.key}: byte count drifted`);
+    if (sha256Hex(indexBytes) !== ref.sha256) throw new Error(`${ref.key}: digest drifted`);
+    const index = JSON.parse(new TextDecoder().decode(indexBytes)) as SignatureIndex;
+    for (const [kind, key, bytes, sha256] of [
+      ["signatureIndex", ref.key, ref.bytes, ref.sha256] as const,
+      ...index.cells.map(
+        (cell) => ["signaturePayload", cell.payloadKey, cell.bytes, cell.sha256] as const,
+      ),
+    ]) {
+      const fileName = key.split("/")[1];
+      if (!localSignatures.delete(fileName)) throw new Error(`manifest ref ${key} has no local file`);
+      const file = join(nested, key);
+      const stored = await readExact(file);
+      if (stored.byteLength !== bytes) throw new Error(`${key}: byte count drifted`);
+      if (sha256Hex(stored) !== sha256) throw new Error(`${key}: digest drifted`);
+      objects.push({
+        kind,
+        key: `${PREFIX}/${generation}/${key}`,
+        file,
+        bytes: stored.byteLength,
+        sha256,
+        cacheControl: IMMUTABLE_CACHE_CONTROL,
+      });
+      payloadBytes += stored.byteLength;
+    }
+  }
+  if (localSignatures.size > 0)
+    throw new Error(
+      `unclaimed signature files must not be published: ${[...localSignatures].join(", ")}`,
+    );
 
   // Planned strictly last so the order itself enforces pointer-last
   // promotion, and promoted from these exact verified bytes.
@@ -538,11 +579,16 @@ export async function publishExecute(
       object.kind === "streetShard" ||
       object.kind === "buildingShard" ||
       object.kind === "shadeIndex" ||
-      object.kind === "shadePayload",
+      object.kind === "shadePayload" ||
+      object.kind === "signatureIndex" ||
+      object.kind === "signaturePayload",
   );
   if (
     shardObjects.length !==
-    verified.streetShards + verified.buildingShards + verified.shadeShards * 2
+    verified.streetShards +
+      verified.buildingShards +
+      verified.shadeShards * 2 +
+      (verified.signatureCells > 0 ? verified.signatureCells + 1 : 0)
   ) {
     throw new Error("object plan does not match the verified shard count");
   }
