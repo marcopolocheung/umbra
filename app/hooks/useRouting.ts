@@ -10,7 +10,7 @@ import {
   clearVirtualNodes,
   snapRouteStopsToReachableEdges,
   parallelSidewalkEdges,
-  reachableFrom,
+  bfsReachable,
   snapToReachable,
   DEFAULT_MAX_DETOUR_FACTOR,
   DETOUR_FLAT_M,
@@ -1687,7 +1687,7 @@ export function useRouting({
                   // prohibits no edge, so this set is exactly what dijkstra can
                   // traverse.
                   const tWalkLegs = performance.now();
-                  const walkableFromStart = reachableFrom(routingGraph, effectiveStartId);
+                  const walkableFromStart = bfsReachable(routingGraph, effectiveStartId, "walk");
                   const boardNodeId = snapToReachable(
                     [boardEntrance.lon, boardEntrance.lat],
                     routingGraph,

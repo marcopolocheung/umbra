@@ -9,7 +9,7 @@
  *   npm run bench
  *
  * Everything here goes through the public routing surface (`paretoRoutes`,
- * `dijkstra`, `reachableFrom`, `findBestTrainRoute`), on deterministic
+ * `dijkstra`, `bfsReachable`, `findBestTrainRoute`), on deterministic
  * synthetic builds whose counts the transit fixture test pins. The transit
  * fixtures fold back into the browser benches as the seeded scale dataset, so
  * the two runs describe the same synthetic city. Record results in a dated
@@ -17,7 +17,7 @@
  */
 
 import { bench, describe } from "vitest";
-import { dijkstra, haversineMeters, paretoRoutes, reachableFrom, type RoutingGraph } from "../routing";
+import { dijkstra, haversineMeters, paretoRoutes, bfsReachable, type RoutingGraph } from "../routing";
 import {
   findBestTrainRoute,
   nearestStations,
@@ -52,7 +52,7 @@ const ORIGIN: [number, number] = [-74.0, 40.7];
 
 /**
  * A connected rectangular street grid. Every cell pushes both directions of its
- * four neighbours, so the city-size case is one component and `reachableFrom`
+ * four neighbours, so the city-size case is one component and `bfsReachable`
  * honestly has to walk all of it. `shadowFactor` cycles through a deterministic
  * pattern — no planner can turn the grid into a constant-cost field.
  */
@@ -647,12 +647,12 @@ describe("walk search — paretoRoutes budget sweep (A3 curve)", () => {
   }
 });
 
-describe("walk reachability — reachableFrom, city-size", () => {
+describe("walk reachability — bfsReachable, city-size", () => {
   const graph = streetGrid(140, 120);
   bench(
     "16,800 nodes, whole grid reachable",
     () => {
-      reachableFrom(graph, 0);
+      bfsReachable(graph, 0);
     },
     light,
   );
