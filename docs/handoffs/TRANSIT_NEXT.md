@@ -1,8 +1,8 @@
 # Transit — what is left after step 6
 
 > **You are here because the app now routes the NYC subway on the published GTFS data, and
-> almost none of that reaches the user.** `docs/handoffs/TRANSIT_CLIENT.md` was step 6: S1, S2
-> and S3a are merged. This document is everything after it, in the order the dependencies
+> almost none of that reaches the user.** Step 6 (the client handoff, now in git history) is done: S1,
+> S2 and S3a are merged. This document is everything after it, in the order the dependencies
 > actually allow.
 
 **Verified 2026-09-17**, `main` at `7a00d71`. Green: lint 0 errors (56 warnings / 8 infos, the
@@ -56,7 +56,7 @@ Four constraints, and they fully determine the sequence:
    rendered. Any change in Phase 2 or 3 would have to be verified blind. *(Done — #397.)*
 2. **Bus stop-wait exposure *is* headway wait.** Building S4 on a search that cannot price
    waiting means rewriting S4. Phase 2 before Phase 3, for the same reason
-   `TRANSIT_CLIENT.md` put step 6 before E6.
+   the client handoff put step 6 before E6.
 3. **#388 is server-side**, so it is the one item that parallelises — start it whenever, it only
    has to be done before S4. *(Done — 3A.)*
 

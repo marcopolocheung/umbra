@@ -124,7 +124,7 @@ Even the slow representation is 50–100× faster than Umbra's measured 1.3–3.
 - It first runs a separate distance-only Dijkstra to set a detour budget.
 - The multi-stop path loops over several shade strengths, one search each.
 
-Source: [`app/lib/routing.ts`](../app/lib/routing.ts). The V8 team's own guidance points the same way: since pointer compression, V8 recommends "storing data in Float64 TypedArrays, or even by using Wasm" for throughput-heavy numeric code ([V8 blog](https://v8.dev/blog/pointer-compression)).
+Source: [`app/lib/routing.ts`](../../app/lib/routing.ts). The V8 team's own guidance points the same way: since pointer compression, V8 recommends "storing data in Float64 TypedArrays, or even by using Wasm" for throughput-heavy numeric code ([V8 blog](https://v8.dev/blog/pointer-compression)).
 
 WASM is not the first lever:
 
@@ -170,7 +170,7 @@ The lone exception is the norain bike router. It traces horizons per edge at que
 
 Two design details matter for Umbra.
 
-**The time resolution users tolerate is coarse.** These systems use hourly, four fixed times, or 15 minutes. Umbra's own A6 work explains why this matters. The irreducible cost of live sampling is the per-instant point-in-shadow query, so a 14-hour sweep costs **~21× one hour**, not less than 2× ([performance baseline, Time Sweep A6](../docs/notes/performance-baseline.md)). A table indexed by time costs the same for one hour as for fourteen.
+**The time resolution users tolerate is coarse.** These systems use hourly, four fixed times, or 15 minutes. Umbra's own A6 work explains why this matters. The irreducible cost of live sampling is the per-instant point-in-shadow query, so a 14-hour sweep costs **~21× one hour**, not less than 2× ([performance baseline, Time Sweep A6](../notes/performance-baseline.md)). A table indexed by time costs the same for one hour as for fourteen.
 
 **The cost function decides which speedups stay legal.** shadewalker's `length / (1 + w·density)` discounts shaded edges below their length, which makes a straight-line A* heuristic inadmissible. Umbra's `dijkstra` does the same: cost = length × (1 − strength × shadow × 0.7 × solarIntensity), which can fall to 0.3 × length.
 
@@ -178,7 +178,7 @@ That discount is algebraically equivalent to a penalty form. With k = strength �
 
 ## Umbra's eight to twelve seconds is mostly self-inflicted
 
-Checkpoint 6 measured the cost on 2026-09-20, before H1/H2 added time-aware Pareto search ([checkpoint 6 note](../docs/notes/nyc-navigation-checkpoint6-2026-09-20.md)). The setup: headless Chromium on SwiftShader under WSL, synthetic lattice fixtures of 16,802 nodes / 66,680 directed edges ("route-long") and 33,600 / 133,600 ("cross-borough"), medians of three passes. Seen through the industry lens, the timings separate into four problems, not one.
+Checkpoint 6 measured the cost on 2026-09-20, before H1/H2 added time-aware Pareto search ([checkpoint 6 note](../notes/nyc-navigation-checkpoint6-2026-09-20.md)). The setup: headless Chromium on SwiftShader under WSL, synthetic lattice fixtures of 16,802 nodes / 66,680 directed edges ("route-long") and 33,600 / 133,600 ("cross-borough"), medians of three passes. Seen through the industry lens, the timings separate into four problems, not one.
 
 **Shard transfer** (static path, cold): 1.03 s for four street shards (~7 MiB on the wire) and 3.9 s for eight (14.5 MiB). Warm it is 0 after the decoded-cache tuning. Graph merge still costs 113–279 ms warm, and production does not use this path at all: `VITE_NAVIGATION_BASE` is unset, so production fetches streets from live Overpass. There is a related cost hidden inside "graph fetch": field readiness stays at about **1.0 s even warm**.
 

@@ -1,16 +1,15 @@
 # A3 — paretoRoutes city-scale budget sweep — 2026-09-19
 
-Session A3 of
-[`docs/handoffs/LATENCY_ATTRIBUTION_SESSIONS.md`](../handoffs/LATENCY_ATTRIBUTION_SESSIONS.md),
-branch `perf/a3-pareto-budget-curve` (PR 1 of 2). This PR **measures only** — it
+Session A3 of the 2026-09-19 latency-attribution plan (a handoff that was never
+published to this repository), branch `perf/a3-pareto-budget-curve` (PR 1 of 2). This PR **measures only** — it
 commits the harness and the published curve; it changes no routing behavior.
 PR 2 applies the decision rule below on top of this curve, and it is the only
 place the handoff authorizes touching routing constants.
 
 **Trigger (committed):** `paretoRoutes` 2-point on the seeded synthetic grid is
 484.3 ms at 4,600 nodes and **2,434.6 ms at 16,800 nodes** — superlinear —
-against a 16.8 k < 300 ms gate
-([`navigation-latency-attribution-2026-09-19.md`](./navigation-latency-attribution-2026-09-19.md)).
+against a 16.8 k < 300 ms gate (the Phase-0 attribution baseline, likewise
+unpublished; this note is where the figures live now).
 This is the one fix that trades route diversity for speed, so it is priced
 first and only then retuned.
 

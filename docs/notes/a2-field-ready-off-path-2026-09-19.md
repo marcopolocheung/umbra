@@ -1,6 +1,6 @@
 # A2 — shadow-field readiness off the route path (PR 1) — 2026-09-19
 
-Session A2 PR 1 from `docs/handoffs/LATENCY_ATTRIBUTION_SESSIONS.md`: the
+Session A2 PR 1 of the 2026-09-19 latency-attribution plan: the
 page-load prewarm per generation plus the generation/bbox readiness cache.
 The narrower edge-cell area (PR 2) follows this PR, off `main` after it merges,
 so the cache win and the shrink win stay separately attributable.

@@ -409,8 +409,8 @@ describe("walk search — per-leg 12-pass loop (5-stop shape × 3 strengths)", (
 
 // ─── A3: paretoRoutes city-scale budget curve ────────────────────────────────
 //
-// Session A3 of `docs/handoffs/LATENCY_ATTRIBUTION_SESSIONS.md`. The committed
-// trigger (`docs/notes/navigation-latency-attribution-2026-09-19.md`): 484.3 ms
+// Session A3 of the latency-attribution plan. The committed trigger
+// (`docs/notes/pareto-budget-sweep-2026-09-19.md`): 484.3 ms
 // at 4,600 nodes and 2,434.6 ms at 16,800 nodes, against a 16.8 k < 300 ms gate.
 // The bi-criteria search is superlinear in graph size, and this is the one fix
 // that trades route diversity for speed — so per the handoff it is measured
