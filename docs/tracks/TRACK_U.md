@@ -15,6 +15,8 @@ accordingly. Subagents stay read-only here, per the repo rule.
 
 ## Current state
 
+- **Older rounds' shots** were removed from the tree on 2026-10-09; each folder named below is
+  in git history (`git show 8e5f463:docs/design/shots/<round>/`) and in its PR body.
 - **Active checkpoint:** U7 — the beauty pass. On `design/u7-beauty-pass`, open for owner
   review. The route card's shadow-coverage bar is the card's hero mark (U7): 12 px tall,
   rounded, its **track the sun portion** as the sun wash (`--color-sun-soft` — sun data,
@@ -147,7 +149,8 @@ accordingly. Subagents stay read-only here, per the repo rule.
 - **Never merge.** Every PR stays open for the owner's visual review; merging is the sign-off
   for U1 and the ongoing gate for the rest.
 - Every UI PR carries before/after **phone** screenshots (390×844) committed under
-  `docs/design/shots/u<n>/` and linked from the PR body. Prose ≤4 sentences.
+  `docs/design/shots/u<n>/` and linked from the PR body, and deletes the previous round's
+  folder in the same PR — only the latest round stays in the tree. Prose ≤4 sentences.
 - `interface-reviewer` runs on any diff touching `app/components/**` or `app/page.tsx`.
   `grounding-auditor` runs whenever user-facing numbers, labels or assistant-visible strings
   change (U5, U6 especially).

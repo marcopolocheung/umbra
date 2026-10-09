@@ -24,6 +24,8 @@ inspiration; the public mirror publishes everything here.
 
 ## Current state
 
+- **Older rounds' shots** were removed from the tree on 2026-10-09; each folder named below is
+  in git history (`git show 8e5f463:docs/design/shots/<round>/`) and in its PR body.
 - **Active checkpoint: R9 (PR #209).** The six core categories use one MIT-licensed icon set,
   including a clear walking figure and a cloud with rain; the original Umbra disc appears in
   the app icon, selected-time marker, user dot and arrival stamp. Verdicts reveal in ink and
@@ -321,7 +323,9 @@ inspiration; the public mirror publishes everything here.
 
 - **Never merge.** Every PR stays open for the owner's visual review; merging is sign-off.
 - Every UI PR carries before/after phone shots (390×844) in **both themes** once R2 lands,
-  under `docs/design/shots/r<n>/`. PR prose ≤4 sentences.
+  under `docs/design/shots/r<n>/`, and deletes the previous round's folder in the same PR —
+  only the latest round stays in the tree; history and the PR body keep the rest. PR prose ≤4
+  sentences.
 - `interface-reviewer` on any diff touching `app/components/**` or `app/page.tsx`;
   `grounding-auditor` whenever copy, labels or user-facing numbers change; `verifier` before
   every PR; `/gates` and `npm run design:check` green.
