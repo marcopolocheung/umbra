@@ -23,7 +23,7 @@ function makeReq({
   return {
     method,
     body,
-    headers: { "x-forwarded-for": ip, ...headers },
+    headers: { origin: "https://shademapnav.vercel.app", "x-forwarded-for": ip, ...headers },
     socket: { remoteAddress: ip },
   };
 }
@@ -94,6 +94,22 @@ describe("api/agent proxy hardening", () => {
       makeReq({ headers: { origin: "https://example.invalid" } }),
       res
     );
+
+    expect(res.statusCode).toBe(403);
+    expect(res.jsonBody?.error).toBe("Origin not allowed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects requests that name no origin or referer", async () => {
+    // A browser always sends Origin on a POST; a bare script does not.
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+    const req = makeReq();
+    delete (req.headers as Record<string, string>).origin;
+
+    await handler(req, res);
 
     expect(res.statusCode).toBe(403);
     expect(res.jsonBody?.error).toBe("Origin not allowed");

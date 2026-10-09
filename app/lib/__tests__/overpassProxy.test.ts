@@ -29,14 +29,17 @@ function upstreamResponse(
 function makeReq({
   body = "data=%5Bout%3Ajson%5D%3B",
   headers = {},
+  ip = "203.0.113.10",
 }: {
   body?: unknown;
   headers?: Record<string, string>;
+  ip?: string;
 } = {}) {
   return Object.assign(new EventEmitter(), {
     method: "POST",
     body,
-    headers,
+    headers: { origin: "https://shademapnav.vercel.app", "x-forwarded-for": ip, ...headers },
+    socket: { remoteAddress: ip },
   });
 }
 
@@ -275,10 +278,64 @@ describe("api/overpass handler", () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     delete process.env.OVERPASS_ENDPOINTS;
     delete process.env.OVERPASS_MAX_BODY_BYTES;
+    delete process.env.OVERPASS_ALLOWED_ORIGINS;
+    delete process.env.OVERPASS_RATE_LIMIT_PER_MIN;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["a foreign origin", { origin: "https://example.invalid" }],
+    ["no origin or referer", { origin: "" }],
+  ])("rejects %s before forwarding", async (_label, headers) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    await handler(makeReq({ headers }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.jsonBody?.error).toBe("Origin not allowed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts this deployment's branch preview alias", async () => {
+    process.env.VERCEL_BRANCH_URL = "umbra-git-fix-x-team.vercel.app";
+    const fetchMock = vi.fn().mockResolvedValue(upstreamResponse(200, "{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    try {
+      await handler(
+        makeReq({ headers: { origin: "https://umbra-git-fix-x-team.vercel.app" } }),
+        res,
+      );
+    } finally {
+      delete process.env.VERCEL_BRANCH_URL;
+    }
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rate limits repeated requests from one IP", async () => {
+    process.env.OVERPASS_RATE_LIMIT_PER_MIN = "1";
+    const fetchMock = vi.fn().mockResolvedValue(upstreamResponse(200, "{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+
+    const first = makeRes();
+    await handler(makeReq({ ip: "203.0.113.30" }), first);
+    expect(first.statusCode).toBe(200);
+
+    const second = makeRes();
+    await handler(makeReq({ ip: "203.0.113.30" }), second);
+    expect(second.statusCode).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([

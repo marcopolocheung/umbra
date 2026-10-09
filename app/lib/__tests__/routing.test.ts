@@ -27,7 +27,6 @@ import {
   type RoutingGraph,
   type OsmNode,
   type GraphEdge,
-  reachableFrom,
   snapToReachable,
 } from "../routing";
 
@@ -1847,16 +1846,16 @@ function graphWithIsland() {
       [2, [{ toId: 1, distanceM: 555 }]],
       [99, []],
     ]),
-  } as unknown as Parameters<typeof reachableFrom>[0];
+  } as unknown as Parameters<typeof bfsReachable>[0];
 }
 
-describe("reachableFrom", () => {
+describe("bfsReachable — islands", () => {
   it("returns only what is walkable from the start", () => {
-    expect([...reachableFrom(graphWithIsland(), 1)].sort()).toEqual([1, 2]);
+    expect([...bfsReachable(graphWithIsland(), 1)].sort()).toEqual([1, 2]);
   });
 
   it("includes the start even when it has no edges", () => {
-    expect([...reachableFrom(graphWithIsland(), 99)]).toEqual([99]);
+    expect([...bfsReachable(graphWithIsland(), 99)]).toEqual([99]);
   });
 });
 
@@ -1867,12 +1866,12 @@ describe("snapToReachable", () => {
     // The island sits exactly on the target, so plain snapping picks it and the
     // route then fails.
     expect(snapToGraph(target, graph)).toBe(99);
-    expect(snapToReachable(target, graph, reachableFrom(graph, 1))).toBe(2);
+    expect(snapToReachable(target, graph, bfsReachable(graph, 1))).toBe(2);
   });
 
   it("keeps the nearest node when it is reachable", () => {
     const graph = graphWithIsland();
-    expect(snapToReachable([103.8001, 1.3], graph, reachableFrom(graph, 1))).toBe(1);
+    expect(snapToReachable([103.8001, 1.3], graph, bfsReachable(graph, 1))).toBe(1);
   });
 
   it("returns -1 when nothing is reachable", () => {

@@ -89,7 +89,7 @@ export interface RoutingPhaseMs {
   trainSearchSubway?: number; // subway slice of trainSearch
   trainSearchBus?: number; // bus slice of trainSearch
   entrances?: number; // entrance-box fetch + match + pick (subway only)
-  walkLegs?: number; // reachableFrom + snapToReachable + walkA/walkB dijkstras
+  walkLegs?: number; // bfsReachable + snapToReachable + walkA/walkB dijkstras
   busWait?: number; // bus boarding shadowAt + stop preloads + waitExposureFrom
   /**
    * L0: contiguous stage split from a lap timer — every millisecond of

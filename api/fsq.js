@@ -18,26 +18,14 @@
  * Vite `/__fsq` proxy, which injects nothing, so a dev-only
  * `VITE_FOURSQUARE_API_KEY` is still read there. See #218.
  */
-const RATE_LIMIT_PER_MIN = Number(process.env.FSQ_RATE_LIMIT_PER_MIN || 60);
-const recentRequestsByIp = new Map();
+import {
+  createRateLimiter,
+  header,
+  originFromUrl,
+  requestSourceAllowed,
+} from "../server/proxyGuard.js";
 
-function splitCsv(value) {
-  if (!value) return [];
-  return String(value)
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
-
-function allowedOrigins() {
-  const configured = splitCsv(process.env.FSQ_ALLOWED_ORIGINS);
-  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
-  return new Set([
-    "https://shademapnav.vercel.app",
-    ...(vercelUrl ? [vercelUrl] : []),
-    ...configured,
-  ]);
-}
+const isRateLimited = createRateLimiter("FSQ_RATE_LIMIT_PER_MIN", 60);
 
 /**
  * The server-held Places credential. Absent is a misconfiguration, not a fallback.
@@ -59,55 +47,6 @@ function foursquareApiKey() {
     return trimmed.slice(1, -1);
   }
   return trimmed;
-}
-
-function header(req, name) {
-  const headers = req.headers || {};
-  const direct = headers[name] ?? headers[name.toLowerCase()];
-  if (direct !== undefined) return direct;
-  const lowerName = name.toLowerCase();
-  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName);
-  return entry?.[1];
-}
-
-function requestIp(req) {
-  const forwarded = header(req, "x-forwarded-for");
-  if (typeof forwarded === "string" && forwarded.trim()) {
-    return forwarded.split(",")[0].trim();
-  }
-  return req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(req) {
-  if (!Number.isFinite(RATE_LIMIT_PER_MIN) || RATE_LIMIT_PER_MIN <= 0) return false;
-  const now = Date.now();
-  const cutoff = now - 60_000;
-  const ip = requestIp(req);
-  const recent = (recentRequestsByIp.get(ip) || []).filter((t) => t > cutoff);
-  if (recent.length >= RATE_LIMIT_PER_MIN) {
-    recentRequestsByIp.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  recentRequestsByIp.set(ip, recent);
-  return false;
-}
-
-function originFromUrl(value) {
-  if (!value || typeof value !== "string") return null;
-  try {
-    return new URL(value).origin;
-  } catch {
-    return null;
-  }
-}
-
-function requestSourceAllowed(req) {
-  const origin = originFromUrl(header(req, "origin"));
-  const referer = originFromUrl(header(req, "referer") ?? header(req, "referrer"));
-  const source = origin ?? referer;
-  if (!source) return false;
-  return allowedOrigins().has(source);
 }
 
 function hasOnlySearchParams(url, allowed) {
@@ -141,7 +80,7 @@ function allowedUpstreamPath(reqUrl) {
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
-    if (!requestSourceAllowed(req)) {
+    if (!requestSourceAllowed(req, "FSQ_ALLOWED_ORIGINS")) {
       res.status(403).json({ error: "Origin not allowed" });
       return;
     }
@@ -157,7 +96,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-  if (!requestSourceAllowed(req)) {
+  if (!requestSourceAllowed(req, "FSQ_ALLOWED_ORIGINS")) {
     res.status(403).json({ error: "Origin not allowed" });
     return;
   }

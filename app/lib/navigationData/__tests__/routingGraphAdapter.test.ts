@@ -19,7 +19,6 @@ import {
   dijkstra,
   haversineMeters,
   paretoRoutes,
-  reachableFrom,
   type RoutingGraph,
 } from "../../routing";
 import { buildRoutingGraphFromElements, type OverpassWayElement } from "../../overpass";
@@ -219,9 +218,6 @@ describe("routingGraphAdapter parity with the Overpass builder", () => {
     const reference = referenceGraph();
     const merged = staticGraph();
     for (const id of reference.nodes.keys()) {
-      expect([...reachableFrom(merged, id)].sort((a, b) => a - b)).toEqual(
-        [...reachableFrom(reference, id)].sort((a, b) => a - b),
-      );
       expect([...bfsReachable(merged, id)].sort((a, b) => a - b)).toEqual(
         [...bfsReachable(reference, id)].sort((a, b) => a - b),
       );
