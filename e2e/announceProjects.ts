@@ -5,7 +5,7 @@ import { hasMapTilerKey } from "../playwright.config";
  *
  * Registered as `globalSetup` in `playwright.config.ts` only. It used to be a
  * module-scope `console.log` there, which meant it also fired when
- * `playwright.bench.config.ts` imported that file for its shared `use` block —
+ * `e2e/bench.config.ts` imported that file for its shared `use` block —
  * and again inside every spawned worker, where an `argv` guard cannot see the
  * config path. The benchmark therefore printed "running `smoke-live` (real
  * MapTiler tiles)" on a run that is keyless by design.

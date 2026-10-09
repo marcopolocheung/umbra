@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 // each forced palette, then writes PNGs to gitignored out/shots/{day,night}/.
 // Curated review shots live under docs/design/shots/r<n>/; a new round replaces the last.
 //
-// Runs against the preview build on port 4173 (the same command playwright.config.ts
+// Runs against the preview build on port 4173 (the same command the root playwright.config.ts
 // uses), or reuses whatever server is already on that port — that is the fast
 // feedback loop: `npm run shots` during a design session reshots states in seconds.
 // The stale-server caveat: if 4173 serves an old build, reshoot with the server
@@ -13,7 +13,7 @@ const PORT = 4173;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
-  testDir: "e2e/shots",
+  testDir: "shots",
   testMatch: ["design-shots.spec.ts", "r9-review.spec.ts"],
   retries: 0,
   workers: 1,
@@ -40,5 +40,6 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: true,
     timeout: 240_000,
+    cwd: "..",
   },
 });

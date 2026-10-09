@@ -18,16 +18,16 @@ const NAV_BASE_URL = `http://127.0.0.1:${NAV_PORT}`;
 export default defineConfig({
   // Say which projects will run. A reader who sees one test instead of two should
   // not have to guess why. This is `globalSetup` rather than a module-scope log
-  // because `playwright.bench.config.ts` imports this file for its shared `use`
+  // because `e2e/bench.config.ts` imports this file for its shared `use`
   // block: a module-scope log fires in that config too, and again in every spawned
   // worker, where an `argv` guard cannot see the config path. The keyless benchmark
   // was announcing `smoke-live` — the one thing its own caveat says it never uses.
   globalSetup: "./e2e/announceProjects.ts",
   testDir: "e2e",
-  // G2's benchmark has its own config (`playwright.bench.config.ts`). It measures
+  // G2's benchmark has its own config (`e2e/bench.config.ts`). It measures
   // and commits a baseline rather than gating a build, takes minutes, and is
   // meaningful only on one machine — so `npm run e2e`, and therefore CI, skips it.
-  // Design shots live in `playwright.shots.config.ts` (`npm run shots`) and are
+  // Design shots live in `e2e/shots.config.ts` (`npm run shots`) and are
   // review artifacts, not CI gates.
   testIgnore: [
     "**/bench/**",

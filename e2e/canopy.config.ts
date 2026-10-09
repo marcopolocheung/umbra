@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import baseConfig from "./playwright.config";
+import baseConfig from "../playwright.config";
 
 /**
  * A8a's canopy transport measurement. A third config, for two reasons that the
@@ -25,7 +25,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   ...baseConfig,
-  testDir: "e2e/bench",
+  testDir: "bench",
   testMatch: "**/canopy*.bench.spec.ts",
   testIgnore: undefined,
   globalSetup: undefined,
@@ -52,5 +52,6 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: false,
     timeout: 120_000,
+    cwd: "..",
   },
 });

@@ -153,7 +153,7 @@ questions asked from the place that actually has to answer them: a page, using
 `geotiff.js`, against `source.coop`, with no server of any kind. **It confirms the
 estimates and adds four things the header-arithmetic could not see.**
 
-Reproduce with `npm run bench:canopy` (`playwright.canopy.config.ts`). It talks to
+Reproduce with `npm run bench:canopy` (`e2e/canopy.config.ts`). It talks to
 a third-party host, so it never runs in CI and its timings belong to one machine —
 these are a WSL2 laptop on a domestic connection, 2026-09-10, where a single
 796-byte range read from `source.coop` took **1.5-3.5 s**. Read the byte columns as

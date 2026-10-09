@@ -20,13 +20,13 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "bench": "vitest bench --run",
-    "eval:agent": "vitest run --config vitest.live.config.ts",
+    "eval:agent": "vitest run --config app/lib/agent/__tests__/live/vitest.config.ts",
     "e2e": "playwright test",
-    "shots": "playwright test --config=playwright.shots.config.ts",
+    "shots": "playwright test --config=e2e/shots.config.ts",
     "design:check": "node --test scripts/verify/design-tokens.test.mjs && node scripts/verify/design-tokens.mjs --all",
-    "e2e:shadow-v2-debug": "playwright test --config=playwright.shadow-v2-debug.config.ts",
-    "bench:route": "playwright test --config=playwright.bench.config.ts",
-    "bench:canopy": "playwright test --config=playwright.canopy.config.ts"
+    "e2e:shadow-v2-debug": "playwright test --config=e2e/shadow-v2-debug.config.ts",
+    "bench:route": "playwright test --config=e2e/bench.config.ts",
+    "bench:canopy": "playwright test --config=e2e/canopy.config.ts"
   },
   "dependencies": {
     "@photostructure/tz-lookup": "^11.6.1",

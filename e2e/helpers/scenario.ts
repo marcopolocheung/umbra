@@ -30,7 +30,7 @@ export const TRANSIT_WAYPOINT_B: [number, number] = [-73.9809, 40.7562];
 /** Must match `VITE_TRANSIT_BASE` in `playwright.config.ts`'s webServer env. */
 export const TRANSIT_BASE = "https://transit.e2e.test";
 
-/** Must match `VITE_NAVIGATION_BASE` in `playwright.bench.config.ts`'s webServer env. */
+/** Must match `VITE_NAVIGATION_BASE` in `e2e/bench.config.ts`'s webServer env. */
 export const NAVIGATION_BASE = "https://navigation.e2e.test";
 
 export const SHARE_URL =

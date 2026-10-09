@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
-import baseConfig from "./playwright.config";
+import baseConfig from "../playwright.config";
 
 /**
- * G2's route benchmark. Separate from `playwright.config.ts` on purpose.
+ * G2's route benchmark. Separate from the root `playwright.config.ts` on purpose.
  *
  * The benchmark **measures and commits a baseline; it does not gate a build**.
  * Failing CI on a regression is G3. Keeping it in its own config is what makes
@@ -21,7 +21,7 @@ import baseConfig from "./playwright.config";
  */
 export default defineConfig({
   ...baseConfig,
-  testDir: "e2e/bench",
+  testDir: "bench",
   // Canopy has a separate live-network config. Without an explicit match, adding
   // those specs made the keyless route command wait on source.coop before G2 ran.
   testMatch: ["**/routeCalc.bench.spec.ts", "**/detourSweep.bench.spec.ts"],
@@ -67,6 +67,7 @@ export default defineConfig({
       url: "http://127.0.0.1:4191",
       reuseExistingServer: false,
       timeout: 240_000,
+      cwd: "..",
     },
     {
       command: `npm run build -- --outDir bench-dist/nav && npm run start -- --outDir bench-dist/nav --host 127.0.0.1 --port 4192 --strictPort`,
@@ -77,6 +78,7 @@ export default defineConfig({
       url: "http://127.0.0.1:4192",
       reuseExistingServer: false,
       timeout: 240_000,
+      cwd: "..",
     },
   ],
 });
