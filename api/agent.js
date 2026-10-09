@@ -15,6 +15,8 @@
  * Vite `/__gemini` proxy instead. Free key: https://aistudio.google.com/apikey
  */
 
+import { createRateLimiter, requestSourceAllowed, splitCsv } from "../server/proxyGuard.js";
+
 /** Collect a deduped key pool from `GEMINI_API_KEY` (may be comma-separated) + `_1..9`. */
 function collectKeys() {
   const out = [];
@@ -35,61 +37,13 @@ let rr = 0;
 
 const DEFAULT_ALLOWED_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
 const MAX_PAYLOAD_BYTES = Number(process.env.AGENT_MAX_PAYLOAD_BYTES || 250_000);
-const RATE_LIMIT_PER_MIN = Number(process.env.AGENT_RATE_LIMIT_PER_MIN || 20);
-const recentRequestsByIp = new Map();
-
-function splitCsv(value) {
-  if (!value) return [];
-  return String(value)
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
+const isRateLimited = createRateLimiter("AGENT_RATE_LIMIT_PER_MIN", 20);
 
 function allowedModels() {
   return new Set([
     ...DEFAULT_ALLOWED_MODELS,
     ...splitCsv(process.env.GEMINI_ALLOWED_MODELS),
   ]);
-}
-
-function allowedOrigins() {
-  const configured = splitCsv(process.env.AGENT_ALLOWED_ORIGINS);
-  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
-  return new Set([
-    "https://shademapnav.vercel.app",
-    ...(vercelUrl ? [vercelUrl] : []),
-    ...configured,
-  ]);
-}
-
-function requestIp(req) {
-  const forwarded = req.headers?.["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.trim()) {
-    return forwarded.split(",")[0].trim();
-  }
-  return req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(req) {
-  if (!Number.isFinite(RATE_LIMIT_PER_MIN) || RATE_LIMIT_PER_MIN <= 0) return false;
-  const now = Date.now();
-  const cutoff = now - 60_000;
-  const ip = requestIp(req);
-  const recent = (recentRequestsByIp.get(ip) || []).filter((t) => t > cutoff);
-  if (recent.length >= RATE_LIMIT_PER_MIN) {
-    recentRequestsByIp.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  recentRequestsByIp.set(ip, recent);
-  return false;
-}
-
-function originAllowed(req) {
-  const origin = req.headers?.origin;
-  if (!origin) return true;
-  return allowedOrigins().has(origin);
 }
 
 function payloadByteLength(payload) {
@@ -133,7 +87,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-  if (!originAllowed(req)) {
+  if (!requestSourceAllowed(req, "AGENT_ALLOWED_ORIGINS")) {
     res.status(403).json({ error: "Origin not allowed" });
     return;
   }
