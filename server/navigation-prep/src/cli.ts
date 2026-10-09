@@ -1,5 +1,5 @@
 /**
- * navigation-prep <plan|fixture|acquire|validate|normalize|build|verify|publish>
+ * navigation-prep <plan|fixture|acquire|validate|normalize|build|signatures|verify|publish>
  *
  * The NYC navigation pipeline, modelled on transit-prep's discipline:
  * every stage after `acquire` reads only local bytes, and every mutating
@@ -14,13 +14,14 @@ import { publishExecute, publishPlan, publishRollback } from "./publish";
 import { normalize } from "./normalize";
 import { navigationAcquisitionPlan } from "./sources";
 import { defaultCanopyInputs, shadeAgreement, shadeCellMain, shadeExecute } from "./shade";
+import { signaturesExecute } from "./signatures";
 import { validate } from "./validate";
 import { verifyGeneration } from "./verify";
 import { writeEvidence } from "./evidence";
 import type { GridZoom } from "./boundary";
 
 const usage =
-  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|shade [--plan|--execute] [--grid z13|z14] [--concurrency N] [--cells a,b]|verify [generation]|publish [generation] [--execute|--rollback]>";
+  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|shade [--plan|--execute] [--grid z13|z14] [--concurrency N] [--cells a,b]|signatures|verify [generation]|publish [generation] [--execute|--rollback]>";
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -145,6 +146,10 @@ async function main(): Promise<void> {
       );
       process.exitCode = 1;
     }
+    return;
+  }
+  if (command === "signatures") {
+    await writeEvidence(command, await signaturesExecute());
     return;
   }
   if (command === "verify") {

@@ -109,6 +109,24 @@ export interface NavigationShadeShard {
   };
 }
 
+/**
+ * The generation's shade signatures (#321): one small per-cell payload beside
+ * each shade table, and one JSON index carrying the frozen model they were
+ * projected with. The manifest holds only this ref; the per-cell list lives in
+ * the index, because the manifest is near its byte cap.
+ */
+export interface NavigationSignatureRef {
+  /** Key of the JSON index, `signatures/index.json`. */
+  key: string;
+  bytes: number;
+  sha256: string;
+  /** Frozen model version, e.g. `signatures-v1`. */
+  model: string;
+  cells: number;
+  /** Bytes of every per-cell payload together. */
+  payloadBytes: number;
+}
+
 export interface NavigationManifest {
   version: 1;
   dataset: "nyc-navigation";
@@ -123,10 +141,14 @@ export interface NavigationManifest {
   buildingShards: NavigationBuildingShardRef[];
   /** Absent on generations built before L2a; present once the table ships. */
   shadeShards?: NavigationShadeShardRef[];
+  /** Absent on generations built before the signatures stage. */
+  signatures?: NavigationSignatureRef;
   budgets: {
     streetShardBytes: number;
     buildingShardBytes: number;
     shadeShardBytes: number;
+    /** Signature index plus every payload; absent when the stage has not run. */
+    signatureBytes?: number;
     totalBytes: number;
   };
 }
@@ -228,6 +250,12 @@ export const MAX_SHADE_SHARD_BYTES = 32_000_000;
  * 2 bytes). 6 GB leaves ~1.7× headroom before the next measured adjustment.
  */
 export const MAX_TOTAL_BYTES = 6_000_000_000;
+/**
+ * A signature payload is 17 bytes per sidewalk side (16 int8 components and a
+ * type byte), so ~450 KB for the densest z14 cell of the first citywide
+ * generation (13,184 segments). Same headroom as the shade cap.
+ */
+export const MAX_SIGNATURE_SHARD_BYTES = 1_500_000;
 
 const generationPattern = /^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -235,6 +263,7 @@ const streetShardKeyPattern = /^streets\/[a-z0-9-]{1,64}\.json$/;
 const buildingShardKeyPattern = /^buildings\/[a-z0-9-]{1,64}\.json$/;
 const shadeIndexKeyPattern = /^shades\/[a-z0-9-]{1,64}\.json$/;
 const shadePayloadKeyPattern = /^shades\/[a-z0-9-]{1,64}\.bin$/;
+const signatureIndexKey = "signatures/index.json";
 const noticesPathPattern = /^navigation\/nyc\/nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}\/notices\.json$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -461,6 +490,32 @@ function parseBuildingShardRef(value: unknown): NavigationBuildingShardRef {
   };
 }
 
+function parseSignatureRef(value: unknown): NavigationSignatureRef {
+  if (!isRecord(value)) throw new Error("invalid NYC navigation signature ref");
+  assertKeys(
+    value,
+    ["key", "bytes", "sha256", "model", "cells", "payloadBytes"],
+    "invalid NYC navigation signature ref",
+  );
+  if (
+    value.key !== signatureIndexKey ||
+    !isPositiveInt(value.bytes) ||
+    typeof value.model !== "string" ||
+    !/^signatures-v\d+$/.test(value.model) ||
+    !isPositiveInt(value.cells) ||
+    !isPositiveInt(value.payloadBytes)
+  )
+    throw new Error("invalid NYC navigation signature ref");
+  return {
+    key: value.key,
+    bytes: value.bytes,
+    sha256: parseSha256(value.sha256, "invalid NYC navigation signature ref"),
+    model: value.model,
+    cells: value.cells,
+    payloadBytes: value.payloadBytes,
+  };
+}
+
 function parseShadeShardRef(value: unknown): NavigationShadeShardRef {
   if (!isRecord(value)) throw new Error("invalid NYC navigation shade shard ref");
   assertKeys(
@@ -532,6 +587,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
       "streetShards",
       "buildingShards",
       "shadeShards",
+      "signatures",
       "budgets",
     ],
     "invalid NYC navigation manifest",
@@ -568,11 +624,18 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     !isRecord(budgets) ||
     Object.keys(budgets).some(
       (key) =>
-        !["streetShardBytes", "buildingShardBytes", "shadeShardBytes", "totalBytes"].includes(key),
+        ![
+          "streetShardBytes",
+          "buildingShardBytes",
+          "shadeShardBytes",
+          "signatureBytes",
+          "totalBytes",
+        ].includes(key),
     ) ||
     !isNonNegativeInt(budgets.streetShardBytes) ||
     !isNonNegativeInt(budgets.buildingShardBytes) ||
     (budgets.shadeShardBytes !== undefined && !isNonNegativeInt(budgets.shadeShardBytes)) ||
+    (budgets.signatureBytes !== undefined && !isNonNegativeInt(budgets.signatureBytes)) ||
     !isNonNegativeInt(budgets.totalBytes) ||
     budgets.streetShardBytes + budgets.buildingShardBytes > MAX_TOTAL_BYTES ||
     budgets.totalBytes > MAX_TOTAL_BYTES
@@ -582,6 +645,15 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
   const streetShards = value.streetShards.map(parseStreetShardRef);
   const buildingShards = value.buildingShards.map(parseBuildingShardRef);
   const shadeShards = (value.shadeShards as unknown[] | undefined)?.map(parseShadeShardRef) ?? [];
+  const signatures =
+    value.signatures !== undefined ? parseSignatureRef(value.signatures) : undefined;
+  if (
+    signatures
+      ? signatures.cells !== shadeShards.length ||
+        budgets.signatureBytes !== signatures.bytes + signatures.payloadBytes
+      : budgets.signatureBytes !== undefined
+  )
+    throw new Error("NYC navigation signatures do not cover the shade table");
   const streetKeys = new Set(streetShards.map((ref) => ref.key));
   const buildingKeys = new Set(buildingShards.map((ref) => ref.key));
   const shadeKeys = new Set(shadeShards.map((ref) => ref.key));
@@ -613,10 +685,12 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     streetShards,
     buildingShards,
     ...(value.shadeShards !== undefined ? { shadeShards } : {}),
+    ...(signatures ? { signatures } : {}),
     budgets: {
       streetShardBytes: budgets.streetShardBytes,
       buildingShardBytes: budgets.buildingShardBytes,
       shadeShardBytes: budgets.shadeShardBytes ?? 0,
+      ...(budgets.signatureBytes !== undefined ? { signatureBytes: budgets.signatureBytes } : {}),
       totalBytes: budgets.totalBytes,
     },
   };
