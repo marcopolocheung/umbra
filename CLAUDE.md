@@ -24,7 +24,7 @@ npm install
 npm run dev        # Vite dev server → http://localhost:5173
 npm test           # vitest run — app/{lib,services,hooks,components}/__tests__/**
 npm run typecheck  # tsc --noEmit
-npm run lint       # biome lint — blocks on errors, ~180 known findings are "warn"
+npm run lint       # biome lint — blocks on errors, ~80 known findings are "warn"
 npm run format     # biome format --write (never yet run repo-wide; see biome.json)
 npm run build      # vite build → dist/
 npm run e2e        # playwright test — one browser smoke test; no API key needed
@@ -58,39 +58,14 @@ Env (`.env` — copy `.env.example`): `VITE_MAPTILER_API_KEY` (required), `VITE_
 (place popups — **dev only**; production reads server-only `FSQ_API_KEY` inside `api/fsq.js`
 and the browser sends no Foursquare credential at all. Foursquare service keys support no
 origin restriction, so the key must not reach the bundle; the `import.meta.env.DEV` guard in
-`foursquare.ts` is what keeps it out). `VITE_SHADEMAP_API_KEY` / `VITE_TRANSITLAND_API_KEY` are vestigial — unused.
+`foursquare.ts` is what keeps it out).
 
-AI assistant (Umbra Assistant, `app/lib/agent/`): uses a **free** LLM — **Google Gemini
-only**, free tier, through its OpenAI-compatible endpoint (Cerebras was dropped on 2026-09-11:
-every key 402'd, #301). Key: https://aistudio.google.com/apikey. dev `VITE_GEMINI_API_KEY`
-(via the Vite `/__gemini` proxy); prod `GEMINI_API_KEY` (server-only, via `api/agent.js`).
-- **One shared key pool.** List every key comma-separated in `VITE_GEMINI_API_KEY` (and/or
-  numbered `_1/_2/_3` dev, `_1.._9` prod) — the client (dev) and `api/agent.js` (prod)
-  round-robin across the pool and fail over to the next key on 429/5xx and on 401/403, so a
-  dead key never ends a turn. Each key brings its own free quota. All roles draw the one pool.
-- **Per-role model (not key):** the loop does its tool-use research with the "research" model,
-  then writes the final answer with the "response" model. `VITE_GEMINI_RESEARCH_MODEL`
-  (default `gemini-3.5-flash-lite`) / `VITE_GEMINI_RESPONSE_MODEL` (default
-  `gemini-3.1-flash-lite` — it grounded 25/25 live; `gemini-3.6-flash` took 29 s a call); base
-  override `VITE_GEMINI_MODEL`. If both resolve to the same model,
-  `rolesShareConfig()` makes the loop skip the separate write call (the research answer IS the
-  answer). Prod accepts only the models in `api/agent.js`'s allowlist (+ `GEMINI_ALLOWED_MODELS`).
-- **Two Gemini quirks live in `llmClient.ts`:** the endpoint rejects `seed`, and Gemini 3
-  attaches a thought signature (`extra_content`) to every tool call that must be sent back
-  verbatim — the IR carries it as `functionCall.extra`. Drop it and every second tool step 400s.
-The loop is tuned for determinism: temperature 0, `parallel_tool_calls: false`,
-`MAX_STEPS` 8 (the happy path needs ~5 tool turns through plot_points — a lower cap strands the
-loop before pins reach the map), and a tightly-scoped system prompt (shadow-day-planning only).
-**Determinism by pre-injection:** `get_current_context` is NOT a tool — the map center / local
-time / location-known status is plain app state, so `agentLoop.ts` reads it once per turn (via
-the still-present `executeTool("get_current_context")` executor) and appends it to the system
-prompt, saving a guaranteed LLM round-trip. The final write call uses a separate, tool-free
-system prompt so a reasoning response model never narrates uncallable tools into the answer.
-The agent loop runs client-side (it orchestrates tools needing the live map canvas:
-geocoding, the solar model, on-canvas shadow sampling, time/camera, the routing pipeline).
-The loop speaks one neutral IR (`LlmContent`/`LlmPart`); `llmClient.ts` translates it to/from
-the OpenAI chat-completions shape Gemini's compatible endpoint expects. `npm run eval:agent`
-replays the C1 scenarios against the real model (see `docs/notes/agent-live-eval-2026-09-11.md`).
+AI assistant (Umbra Assistant, `app/lib/agent/`): **Google Gemini free tier only** (Cerebras was
+dropped on 2026-09-11, #301). Dev reads `VITE_GEMINI_API_KEY` through the Vite `/__gemini` proxy;
+prod reads server-only `GEMINI_API_KEY` in `api/agent.js`. Both take a comma-separated key pool.
+`npm run eval:agent` replays the scenarios against the real model. Everything else — per-role
+models, determinism, grounding, the Gemini quirks — is in `.claude/rules/agent-loop.md`, which
+loads when you open the agent code.
 
 ## Hard invariants (breaking any of these breaks the app)
 
@@ -151,12 +126,11 @@ approach needs to change.
 | `app/workers/` | `sunPosition.worker.ts` — sun-position worker used by the shadow renderer (Vite `?worker` import) | `.claude/rules/shadow-renderer.md` |
 | `api/` | Vercel serverless proxies: Foursquare (`fsq.js`, server-side key + prod CORS), Gemini (`agent.js`, server-side key pool + model allowlist), Overpass (`overpass.js`), Nominatim (`nominatim.js`, server-side `User-Agent`) | `.claude/rules/external-apis.md` |
 | `.claude/` | Agent config: enforced invariants (hooks), path-scoped rules, agents, skills | `.claude/README.md` |
-| ~~`tools/tailor/`~~ | Gone. The resume-tailor CLI was spec'd but never built; its leftover `@anthropic-ai/sdk`/`openai`/`commander` deps were dropped. `zod` is still declared but unimported. | — |
 
 ## Where to edit what
 
-| Task domain | Read | Edit points |
-|---|---|---|
+| Task | Edit points |
+|---|---|
 | Shadow rendering (look, correctness, perf) | `app/lib/shadow/LocalShadowAdapter.ts` |
 | Timeline slider, play/pause, date/time input | `app/components/TimelineSlider.tsx`, `app/hooks/useShadowTime.ts` |
 | Walking-route algorithm, cost model, Pareto | `app/lib/routing.ts` (+ `__tests__/routing.test.ts`) |
@@ -164,11 +138,11 @@ approach needs to change.
 | Sketch / draw-route mode | `app/hooks/useSketch.ts` (`calculateSketchRoute`), `MapView.tsx` (sketch layers) |
 | Train/transit routing | `app/lib/trainGraph.ts`, `app/hooks/useRouting.ts` (`calculateRoute`) |
 | Search, geocoding, place details | `app/components/SearchBar.tsx`, `app/services/foursquare.ts` |
-| Map layers, markers, popups, 3D | `.claude/rules/components-and-map.md` | `app/components/MapView.tsx` |
+| Map layers, markers, popups, 3D | `app/components/MapView.tsx` (read `.claude/rules/components-and-map.md` first) |
 | Sun-exposure mode, GeoTIFF export | `app/components/AccumulationPanel.tsx` |
-| Screen flow / app phases |  `app/hooks/useAppState.ts`, `app/page.tsx` |
-| Layout, sidebar, bottom sheet, responsive |  `app/components/AppShell.tsx`, `app/page.tsx` |
-| Build, deploy, env, proxies | `vite.config.ts`, `vercel.json`, `api/fsq.js` |
+| Screen flow / app phases | `app/hooks/useAppState.ts`, `app/page.tsx` |
+| Layout, sidebar, bottom sheet, responsive | `app/components/AppShell.tsx`, `app/page.tsx` |
+| Build, deploy, env, proxies | `vite.config.ts`, `vercel.json`, `api/` |
 
 ## State model (30 seconds)
 
