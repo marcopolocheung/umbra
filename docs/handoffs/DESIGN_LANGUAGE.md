@@ -147,7 +147,7 @@ links); the PR deletes the previous round's folder, so only the latest stays in 
 | `.claude/rules/design-language.md` | Path-scoped rule; advisory until `docs/design/language.md` exists, non-advisory after |
 | `scripts/verify/design-tokens.mjs` | Token-registry lint; `npm run design:check` inventory mode; hook reports changed lines |
 | `.claude/hooks/lint-changed.sh` | Now also reports new hardcoded colours/arbitrary sizes; never blocks (repo convention) |
-| `playwright.shots.config.ts` + `e2e/shots/design-shots.spec.ts` | `npm run shots` — phone-viewport screenshots of key UI states into `out/shots/` |
+| `e2e/shots.config.ts` + `e2e/shots/design-shots.spec.ts` | `npm run shots` — phone-viewport screenshots of key UI states into `out/shots/` |
 | `.claude/skills/design-audit/SKILL.md` | `/design-audit` — inventory + shots + reviewer wiring in one procedure |
 | `.claude/agents/interface-reviewer.md` | Gained a design-language section (checks diffs against `docs/design/language.md`) |
 | `.claude/settings.json` | Pre-approves the new commands + WebFetch for the reference domains |

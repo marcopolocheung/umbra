@@ -10,7 +10,7 @@ walking-navigation app: Vite + React + TypeScript, MapTiler vector tiles, a WebG
 in `app/lib/shadow/`, and a geometry-backed `ShadowField` sampler that routing reads from.
 
 Today the engine casts shadows from **building footprints only**. Terrain is absent. Canopy is
-partially wired (`ShadowSource` reserves a `"canopy"` value; `playwright.canopy.config.ts` exists)
+partially wired (`ShadowSource` reserves a `"canopy"` value; `e2e/canopy.config.ts` exists)
 and behaves wrongly — tree shadows render as axis-aligned boxes rather than the amorphous crown
 shapes the source canopy raster actually describes, and their **bases translate as time advances**,
 which is physically impossible for a static object.

@@ -269,7 +269,7 @@ Acceptance:
 | `docs/handoffs/DESIGN_LANGUAGE.md` | Decisions, references, standing context, session prompt |
 | `.claude/rules/design-language.md` | Per-file design constraints (advisory until U2) |
 | `scripts/verify/design-tokens.mjs` | Token-registry enforcement; inventory mode |
-| `playwright.shots.config.ts` + `e2e/shots/` | `npm run shots` phone screenshots |
+| `e2e/shots.config.ts` + `e2e/shots/` | `npm run shots` phone screenshots |
 | `.claude/skills/design-audit/SKILL.md` | `/design-audit` end-to-end procedure |
 | `.claude/settings.json`, `package.json` | Permissions + `shots` / `design:check` scripts |
 
