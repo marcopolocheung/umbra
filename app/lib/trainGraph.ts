@@ -6,6 +6,7 @@
  */
 
 import { MinHeap } from "./minHeap";
+import { FETCH_TIMEOUT_MS, postOverpass } from "./overpass";
 import { haversineMeters } from "./routing";
 import { toMapLocal } from "./timezone";
 import { decodePolyline } from "./transit/polyline";
@@ -430,10 +431,6 @@ export const MIN_TRANSIT_DISTANCE_M = 500;
  */
 export const TRAIN_SPEED_MPS = (30 * 1000) / 3600;
 const INTERCHANGE_DIST_M = 150;
-// Same-origin proxy (never overpass-api.de directly) — see app/lib/overpass.ts
-// and api/overpass.js for why. Mirror fallback is handled server-side.
-const OVERPASS_BASE = import.meta.env.DEV ? "/__overpass" : "/api/overpass";
-const FETCH_TIMEOUT_MS = 30_000;
 
 const DEFAULT_COLORS = [
   "#0070BD",
@@ -640,23 +637,6 @@ function cacheContains(
   east: number
 ): boolean {
   return e.south <= s && e.west <= w && e.north >= n && e.east >= east;
-}
-
-// ─── Overpass helpers ───────────────────────────────────────────────────────
-
-async function postOverpass(
-  body: string,
-  signal?: AbortSignal
-): Promise<Response> {
-  // No User-Agent header — forbidden in browsers; the proxy sets one server-side.
-  return fetch(OVERPASS_BASE, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-    signal,
-  });
 }
 
 // ─── OSM parsing ────────────────────────────────────────────────────────────

@@ -8,11 +8,12 @@ import type { OsmNode, GraphEdge, RoutingGraph } from "./routing";
 // mirror fallback server-side). See vite.config.ts and api/overpass.js.
 const OVERPASS_BASE = import.meta.env.DEV ? "/__overpass" : "/api/overpass";
 
-const FETCH_TIMEOUT_MS = 30_000;
+export const FETCH_TIMEOUT_MS = 30_000;
 /** Widest street-graph box (corner to corner) worth sending to Overpass. */
 const MAX_OVERPASS_SPAN_M = 30_000;
 
-async function postOverpass(
+/** POST an encoded `data=` query to the same-origin proxy. Shared with trainGraph.ts. */
+export async function postOverpass(
   body: string,
   signal?: AbortSignal
 ): Promise<Response> {
