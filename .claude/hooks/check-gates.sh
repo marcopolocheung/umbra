@@ -43,6 +43,6 @@ fi
 count=$(wc -l <<<"$changed" | tr -d ' ')
 jq -n --arg n "$count" --arg f "$newest" '{
   decision: "block",
-  reason: ("You have \($n) modified TypeScript file(s) under app/ or api/ (most recently \($f)) and the four gates have not been recorded green since that edit.\n\nAUTONOMOUS_GOAL.md §5 step 5 requires all four, every time: npm run lint · npm run typecheck · npm test · npm run build — plus npm run dev for UI/map changes.\n\nRun /gates, which runs all four and records the result. Paste the real output. If a gate fails, say so plainly rather than describing the work as done.\n\nIf this session deliberately is not finishing a checkpoint (exploration, docs, a question), say that in one line and stop again — this fires once per session.")
+  reason: ("You have \($n) modified TypeScript file(s) under app/ or api/ (most recently \($f)) and the four gates have not been recorded green since that edit.\n\ndocs/tracks/README.md § The loop requires all four, every time: npm run lint · npm run typecheck · npm test · npm run build — plus npm run dev for UI/map changes.\n\nRun /gates, which runs all four and records the result. Paste the real output. If a gate fails, say so plainly rather than describing the work as done.\n\nIf this session deliberately is not finishing a checkpoint (exploration, docs, a question), say that in one line and stop again — this fires once per session.")
 }'
 exit 0

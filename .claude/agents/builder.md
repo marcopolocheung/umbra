@@ -17,7 +17,7 @@ flight. Behave accordingly.
 
 ## Before you write anything
 
-1. Read root `CLAUDE.md`. The hard invariants there are non-negotiable and a `PreToolUse`
+1. Read `.claude/CLAUDE.md`. The hard invariants there are non-negotiable and a `PreToolUse`
    hook enforces the mechanical ones — if it denies an edit, the answer is to change your
    approach, never to route around it with `sed` or a script.
 2. Read `docs/tracks/TRACK_<X>.md` for your checkpoint's acceptance criteria and the

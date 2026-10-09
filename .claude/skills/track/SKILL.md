@@ -18,10 +18,9 @@ file an issue against that track instead.
 ## Boot sequence (all of this before writing any code)
 
 1. Read, in this order:
-   - `CLAUDE.md` (root) — commands, hard invariants, repo map
+   - `.claude/CLAUDE.md` — commands, hard invariants, repo map
    - `docs/ROADMAP.md` §3 (the order of work) — it says whether your track's next checkpoint
      is actually the right thing to do, and what is blocking what
-   - `docs/notes/AUTONOMOUS_GOAL.md` §Mission, §4 (dependencies + seams), §5 (the loop)
    - `docs/tracks/README.md` — how a session is run, when to fan out
    - `docs/tracks/TRACK_$track.md` — **your brief. This is your context. Read all of it.**
 2. Read your brief's `## Current state` block. That is where the last session left off.
@@ -74,7 +73,7 @@ a whole track or a chain of dependent checkpoints to a subagent.
 
 ## Execute
 
-Follow `AUTONOMOUS_GOAL.md` §5: branch from `main` → implement with tests → `/gates` →
+Follow `docs/tracks/README.md` § The loop: branch from `main` → implement with tests → `/gates` →
 conventional commit → push → open a PR with `gh` → **never merge**.
 
 PR body: at most four sentences, `Fixes #N`, no headings and no bullets.

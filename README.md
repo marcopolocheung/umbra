@@ -88,7 +88,7 @@ browser.
 
 ## Contributing
 
-[`CLAUDE.md`](CLAUDE.md) has the commands, the hard invariants and where to edit what.
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md) has the commands, the hard invariants and where to edit what.
 [`docs/ROADMAP.md`](docs/ROADMAP.md) says what is next and why.
 
 ## License

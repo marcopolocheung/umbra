@@ -642,7 +642,7 @@ it would create a second unverified shadow implementation rather than connect th
 
 ## Copy-paste prompt for the next session
 
-> Read `CLAUDE.md` and `docs/handoffs/NYC_REMOTE_FIELD.md` completely. Recheck the handoff's
+> Read `.claude/CLAUDE.md` and `docs/handoffs/NYC_REMOTE_FIELD.md` completely. Recheck the handoff's
 > branch heads, deployed `current.json`, and working tree. Identify the earliest incomplete PR
 > in the handoff and implement **only that PR** from the latest accepted base. Preserve all
 > listed invariants and explicit out-of-scope boundaries. Run its focused verification plus the

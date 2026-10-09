@@ -7,7 +7,7 @@ except four thin serverless proxies (`api/fsq.js`, `api/agent.js`, `api/overpass
 `api/nominatim.js`).
 Deployed: https://shademapnav.vercel.app
 
-**Read order (keep context small):** this file → the "Where to edit what" table → the file.
+**Read order (keep context small):** this file (`.claude/CLAUDE.md`) → the "Where to edit what" table → the file.
 **Choosing *what* to work on is a different question:** `docs/ROADMAP.md` is the golden
 roadmap — every track's checkpoints plus the `docs/research/` findings, merged into one
 Now/Next/Later checklist with the reason each item exists. Read it before starting new work,

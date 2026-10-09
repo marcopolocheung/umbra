@@ -8,7 +8,7 @@ updates:
       time: "09:00"
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
-    # Version-locked by hard invariants in CLAUDE.md — do not let dependabot
+    # Version-locked by hard invariants in .claude/CLAUDE.md — do not let dependabot
     # propose these. The groups below only cover minor/patch, so without these
     # ignores a major bump still arrives as its own PR.
     ignore:

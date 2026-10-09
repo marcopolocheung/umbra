@@ -1,8 +1,7 @@
 # Running a track — the operating playbook
 
 **`docs/ROADMAP.md` says *what* to build and in what order, and why each item is worth doing** —
-read it when choosing work. `docs/notes/AUTONOMOUS_GOAL.md` says what the mission and guardrails
-are. This file says *how a session is run*: how to start one, when to spawn subagents, when not to, and how one
+read it when choosing work. This file says *how a session is run* — the loop, the guardrails — how to start one, when to spawn subagents, when not to, and how one
 session hands off to the next.
 
 **Read this once per session, at boot. It is short on purpose.**
@@ -21,6 +20,48 @@ session hands off to the next.
    reliably produces plausible, wrong code.
 4. **Never merge.** Every PR stays open for the repo owner. That's a hard repo rule, and it's
    also why every branch must come off `main`, not off another open PR.
+
+---
+
+## The loop
+
+1. **Pick the next unfinished checkpoint in your track**, in the order listed. Within a
+   checkpoint, take the highest-priority linked issue (`gh issue list --label track-a`, etc.).
+   If a checkpoint is bigger than one PR, split it into issues and take the first slice. **If
+   your track is blocked on another track's contract, build against a stub and say so in the
+   PR.** Never idle, never ask which task to do next.
+2. **Branch** from up-to-date `main`: `feat/…`, `fix/…`, `perf/…`, `a11y/…`, `chore/…`.
+3. **Read before writing.** `.claude/CLAUDE.md` → the file. `.claude/rules/` is path-scoped and loads
+   itself; there are no per-directory `CLAUDE.md` files and none should be created.
+4. **Implement**, with tests when the change is logic (`app/lib/**`, `app/services/**`,
+   `app/hooks/**`). Behavior changes to `routing.ts`, `trainGraph.ts`, `shadowSampling.ts`,
+   `app/lib/shadowField/**`, `app/lib/guidance/**` or `app/lib/agent/**` require test coverage.
+5. **Verify — all four gates, every time** (CI runs exactly these): `npm run lint`,
+   `npm run typecheck`, `npm test`, `npm run build` — via `/gates`. UI/map changes: run
+   `npm run dev` and confirm the thing actually works.
+6. **Commit** with a conventional-commit message.
+7. **Push and open a PR** with `gh`. **Never merge** — every PR stays open for the repo owner.
+8. **Link the issue** — `Fixes #N` in the PR body. Assumptions go in the description.
+9. **File what you found** — `gh issue create` for anything noticed and not fixed, with a
+   priority (`p0`…`p5`), a type and a track label.
+10. **Go to 1.**
+
+**PR descriptions: four sentences maximum, nothing else** — no headings, bullets, test-plan
+section, checklists or emoji. In order: what it adds or fixes, why it was worth doing, how it's
+implemented, why that way. The title stays a conventional-commit line.
+
+### Guardrails
+
+- **The hard invariants in `.claude/CLAUDE.md` are non-negotiable.** If a task genuinely requires
+  breaking one, don't — file an issue describing the tradeoff and pick something else.
+- **Never** rewrite published history, force-push, commit secrets, or commit `.env`.
+- **Free-tier only.** No new paid services or keys. Google Gemini's free tier is the LLM —
+  respect its per-key budget and don't add chatty LLM calls. Open-Meteo, Overpass, Nominatim,
+  MapTiler and Foursquare free tiers are the sanctioned data sources; each needs caching and a
+  polite request rate.
+- **Honesty is a feature.** Any number the UI shows (shadow %, dose, ETA, heat score) must trace
+  to a method someone can read, with its uncertainty stated. When a model is crude, say so in the
+  UI, not just in a comment.
 
 ---
 
@@ -52,18 +93,17 @@ carries the lane plan for running H, A, C, B, S and P at the same time.
 a hook prints the track board — every brief's active checkpoint — so you can see what is live
 before loading anything.
 
-The command loads root `CLAUDE.md`, the mission and seam sections of `AUTONOMOUS_GOAL.md`,
-this playbook, and the track brief — then prints a six-line orientation and starts.
+The command loads `.claude/CLAUDE.md`, `docs/ROADMAP.md` §1, this playbook, and the track brief — then prints a six-line orientation and starts.
 
 **Anywhere the slash command isn't available** (`claude -p`, a cloud session, a fresh
 checkout), paste this instead:
 
 ```
-You own Track B (Live Navigation) for this session. Read, in order: CLAUDE.md,
+You own Track B (Live Navigation) for this session. Read, in order: .claude/CLAUDE.md,
 docs/ROADMAP.md (what to build and why), docs/tracks/README.md, docs/tracks/TRACK_B.md.
 Start from the "Current state" block in the brief, take the next unfinished checkpoint —
 unless docs/ROADMAP.md's Wave 0 says something blocks it — and work it end to end per
-AUTONOMOUS_GOAL.md §5 — branch, implement with tests, run all four gates, push, open a PR
+docs/tracks/README.md § The loop — branch, implement with tests, run all four gates, push, open a PR
 with gh, never merge. Update the brief's Current state block in the same PR. Do not work on
 another track's files; file issues against those tracks instead. Don't ask me what to do
 next — pick the reasonable default and note the assumption in the PR.
@@ -172,6 +212,23 @@ the order in an issue before two of them edit those files at once.
 **Track C is the friendliest to run alongside anything** — it owns `app/lib/agent/**` outright
 and consumes everyone else through tool wrappers.
 
+### Track contracts
+
+Each track publishes one contract, and no other track reimplements what's behind it. If you need
+something behind another track's contract, file an issue against that track and build against a
+stub.
+
+| Contract | Owner | Shape |
+|---|---|---|
+| `ShadowField` | A | `shadowAt(lng,lat,when)`, `sampleEdges(edges,when)`, `sweep(edges,times[])` → shadow + source + confidence |
+| `Guidance` | B | `{ maneuvers[], activeIndex, progressM, offRoute, eta }` |
+| Agent tools | C | Tool wrappers only — every tool delegates to another track's module |
+| `HeatModel` | D | `dose(minutesInSun, uv, profile)`, `heatScore(route, weather)` |
+| `Trip` | E | ordered stops, legs, mode per leg, dwell, totals |
+| `SunBudget` | H | `reachable(origin, exposureBudget, timeBudget, when)` → region + per-node arrival/exposure, and a feasibility verdict |
+| Test/bench harness | G | `e2e/**`, benchmark scripts, accuracy fixtures |
+| Published evidence | P | `README.md`, `docs/notes/evidence.md` — every UI number traceable to a row with its method |
+
 ---
 
 ## Publishing: the public mirror
@@ -233,7 +290,7 @@ and say so in the PR's four sentences.
 - [ ] `npm run lint` · `npm run typecheck` · `npm test` · `npm run build` all pass — run
       `/gates`, which records the result the `Stop` hook reads
 - [ ] UI/map changes confirmed in `npm run dev` — actually looked at, not assumed
-- [ ] No hard invariant touched (root `CLAUDE.md`)
+- [ ] No hard invariant touched (`.claude/CLAUDE.md`)
 - [ ] PR open, ≤4 sentences, `Fixes #N`, never merged
 - [ ] `## Current state` updated in the brief
 - [ ] Findings filed as issues with priority + type + `track-x` labels

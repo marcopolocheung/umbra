@@ -71,7 +71,7 @@ run in parallel with any other.
 
 ## What's already true (verified 2026-08-24 — do not "fix" these)
 
-The archived `PROJECT_REVIEW-2026-07-05.md` lists three agent failures. Two have since been addressed:
+The 2026-07-05 project review (in git history) listed three agent failures. Two have since been addressed:
 
 1. **"Narrates itineraries it never plots"** — `agentLoop.ts:155-170` now collects
    `pointCandidates` during research and runs `plotFallbackPoints()` before the write phase,

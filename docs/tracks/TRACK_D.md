@@ -144,7 +144,7 @@ morning" answer is checked daily by runners, dog walkers, and stroller parents.
 
 ## Hard invariants that bite this track
 
-- **Honesty is a feature** (AUTONOMOUS_GOAL guardrail). Every number this track shows must
+- **Honesty is a feature** (`docs/tracks/README.md` guardrail). Every number this track shows must
   have a written method and a stated uncertainty. A heat score with false precision is worse
   than no heat score.
 - **No medical framing.** Burn time is an estimate with error bars for a sun-sensitive person

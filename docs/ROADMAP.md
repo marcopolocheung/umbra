@@ -21,7 +21,6 @@ an item passing one.
 |---|---|
 | **This file** | **priority, sequencing, and why an item exists** |
 | `docs/tracks/TRACK_<X>.md` | current state, checkpoints, contracts, how to build it |
-| `docs/notes/AUTONOMOUS_GOAL.md` | mission, landscape, the session loop (§5), guardrails |
 | `docs/tracks/README.md` | how a session runs, subagents, handoff |
 | `docs/research/*.md` | the outside evidence this roadmap was reconciled against (§5) |
 | the code | anything factual. Always. |
@@ -32,6 +31,19 @@ hook prints every track's active checkpoint, and that is the only state worth tr
 ---
 
 ## 1. The promise
+
+**Mission:** a fast, accessible, shadow-first navigation webapp for people moving under their own
+power — walking, biking, scootering, skateboarding, running, wheeling. Three words decide every
+judgment call, in this order: **trustworthy** (never claim shadow the app can't deliver, never
+narrate a trip it didn't plot), **fast** (a heatwave user on 4G, one-handed — no dead-end
+timeouts), **accessible** (keyboard, screen reader, contrast, touch targets, reduced motion, and
+plainly usable by someone who doesn't know dark blue means shadow).
+
+**Who it is for**, by likely volume: hot-city pedestrians and commuters ("most shadowed way to
+the station at 5 pm"); runners, dog walkers and stroller parents, who ask *when* as much as
+*which way*; sun-sensitive people (photosensitizing medication, lupus, melanoma survivors) —
+small, loyal, vocal; photographers and picnickers chasing light; and urbanists and café owners
+using the exposure export.
 
 > **Tell it how you want to spend time outside. It finds a plan around the sun, shows its work,
 > and adapts when the day changes.**
@@ -84,7 +96,7 @@ acceptance lives in the owning track briefs.
 
 ### The novelty claim, stated precisely
 
-From `AUTONOMOUS_GOAL.md` §2 — the honest competitive picture. **Google Maps** ships a shadow
+The honest competitive picture (2026). **Google Maps** ships a shadow
 *toggle*; it is commoditized. **ASU Cool Routes** routes on mean radiant temperature at 1 m —
 the academic ceiling, and better physics than anything here — as a **single-user web tool over
 171 fixed points on one campus**, built from LiDAR that does not exist for most cities.
@@ -474,7 +486,7 @@ lawful paths only, never reward unsafe crossings).
 
 ### NOT DOING — and why
 
-Recorded so no session re-litigates them. Carried from `AUTONOMOUS_GOAL.md` §7 plus the research
+Recorded so no session re-litigates them: the original out-of-scope list plus the research
 proposals that were considered and declined.
 
 | Proposed | Verdict | Reason |
