@@ -10,7 +10,7 @@ owns it.
 
 Two questions decide whether anything appears on this roadmap at all:
 
-1. **Does it prove a skill a SWE or AI/ML hiring manager is actually looking for?**
+1. **Does it make the routes more trustworthy or more useful to someone walking in the sun?**
 2. **Is it interesting — because nobody else ships it, or because how it works is worth asking
    about?**
 
@@ -26,7 +26,7 @@ an item passing one.
 | `docs/research/*.md` | the outside evidence this roadmap was reconciled against (§5) |
 | the code | anything factual. Always. |
 
-Last reconciliation: **2026-10-02** (§5e — ML prior art, competitors and the hiring sprint; Track S created). **Current state lives in the briefs** — the session-start
+Last reconciliation: **2026-10-02** (§5e — ML prior art and competitors; Track S created). **Current state lives in the briefs** — the session-start
 hook prints every track's active checkpoint, and that is the only state worth trusting.
 
 ---
@@ -43,29 +43,26 @@ The request the finished product answers:
 
 ---
 
-## 2. The portfolio thesis
+## 2. What the project must prove
 
-A hiring manager gives a portfolio project about ninety seconds. In that window they must
-conclude four things, and each needs an artifact they can click.
+Four things, each backed by an artifact a stranger can click.
 
-| They must conclude | Proved by | Status |
+| It must show it | Proved by | Status |
 |---|---|---|
-| **Can do real algorithms** | A time-dependent, constraint-aware routing search checked against a brute-force oracle, with a published approximation gap. Not a wrapper around a routing API. | ⚠️ Half — Pareto label-setting with dominance pruning exists (`routing.ts:566`); the time dimension does not → **Track H** |
-| **Can ship applied AI that works** | A tool-using agent with typed contracts, a job/result protocol, deterministic validation, and an eval program **whose failures are reported**. | ⚠️ Strong core, incomplete proof — bounded loop, 7 tools, 34 scenarios and live-model runs exist; terminal results, typed claim receipts, held-out/real-tool evaluation, releases/rollback and accessibility remain → **C4, C5, C10–C15** |
-| **Understands systems and performance** | Measured wins in CI: worker offload, a bundle budget, a browser smoke test that runs — and the ~1,000–2,200× shadow-index speedup **stated as what it is, a synthetic Node microbenchmark of the index in isolation, not end-to-end browser route time**. | ⚠️ Half — G1 landed, index win measured (#166) and now qualified **both here and in `docs/notes/evidence.md`**, so **#207 can close**; A5 and G2/G3 are not → **G2, A5** |
-| **Is honest about what they measured** | The agreement harness publishing `mean 2.6pp · worst 62.5pp · severe 3.3%` — worst case included. Confidence values labelled in code as *priors, not measurements*. UI numbers linking to their own method. | ✅ The strongest signal here — and **invisible to anyone outside the repo** → **Track P** |
+| **Real algorithms** | A time-dependent, constraint-aware routing search checked against a brute-force oracle, with a published approximation gap. Not a wrapper around a routing API. | ⚠️ Half — Pareto label-setting with dominance pruning exists (`routing.ts:566`); the time dimension does not → **Track H** |
+| **Applied AI that works** | A tool-using agent with typed contracts, a job/result protocol, deterministic validation, and an eval program **whose failures are reported**. | ⚠️ Strong core, incomplete proof — bounded loop, 7 tools, 34 scenarios and live-model runs exist; terminal results, typed claim receipts, held-out/real-tool evaluation, releases/rollback and accessibility remain → **C4, C5, C10–C15** |
+| **Systems and performance** | Measured wins in CI: worker offload, a bundle budget, a browser smoke test that runs — and the ~1,000–2,200× shadow-index speedup **stated as what it is, a synthetic Node microbenchmark of the index in isolation, not end-to-end browser route time**. | ⚠️ Half — G1 landed, index win measured (#166) and now qualified **both here and in `docs/notes/evidence.md`**, so **#207 can close**; A5 and G2/G3 are not → **G2, A5** |
+| **Honesty about what was measured** | The agreement harness publishing `mean 2.6pp · worst 62.5pp · severe 3.3%` — worst case included. Confidence values labelled in code as *priors, not measurements*. UI numbers linking to their own method. | ✅ The strongest signal here — and **invisible to anyone outside the repo** → **Track P** |
 
-**That last row is the whole argument.** Almost every portfolio project claims; almost none
+**That last row is the whole argument.** Almost every shade router claims; almost none
 measures; essentially none publishes its own worst case. `ShadowField.ts:199` already says
-*"Neither is measured ground truth — these are priors"* in a source comment. That instinct is
-the most hireable thing in this repository and no recruiter can currently see it. **Track P
-exists to fix exactly that, and it is cheaper than any feature on this list.**
+*"Neither is measured ground truth — these are priors"* in a source comment. **Track P
+exists to make that visible outside the repo, and it is cheaper than any feature on this list.**
 
-### The agent/Geo hiring-evidence completion bar *(added 2026-09-14)*
+### The completion bar *(added 2026-09-14)*
 
-The four rows above remain the product portfolio thesis. For the narrower goal of making Umbra an
-exceptionally complete identifier for applied-AI and Geo engineering candidates, “agent works” is
-not enough. The completed artifact must expose these independent proofs:
+The four rows above are the thesis. "The agent works" is not enough to finish it; the completed
+project must expose these independent proofs:
 
 | Proof | Owned by | Completion evidence |
 |---|---|---|
@@ -80,12 +77,10 @@ not enough. The completed artifact must expose these independent proofs:
 | ~~A model Umbra trains and evaluates itself~~ *(added 2026-10-02, dropped 2026-10-03)* | S2 | S2a merged as a prior + note with a partial negative result; S2b (wiring) dropped — see `TRACK_S.md` |
 | ~~Memory that changes a decision, evaluated~~ *(added 2026-10-02, dropped 2026-10-03)* | S3 | S3a store merged and unused; S3b/S3c dropped — see `TRACK_S.md` |
 
-This is intentionally a higher bar than “good personal project.” It does not pretend a repository
-proves years of employment, credentials, teamwork, adoption at Google scale, or interview
-performance. Those are assessed elsewhere. It does ensure the implementation itself no longer
-depends on a hiring manager generously interpreting a hosted-model call as ML infrastructure, a
-pin match as complete grounding, an initiated route as success, or precomputed captions as
-multimodality. Full acceptance lives in the owning track briefs.
+This is intentionally a higher bar than "good personal project": it means no claim depends on a
+reader generously interpreting a hosted-model call as ML infrastructure, a pin match as complete
+grounding, an initiated route as success, or precomputed captions as multimodality. Full
+acceptance lives in the owning track briefs.
 
 ### The novelty claim, stated precisely
 
@@ -105,7 +100,7 @@ So the differentiator is **not** "shadow routing". It is this combination, which
 > worst case included.**
 
 Each clause carries weight. Drop the time dimension and it is Google's toggle. Drop the reach
-and it is ASU's research tool. Drop the published numbers and it is every other portfolio.
+and it is ASU's research tool. Drop the published numbers and it is every other shade router.
 
 **One clause was retired on 2026-09-09, and what it was actually doing is worth recording
 (#248).** The list used to include *"entirely in a browser"*, and the sentence above used to read
@@ -114,7 +109,7 @@ clause was doing two jobs — a difficulty signal, and a stand-in for the real c
 — and the second job is done better by a clause that was already in the list. **ASU's limitation
 is not that they have a server. It is that they need LiDAR for one campus.** *"Anywhere OSM and
 vector tiles reach"* is the sharper statement of that same advantage, and unlike the browser
-clause it survives the §7 decision intact. What is genuinely lost is the difficulty flex, and it
+clause it survives the §6 decision intact. What is genuinely lost is the difficulty flex, and it
 was traded deliberately for accuracy headroom — do not pretend it cost nothing.
 
 **The clause that is not ours, stated so no session re-claims it.** Advancing the sun along a
@@ -193,7 +188,7 @@ they help:
 Every item below is a **real checkpoint in a real brief**. There is no separate roadmap ID
 namespace — if it is not a checkpoint someone can take with `/track`, it does not belong here.
 
-### NOW — the hiring sprint *(added 2026-10-02)*
+### NOW — the evidence sprint *(added 2026-10-02)*
 
 **The owner wants every lane below running at once, as parallel background sessions.** This is
 an overlay on the waves, not a replacement: each lane still takes its own track's checkpoints in
@@ -273,12 +268,12 @@ numbers page nobody navigates to is as invisible as a number nobody published. P
 | **P2** README as the human entry point | The only page a reviewer actually opens. Also where A4b's "not merely a pixel sampler" correction has to land | P1 merged |
 
 P4 is written once and **revised** — G2/G3's budgets and H4's gap flow back into it as they
-land. Waiting for a complete page is how it stays unpublished. P3 (demo) and P5/P6 stay in
+land. Waiting for a complete page is how it stays unpublished. P3 (demo) and P5 stay in
 Wave 3: they still want two finished Wave-1 tracks and H3 rendering.
 
 ### NOW — Wave 1: finish the flagships
 
-Five tracks sit at roughly 60%. **A hiring manager cannot be impressed by 60% of anything.**
+Five tracks sit at roughly 60%. **Nobody can rely on 60% of anything.**
 This wave adds almost no new ideas on purpose.
 
 | Order | Checkpoints | Why this, why now |
@@ -293,8 +288,7 @@ This wave adds almost no new ideas on purpose.
 
 ### NOW, gated — Wave 2: Track H, the differentiator *(gate met 2026-10-02 — A6 landed, G2 done)*
 
-**Everything above is table stakes or catch-up. This is the part a hiring manager asks a second
-question about.** Gate: **A6 and G2 must land first** — H is unaffordable without A6 and
+**Everything above is table stakes or catch-up. This is the part nobody else has.** Gate: **A6 and G2 must land first** — H is unaffordable without A6 and
 unprovable without G2. Full brief: `docs/tracks/TRACK_H.md`.
 
 | Checkpoint | Why it earns its place |
@@ -310,15 +304,15 @@ unprovable without G2. Full brief: `docs/tracks/TRACK_H.md`.
 ### NEXT — Wave 3: Track P, the rest of it
 
 **P4 and P2 left this wave on 2026-09-08 — they are Wave 0.5 now.** What remains genuinely
-needs finished work to point at: P3 wants two completed Wave-1 tracks and H3 rendering, P5's
-best note is H2's objective correction, and P6 cannot be filled before H4 produces a gap.
+needs finished work to point at: P3 wants two completed Wave-1 tracks and H3 rendering, and P5's
+best note is H2's objective correction.
 
 `docs/tracks/TRACK_P.md` — ~~P1 mirror~~ *(in review)* · ~~P2 README~~ *(Wave 0.5)* · P3 demo
-recording · ~~P4 publish the numbers~~ *(Wave 0.5)* · P5 design notes · P6 the ledger.
+recording · ~~P4 publish the numbers~~ *(Wave 0.5)* · P5 design notes · ~~P6 the ledger~~ *(dropped 2026-10-09)*.
 
 ### NEXT — Wave 3.5: agent capstone evidence
 
-This wave exists for the hiring-evidence bar in §2; none of it substitutes for the dependable
+This wave exists for the completion bar in §2; none of it substitutes for the dependable
 core or H's domain algorithm.
 
 1. **C13 ShadowBench** after C4/C5: freeze the held-out split, then add repeated live and
@@ -334,20 +328,20 @@ core or H's domain algorithm.
 
 ### LATER — Wave 4: learned-model specialization
 
-**A10 Reality Check is selected for the agent/Geo hiring-evidence goal as of 2026-09-14.** C12
+**A10 Reality Check is selected for the completion bar as of 2026-09-14.** C12
 proves native multimodal agent behavior; A10 independently proves data, modeling, evaluation,
 artifact deployment, monitoring, and rollback. Combining those two adjacent proofs is more
-valuable for the saved AI/ML roles than adding an unrelated platform. The full acceptance criteria
+valuable than adding an unrelated platform. The full acceptance criteria
 now live in Track A rather than only in this options list.
 
 Do not accumulate the alternatives below. Option C's optimization evidence is now covered more
 naturally by H7's integer reference and LP/convex bound over the real route problem. Option D
-remains the strongest product-science follow-up after the hiring bar. Option B remains a valid
+remains the strongest product-science follow-up after the completion bar. Option B remains a valid
 offline product choice, not a prerequisite.
 
 **Two of these moved on 2026-09-09 without new evidence, purely because the client-side-only
 constraint was lifted (#248).** Record why, so it is not re-litigated: **Option B weakened** —
-"keep planning with no network" draws its portfolio interest from the constraint that no longer
+"keep planning with no network" draws its technical interest from the constraint that no longer
 binds, and offline remains a real user need but a thinner *story*. **Option C strengthened** — its
 weakest section now has published method (see #209).
 
@@ -355,7 +349,7 @@ weakest section now has published method (see #209).
 disagrees with what they observe; a learned correction improves on the geometry baseline.
 
 > **Decision corrected 2026-09-14.** A10 is still not needed merely to call C12 a multimodal
-> agent: Gemini now accepts images directly. It is required for the higher hiring-evidence bar
+> agent: Gemini now accepts images directly. It is required for the completion bar
 > because native Gemini inference does not demonstrate an owned dataset, learned artifact,
 > leakage-safe training/evaluation, serving parity, drift handling, or rollback. A10 and C12
 > therefore remain separate implementations joined by a typed tool boundary.
@@ -435,7 +429,7 @@ across climates, and published including the part that makes this product look w
 
 - **What it is, in four steps.** (1) Build the MRT approximation — **A6**'s shadow geometry +
   **A9**'s sky view factor + a radiation balance from the live forecast (**#247**; Tier 1
-  geometry, Tier 2 radiation, per §7). (2) Route on it, as a third objective beside distance and
+  geometry, Tier 2 radiation, per §6). (2) Route on it, as a third objective beside distance and
   sun-minutes — this is where **H** and **D** finally become one engine. (3) Run the comparison at
   breadth: several cities across climate types × O-D pairs × hours, scoring shadow-optimal vs.
   comfort-optimal vs. shortest, and publish where shadow routing **wins, ties and loses**.
@@ -457,7 +451,7 @@ across climates, and published including the part that makes this product look w
   Ma et al.'s 24% is **one district, one day, simulated**; reproducing it is the point,
   assuming it is not.
 - **The result may partially devalue the product, and it ships anyway.** If shadow routing turns
-  out to be a poor comfort proxy in humid climates, that is the finding. §7's stopping rules
+  out to be a poor comfort proxy in humid climates, that is the finding. §6's stopping rules
   already say a note explaining what you did *not* ship is itself an artifact; this is the
   version of that with a number attached.
 - **Trap:** this balloons into "build SOLWEIG" if unmanaged. Stop at the rung where the
@@ -534,7 +528,7 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 - [ ] **H1** · [ ] **H2** · [ ] **H3** · [ ] **H4** · [ ] **H5** · [ ] **H6** · [ ] **H7** *(integer/LP reference and bounds)*
 
 **Wave 3 — Track P, the rest** *(P2/P4 moved to Wave 0.5)*
-- [ ] **P3** demo recording · [ ] **P5** design notes · [ ] **P6** ledger
+- [ ] **P3** demo recording · [ ] **P5** design notes · ~~P6 ledger~~ *(dropped)*
 
 **Wave 3.5 — agent capstone evidence**
 - [ ] **C13** held-out/repeated/end-to-end eval · [ ] **C14** releases/monitoring/rollback ·
@@ -545,7 +539,7 @@ gates are green — `docs/tracks/README.md`'s definition of done applies to all 
 - Alternatives after the bar, not concurrent prerequisites: Option B City Capsules · Option C
   Shadow Design Studio *(optimization portion superseded by H7)* · Option D Comfort Engine
 
-**The hiring sprint — Track S** *(added 2026-10-02; runs beside every wave above)*
+**The evidence sprint — Track S** *(added 2026-10-02; runs beside every wave above)*
 *Scope narrowed 2026-10-03 (owner): S1 + S4 only.*
 - [x] **S0** competitor recheck, hands-on *(done 2026-10-02 — `docs/notes/competitors.md`)* · [x] **S1** shade reality audit vs NYC LiDAR *(the error bar — #219)*
 - [x] **S2a** shade-preference prior + model *(#215)* · ~~S2b learned preference wired into route choice~~ *(dropped)*
@@ -568,10 +562,11 @@ A9 · B8–B9 · C6, C8–C9 · D5–D8 · E2–E4, E6–E8 · F1–F6 · G3. *(
 
 ## 5. Reconciliation with the research
 
-`docs/research/` holds three independent passes (2026-09-05 market research, 2026-09-07
-recruiter-focused roadmap, 2026-09-08 Google-roles feature recommendations) that converge on the
-same priorities — real signal. The 2026-09-08 pass is reconciled in §5b. Every
-source-level claim in the 2026-09-07 document was **re-verified against the code**; all seven of
+Three independent research passes (2026-09-05 market research, 2026-09-07 engineering roadmap,
+2026-09-08 feature recommendations) converged on the same priorities — real signal. Only the
+first is still in `docs/research/`; the other two are in git history before 2026-10-09. The
+2026-09-08 pass is reconciled in §5b. Every source-level claim in the 2026-09-07 document was
+**re-verified against the code**; all seven of
 its "most consequential gaps" hold. Recorded so no session re-audits them:
 
 | Research claim | Verified | Went to |
@@ -603,10 +598,10 @@ prevent.
 table. Its own §13 says those "should not delay the central experience"; this roadmap takes that
 sentence over the pages above it.
 
-### 5b. The 2026-09-08 Google-roles pass
+### 5b. The 2026-09-08 feature-recommendations pass
 
-`Umbra_Google_Maps_GenAI_Feature_Recommendations_2026-09-08.pdf` — six proposed features
-ranked against two Google job descriptions, audited at `f61371c`. **Every repository citation in
+A report proposing six features (removed from `docs/research/` on 2026-10-09; in git history),
+audited at `f61371c`. **Every repository citation in
 it was re-verified line by line and all of them hold.** Recorded so no session re-audits it.
 
 | Its claim | Verified | Went to |
@@ -620,7 +615,7 @@ it was re-verified line by line and all of them hold.** Recorded so no session r
 | At the 2026-09-08 pass: 7 tools and 18 recorded scenarios, model and tools mocked — replay is not model competence | ✅ then-current counts; the suite is now 34 and a live runner exists | **P4**'s layer table; **C13** for independent evaluation |
 | Confidences are hand-set priors; the harness measures method agreement, not physical accuracy | ✅ `ShadowField.ts:193` | **P4**, Option A |
 
-**Its ranking is a keyword ranking, not a value ranking.** It optimizes for matching two JD
+**Its ranking is a keyword ranking, not a value ranking.** It optimizes for matching
 requirement lists; this file optimizes for one coherent product with published numbers. Where
 they diverge, this file wins — six features half-built reads worse than two finished. Its own
 last page agrees: *"build one evaluation and debugging workbench rather than counting tests as a
@@ -640,8 +635,8 @@ the second is retained as historical context and was superseded by the Gemini mi
 
 **And one correction to the report's own framing.** Native C12 multimodality does not require a
 trained segmenter: it needs permitted images, direct Gemini image input, region receipts, and a
-fair evaluation. **A10 remains a separate dependency only for the higher, ML-lifecycle hiring
-bar.** Keeping the boundary explicit prevents either checkpoint borrowing the other's claim.
+fair evaluation. **A10 remains a separate dependency only for the ML-lifecycle row of the
+completion bar.** Keeping the boundary explicit prevents either checkpoint borrowing the other's claim.
 
 **What was declined or deferred, and why:**
 
@@ -707,13 +702,12 @@ sun-position check, so it is weak support and the demotion stands.
 
 **Changed nothing in the 2026-09-09 literature pass:** Wave 0 (D0, G8, #208, G7), **Track C
 entirely** — there is no agent, tool-use or evaluation content in those papers — and Track B.
-The later hiring-evidence pass below changes Track C for different evidence.
+The later agent-evidence pass below changes Track C for different evidence.
 
-### 5d. The 2026-09-14 agent/Geo hiring-evidence pass
+### 5d. The 2026-09-14 agent-evidence pass
 
-The two saved Google Geo descriptions and the current SWE/AI/ML hiring market were compared with
-the implemented agent, its tests/live eval, the wider repository, and the public evidence. Full
-assessment: `docs/research/Umbra_Track_C_Hiring_Assessment_2026-09-14.md`.
+The implemented agent, its tests and live eval were assessed against what a complete applied-agent
+project must show (the source assessment was removed on 2026-10-09; it is in git history).
 
 The implementation already provides strong applied-agent evidence: bounded orchestration,
 provider adaptation, retries, deterministic state reconciliation, failure scenarios, live-model
@@ -729,16 +723,15 @@ specific than “add more AI”:
 - the C12 brief retained an obsolete text-only-provider premise after Gemini arrived → **C12
   now requires actual image-conditioned Gemini requests**;
 - the project did not independently demonstrate a learned-model lifecycle → **A10**;
-- the Maps-facing optimization story lacked an LP/convex artifact → **H7**, attached to the real
+- the optimization story lacked an LP/convex artifact → **H7**, attached to the real
   time-dependent route problem rather than a keyword-only toy.
 
-Experience duration, credentials, solo ownership, and final public packaging were deliberately not
-turned into implementation checkpoints: a repository cannot prove the first two, solo ownership is
-not a code defect, and Track P already owns publication after the underlying evidence exists.
+Final public packaging was deliberately not turned into an implementation checkpoint: Track P
+already owns publication after the underlying evidence exists.
 
-### 5e. The 2026-10-02 ML prior-art and hiring-signal pass
+### 5e. The 2026-10-02 ML prior-art pass
 
-Source: `docs/research/Umbra_ML_Prior_Art_and_Hiring_Signal_2026-10-02.md` (six parallel
+Source: `docs/research/ml-prior-art-2026-10-02.md` (six parallel
 research strands, all claims linked). What it changed, so no session re-derives it:
 
 - **Most model ideas are already done well elsewhere.** Canopy and building heights, shadow
@@ -750,10 +743,9 @@ research strands, all claims linked). What it changed, so no session re-derives 
 - **Four things nobody publishes:** a measured shade error, a static-vs-traversal-time ablation,
   a learned per-walker preference, and an evaluated memory that changes the route. Each became a
   checkpoint: S1, H1/H4 (already planned), S2, S3. S2b and S3b/S3c were dropped 2026-10-03.
-- **Hiring evidence is consistent on what earns trust:** a simple baseline the model must beat,
-  error analysis, self-collected data, held-out splits that respect geography, and measured
-  latency. Tree models are respected on tabular data when the choice is explained. Current Google
-  Maps/Geo postings also list GenAI experience as a minimum, so the assistant stays.
+- **Practitioners agree on what earns trust:** a simple baseline the model must beat, error
+  analysis, self-collected data, held-out splits that respect geography, and measured latency.
+  Tree models are respected on tabular data when the choice is explained.
 - **The cheapest physical-ish truth needs no fieldwork.** NYC's LiDAR surface data gives a
   geometric shade raster to compare against (S1). That is not physical accuracy, which still
   needs A10's field calibration set, but it measures data error at city scale for weeks of work,
@@ -762,34 +754,7 @@ research strands, all claims linked). What it changed, so no session re-derives 
 
 ---
 
-## 6. The resume-line ledger
-
-Fill in **only from measured results**. A number nobody can reproduce is worse than no number,
-and a hiring manager who finds one stops reading. Tick only when the artifact is live on the
-public mirror.
-
-| | Line | Earned by |
-|---|---|---|
-| ⬜ | "Built a time-dependent pedestrian planner with exposure and arrival constraints; reduced [error] by [measured] versus a static baseline on [versioned fixtures]." | H1–H4 |
-| ⬜ | "Developed a tool-using itinerary agent with terminal job contracts, deterministic claim validation and repair; improved valid-plan rate from [A] to [B] over [N] held-out tasks at [cost] per successful task." | C1, C4, C5, C11, C13, P4 |
-| ⬜ | "Built and evaluated an image-conditioned Gemini agent over [N] held-out Geo tasks; improved [task metric] over metadata, offline-extraction and fixed-sampling baselines at equal budgets, with [visual-claim escape rate]." | C10, C12, C13 |
-| ⬜ | "Versioned model/prompt/tool releases behind server-owned policy; detected a degraded canary on [metric] and rolled back in [time], with cross-instance quota and privacy-retention tests." | C14 |
-| ⬜ | "Formulated Sun Budget routing as an integer program with an LP/convex relaxation; measured production-search and integrality gaps over [N] fixtures and exposed verified feasibility certificates to the agent." | H4, H6, H7 |
-| ⬜ | "Shipped a keyboard- and screen-reader-complete agent planning flow with zero serious/critical axe violations and a documented manual assistive-technology run." | C15, G5 |
-| ⬜ | "Cut per-edge shadow sampling by [measured]× by precomputing and indexing shadow geometry per sun cell." | **Already measured (#166) — needs only P4** |
-| ⬜ | "Published a shadow-model agreement harness across [N] cases and 3 cities, reporting mean, p90 and worst-case error against committed regression ceilings." | **Already true (A3) — needs only P4** |
-| ⬜ | "Implemented offline neighborhood routing with atomic snapshot updates; [latency and size], verified online/offline parity on [device]." | Wave 4 Option B |
-| ⬜ | "Trained and calibrated a geospatial shadow-correction model with neighborhood and date holdouts; measured [metric] and [route impact], with versioned deployment, drift checks and rollback." | A10 |
-
-| ⬜ | "Measured a NYC shade model against a LiDAR surface-model raster across [N] blocks and [M] sun positions: mean [x], p90 [y], worst [z]; adding canopy cut segment error by [d]." | S1 |
-| ⬜ | "Dated photos from their shadows by inverting a sun and building-shadow model: median [m] min error on [N] self-collected photos ([k] NYC), abstaining on [k] overcast shots, vs a Gemini vision baseline." | S4 |
-
-**Two of six are already earned and merely unpublished.** That is the cheapest value available
-anywhere in this document.
-
----
-
-## 7. Scope notes
+## 6. Scope notes## 7. Scope notes
 
 **Design is out of scope here** and is never a reason to delay an item above. Two exceptions,
 because they are correctness rather than taste and are already filed: **#197** (the hourly strip
@@ -841,7 +806,7 @@ avoids needing it.
 **Stopping rules.** Stop or redirect any item when it adds maintenance without improving an
 agreed outcome, when the data cannot support the claim, or when a simpler baseline wins. **A
 note explaining why you did not ship Spark, Rust, a learned model or multi-agent is itself a
-portfolio artifact** — arguably better than shipping it would have been.
+result** — arguably better than shipping it would have been.
 
 **If you read nothing else:** finish Wave 0 — it is six small things now, and two of them are
 corrections to claims this file used to make. Then **publish the numbers you already have

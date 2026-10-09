@@ -37,7 +37,7 @@ unblocked and owns the cheapest work on the board — see `docs/ROADMAP.md` §3.
 Design Language) is the design wave: strictly sequential, mobile-first, every PR visually
 reviewed by the owner — read `docs/handoffs/DESIGN_LANGUAGE.md` before starting it.
 `r` (Umbra Redesign 2.0) succeeds U's design wave under the same sequential rules; U and R
-never run at the same time. `s` (Hiring Signal) is the 2026-10-02 sprint track: its first four
+never run at the same time. `s` (Shade Evidence) is the 2026-10-02 sprint track: its first four
 checkpoints own new directories and **may fan out as parallel `builder` worktrees** — the one
 sanctioned exception to rule 3, spelled out in `TRACK_S.md` § "Running the sprint", which also
 carries the lane plan for running H, A, C, B, S and P at the same time.

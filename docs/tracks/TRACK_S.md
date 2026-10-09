@@ -1,7 +1,6 @@
-# Track S — Hiring Signal
+# Track S — Shade Evidence
 
-> **Charter:** add the evidence a hiring manager asks a second question about and no shade
-> router publishes: **a measured shade-accuracy figure, a model Umbra trains and evaluates
+> **Charter:** add the evidence no shade router publishes: **a measured shade-accuracy figure, a model Umbra trains and evaluates
 > itself, and an assistant memory that changes the route.** Then run the sprint that lands those
 > beside Tracks H, A, C and B in parallel.
 
@@ -12,7 +11,7 @@
 **Class:** Flagship evidence. **Runs alongside:** B, C, D, E, G, H, P freely (the C/H/E overlaps
 were S2b and S3b, both dropped); ⚠️ A (S1 measures A8's canopy, so take A8's numbers from `main`,
 never from an open PR); ⚠️ the shell for S4b's mount point.
-**Source:** `docs/research/Umbra_ML_Prior_Art_and_Hiring_Signal_2026-10-02.md` — read its
+**Source:** `docs/research/ml-prior-art-2026-10-02.md` — read its
 ranking table and "do not build" list before taking any checkpoint here. Every claim below about
 prior art comes from it, with links.
 
@@ -23,7 +22,7 @@ prior art comes from it, with links.
 - **Active checkpoint:** S4 — first the S4a ground-geometry fix (#235), then S4b, then the
   photo evaluation (#217). The first wave is all merged (S1 #219, S3a #221, S2a #215, S4a #216).
 - **Scope decision (2026-10-03, owner):** Track S is **S1 + S4**. S2b and S3b/S3c are dropped as
-  weak hiring signal for their cost: S2's model is a one-parameter-per-person logit that does not
+  weak evidence for their cost: S2's model is a one-parameter-per-person logit that does not
   beat the pooled baseline, and S3's memory is commodity without an eval that would likely tie
   full-history-in-prompt. Their issues (#226–#234) are closed as not planned. The unmerged S2b
   wiring stays on `feat/s2b-learned-preference` for reference.
@@ -136,7 +135,7 @@ table stakes now. What nobody publishes, and what this track exists to produce:
 1. **How wrong the shade is.** No shade router reports an error figure. Umbra's README admits it
    has none against reality either.
 2. **A model Umbra owns.** Today Umbra trains nothing; the assistant's intelligence is a hosted
-   model. The hiring evidence (§2's completion bar, the research's §3) rewards *"trained a small
+   model. §2's completion bar and the research both reward *"trained a small
    model, beat a baseline on held-out data, shipped it"* far above *"called an API"*.
 3. **Personalization that changes a decision.** Every shade product uses a fixed preference
    ladder (shadewalker's 0/5/15/40). None learns how much *this* walker minds the sun.
@@ -323,7 +322,7 @@ S4a write to four directories that did not exist before this track: `studies/sha
 ```
 You are a builder for Umbra Track S, checkpoint S2a. Read, in order: CLAUDE.md,
 docs/tracks/README.md, docs/tracks/TRACK_S.md (all of it), and the ranking and "do not build"
-sections of docs/research/Umbra_ML_Prior_Art_and_Hiring_Signal_2026-10-02.md. Work only inside
+sections of docs/research/ml-prior-art-2026-10-02.md. Work only inside
 the files S2a lists; never edit page.tsx, MapView.tsx, routing.ts or app/lib/agent/**. Branch
 from main, implement with tests, write the note, run all four gates (/gates), open a PR with gh
 against main, and never merge. In the PR, state what the checkpoint must beat and whether it
