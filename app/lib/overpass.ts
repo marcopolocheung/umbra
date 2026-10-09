@@ -9,6 +9,8 @@ import type { OsmNode, GraphEdge, RoutingGraph } from "./routing";
 const OVERPASS_BASE = import.meta.env.DEV ? "/__overpass" : "/api/overpass";
 
 const FETCH_TIMEOUT_MS = 30_000;
+/** Widest street-graph box (corner to corner) worth sending to Overpass. */
+const MAX_OVERPASS_SPAN_M = 30_000;
 
 async function postOverpass(
   body: string,
@@ -113,6 +115,14 @@ export async function fetchRoutingGraph(
   east: number,
   signal?: AbortSignal
 ): Promise<RoutingGraph> {
+  // A street query this wide runs past Overpass's own timeout, so the user
+  // waited ~30 s for a generic failure. Refuse up front with the actual reason.
+  if (haversineMeters([west, south], [east, north]) > MAX_OVERPASS_SPAN_M) {
+    throw new Error(
+      "This trip spans more than 30 km — too large to fetch street data for. Choose closer stops."
+    );
+  }
+
   // Return cached graph if a previously fetched bbox fully covers this request
   for (const entry of graphCache) {
     if (cacheContains(entry, south, west, north, east)) {

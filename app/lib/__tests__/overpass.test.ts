@@ -71,6 +71,34 @@ describe("fetchRoutingGraph — XML error detection", () => {
   });
 });
 
+describe("fetchRoutingGraph — span cap", () => {
+  it("refuses a box too large for Overpass without asking it", async () => {
+    // New York to Boston: a street query this size times out upstream after
+    // ~30 s instead of failing fast with a reason the user can act on.
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchRoutingGraph(40.7, -74.0, 42.36, -71.06)).rejects.toThrow(
+      /more than 30 km/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still asks Overpass for a box under the cap", async () => {
+    // 0.18° each way at 60°N is about 22 km of diagonal.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ elements: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // An empty answer is its own error; what matters here is that it was asked.
+    await expect(fetchRoutingGraph(60, 60, 60.18, 60.18)).rejects.toThrow(/No walkable roads/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("fetchRoutingGraph — transient proxy failures", () => {
   it.each([429, 502, 503, 504])(
     "shows the actionable busy-service message after one retry for HTTP %s",
