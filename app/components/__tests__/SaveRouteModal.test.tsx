@@ -43,6 +43,29 @@ describe("SaveRouteModal when storage refuses the write", () => {
     expect(screen.queryByRole("option", { name: "Summer" })).toBeNull();
   });
 
+  it("does not dress up an unrelated bug as a storage problem", () => {
+    const onSave = vi.fn(() => {
+      throw new TypeError("Cannot read properties of undefined");
+    });
+    // React reports an event-handler throw to window rather than to the caller.
+    const reported: unknown[] = [];
+    const onError = (event: ErrorEvent) => {
+      reported.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onError);
+    render(<SaveRouteModal defaultName="Shortest" onSave={onSave} onCancel={vi.fn()} />);
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    } finally {
+      window.removeEventListener("error", onError);
+    }
+
+    expect(reported).toEqual([expect.any(TypeError)]);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("clears the warning once a later write succeeds", () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw quotaError();

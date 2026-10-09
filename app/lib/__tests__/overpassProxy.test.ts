@@ -302,6 +302,26 @@ describe("api/overpass handler", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("accepts this deployment's branch preview alias", async () => {
+    process.env.VERCEL_BRANCH_URL = "umbra-git-fix-x-team.vercel.app";
+    const fetchMock = vi.fn().mockResolvedValue(upstreamResponse(200, "{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const res = makeRes();
+
+    try {
+      await handler(
+        makeReq({ headers: { origin: "https://umbra-git-fix-x-team.vercel.app" } }),
+        res,
+      );
+    } finally {
+      delete process.env.VERCEL_BRANCH_URL;
+    }
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rate limits repeated requests from one IP", async () => {
     process.env.OVERPASS_RATE_LIMIT_PER_MIN = "1";
     const fetchMock = vi.fn().mockResolvedValue(upstreamResponse(200, "{}"));

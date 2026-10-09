@@ -36,7 +36,9 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
     let f: SavedFolder;
     try {
       f = createFolder(newFolderName.trim());
-    } catch {
+    } catch (error) {
+      // Only a refused storage write is a storage problem; anything else is a bug and stays loud.
+      if (!(error instanceof DOMException)) throw error;
       setStorageError(true);
       return;
     }
@@ -50,7 +52,9 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
     setStorageError(false);
     try {
       onSave(name.trim() || defaultName, folderId);
-    } catch {
+    } catch (error) {
+      // Only a refused storage write is a storage problem; anything else is a bug and stays loud.
+      if (!(error instanceof DOMException)) throw error;
       setStorageError(true);
     }
   }

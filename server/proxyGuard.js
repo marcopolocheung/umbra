@@ -35,14 +35,17 @@ export function requestIp(req) {
   return req.socket?.remoteAddress || "unknown";
 }
 
-/** The production site, this deployment's own URL, and any extra origins in `process.env[envName]`. */
+/**
+ * The production site, this deployment's own URLs, and any extra origins in
+ * `process.env[envName]`. Vercel serves a preview at both its unique URL
+ * (`VERCEL_URL`) and its branch alias (`VERCEL_BRANCH_URL`); either one can
+ * be the page making the request.
+ */
 function allowedOrigins(envName) {
-  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
-  return new Set([
-    "https://shademapnav.vercel.app",
-    ...(vercelUrl ? [vercelUrl] : []),
-    ...splitCsv(process.env[envName]),
-  ]);
+  const own = [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]
+    .filter(Boolean)
+    .map((host) => `https://${host}`);
+  return new Set(["https://shademapnav.vercel.app", ...own, ...splitCsv(process.env[envName])]);
 }
 
 export function originFromUrl(value) {
