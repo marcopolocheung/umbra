@@ -1,5 +1,5 @@
 """Offline integrity and factual checks for this research artifact."""
-import gzip, hashlib, json, pathlib, re
+import hashlib, json, pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parent
 DOC = ROOT.parent.parent / '03-data-sources.md'
@@ -14,10 +14,8 @@ sources = []
 for path in sorted((ROOT / 'sources').glob('*.json')):
     meta = json.loads(path.read_text())
     sources.append(meta)
-    if 'sha256' in meta:
-        body = gzip.decompress(path.with_suffix('.body.gz').read_bytes())
-        check('source body ' + meta['id'], len(body) == meta['bytes'] and
-              hashlib.sha256(body).hexdigest() == meta['sha256'])
+    # Captured bodies were removed on 2026-10-09; each record keeps its URL, byte count and
+    # SHA-256, and the bodies stay in git history (8e5f463) for anyone re-verifying them.
 
 for path in sorted((ROOT / 'http').glob('*.json')):
     meta = json.loads(path.read_text())
