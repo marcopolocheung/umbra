@@ -95,7 +95,7 @@ is a finding, not a failure, and P4 has a row for it.
   verification call can double turn latency. Every added call needs a C6 budget justification.
 - **Scope creep toward a general chatbot.** The system prompt is deliberately narrow
   (shadow-day-planning only). Breadth is where Gemini wins and we cannot.
-- **Building on the stale review.** `PROJECT_REVIEW-2026-07-05.md` is partly stale — read the
+- **Building on the stale review.** The 2026-07-05 project review (git history) is partly stale — read the
   brief's "What's already true" section, and the code, not the archive.
 - **A photo shows an apparent obstacle at capture time.** It never certifies current passage, an
   accessible route, or a lawful crossing. Wording is checked in the scenario.

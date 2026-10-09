@@ -121,7 +121,7 @@ in the texture and only the ray direction changes. Confirm or refute this before
 
 ## Phase 1 — Audit the current engine
 
-Clone and read. Start with `CLAUDE.md` (hard invariants, repo map, task→edit-point table) and
+Clone and read. Start with `.claude/CLAUDE.md` (hard invariants, repo map, task→edit-point table) and
 `.claude/rules/`, which contains path-scoped rules for the shadow renderer specifically. Then
 `app/lib/shadow/`, `app/lib/shadowField/`, `app/lib/shadowProvenance.ts`, `app/lib/routing.ts`,
 `app/components/AccumulationPanel.tsx`, and the agreement harness under

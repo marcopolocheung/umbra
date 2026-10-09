@@ -17,19 +17,13 @@ need?* Each has a checkable answer.
 
 ## Read the thesis before answering a "should we build X" question
 
-`GROWTH_ROADMAP.md` is the product thesis: who the users are, ranked, and why shadow matters.
-It is not a task list, and it says so — it was written 2026-07-05 and several of its items have
-since shipped without being marked. Treat its user ranking as current and its feature lists as
-dated.
-
-The document precedence is settled: **`GROWTH_ROADMAP.md` says *why*,
-`docs/notes/AUTONOMOUS_GOAL.md` says *what and in what order*, the track brief says *how, in
-this code*.** When they disagree, the code wins, then `AUTONOMOUS_GOAL`, then
-`GROWTH_ROADMAP`.
+`docs/ROADMAP.md` §1 is the product thesis: the mission and who the users are, ranked. The
+rest of it says *what and in what order*; the track brief says *how, in this code*. When they
+disagree, the code wins, then the brief, then the roadmap.
 
 So an answer that a feature would serve "users" is worth little; an answer that names which of
 the five ranked personas it serves, and whether that persona is a retention bet or an
-acquisition bet, is worth something. `AUTONOMOUS_GOAL.md` §7 lists what the project has
+acquisition bet, is worth something. `docs/ROADMAP.md`'s NOT DOING table lists what the project has
 **deliberately** decided not to do, with reasons — check it before proposing something, so you
 don't re-open a closed question as if it were new.
 
@@ -44,7 +38,7 @@ vendor's own release notes and a hands-on account beat a listicle. A paper's met
 beats its abstract. For a tagging-frequency question, run the query and report the count —
 do not estimate it.
 
-**Date everything.** The landscape scan in `docs/notes/AUTONOMOUS_GOAL.md` §2 has a date on it
+**Date everything.** The competitive picture in `docs/ROADMAP.md` §2 has a date on it
 for a reason. Say when a source was published and flag anything where the answer plausibly
 changed since.
 

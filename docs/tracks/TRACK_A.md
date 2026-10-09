@@ -703,7 +703,7 @@ into (a) data/label contract, (b) baselines and leakage-safe evaluation, (c) opt
 1. **The field disagrees with the render and users see both.** The map paints pixels; routing uses geometry. If they diverge visibly, trust dies. Mitigation: A3's threshold is a product gate, not a test detail — and when they diverge, the *renderer* is what the user believes, so fix the field or lower the confidence.
 2. **Overpass rate limits** on tree queries in dense cities. Mitigation: reuse the routing-graph bbox and cache; never issue a tree query the graph fetch didn't already cover.
 3. **Sparse tagging** makes canopy confidence low in exactly the cities that need it. Mitigation: A8's raster; and say so in the UI rather than overclaiming.
-4. **Scope drift into a microclimate simulator.** Out of scope — see AUTONOMOUS_GOAL §7. Approximate honestly, hand the physics to Track D.
+4. **Scope drift into a microclimate simulator.** Out of scope — see `docs/ROADMAP.md` NOT DOING. Approximate honestly, hand the physics to Track D.
 5. **A10 leakage masquerading as accuracy.** Adjacent frames and repeated visits are highly
    correlated. Geography/date groups are established before feature or model work and the final
    test set is write-protected by convention and checksums.

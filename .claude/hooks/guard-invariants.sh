@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse(Edit|Write) — turn the root CLAUDE.md "hard invariants" from prose into
+# PreToolUse(Edit|Write) — turn the .claude/CLAUDE.md "hard invariants" from prose into
 # enforcement. Prose is advisory; a session under context pressure drops it. This does not.
 #
 # deny     = the invariant is mechanical and breaking it breaks the app (pins, WebGL flags,

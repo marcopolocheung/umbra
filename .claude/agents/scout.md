@@ -24,7 +24,7 @@ Answer in under 30 lines, in this order:
    and only when the exact wording is the answer.
 3. **The shapes** — the relevant type, function signature, or prop, one line each.
 4. **Contradictions** — anything you found that disagrees with `docs/tracks/TRACK_<X>.md` or
-   root `CLAUDE.md`. This is the highest-value thing you produce. The briefs carry
+   `.claude/CLAUDE.md`. This is the highest-value thing you produce. The briefs carry
    `Current state` blocks and "what already exists" sections that drift; when the code and
    the brief disagree, **the code wins**, and the session needs to know so it can fix the
    brief in the same PR.
@@ -34,7 +34,7 @@ rather than half-answering both.
 
 ## Where things actually are
 
-Start from root `CLAUDE.md`'s "Where to edit what" table before grepping blind. The state
+Start from `.claude/CLAUDE.md`'s "Where to edit what" table before grepping blind. The state
 model is three hooks — `useShadowTime`, `useNavigation`, `useAppState` — and components hold
 no app state, so "where is X stored" almost always resolves into `app/hooks/`.
 

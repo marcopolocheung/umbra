@@ -16,7 +16,7 @@ allowed-tools:
 # The four gates
 
 CI runs exactly these four, in this order, on every PR to `main` and every push to `main`.
-`AUTONOMOUS_GOAL.md` §5 step 5 requires all four, every time — not a representative sample.
+`docs/tracks/README.md` § The loop requires all four, every time — not a representative sample.
 
 Run them one at a time so a failure is attributable:
 

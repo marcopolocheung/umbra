@@ -18,7 +18,7 @@ If this file disagrees with the code, **the code wins** — fix it in the same P
 
 ```
 You own the Umbra UI & Design Language wave for this session (Track U). Read, in order:
-docs/handoffs/DESIGN_LANGUAGE.md, root CLAUDE.md, docs/tracks/TRACK_U.md — then the files
+docs/handoffs/DESIGN_LANGUAGE.md, .claude/CLAUDE.md, docs/tracks/TRACK_U.md — then the files
 your checkpoint names. Start from TRACK_U.md's "Current state" block, take the next
 unfinished checkpoint U<n>, branch design/u<n>-<slug> from main, and work it end to end
 per docs/tracks/README.md — implement with tests, run /gates, npm run design:check and

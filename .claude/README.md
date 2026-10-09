@@ -24,20 +24,20 @@ hooks that deny the edit.
 |---|---|---|
 | must hold every time, mechanically | `hooks/` | deterministic; fires regardless of what the model decides |
 | applies only to some files | `rules/*.md` with `paths:` | zero context cost until you open one of those files |
-| must be true in every session | root `CLAUDE.md` | loaded every time — so keep it under ~200 lines |
+| must be true in every session | `.claude/CLAUDE.md` | loaded every time — so keep it under ~200 lines |
 | is a procedure you re-type | `skills/` | loads on `/name`, not before |
 | reads a lot and returns a little | `agents/` | isolated context; only the summary comes back |
 
 The trap this replaces: writing "never do X" in `CLAUDE.md` and believing it is enforcement.
 It is a request. If it must hold, it goes in `hooks/`.
 
-### Why there is no `.claude/CLAUDE.md`
+### Why `CLAUDE.md` lives here, not at the root
 
 `./CLAUDE.md` and `./.claude/CLAUDE.md` are the two supported locations for the *same* file —
-an either/or, not a pair. Discovered memory files are concatenated rather than overriding each
-other, so creating the second one would put two always-on project-instruction files in every
-session: the "conflicting instructions" failure the docs warn about, in a repo whose own
-guides say "root `CLAUDE.md`" a dozen times.
+an either/or, not a pair. It lives in `.claude/` (since 2026-10-09) so the repository root
+carries only what a human visitor needs. **Never create a second one at the root:** discovered
+memory files are concatenated rather than overriding each other, so two would put conflicting
+always-on instructions in every session.
 
 The slot is not empty either. Rules **without** `paths:` frontmatter load at launch *with the
 same priority as `.claude/CLAUDE.md`* — which is exactly what `rules/change-discipline.md` is.
@@ -98,7 +98,7 @@ have side effects and you should decide when they run.
 ## Rules
 
 Path-scoped, so each costs nothing until you open a file it covers. These are the
-per-directory guides root `CLAUDE.md`'s repo map has always pointed to — they were never
+per-directory guides `.claude/CLAUDE.md`'s repo map has always pointed to — they were never
 written (issue #50), and `paths:` frontmatter is a better answer than nested `CLAUDE.md`
 files, which load per-directory whether or not they're relevant.
 

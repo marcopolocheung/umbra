@@ -155,7 +155,7 @@ accordingly. Subagents stay read-only here, per the repo rule.
   `grounding-auditor` runs whenever user-facing numbers, labels or assistant-visible strings
   change (U5, U6 especially).
 - `/gates` before any PR opens; `npm run design:check` from U2 onward must exit 0.
-- Hard invariants from root `CLAUDE.md` bind palette work too — especially #5 (shadow colour
+- Hard invariants from `.claude/CLAUDE.md` bind palette work too — especially #5 (shadow colour
   must stay blue-dominant under `isBlueDominantShadowPixel`) and the OSMF no-autocomplete rule
   (manual search may autocomplete via Foursquare only).
 

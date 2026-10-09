@@ -47,7 +47,7 @@ A's fixtures), ⚠️ E (G6 rewrites E's biggest file). **G6 runs alone.**
   because the OSMF policy lists autocomplete under unacceptable use; `SearchBar`,
   `WaypointInput` and `NavigationPanel` no longer fire a geocode from a keystroke.
   `LocationSearch.tsx` was deleted (unreferenced, and its whole body was the direct fetch).
-  Invariant #6 in root `CLAUDE.md` now says where the header can and cannot be set, and the
+  Invariant #6 in `.claude/CLAUDE.md` now says where the header can and cannot be set, and the
   `PreToolUse` hook enforces that version — it denies stripping the header from a proxy and
   denies adding it back to client code.
 - **Done — G8 is closed out.** The **dependency-bump policy** is written into G8 below: the two
@@ -380,13 +380,12 @@ CHANGELOG/tags, **#54** repo cruft, **#58** branch protection decision.
 
 **⚠️ #50 is mostly stale — re-check it before working it (verified 2026-09-07).** It was filed
 as four bullets and three have since been resolved a different way:
-- *"root `CLAUDE.md` points at per-directory `CLAUDE.md` files that don't exist"* — **resolved
-  by `.claude/rules/`.** The path-scoped rules replaced them, and root `CLAUDE.md` now says so
+- *"`.claude/CLAUDE.md` points at per-directory `CLAUDE.md` files that don't exist"* — **resolved
+  by `.claude/rules/`.** The path-scoped rules replaced them, and `.claude/CLAUDE.md` now says so
   explicitly. **Do not create those six files.** An earlier version of this brief called #50 the
   cluster's first priority and "a dependency of every track's session boot"; that is no longer
-  true. `AUTONOMOUS_GOAL.md` §1 gap 7 and §5 step 3 still carry the old framing and should be
-  corrected in the same PR.
-- *"points at `tools/tailor/`"* — root `CLAUDE.md`'s repo map already marks it gone.
+  true.
+- *"points at `tools/tailor/`"* — `tools/tailor/` is gone and nothing points at it.
 - *"`AGENTS.md` points at `docs/kb/INDEX.md`"* — `AGENTS.md` no longer exists.
 - *"says env lives in `.env.local`; the repo uses `.env`"* — **resolved with #53.** Both files
   now say `.env` and point at the committed `.env.example`, and the README's last stale
@@ -424,7 +423,7 @@ rollback rehearsal. G verifies those controls in CI/security tests; C owns their
 
 **1. Two pins are invariants, not preferences.** `maplibre-gl` is `ignore`d outright and
 `suncalc` / `@types/suncalc` are `ignore`d for majors in `.github/dependabot.yml`, because
-hard invariants #1 and #2 in root `CLAUDE.md` depend on the exact versions: maplibre 5.10+
+hard invariants #1 and #2 in `.claude/CLAUDE.md` depend on the exact versions: maplibre 5.10+
 changes `Texture.update` so the shadow simulator crashes WebGL2, and suncalc 2.x is an ESM
 rewrite with named exports only that also installs a second copy alongside the simulator's
 `^1.9.0` and skews solar math. **Dependabot's groups only cover minor and patch**, so without

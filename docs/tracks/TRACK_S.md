@@ -320,7 +320,7 @@ S4a write to four directories that did not exist before this track: `studies/sha
 **Launch prompt for one lane-5a builder** (swap the checkpoint id):
 
 ```
-You are a builder for Umbra Track S, checkpoint S2a. Read, in order: CLAUDE.md,
+You are a builder for Umbra Track S, checkpoint S2a. Read, in order: .claude/CLAUDE.md,
 docs/tracks/README.md, docs/tracks/TRACK_S.md (all of it), and the ranking and "do not build"
 sections of docs/research/ml-prior-art-2026-10-02.md. Work only inside
 the files S2a lists; never edit page.tsx, MapView.tsx, routing.ts or app/lib/agent/**. Branch
