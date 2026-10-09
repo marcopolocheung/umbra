@@ -32,6 +32,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
 
   function handleAddFolder() {
     if (!newFolderName.trim()) return;
+    setStorageError(false);
     let f: SavedFolder;
     try {
       f = createFolder(newFolderName.trim());
@@ -46,6 +47,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
   }
 
   function handleSave() {
+    setStorageError(false);
     try {
       onSave(name.trim() || defaultName, folderId);
     } catch {
@@ -145,7 +147,7 @@ export default function SaveRouteModal({ defaultName, onSave, onCancel }: Props)
 
         {storageError && (
           <p role="alert" className="text-xs" style={{ color: "var(--color-danger)" }}>
-            Couldn't save — this browser's storage is full or turned off. Delete a saved route and try again.
+            Couldn't save — this browser's storage is full or turned off. If it's full, cancel, delete a saved route, and try again.
           </p>
         )}
 
