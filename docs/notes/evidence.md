@@ -5,8 +5,8 @@ did worst. Nothing here is rounded in the flattering direction, and where a figu
 measurement — a prior, an assumption, a target, or in three cases a literal typed into a
 component — it says so in the same breath.
 
-**Stamped at commit `6a4b58f`, 2026-09-09.** Every figure below names the commit or fixture it
-came from, because a published number that a later PR invalidates is a lie with a timestamp.
+**Stamped at commit `6a4b58f`, 2026-09-09; status rows revised at `8e5f463`, 2026-10-09.**
+Every figure below names the commit or fixture it came from, because a published number that a later PR invalidates is a lie with a timestamp.
 This page is written once and *revised* — sections that say "not measured" are not placeholders
 waiting for a launch, they are the current honest state.
 
@@ -26,9 +26,9 @@ Three rules govern it.
 
 | Layer | Oracle | What exists today | State |
 |---|---|---|---|
-| **Geometry** | synthetic analytic fixtures; independent observation | shadow-field ↔ pixel-sampler agreement, 150 cases, CI-gated | ⚠️ **method agreement only — no physical accuracy number exists** |
-| **Routing** | tiny exact fixtures; independently checked constraints | unit tests of the cost model and Pareto search | ⬜ **no approximation gap, no violation rate, no optimality bound** |
-| **Agent** | final app state + task graders | 18 orchestrator scenarios + a sabotage suite, scripted model | ⚠️ **contract only — no live-model or task-completion number** |
+| **Geometry** | synthetic analytic fixtures; NYC LiDAR; independent observation | shadow-field ↔ pixel-sampler agreement, 150 cases, CI-gated; per-segment error against a LiDAR shade raster | ⚠️ **geometry against geometry — no observed-shadow number exists** |
+| **Routing** | tiny exact fixtures; independently checked constraints | brute-force oracle over small fixtures, with one published gap | ⚠️ **gap measured on fixtures only — no real-graph bound, no violation rate** |
+| **Agent** | final app state + task graders | 36 orchestrator scenarios + a sabotage suite, scripted model; one live-model run | ⚠️ **live groundedness measured once — no task-completion number** |
 | **Systems** | documented hardware, fixed snapshots | shadow-index microbenchmark, bundle sizes, CI suite, one browser smoke test | ⚠️ **Node microbenchmark and build sizes only — no browser latency budget** |
 
 ---
@@ -101,12 +101,17 @@ exactly, which is why the severe share is a separate gate.
 - **The footprints are rectangles.** Real footprints are not, and irregular rings are where a
   triangulation-based field and a rasterised one have the most room to differ.
 
-### 1.2 Physical accuracy — **not measured**
+### 1.2 Physical accuracy — **against LiDAR geometry only**
 
-There is **no measurement in this project of how well its shadows match reality.** No
+There is **no measurement in this project of how well its shadows match observed reality.** No
 comparison against observed shadow boundaries, no photographs, no survey, no independent
 irradiance data. §1.1 is agreement between two of our own models, and it must never be quoted
 as accuracy.
+
+The closest thing is the S1 audit, [`shade-accuracy.md`](./shade-accuracy.md): Umbra's shade
+against a shade raster built from NYC's 2017 LiDAR, over 8 blocks × 3 dates × 5 hours. The mean
+per-segment shade-fraction error is **34.7 pp** with canopy (p90 100, worst 100). It is still
+geometry against geometry, and that page says what it does and does not measure.
 
 ### 1.3 Confidence values are priors, not measurements
 
@@ -126,20 +131,27 @@ deliberately not how right it is.
 
 ## 2. Routing
 
-### 2.1 Approximation gap — **not measured**
+### 2.1 Approximation gap — **measured on fixtures**
 
-The route search is Pareto label-setting with dominance pruning (`app/lib/routing.ts`). It is
-covered by unit tests of the cost model and the dominance rule
-(`app/lib/__tests__/routing.test.ts`), which check that the implementation does what it says.
+The route search is Pareto label-setting with dominance pruning (`app/lib/routing.ts`).
+`app/lib/__tests__/routingOracle.test.ts` compares it against a brute-force oracle that
+enumerates every simple path on small fixture graphs. Method and result:
+[`sun-budget-model.md`](./sun-budget-model.md).
 
-**No optimality bound, no brute-force oracle comparison, and no published approximation gap
-exist.** The search must not be described as optimal, and the phrase "most shadowed route" is a
-description of the objective, not a claim about the result.
+- **Static (one time bucket):** exact on the line and grid fixtures.
+- **Time-aware:** on the one merge fixture, the search drops a Pareto option and its least-sun
+  route is **2.00 s (3.6%) worse** than the true optimum.
 
-### 2.2 Time-dependent exposure — **not implemented**
+**No bound on a real city graph exists.** Whether the loss compounds across several merge
+points is unproven, so the search must still not be described as optimal.
 
-Exposure is currently priced at one timestamp, not at each segment's traversal time. Anything
-measured about a time-dependent search would be measured about code that is not written yet.
+### 2.2 Time-dependent exposure — **implemented; discretization error not measured**
+
+Each edge is priced at the 15-minute bucket the walker reaches it in, not at departure
+([`time-aware-routing-h1.md`](./time-aware-routing-h1.md),
+[`exposure-objective-h2.md`](./exposure-objective-h2.md)). Via-stop legs, transit walk legs,
+sketches and pixel-fallback edges still use one instant. The error from 15-minute buckets
+against continuous time has not been measured.
 
 ### 2.3 Constraint-violation rate — **not measured**
 
@@ -147,7 +159,10 @@ measured about a time-dependent search would be measured about code that is not 
 
 ## 3. Agent
 
-### 3.1 Orchestrator eval — 18 scenarios plus a sabotage suite
+### 3.1 Orchestrator eval — scenarios plus a sabotage suite
+
+*At `8e5f463` the suite holds **36** scenarios (`scenarios/index.ts`), adding authority and
+budget cases to the 18 measured below. The table is the original measurement.*
 
 **Source.** `app/lib/agent/__tests__/` — `harness.ts` replays scripted model turns and tool
 results through the real `runAgent` and records a trace; `scenarios/` holds the cases.
@@ -191,7 +206,12 @@ do act. The separation is in what is reported, not in how the code is filed.)
   text. What is never asserted is that the prose is good, and fluent output is never counted as
   success.
 
-### 3.2 Live-model groundedness, recovery, revision minimality — **not measured**
+### 3.2 Live-model groundedness — **measured once**; recovery, revision minimality — **not measured**
+
+`npm run eval:agent` replays the scenarios against the real model. On the default Gemini pair
+(3.5-flash-lite research, 3.1-flash-lite write) **25 of 25** turns were grounded, in 156
+requests: [`agent-live-eval-2026-09-11.md`](./agent-live-eval-2026-09-11.md). It is one run on
+one day, with stubbed tools, and it grades groundedness, not whether the plan was good.
 
 ---
 
@@ -394,8 +414,8 @@ accumulated irradiance over a walk using departure time, walking speed and posit
 timestamps — over **three predefined routes**. That is prior art for traversal-time exposure and
 is cited here as related work, not as a threat. What is ours is what comes after: traversal-time
 exposure as the *cost function of a constrained search*, inverted into a reachability question,
-in a browser, with the gap published. Evaluating three fixed routes is not that — and §2.1 says
-plainly that our gap is not yet published, because it has not been measured.
+in a browser, with the gap published. Evaluating three fixed routes is not that. §2.1 now carries
+the gap, measured on fixtures.
 
 **The speedup was unqualified (#207).** ~1,000–2,200× is a Node microbenchmark of one function,
 not end-to-end browser route time. §4.1 carries the qualification wherever the number goes.
@@ -419,13 +439,14 @@ it is corrected here.
 
 Named so the empty rows have owners rather than looking like oversights:
 
-- **A physical accuracy number** (§1.2) needs an independent observation of real shadows, and
-  nothing in the current toolchain produces one.
+- **A physical accuracy number** (§1.2) needs an independent observation of real shadows. The
+  LiDAR audit is its geometric baseline, not a substitute.
 - **A recorded real-city agreement corpus** (§1.1) needs the pixel sampler's answers captured
   from a real browser over real tiles. The fixture format already matches, and a browser now
   runs locally, so nothing but the recording is missing.
-- **An approximation gap** (§2.1) needs a brute-force oracle over tiny exact fixtures.
-- **A live-model agent eval** (§3.2) needs task graders and a groundedness oracle.
+- **A real-graph approximation bound** (§2.1) needs either a proof that the bucket-boundary loss
+  does not compound, or an oracle that scales past fixtures.
+- **A task-completion agent eval** (§3.2) needs task graders, not only a groundedness check.
 - **Browser latency budgets** (§4.5) need the existing `window.__umbraMetrics` captured from
   a real session and given a CI-enforced ceiling. Until then `metrics.ts`'s < 3000 ms and
   < 500 ms are targets nobody has checked.
