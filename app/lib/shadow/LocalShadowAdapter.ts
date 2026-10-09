@@ -1284,7 +1284,10 @@ export class LocalShadowAdapter implements IShadowLayer, maplibregl.CustomLayerI
     // A clock scrub re-renders every pass each tick just as a camera gesture does,
     // so it takes the same 1× set until it settles.
     const moving = this.map.isMoving() || this.timeScrubbing;
-    const { w, h } = shadowTargetSize(gl.canvas.width, gl.canvas.height, moving);
+    // Measured off the canvas, so MapView's pixel-ratio cap is what counts.
+    const cssWidth = this.map.getCanvas().clientWidth;
+    const pixelRatio = cssWidth > 0 ? gl.canvas.width / cssWidth : 1;
+    const { w, h } = shadowTargetSize(gl.canvas.width, gl.canvas.height, moving, pixelRatio);
     this.ensureFBO(gl2, moving ? 'lo' : 'hi', w, h);
     if (!this.fbo) return;
 

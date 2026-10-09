@@ -17,6 +17,15 @@ describe("shadowTargetSize", () => {
     expect(shadowTargetSize(1200, 800, true)).toEqual({ w: 1200, h: 800 });
   });
 
+  it("never supersamples a canvas that is already high-density", () => {
+    // A phone at pixel ratio 2: 390×844 CSS → 780×1688 canvas.
+    expect(shadowTargetSize(780, 1688, false, 2)).toEqual({ w: 780, h: 1688 });
+    expect(shadowTargetSize(780, 1688, false, 3)).toEqual({ w: 780, h: 1688 });
+    // A 1× or fractional desktop still gets its antialiasing.
+    expect(shadowTargetSize(1200, 800, false, 1)).toEqual({ w: 2400, h: 1600 });
+    expect(shadowTargetSize(1500, 1000, false, 1.25)).toEqual({ w: 3000, h: 2000 });
+  });
+
   it("caps each axis and never returns an empty target", () => {
     expect(shadowTargetSize(3000, 1000, false)).toEqual({ w: SHADOW_FBO_MAX_DIM, h: 2000 });
     expect(shadowTargetSize(0, 0, true)).toEqual({ w: 1, h: 1 });
