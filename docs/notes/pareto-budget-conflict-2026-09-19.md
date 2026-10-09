@@ -1,8 +1,7 @@
 # A3 — paretoRoutes budget decision: no operating point — 2026-09-19
 
-Session A3 PR 2 of
-[`docs/handoffs/LATENCY_ATTRIBUTION_SESSIONS.md`](../handoffs/LATENCY_ATTRIBUTION_SESSIONS.md),
-continuing `perf/a3-pareto-budget-curve` after its merge. **No routing constant
+Session A3 PR 2 of the 2026-09-19 latency-attribution plan
+([curve and trigger](./pareto-budget-sweep-2026-09-19.md)), continuing `perf/a3-pareto-budget-curve` after its merge. **No routing constant
 changes.** The decision rule ran against the committed curve and its step 3
 fired — the conflict is filed here instead of a retune. This is the one place
 the session authorizes changing routing constants, and the rule says explicitly

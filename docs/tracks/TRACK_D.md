@@ -17,8 +17,8 @@
 - **D0 was also a Track H prerequisite, and that block is now cleared.** `timezone.ts:8` used
   to guess the UTC offset from longitude with no DST; an hour of clock error is ~15° of sun, so
   H1 would have priced every edge's traversal against a wrong sky and H4 would have published a
-  gap measured on a bad input. The offset is now a real IANA zone resolved per date.
-  See `docs/handoffs/WAVE_0.md`.
+  gap measured on a bad input. The offset is now a real IANA zone resolved per date
+  (`docs/notes/timezone.md`).
 - **Done:**
   - D1 — `HourlyExposureStrip` + `useHourlyExposure` render the day's shadow for the selected
     route under the tradeoff line, in both route surfaces. Closes #47.

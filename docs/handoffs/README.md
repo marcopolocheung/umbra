@@ -9,36 +9,18 @@ re-check its claims. If a handoff disagrees with the code, **the code wins** —
 in the same PR as the work, the way `docs/tracks/README.md` requires of the briefs' state
 blocks.
 
-| Read this | If you are | Session shape |
-|---|---|---|
-| [`WAVE_0.md`](WAVE_0.md) | clearing the things that are currently false | ~4 small PRs, cross-track |
-| [`PUBLICATION.md`](PUBLICATION.md) | making the existing work visible (P4 + P2) | 2 PRs, no new engineering |
-| [`THREAD_SHADOW.md`](THREAD_SHADOW.md) | building the differentiator (G→A→H) | long; one checkpoint per PR |
-| [`THREAD_AGENT.md`](THREAD_AGENT.md) | building the multimodal agent (Track C) | long; one checkpoint per PR |
-| [`TRANSIT_CLIENT.md`](TRANSIT_CLIENT.md) | **done through S3a** — the record of how the client came to route on the published data | history; read before `TRANSIT_NEXT` |
-| [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: surviving Overpass, pricing the wait, then bus | Phase 1 done; 1.5 is 2 small PRs, then 2 long phases |
+| Read this | If you are |
+|---|---|
+| [`THREAD_SHADOW.md`](THREAD_SHADOW.md) | building the differentiator (G→A→H) |
+| [`THREAD_AGENT.md`](THREAD_AGENT.md) | building the multimodal agent (Track C) |
+| [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: surviving Overpass, pricing the wait, then bus |
+| [`NYC_NAVIGATION_DATA.md`](NYC_NAVIGATION_DATA.md) | building the NYC static streets and building-shadow dataset |
+| [`NYC_REMOTE_FIELD.md`](NYC_REMOTE_FIELD.md) | delivering the NYC remote shadow field to rendering and routing |
+| [`SHADE_SIGNATURES.md`](SHADE_SIGNATURES.md) | compressing each sidewalk's year of shade into a signature and street type |
+| [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) | running the UI & design-language wave (Track U) |
 
-**Order.** `WAVE_0` first — it unblocks both threads and its items are hours, not days. Then
-`PUBLICATION`, which is the cheapest signal on the board. `TRANSIT_NEXT`'s Phase 1 is merged and live;
-its **Phase 1.5** is two small PRs against defects production surfaced, and it comes before the
-larger Phase 2. The two threads are **independent and
-parallel**: Track C owns `app/lib/agent/**` outright and reaches the rest of the app only
-through tool wrappers, so a shadow session and an agent session do not collide.
+Finished handoffs are deleted rather than archived; git history keeps them. The current state
+of every track is in its brief's `## Current state` block, not here.
 
 **Every session, regardless:** `/gates` before any PR opens, `/checkpoint` before it is
 reviewed, and never merge — that is the owner's call.
-
-## State common to all of them *(verified 2026-09-09, commit `f159b25`)*
-
-- `main` is **green**: lint 0 errors (51 warnings / 8 infos are the known backlog), typecheck 0,
-  **550 tests / 48 files**, build clean, browser smoke test passing in CI.
-- **P1 is done.** The public mirror at `marcopolocheung/shademapnav` is live and current, so
-  anything requiring a publicly-resolving link now works.
-- The **PR queue is empty.** #253 and #255 merged this refresh; #165, #210, #213 merged
-  earlier and #161 was closed.
-- Toolchain is **vite 6.4.3 / vitest 4.1.11 / jsdom 30.0.1 / `@types/node` 24.13.3** on
-  **Node 24.21.0** — `.nvmrc` and `engines.node` both say `24.x`, and CI matches. **Vercel runs
-  24.x too**, which is why the bump went to 24 rather than the 22 #215 proposed. `vitest` stays
-  on **4.x** deliberately: vitest 5 removes the `bench` export (**#254**).
-- **Wave 0 is clear.** #204 (real timezones) and #208 (access tags) merged, and #215 (the Node
-  bump) is done — so nothing in `WAVE_0.md` blocks either thread any more.
