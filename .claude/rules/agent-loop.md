@@ -13,10 +13,12 @@ product; a fluent assistant that occasionally invents a street is worth less tha
 
 ## The budget is the design constraint
 
-The LLM is **Google Gemini free tier only**, capped per key per minute and per day. Every key
-goes into one comma-separated shared pool (`VITE_GEMINI_API_KEY`, numbered `_1/_2/_3` in dev,
-`_1..._9` in prod); the client in dev and `api/agent.js` in prod round-robin the pool and fail
-over on 429/5xx and 401/403. There is no per-role key split — all roles draw the one pool.
+The LLM is **Google Gemini free tier only** (keys: https://aistudio.google.com/apikey), capped
+per key per minute and per day. Every key goes into one comma-separated shared pool — dev:
+`VITE_GEMINI_API_KEY` (+ `_1/_2/_3`) through the Vite `/__gemini` proxy; prod: server-only
+`GEMINI_API_KEY` (+ `_1..._9`) in `api/agent.js`. Both round-robin the pool and fail over on
+429/5xx and 401/403, so a dead key never ends a turn. There is no per-role key split — all
+roles draw the one pool.
 A real turn costs a median of 4 LLM calls (C6 live eval; 6.2 before it). What holds it
 there: research ends at the model's first successful `plot_points`, and the loop draws a
 route through the pins when the user asked for one; `check_shadow` takes every spot in one
@@ -31,7 +33,7 @@ latency user-visible.
 
 ## Determinism is load-bearing
 
-`temperature 0`, a fixed `seed`, `parallel_tool_calls: false`, `MAX_STEPS` 8, and a tightly
+`temperature 0`, `parallel_tool_calls: false`, `MAX_STEPS` 8, and a tightly
 scoped system prompt. `MAX_STEPS` is 8 because the happy path needs about five tool turns to
 get through `plot_points` — lowering it strands the loop before pins reach the map.
 
@@ -43,7 +45,9 @@ follow that pattern rather than becoming another tool.
 ## Per-role models, one key pool
 
 Research runs with `VITE_GEMINI_RESEARCH_MODEL`, the final answer with
-`VITE_GEMINI_RESPONSE_MODEL` (default `gemini-3.5-flash-lite` and `gemini-3.1-flash-lite`). If both resolve
+`VITE_GEMINI_RESPONSE_MODEL` (default `gemini-3.5-flash-lite` and `gemini-3.1-flash-lite`, which
+grounded 25/25 live; `gemini-3.6-flash` took 29 s a call); `VITE_GEMINI_MODEL` overrides both.
+Prod accepts only `api/agent.js`'s allowlist plus `GEMINI_ALLOWED_MODELS`. If both resolve
 to the same model, `rolesShareConfig()` skips the separate write call — the research answer
 *is* the answer. Research makes many small tool-calling turns, which is why it gets the
 lighter model; the one write call gets the stronger one.
@@ -71,9 +75,13 @@ Only `locate_user` and `plot_points` legitimately move the map.
 The loop runs **client-side** — it orchestrates tools that need the live map canvas
 (geocoding, the solar model, on-canvas shadow sampling, time and camera control, the routing
 pipeline). It speaks one neutral IR (`LlmContent`/`LlmPart`); `llmClient.ts` translates to and
-from the OpenAI chat-completions shape Gemini's compatible endpoint expects — no `seed`, and
-each tool call's thought signature carried back as `functionCall.extra`. Keep provider
+from the OpenAI chat-completions shape Gemini's compatible endpoint expects. Two Gemini quirks
+live there: the endpoint rejects `seed`, and Gemini 3 attaches a thought signature
+(`extra_content`) to every tool call that must go back verbatim — the IR carries it as
+`functionCall.extra`. Drop it and every second tool step 400s. Keep provider
 specifics inside `llmClient.ts` — the loop should not know what Gemini is.
 
 Changes here need tests: `app/lib/__tests__/` already covers `agentLoop`, `agentTools` and
 `agentProxy`, and the suite is hermetic — no network, no env. Keep it that way.
+`npm run eval:agent` replays the scenarios against the real model and spends quota
+(`docs/notes/agent-live-eval-2026-09-11.md`).
