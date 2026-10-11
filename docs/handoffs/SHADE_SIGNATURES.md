@@ -10,8 +10,9 @@
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:** phase 0 (go/no-go analysis) is **done: qualified GO**, issue **#321**. Phase 1 (the
-pipeline stage) is **built, in review**: local generation `nyc-2026-09-18-e6718823bbb3`, not
-published. Take one phase per PR; the next session does **Phase 2** after the owner merges phase 1.
+pipeline stage) is **merged** (#323/#324). Phase 2 (client loader, view, Worker allowlist) is
+**built, in review**. Nothing is published: local generation `nyc-2026-09-18-e6718823bbb3` carries
+signatures. Take one phase per PR; the next session does **Phase 3** after the owner merges phase 2.
 
 ---
 
@@ -116,7 +117,7 @@ never as "kinds of street".
 
 ---
 
-## Phase 1: the pipeline stage (built; in review)
+## Phase 1: the pipeline stage (merged, #323/#324)
 
 **Goal.** A deterministic `signatures` stage in `server/navigation-prep` that reads the built shade
 cells and writes one small signature artifact per cell, folded into the generation like shades.
@@ -163,8 +164,22 @@ any generation that carries signatures.
 
 ---
 
-## Later phases (sketch; one PR each, after the owner reviews phase 1)
-- **Phase 2, client loader.** `loadNavigationSignatureShard` next to `loadNavigationShadeShard` in `app/lib/navigationData/remoteNavigation.ts`, with the same hash and bounds checks and the same disk-cache behaviour. The delivery Worker's key allowlist (`cloudflare/shadow-data-worker/src/index.ts`, `navigationShardKey`) only admits `streets|buildings|shades`, so it needs `signatures/<cell>.bin` and `signatures/index.json` before a published generation's signatures are reachable. Add a pure `nearestSignatures(view, key, k)` (brute force, < 3 ms / 100k rows; run in the routing worker if it ever shows on the main thread).
+## Phase 2: the client read side (built; in review)
+
+Nothing in the app calls these yet; phase 3 is the first caller.
+- **Contract** (`app/lib/navigationData/shardContract.ts`): `NavigationSignatureIndex` / `NavigationSignatureModel` / `NavigationSignatureType`, `SIGNATURE_COMPONENTS`, `SIGNATURE_BYTES_PER_SIDE`, and the strict `parseNavigationSignatureIndex(value, ref, generation)`. The producer's `verify` uses the same parser, so both sides reject the same indexes.
+- **Loaders** (`remoteNavigation.ts`):
+  - `loadNavigationSignatureIndex(snapshot)` returns `null` for a generation without signatures.
+  - `loadNavigationSignatureShard(snapshot, index, cellKey)` fetches a whole cell payload.
+  - Both check exact bytes and SHA-256, share in-flight requests, and use `force-cache`, like the shade loaders. There is no decoded cache.
+- **View** (`signatureView.ts`): `createSignatureView(index, [{ shard, payload }])`, where `shard` is the cell's shade index (its `segments` are the row order).
+  - `typeOf(key, side)` and `type(id)` return a side's frozen type and that type's name and hours.
+  - `nearest(key, side, k)` is a brute-force search over the cells passed in, with an early exit.
+  - Measured on four real Midtown cells (46,224 sides): 0.64–0.69 ms per query, ~1.4 ms per 100k rows (Node, WSL). Building the view takes ~60 ms.
+  - Its type counts equal the Python projection from raw shade bytes exactly.
+- **Worker** (`cloudflare/shadow-data-worker/src/index.ts`): `navigationShardKey` admits `signatures/index.json` and `signatures/<cell>.bin`. **It still needs deploying** before a published generation's signatures are reachable; that's an owner step.
+
+## Later phases (sketch; one PR each, after the owner reviews the previous one)
 - **Phase 3, street-type map layer** in `app/components/MapView.tsx`. That file is contested (see `.claude/rules/components-and-map.md`), so do it in the main session, not a builder.
   - Colour the existing street lines by type with one expression; it's not new geometry.
   - Show it at zoom ≥ 15, off by default, legend from the frozen names.

@@ -22,10 +22,11 @@ const rootGatedFiles = new Set(["generation.json", "coverage.json", "bounds.json
 // same generator/cell grammar the shardContract parser accepts is pinned:
 // nyc-<date>-<12 hex> / manifest|notices / streets|buildings/<cell>.json, plus
 // the L2a shade table: shades/<cell>.json (index) and shades/<cell>.bin
-// (slot-major payload, read with Range).
+// (slot-major payload, read with Range), and the shade signatures (#321):
+// signatures/index.json (frozen model + cell list) and signatures/<cell>.bin.
 const navigationGenerationPattern = "nyc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-f0-9]{12}";
 const navigationShardKey =
-  "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json|shades/[a-z0-9-]{1,64}\\.(?:json|bin)";
+  "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json|shades/[a-z0-9-]{1,64}\\.(?:json|bin)|signatures/(?:index\\.json|(?!index\\.)[a-z0-9-]{1,64}\\.bin)";
 const navigationPointerKey = "navigation/nyc/current.json";
 const navigationAsset = new RegExp(
   `^navigation\\/nyc\\/(?:current\\.json|${navigationGenerationPattern}\\/(?:manifest\\.json|notices\\.json|${navigationShardKey}))$`,
