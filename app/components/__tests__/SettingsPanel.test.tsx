@@ -91,16 +91,16 @@ describe("SettingsPanel street shade types", () => {
 
   it("asks for a route until the types are loaded", () => {
     renderTypes(true, null);
-    expect(screen.getByText(/calculate a walking route/i)).toBeTruthy();
+    expect(screen.getByText(/after a sunny-day walking route/i)).toBeTruthy();
   });
 
   it("lists every frozen type, with its hours, under its group", () => {
     renderTypes(true, model.types);
     for (const type of model.types) expect(screen.getByText(type.name)).toBeTruthy();
     // The canyon type (6) is shaded at both ends of a summer day, not sunny at noon.
-    const partly = screen.getByText("Partly shaded").parentElement!;
+    const partly = screen.getByText("Summer: partly shaded").parentElement!;
     expect(within(partly).getByText(model.types[6].name)).toBeTruthy();
-    const sunny = screen.getByText("Sunny all day").parentElement!;
+    const sunny = screen.getByText("Summer: sunny through the day").parentElement!;
     expect(within(sunny).getByText(model.types[0].name)).toBeTruthy();
     expect(within(sunny).queryByText(model.types[1].name)).toBeNull();
   });

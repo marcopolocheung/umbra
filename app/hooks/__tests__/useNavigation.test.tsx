@@ -739,6 +739,17 @@ describe("routing reads the shadow field (A4b)", () => {
   // something: with geometry available, that fit must not happen.
   const narrowBounds = () => ({ west: 103.7999, south: 1.2999, east: 103.8001, north: 1.3001 });
 
+  it("routes normally without street shade types when no signatures load (#321)", async () => {
+    // No navigation base here, so no snapshot and no signature view: the
+    // best-effort branch must leave the route intact and draw nothing.
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+    const result = await runRouteWith(map);
+    expect(result.current.navRoutes.length).toBeGreaterThan(0);
+    expect(result.current.navRoutes[0].nodeIds).toEqual([1, 2]);
+    expect(result.current.streetTypeSegments).toEqual([]);
+    expect(result.current.streetTypes).toBeNull();
+  });
+
   it("never touches the canvas or the camera when geometry covers the route", async () => {
     const { map, log } = fakeMap({ pitch: 0, boundsAtPitch: narrowBounds });
 

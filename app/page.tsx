@@ -13,6 +13,7 @@ import BottomSheet, { type SnapPoint } from "./components/BottomSheet";
 import SearchBar from "./components/SearchBar";
 import FloatingMapControls, { Tilt3DButton } from "./components/FloatingMapControls";
 import FloatingRouteCards from "./components/FloatingRouteCards";
+import { streetTypeBreakdown } from "./lib/navigationData/signatureRoute";
 import RoutePreviewGrip from "./components/RoutePreviewGrip";
 import HourlyExposureStrip from "./components/HourlyExposureStrip";
 import QuickActions from "./components/QuickActions";
@@ -383,6 +384,12 @@ export default function Home() {
     streetTypeSegments,
     streetTypes,
   } = nav;
+  // The selected route's sidewalks by year-round shade, for its card (#321).
+  const selectedWalkMetres = filteredRoutes[selectedRouteIndex]?.distanceM;
+  const streetTypeLine = useMemo(
+    () => streetTypeBreakdown(streetTypeSegments, selectedWalkMetres),
+    [streetTypeSegments, selectedWalkMetres],
+  );
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
   // route surface the current breakpoint shows: the phone sheet or the floating cards.
@@ -1148,6 +1155,7 @@ export default function Home() {
             solarPosition={solarPosition}
             sunset={mapSunset}
             weather={heatWeather}
+            streetTypeLine={streetTypeLine}
             onOpenTimeline={() => openTimeline("desktop")}
             routeProgress={routeProgress}
             routes={filteredRoutes}
@@ -1305,6 +1313,7 @@ export default function Home() {
           onSaveRoute={handleOpenSaveModal}
           onExportRoute={handleExportRoute}
           weather={heatWeather}
+          streetTypeLine={streetTypeLine}
           solarIntensity={routeSolarIntensity}
           rainWind={routeWind}
           exposureSlot={exposureSlot}
@@ -1482,6 +1491,7 @@ export default function Home() {
               routes={filteredRoutes}
               exposureSlot={exposureSlot}
               weather={heatWeather}
+              streetTypeLine={streetTypeLine}
               rainWind={routeWind}
               selectedRouteIndex={selectedRouteIndex}
               onSelectRoute={setSelectedRouteIndex}

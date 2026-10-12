@@ -84,7 +84,8 @@ export interface RouteResult {
    * Which sidewalk the search chose for each traversed segment: `sides[i]` is the
    * side of the edge from `nodeIds[i]` to `nodeIds[i + 1]`, so this is always one
    * shorter than `nodeIds`. `null` where the graph carried no per-sidewalk edges
-   * (sketch routes, transit connectors, virtual snap edges).
+   * (sketch routes, transit connectors). A virtual snap edge is not null: it copies
+   * one of its segment's two parallel edges, so its side is fixed, not chosen.
    *
    * Consecutive entries that differ are a street crossing — which is the signal
    * turn-by-turn guidance needs, and it comes from the edge the search actually
@@ -570,6 +571,20 @@ export function snapToEdge(
 }
 
 /**
+ * Converts a side between the traveller's frame and the canonical one (lower
+ * node id → higher). Walking canonically they agree; walking against it, left
+ * and right swap. The swap is its own inverse, so this maps either way.
+ */
+export function swapSideAgainstCanonical(
+  fromId: number,
+  toId: number,
+  side: SidewalkSide,
+): SidewalkSide {
+  if (fromId < toId) return side;
+  return side === "left" ? "right" : "left";
+}
+
+/**
  * The two parallel per-sidewalk edges for one street segment, labelled by the
  * traveller's own left and right.
  *
@@ -587,20 +602,6 @@ export function snapToEdge(
  * dropped them silently: the edge still looked well-formed, so any access
  * predicate read it as "no restriction".
  */
-/**
- * Converts a side between the traveller's frame and the canonical one (lower
- * node id → higher). Walking canonically they agree; walking against it, left
- * and right swap. The swap is its own inverse, so this maps either way.
- */
-export function swapSideAgainstCanonical(
-  fromId: number,
-  toId: number,
-  side: SidewalkSide,
-): SidewalkSide {
-  if (fromId < toId) return side;
-  return side === "left" ? "right" : "left";
-}
-
 export function parallelSidewalkEdges(
   fromId: number,
   sourceEdge: GraphEdge,

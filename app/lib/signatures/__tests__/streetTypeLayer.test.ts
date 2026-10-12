@@ -8,7 +8,6 @@ import {
   STREET_TYPE_LAYER_ID,
   STREET_TYPE_SOURCE_ID,
   attachStreetTypeLayer,
-  offsetToSidewalk,
   streetTypeColor,
 } from "../streetTypeLayer";
 
@@ -49,23 +48,14 @@ describe("street type colours and the shadow predicate (invariant #5)", () => {
 
 // ─── Geometry ─────────────────────────────────────────────────────────────────
 
-describe("offsetToSidewalk", () => {
-  const segment = (side: "left" | "right"): StreetTypeSegment => ({
-    from: [-73.985, 40.755],
-    to: [-73.985, 40.756], // due north
-    side,
-    type: 0,
-    group: 1,
-  });
-
-  it("moves the line a few metres to the walked side", () => {
-    // Walking north, left is west (smaller longitude), right is east.
-    const [[leftX]] = offsetToSidewalk(segment("left"));
-    const [[rightX]] = offsetToSidewalk(segment("right"));
-    expect(leftX).toBeLessThan(-73.985);
-    expect(rightX).toBeGreaterThan(-73.985);
-    const metres = (-73.985 - leftX) * 111_320 * Math.cos((40.7555 * Math.PI) / 180);
-    expect(metres).toBeCloseTo(6, 1);
+describe("walked side", () => {
+  it("offsets the band to the walked side of the drawing direction", () => {
+    const fake = fakeMap(STYLE);
+    const layer = attachStreetTypeLayer(fake.map, { belowLayerId: "shadow", enabled: true, theme: "day" });
+    layer.setSegments([seg, { ...seg, side: "right" }]);
+    // Drawn from → to; MapLibre's positive line-offset is right of the line's direction.
+    expect(fake.features()?.map((f) => f.properties?.offset)).toEqual([-6, 6]);
+    expect(fake.features()?.[0].geometry).toEqual({ type: "LineString", coordinates: [seg.from, seg.to] });
   });
 });
 
@@ -134,7 +124,7 @@ describe("attachStreetTypeLayer", () => {
     const fake = fakeMap(STYLE);
     attachStreetTypeLayer(fake.map, { belowLayerId: "shadow", enabled: true, theme: "day" }).setSegments([seg]);
     expect(fake.order.indexOf(STREET_TYPE_LAYER_ID)).toBe(fake.order.indexOf("building") - 1);
-    expect(fake.features()?.[0].properties).toEqual({ group: 3 });
+    expect(fake.features()?.[0].properties).toEqual({ group: 3, offset: -6 });
     expect(fake.visibility()).toBe("visible");
   });
 
