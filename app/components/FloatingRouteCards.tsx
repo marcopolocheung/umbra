@@ -13,6 +13,8 @@ interface FloatingRouteCardsProps {
   onExportRoute?: (routeIndex: number, format: "gpx" | "geojson") => void;
   /** The forecast hour at the map's location, for the heat score. */
   weather?: WeatherHour | null;
+  /** Selected card: the walked sidewalks' year-round shade groups. */
+  streetTypeLine?: string | null;
   solarIntensity?: number | null;
   onStartNavigation?: () => void;
   grip?: ReactNode;
@@ -42,6 +44,7 @@ export default function FloatingRouteCards({
   onSaveRoute,
   onExportRoute,
   weather = null,
+  streetTypeLine = null,
   solarIntensity,
   onStartNavigation,
   grip,
@@ -99,6 +102,7 @@ export default function FloatingRouteCards({
               rainIntensity={rainIntensity}
               rainWind={rainWind}
               weather={weather}
+              streetTypeLine={streetTypeLine}
               exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
             />
           ))}

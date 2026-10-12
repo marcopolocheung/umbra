@@ -84,7 +84,8 @@ export interface RouteResult {
    * Which sidewalk the search chose for each traversed segment: `sides[i]` is the
    * side of the edge from `nodeIds[i]` to `nodeIds[i + 1]`, so this is always one
    * shorter than `nodeIds`. `null` where the graph carried no per-sidewalk edges
-   * (sketch routes, transit connectors, virtual snap edges).
+   * (sketch routes, transit connectors). A virtual snap edge is not null: it copies
+   * one of its segment's two parallel edges, so its side is fixed, not chosen.
    *
    * Consecutive entries that differ are a street crossing — which is the signal
    * turn-by-turn guidance needs, and it comes from the edge the search actually
@@ -212,6 +213,8 @@ export interface RouteOption {
   geojson: GeoJSON.Feature<GeoJSON.LineString>;
   /** Per-segment sidewalk choice — see `RouteResult.sides`. Walk routes only. */
   sides?: Array<SidewalkSide | null>;
+  /** The node path `sides` indexes into — see `RouteResult.nodeIds`. Walk routes only. */
+  nodeIds?: number[];
   distanceM: number;
   shadowCoverage: number; // 0–1
   longestContinuousShadowM: number;
@@ -568,6 +571,20 @@ export function snapToEdge(
 }
 
 /**
+ * Converts a side between the traveller's frame and the canonical one (lower
+ * node id → higher). Walking canonically they agree; walking against it, left
+ * and right swap. The swap is its own inverse, so this maps either way.
+ */
+export function swapSideAgainstCanonical(
+  fromId: number,
+  toId: number,
+  side: SidewalkSide,
+): SidewalkSide {
+  if (fromId < toId) return side;
+  return side === "left" ? "right" : "left";
+}
+
+/**
  * The two parallel per-sidewalk edges for one street segment, labelled by the
  * traveller's own left and right.
  *
@@ -592,9 +609,9 @@ export function parallelSidewalkEdges(
   canonicalRightShadow: number,
   objective: ExposureObjective = "sun"
 ): [GraphEdge, GraphEdge] {
-  const isCanonical = fromId < sourceEdge.toId;
-  const travellerLeft = isCanonical ? canonicalLeftShadow : canonicalRightShadow;
-  const travellerRight = isCanonical ? canonicalRightShadow : canonicalLeftShadow;
+  const canonical = { left: canonicalLeftShadow, right: canonicalRightShadow };
+  const travellerLeft = canonical[swapSideAgainstCanonical(fromId, sourceEdge.toId, "left")];
+  const travellerRight = canonical[swapSideAgainstCanonical(fromId, sourceEdge.toId, "right")];
   if (objective === "rain") {
     return [
       { ...sourceEdge, shelterFactor: travellerLeft, side: "left" },

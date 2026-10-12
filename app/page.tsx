@@ -13,6 +13,7 @@ import BottomSheet, { type SnapPoint } from "./components/BottomSheet";
 import SearchBar from "./components/SearchBar";
 import FloatingMapControls, { Tilt3DButton } from "./components/FloatingMapControls";
 import FloatingRouteCards from "./components/FloatingRouteCards";
+import { streetTypeBreakdown } from "./lib/navigationData/signatureRoute";
 import RoutePreviewGrip from "./components/RoutePreviewGrip";
 import HourlyExposureStrip from "./components/HourlyExposureStrip";
 import QuickActions from "./components/QuickActions";
@@ -223,6 +224,8 @@ export default function Home() {
   const [uiHidden, setUiHidden] = useState(false);
   // Sidewalk sheds from the last route, on the map (#85). Off by default.
   const [showSheds, setShowSheds] = useState(false);
+  // Street shade types along the last walk route (#321). Off by default.
+  const [showStreetTypes, setShowStreetTypes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewport, setViewport] = useState(() => ({
     x: typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -378,7 +381,15 @@ export default function Home() {
     canTransit,
     shadowField,
     shedRings,
+    streetTypeSegments,
+    streetTypes,
   } = nav;
+  // The selected route's sidewalks by year-round shade, for its card (#321).
+  const selectedWalkMetres = filteredRoutes[selectedRouteIndex]?.distanceM;
+  const streetTypeLine = useMemo(
+    () => streetTypeBreakdown(streetTypeSegments, selectedWalkMetres),
+    [streetTypeSegments, selectedWalkMetres],
+  );
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
   // route surface the current breakpoint shows: the phone sheet or the floating cards.
@@ -1071,6 +1082,9 @@ export default function Home() {
           onShowSunLinesChange={setShowSunLines}
           showSheds={showSheds}
           onShowShedsChange={setShowSheds}
+          showStreetTypes={showStreetTypes}
+          onShowStreetTypesChange={setShowStreetTypes}
+          streetTypes={streetTypes}
         />
         <a
           href="/about"
@@ -1141,6 +1155,7 @@ export default function Home() {
             solarPosition={solarPosition}
             sunset={mapSunset}
             weather={heatWeather}
+            streetTypeLine={streetTypeLine}
             onOpenTimeline={() => openTimeline("desktop")}
             routeProgress={routeProgress}
             routes={filteredRoutes}
@@ -1298,6 +1313,7 @@ export default function Home() {
           onSaveRoute={handleOpenSaveModal}
           onExportRoute={handleExportRoute}
           weather={heatWeather}
+          streetTypeLine={streetTypeLine}
           solarIntensity={routeSolarIntensity}
           rainWind={routeWind}
           exposureSlot={exposureSlot}
@@ -1475,6 +1491,7 @@ export default function Home() {
               routes={filteredRoutes}
               exposureSlot={exposureSlot}
               weather={heatWeather}
+              streetTypeLine={streetTypeLine}
               rainWind={routeWind}
               selectedRouteIndex={selectedRouteIndex}
               onSelectRoute={setSelectedRouteIndex}
@@ -1569,6 +1586,9 @@ export default function Home() {
                   onShowSunLinesChange={setShowSunLines}
                   showSheds={showSheds}
                   onShowShedsChange={setShowSheds}
+                  showStreetTypes={showStreetTypes}
+                  onShowStreetTypesChange={setShowStreetTypes}
+                  streetTypes={streetTypes}
                 />
                 <a
                   href="/about"
@@ -1630,6 +1650,8 @@ export default function Home() {
               simplifiedWaypoints={simplifiedWaypoints}
               shedRings={shedRings}
               showSheds={showSheds}
+              streetTypeSegments={streetTypeSegments}
+              showStreetTypes={showStreetTypes}
               basemapTheme={solar}
             />
           </Suspense>

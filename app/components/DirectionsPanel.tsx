@@ -109,6 +109,8 @@ export interface DirectionsPanelProps {
   onShadowPreferenceChange?: (v: number) => void;
   /** The forecast hour at the map's location, for the heat score. */
   weather: WeatherHour | null;
+  /** Selected card: the walked sidewalks' year-round shade groups. */
+  streetTypeLine?: string | null;
   selectedTime: Date;
   mapUtcOffsetMin: number;
   /** SunCalc position at the map centre; azimuth is a north-clockwise bearing. */
@@ -158,6 +160,7 @@ export default function DirectionsPanel({
   travelMode = 'walk', onTravelModeChange,
   shadowPreference = 0.5, onShadowPreferenceChange,
   weather,
+  streetTypeLine = null,
   selectedTime, mapUtcOffsetMin, solarPosition, sunset, onOpenTimeline,
   rainMode = false, onRainModeChange,
   rainIntensity: _rainIntensity = 5, onRainIntensityChange: _onRainIntensityChange,
@@ -258,6 +261,7 @@ export default function DirectionsPanel({
                   rainIntensity={_rainIntensity}
                   rainWind={rainWind}
                   weather={weather}
+                  streetTypeLine={streetTypeLine}
                   exposureSlot={i === selectedRouteIndex ? exposureSlot : undefined}
                 />
               </Fragment>

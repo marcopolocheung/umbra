@@ -175,6 +175,10 @@
   --color-map-route: var(--color-map-day-route);
   --color-map-casing: var(--color-map-day-casing);
   --color-map-sun: var(--color-map-day-sun);
+  --color-street-type-1: var(--color-street-type-day-1);
+  --color-street-type-2: var(--color-street-type-day-2);
+  --color-street-type-3: var(--color-street-type-day-3);
+  --color-street-type-4: var(--color-street-type-day-4);
   /* Basemap palettes (R4), picked by solar altitude, never by the UI override.
      Every one keeps warmth (r+g)/2 - b within -17..14, so the renderer's shadow stays
      blue-dominant over it and sunlit ground never reads as shadow (invariant #5,
@@ -209,6 +213,16 @@
   --color-basemap-night-park-label: #a6b2a0;
   --color-canopy-map: #2e8b57;
   --color-shed-map: #1c2321;
+  /* Street shade groups on a route, sunny → shaded (#321 phase 3). One magenta
+     family, outside every reserved hue; light steps for sun, dark for shade. */
+  --color-street-type-day-1: #c27fac;
+  --color-street-type-day-2: #a1628d;
+  --color-street-type-day-3: #82456f;
+  --color-street-type-day-4: #642a53;
+  --color-street-type-night-1: #feb8e6;
+  --color-street-type-night-2: #d995c2;
+  --color-street-type-night-3: #b5739f;
+  --color-street-type-night-4: #92537e;
   --color-shadow-noon: #22467f;
 
   /* Print geometry. Shadows have an offset and no blur. */
@@ -282,6 +296,10 @@ html[data-basemap="night"] {
   --color-map-route: var(--color-map-night-route);
   --color-map-casing: var(--color-map-night-casing);
   --color-map-sun: var(--color-map-night-sun);
+  --color-street-type-1: var(--color-street-type-night-1);
+  --color-street-type-2: var(--color-street-type-night-2);
+  --color-street-type-3: var(--color-street-type-night-3);
+  --color-street-type-4: var(--color-street-type-night-4);
 }
 
 html[data-theme="night"] {

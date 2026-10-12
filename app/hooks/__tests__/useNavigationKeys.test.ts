@@ -116,6 +116,8 @@ describe("useNavigation return contract", () => {
         "shedRings",
         "simplifiedWaypoints",
         "sketchPoints",
+        "streetTypeSegments",
+        "streetTypes",
         "submitRoutePlan",
         "travelMode",
         "trip",

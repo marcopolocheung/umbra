@@ -56,6 +56,8 @@ interface RouteCardProps {
   rainIntensity?: number;
   /** Wind the last rain calculation priced, for the rain details to state. */
   rainWind?: { dirDeg: number | null; windMs: number | null } | null;
+  /** Selected card: the walked sidewalks' year-round shade groups, as one line. */
+  streetTypeLine?: string | null;
   /** The forecast hour at the map's location, for the heat score (selected card). */
   weather?: WeatherHour | null;
   /** The dose line and hourly exposure strip, rendered inside the selected card. */
@@ -74,6 +76,7 @@ export default function RouteCard({
   rainIntensity = 5,
   rainWind = null,
   weather = null,
+  streetTypeLine = null,
   exposureSlot,
 }: RouteCardProps) {
   const rainCard = rainMode && (r.objective === "rain" || r.dryCoverage !== undefined);
@@ -308,6 +311,12 @@ export default function RouteCard({
           {roughLine && (
             <div className="text-[11px] font-medium" style={{ color: "var(--color-ink-muted)" }}>
               {roughLine}
+            </div>
+          )}
+
+          {streetTypeLine && (
+            <div className="text-[11px] leading-snug" style={{ color: "var(--color-ink-muted)" }}>
+              {streetTypeLine}
             </div>
           )}
 

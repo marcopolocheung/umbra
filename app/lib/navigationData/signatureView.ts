@@ -48,6 +48,8 @@ export interface SignatureView {
   typeOf(key: string, side: SignatureSide): number | null;
   /** A type's frozen name and hours. */
   type(id: number): NavigationSignatureType | undefined;
+  /** Every frozen type, in id order. */
+  readonly types: readonly NavigationSignatureType[];
   /** The `k` nearest held sides to a held side, closest first, excluding itself. */
   nearest(key: string, side: SignatureSide, k: number): SignatureNeighbour[] | null;
 }
@@ -94,6 +96,7 @@ export function createSignatureView(
 
   return {
     size: rows,
+    types,
     typeOf(key, side) {
       const found = rowOf.get(`${key}/${side}`);
       return found === undefined ? null : typeIds[found];

@@ -52,6 +52,8 @@ import type { NycStaticBuildingProvider } from "../lib/navigationData/buildingPr
 import {
   acquireNavigationSnapshot,
   loadNavigationShadeShard,
+  loadNavigationSignatureIndex,
+  loadNavigationSignatureShard,
   loadShadeSlotBlocks,
   selectNavigationShards,
   zoneAround,
@@ -66,6 +68,8 @@ import {
   type ShadeTableView,
 } from "../lib/navigationData/shadeTable";
 import { SHADE_ZONE } from "../lib/navigationData/shadeSlots";
+import { createSignatureView, type SignatureView } from "../lib/navigationData/signatureView";
+import { routeStreetTypes, type StreetTypeSegment } from "../lib/navigationData/signatureRoute";
 import { utcOffsetMinAt } from "../lib/timezone";
 import { ensureZoneLookup, zoneAt } from "../lib/tzLookup";
 import {
@@ -280,6 +284,16 @@ export function useRouting({
   const [routeExposureContext, setRouteExposureContext] = useState<ResolvedExposureContext | null>(null);
   /** Map rings of the sidewalk sheds the last calculation's field sampled. */
   const [shedRings, setShedRings] = useState<[number, number][][]>([]);
+  /**
+   * Street shade types (#321) for the last walk calculation: the signature view
+   * over its cells and the coordinates of the nodes its routes walked. The
+   * selected route's segments are derived from these below, so switching route
+   * recolours without recalculating.
+   */
+  const [streetTypeSource, setStreetTypeSource] = useState<{
+    view: SignatureView;
+    coordinates: Map<number, [number, number]>;
+  } | null>(null);
 
   // Refs for stale-closure avoidance
   // `calculateRoute` keeps a stable identity by reading volatile values through
@@ -502,6 +516,7 @@ export function useRouting({
       setRoutePreview(null);
       setNavError(null);
       setShedRings([]);
+      setStreetTypeSource(null);
 
       await yieldToBrowser();
 
@@ -657,6 +672,33 @@ export function useRouting({
             ),
           );
           return createShadeTableView(shards.map((shard, index) => ({ shard, blocks: blocks[index] })));
+        })().catch(() => null);
+
+        // Street shade types (#321): best effort and never awaited by the route.
+        // Sun routes only — a rain route optimises shelter, which types don't describe.
+        const signatureViewPromise: Promise<SignatureView | null> = (async () => {
+          if (!navSnapshot || rainModeRef.current || !navSnapshot.manifest.signatures) return null;
+          if (QUARANTINED_SHADE_GENERATIONS.has(navSnapshot.generation)) return null;
+          const selection = selectNavigationShards(navSnapshot.manifest, {
+            south: coverSouth,
+            west: coverWest,
+            north: coverNorth,
+            east: coverEast,
+          });
+          if (!selection || selection.shadeShards.length === 0) return null;
+          const index = await loadNavigationSignatureIndex(navSnapshot, { signal: calcSignal });
+          if (!index) return null;
+          const cells = await Promise.all(
+            selection.shadeShards.map(async (ref) => {
+              const shard = await loadNavigationShadeShard(navSnapshot!, ref, { signal: calcSignal });
+              const cellKey = ref.key.replace(/^shades\/|\.json$/g, "");
+              const payload = await loadNavigationSignatureShard(navSnapshot!, index, cellKey, {
+                signal: calcSignal,
+              });
+              return { shard, payload };
+            }),
+          );
+          return createSignatureView(index, cells);
         })().catch(() => null);
 
         readinessAbort = new AbortController();
@@ -1257,6 +1299,7 @@ export function useRouting({
             label: ROUTE_LABELS[i] ?? "Route",
             geojson: connectRouteEndpoints(graphToGeoJSON(result.nodeIds, routingGraph), a, b),
             sides: result.sides,
+            nodeIds: result.nodeIds,
             distanceM: result.distanceM,
             shadowCoverage: result.shadowCoverage,
             longestContinuousShadowM: result.longestContinuousShadowM,
@@ -2109,6 +2152,18 @@ export function useRouting({
         const partialWarning = options.find((o) => o.partial)?.partial;
         setNavRoutes(options);
         setSelectedRouteIndex(0);
+        // Street types land after the route, whenever their bytes do.
+        void signatureViewPromise.then((view) => {
+          if (!view || calcGenRef.current !== myGen) return;
+          const coordinates = new Map<number, [number, number]>();
+          for (const option of options) {
+            for (const id of option.nodeIds ?? []) {
+              const node = routingGraph.nodes.get(id);
+              if (node) coordinates.set(id, [node.lon, node.lat]);
+            }
+          }
+          setStreetTypeSource({ view, coordinates });
+        });
         setRouteSolarIntensity(solarIntensity);
         setRouteWind(rainObjective ? routeWindNow : null);
         setRouteExposureContext(routeExposureContext);
@@ -2384,6 +2439,19 @@ export function useRouting({
         } as GeoJSON.FeatureCollection)
       : (selectedRoute?.geojson ?? null));
   const navTrainDrawData = selectedRoute?.trainDrawData ?? null;
+  const streetTypes = streetTypeSource?.view.types ?? null;
+  const streetTypeSegments = useMemo<StreetTypeSegment[]>(
+    () =>
+      streetTypeSource && selectedRoute?.nodeIds && selectedRoute.sides && !routePreview
+        ? routeStreetTypes(
+            selectedRoute.nodeIds,
+            selectedRoute.sides,
+            streetTypeSource.coordinates,
+            streetTypeSource.view,
+          )
+        : [],
+    [streetTypeSource, selectedRoute, routePreview],
+  );
   const navMrtEntrances = selectedRoute?.mrtEntrances ?? null;
 
   return {
@@ -2397,6 +2465,8 @@ export function useRouting({
     routeWind,
     routeExposureContext,
     shedRings,
+    streetTypeSegments,
+    streetTypes,
     calcGenRef,
     calcAbortRef,
     shadowFieldRef,
