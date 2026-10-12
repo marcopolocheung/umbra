@@ -16,6 +16,7 @@
  */
 
 import SunCalc from "suncalc";
+import { partitionSunCells } from "./sunCells";
 import {
   type BuildingPrism,
   type PrismSet,
@@ -324,18 +325,6 @@ export interface ShedProvider {
 
 /** Below this, `shadowAt`'s answer is a hint; callers should consult another source. */
 export const LOW_CONFIDENCE = 0.5;
-
-/**
- * Width of the batch partition that fixes one sun position per shadow index.
- *
- * One index is built per (sun, projection), but `SunCalc.getPosition` varies across
- * a route graph, so a batch has to be cut into cells that each get their own. 2 km
- * bounds the error by construction: the sun's altitude changes by ~0.018° across a
- * cell, which at 45° altitude is ~5 cm of shadow length and ~0.8 m at 10°. Both sit
- * under the pixel sampler's own ~1.2 m quantization, so the cut is invisible in the
- * agreement number while keeping the index count small.
- */
-const SUN_CELL_M = 2000;
 
 /** Maximum wall time a route waits for all missing cell providers together. */
 const READY_EDGES_BUDGET_MS = 2500;
@@ -701,36 +690,8 @@ function planBatch(edges: EdgeRef[]): BatchPlan {
     steps.push(edgeSampleCount(edgeLengthM(edge)));
   }
 
-  if (edges.length === 0) return { cells: [], left, right, steps };
-
-  // Cell size in degrees, from the batch's own latitude — one frame for the cut.
-  const batchLat = edges.reduce((sum, e) => sum + (e.from[1] + e.to[1]) / 2, 0) / edges.length;
-  const batch = metersPerDegree(batchLat);
-  const cellLng = SUN_CELL_M / batch.mPerLng;
-  const cellLat = SUN_CELL_M / batch.mPerLat;
-
-  const groups = new Map<string, number[]>();
-  for (let i = 0; i < edges.length; i++) {
-    const midLng = (edges[i].from[0] + edges[i].to[0]) / 2;
-    const midLat = (edges[i].from[1] + edges[i].to[1]) / 2;
-    const key = `${Math.floor(midLng / cellLng)},${Math.floor(midLat / cellLat)}`;
-    const group = groups.get(key);
-    if (group === undefined) groups.set(key, [i]);
-    else group.push(i);
-  }
-
   const cells: SunCellPlan[] = [];
-  for (const members of groups.values()) {
-    // The cell's own centroid, not its geometric centre: tighter when a cell holds
-    // only a corner of a route, and still a pure function of the edges.
-    let sumLng = 0;
-    let sumLat = 0;
-    for (const i of members) {
-      sumLng += (edges[i].from[0] + edges[i].to[0]) / 2;
-      sumLat += (edges[i].from[1] + edges[i].to[1]) / 2;
-    }
-    const lng = sumLng / members.length;
-    const lat = sumLat / members.length;
+  for (const { members, lng, lat } of partitionSunCells(edges)) {
     const { mPerLat, mPerLng } = metersPerDegree(lat);
 
     // The region is the bbox of the four offset corners of every edge in the cell.

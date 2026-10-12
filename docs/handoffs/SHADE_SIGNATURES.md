@@ -21,6 +21,7 @@ code wins. Update this file in the same PR that changes a stated contract.
   - Phase 2: the client read side (#341).
   - Phase 3: a route street-type layer (#343).
 - **Published:** generation **`nyc-2026-09-18-e6718823bbb3`**, with signatures, is published and the delivery Worker serves `signatures/` (deployed 2026-10-11).
+- **A1 is implemented in this PR:** pure shade-window search and a development-only street-type QA toggle. A2 follows after review; the assistant does not call the core yet.
 - **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
@@ -188,7 +189,7 @@ Nothing in the app calls these yet; phase 3 is the first caller.
   - Its type counts equal the Python projection from raw shade bytes exactly.
 - **Worker** (`cloudflare/shadow-data-worker/src/index.ts`): `navigationShardKey` admits `signatures/index.json` and `signatures/<cell>.bin`. Deployed 2026-10-11.
 
-## Phase 3: route street-type layer (merged, #343) — to be hidden
+## Phase 3: route street-type layer (merged, #343) — QA only in A1
 
 A sun walk's sidewalks are coloured beside the route in four **summer**-shade groups. A Settings
 legend lists every type with its hours, and the selected route card gives the walked shares.
@@ -200,8 +201,9 @@ It earns little:
   navy wherever shadow is painted.
 - **It duplicates the "Sun by hour" strip.**
 
-**Hide the Settings toggle in the first Plan A PR** (or move it behind a dev flag as a QA view).
-Keep the code: `signatureRoute.ts` and the card line are reused below.
+**A1 hides the Settings toggle and legend by default.** Set `VITE_STREET_TYPES_DEBUG=true`
+in development to expose the QA view; production ignores the flag and keeps the map layer disabled.
+The `signatureRoute.ts` code and the card line are retained for reuse below.
 
 ---
 
@@ -314,7 +316,10 @@ Plus a top-level `note` for degraded answers: out of NYC, no data loaded, or nig
 - **Candidates:** sidewalk sides whose segment midpoint is within `radiusM`.
   - Segment geometry comes from the street shards, which `routingGraphSource` already loads.
   - Drop sides shorter than ~15 m (they're crossings).
-- **Labels:** street name from the edge tags. The side ("north side") comes from the canonical side
+- **Labels:** supplied street-name metadata when available. **Published v1 street tags do not
+  include `name`.** A1 therefore uses coordinate/compass fallback labels; A2 needs a separate
+  metadata solution before named-street lookup or cross-street labels are offered. The side
+  ("north side") comes from the canonical side
   and the segment bearing, through the same frame logic as `swapSideAgainstCanonical` in `routing.ts`.
 - **Ranking:**
   - Shade mode: by `meanShade`.
@@ -346,6 +351,51 @@ equals the tool's observation. Plan A adds three things:
 | **A2** | The tool: schema and executor in `tools.ts`, the `shade_window` claim kind and free-text sweep in `receipts.ts`, and the `unknown` degradation. | Unit tests: the executor returns the contract; `verifyAnswer` accepts exact claims, rejects off-by-one values, and rejects a stray "73%" in free text. |
 | **A3** | `likeCandidateId` mode: PCA shortlist plus exact re-rank. | **Recall@10 of shortlist+re-rank against brute-force exact search** on ≥ 1,000 query sides from spatially spread cells. Target ≥ 0.95, which replaces phase 0's 0.41. Report the shortlist size vs recall curve. |
 | **A4** | The evaluation (below), plus route explanations: a `plan_shadowed_route` answer may cite "shaded until 9:45am" only through a `shade_window` receipt. | The eval report is checked in at `docs/notes/shade-spots-eval-<date>.md` with every number below. |
+
+### A1 implementation contract (2026-10-12; this PR)
+
+`app/lib/navigationData/shadeSpots.ts` exports two synchronous, deterministic functions:
+
+- `createShadeSpotsView(streetShards, shadeShards, names?)` takes already-verified street shards
+  and `ShadeTableShard` entries from one pinned generation. `names` is an optional map from canonical
+  segment key to supplied street name. Conflicting geometry, mixed/quarantined generations,
+  duplicate shade rows, and malformed slot blocks throw. No I/O or signature data is needed.
+- `shadeSpots(view, {lat, lng, date, fromMinutes, toMinutes, radiusM, mode})` requires an ISO
+  calendar date, same-day integer NYC clock minutes (`0 <= from < to <= 1440`), radius
+  `200 | 400 | 800`, and mode `shade | sun`. A2 owns date defaults and natural-language parsing.
+- Both endpoints snap to the nearest quarter hour, rounding forward at half a slot. The window is
+  half-open `[from, to)`, clipped to the table's 05:00–21:00 sample intervals (last sample 20:45).
+  Date selects the **2026-<month>-15** representative day in `America/New_York`; it does not
+  recompute the requested day's shade. Requested and effective windows and the basis are returned.
+- Daylight uses the exact 2 km sun-cell observer points from the producer: the shared pure
+  `partitionSunCells` helper receives **the complete shade-index segment batch before filtering**.
+  Slots with SunCalc 1.9.0 altitude <= 0 are excluded in **both** modes. Sunrise/sunset clipping is
+  at table resolution; no exact astronomical sunset minute is claimed. A daylight byte of 255
+  remains valid full shade. SunCalc is the existing BSD-licensed dependency; no new package or
+  third-party shadow/search implementation was adopted.
+- Each canonical segment is evaluated on both sides. Centreline midpoints determine radius and
+  tie-break distance; segments shorter than 15 m and virtual nodes are excluded. Returned coordinates
+  use the existing ±4 m sidewalk offset. Labels use eight compass sectors plus a supplied name or
+  coordinates; no street name, cross street, seat, or waiting amenity is inferred.
+- Rank by mean shade (or its complement), then distance, then candidate identity. Means sum integer
+  bytes before dividing by `255 * sampleCount`, so equal windows tie consistently. Keep at most
+  four results and one per topological block face: chains through non-intersection degree-two
+  nodes, including short edges, with canonical sides converted into the chain's traversal frame.
+  Opposite faces remain separate. This is an approximation within loaded geometry; boundaries can
+  truncate chains, and OSM intersection flags may split them.
+- Each result carries `candidateId` (`<generation>:<lo>,<hi>:<left|right>`), canonical identity,
+  `blockFaceId`, label, location, distance, `meanShade`, all quarter-hour `hours` (slot, clock minutes,
+  shade), and its daylight `effectiveWindow`. The response carries generation, requested/table
+  effective windows, representative-day `basis`, reasons, missing-geometry and skipped-segment counts.
+  A2 owns registration with plotting/routing and any hourly display aggregation.
+- Missing any required daylight sample skips the whole segment instead of averaging a shorter
+  window. Missing any geometry in a shade batch prevents repartitioning that batch; available results
+  can still return with `incomplete-data`. Empty, night, and no-data outcomes contain reasons and
+  no invented values. Geometry omissions cannot be radius-filtered because their positions are absent.
+
+A1 has no fetching, assistant schema/executor, receipts, named-street lookup, similarity mode,
+new published artifact, or deployment. Street-name preservation is a prerequisite for named-street
+queries in A2, not an implicit data-pipeline expansion of this PR.
 
 ### Evaluation (A4) — the interview artifact
 
