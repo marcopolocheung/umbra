@@ -337,6 +337,12 @@ core or H's domain algorithm.
 4. **C12 native multimodality** after C10 and the C13 split format: actual images reach Gemini;
    claims cite regions; image-required tasks and offline/metadata/fixed-sampling baselines run at
    equal budgets. The earlier Cerebras-era offline-only premise is retired.
+5. **Shade signatures → Plan A then Plan B** *(added 2026-10-12)*. The full plans are in
+   [`docs/handoffs/SHADE_SIGNATURES.md`](handoffs/SHADE_SIGNATURES.md#next-the-two-plans).
+   - **Plan A:** a `find_shade_spots` assistant tool for time-window shade, with grounding receipts,
+     pass^k, a confusion matrix and an ablation.
+   - **Plan B:** the exact shade table as ground truth for whether image models (SigLIP, SVF/GVI) see
+     shade, under spatially blocked CV.
 
 ### LATER — Wave 4: learned-model specialization
 
@@ -656,7 +662,7 @@ completion bar.** Keeping the boundary explicit prevents either checkpoint borro
 |---|---|---|
 | Features 1 & 4 — Visual Shadow Field, Active Survey Planner | **Selected → A10 after A7/A8** | It is Option A with a stronger lifecycle protocol: pose rejection, geographic and temporal holdouts, leaf-season slices, reliability diagrams, dataset/model cards, drift checks, and rollback. The expensive segmentation corpus is still conditional on baseline residuals; the learned-model lifecycle is not. |
 | Feature 3's **visual** half — live VLM route scout | **Adopted as revised C12** | The provider migration removed the old text-only constraint. C12 requires native Gemini image input, retains offline observations as a measured baseline/fallback, and does not add an unmeasured local model path. |
-| Feature 5 — Find the Light w/ SigLIP retrieval | **Kept where it is** | Already in the playful list. The retrieval framing is a real upgrade; the 20–50 curated micro-locations and photo permissions are the actual cost. |
+| Feature 5 — Find the Light w/ SigLIP retrieval | **Superseded 2026-10-12** | Candidates now come from the exact shade table (Plan A's area mode in `docs/handoffs/SHADE_SIGNATURES.md`). SigLIP stops being the judge and becomes Plan B's test subject; it returns as a re-rank only if it beats the geometry baseline under spatially blocked CV. |
 | Street View as a training corpus | **Prohibited** | Maps Platform Terms §3.2.3 restricts extraction and model training/testing/validation and building a tree-location index. Own photographs only. Not a judgment call. |
 | Offline Python training + versioned derived artifacts | **Adopted with a boundary** | This is the one real architecture change it proposes and it does not flag it as one. Permitted as a **build step producing versioned static assets**, never as a request-path service — see §7. |
 

@@ -16,7 +16,7 @@ blocks.
 | [`TRANSIT_NEXT.md`](TRANSIT_NEXT.md) | finishing transit: surviving Overpass, pricing the wait, then bus |
 | [`NYC_NAVIGATION_DATA.md`](NYC_NAVIGATION_DATA.md) | building the NYC static streets and building-shadow dataset |
 | [`NYC_REMOTE_FIELD.md`](NYC_REMOTE_FIELD.md) | delivering the NYC remote shadow field to rendering and routing |
-| [`SHADE_SIGNATURES.md`](SHADE_SIGNATURES.md) | compressing each sidewalk's year of shade into a signature and street type |
+| [`SHADE_SIGNATURES.md`](SHADE_SIGNATURES.md) | sidewalk shade signatures (done), then Plan A: the `find_shade_spots` assistant tool and its eval, and Plan B: image models vs exact shade |
 | [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) | running the UI & design-language wave (Track U) |
 
 Finished handoffs are deleted rather than archived; git history keeps them. The current state
