@@ -14,6 +14,8 @@ afterEach(() => {
 function makeCtx(): AgentContext {
   let version = 0;
   return {
+    getShadeCandidates: () => [],
+    registerShadeCandidates: () => {},
     mapRef: { current: null },
     shadowLayerRef: { current: null },
     dateRef: { current: new Date("2026-08-08T12:00:00Z") },

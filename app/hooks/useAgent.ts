@@ -1,3 +1,4 @@
+import type { ShadeCandidate } from "../lib/agent/shadeWindows";
 import { useCallback, useRef, useState } from "react";
 import type * as maplibregl from "maplibre-gl";
 import type { LlmContent } from "../lib/agent/llmClient";
@@ -44,6 +45,7 @@ const TOOL_LABELS: Record<string, string> = {
   geocode_place: "Looking up a place",
   search_places: "Searching for places",
   check_shadow: "Probing real shadow on the map",
+  find_shade_spots: "Finding shade for your time window",
   set_time: "Setting the time of day",
   plot_points: "Plotting points on the map",
   plan_shadowed_route: "Computing an exposure-aware route",
@@ -63,6 +65,7 @@ export function useAgent(args: UseAgentArgs) {
   const userLocationRef = useRef(args.userLocation);
   userLocationRef.current = args.userLocation;
 
+  const activeTurnRef = useRef<AbortController | null>(null);
   const historyRef = useRef<LlmContent[]>([]);
   // Pins outlive a turn, so the next turn's write call has to know what is
   // already on the map.
@@ -71,6 +74,7 @@ export function useAgent(args: UseAgentArgs) {
   const toolCacheRef = useRef(new Map<string, ToolResultEnvelope>());
   const evidenceRef = useRef<ToolResultEnvelope[]>([]);
   const resultIdSequenceRef = useRef(0);
+  const shadeCandidatesRef = useRef(new Map<string, ShadeCandidate>());
   const receiptMapObjectsRef = useRef<MapObject[]>([]);
   const currentMapObjects = () => {
     // Pins are owned by the map state. Derive their identities from the current
@@ -114,6 +118,10 @@ export function useAgent(args: UseAgentArgs) {
       ];
       args.registerMapObjects(objects);
     },
+    getShadeCandidates: () => [...shadeCandidatesRef.current.values()],
+    registerShadeCandidates: (candidates) => {
+      for (const candidate of candidates) shadeCandidatesRef.current.set(candidate.spot.candidateId, candidate);
+    },
     setPins: args.setPins,
   });
   // Refresh callback identities (cheap; keeps closures current).
@@ -145,6 +153,8 @@ export function useAgent(args: UseAgentArgs) {
       const trimmed = text.trim();
       if (!trimmed || isThinking) return;
 
+      const controller = new AbortController();
+      activeTurnRef.current = controller;
       setMessages((prev) => [...prev, { id: nextId(), role: "user", text: trimmed }]);
       setIsThinking(true);
       setProgress(null);
@@ -155,15 +165,23 @@ export function useAgent(args: UseAgentArgs) {
           history: historyRef.current,
           pins: pinsRef.current,
           userText: trimmed,
-          ctx: ctxRef.current,
+          ctx: {
+            ...ctxRef.current,
+            signal: controller.signal,
+            registerShadeCandidates: (values) => { if (!controller.signal.aborted) ctxRef.current.registerShadeCandidates(values); },
+            registerMapObjects: (values) => { if (!controller.signal.aborted) ctxRef.current.registerMapObjects(values); },
+            setPins: (values) => { if (!controller.signal.aborted) ctxRef.current.setPins(values); },
+          },
           cache: toolCacheRef.current,
           evidence: evidenceRef.current,
           resultIdFactory: ({ toolName }) =>
             `agent-result-${++resultIdSequenceRef.current}-${toolName}`,
           onToolEvent: (e) => {
+            if (controller.signal.aborted) return;
             setProgress(TOOL_LABELS[e.name] ?? "Working…");
           },
         });
+        if (controller.signal.aborted) return;
         historyRef.current = result.history;
         evidenceRef.current = result.evidence;
         setMessages((prev) => [
@@ -171,6 +189,7 @@ export function useAgent(args: UseAgentArgs) {
           { id: nextId(), role: "assistant", text: result.text, answer: result.answer },
         ]);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -183,14 +202,21 @@ export function useAgent(args: UseAgentArgs) {
           },
         ]);
       } finally {
-        setIsThinking(false);
-        setProgress(null);
+        if (activeTurnRef.current === controller) {
+          activeTurnRef.current = null;
+          setIsThinking(false);
+          setProgress(null);
+        }
       }
     },
     [isThinking],
   );
 
   const reset = useCallback(() => {
+    activeTurnRef.current?.abort();
+    activeTurnRef.current = null;
+    setIsThinking(false);
+    shadeCandidatesRef.current.clear();
     historyRef.current = [];
     evidenceRef.current = [];
     toolCacheRef.current.clear();
@@ -218,7 +244,7 @@ export function useAgent(args: UseAgentArgs) {
         // Application-owned terminal notices remain beside fresh receipts.
         blocks: [
           ...refreshed.blocks,
-          ...message.answer.blocks.filter((block) => block.kind === "notice"),
+          ...message.answer.blocks.filter((block) => block.kind === "notice" || (block.kind === "unknown" && block.reason != null)),
         ],
       },
     };

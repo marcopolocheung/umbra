@@ -1,3 +1,4 @@
+import ShadeWindowDetails from "./ShadeWindowDetails";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useAgent";
 import { guideNote } from "../lib/agent/guideNote";
@@ -21,7 +22,7 @@ interface AssistantPanelProps {
 
 const SUGGESTIONS = [
   "Plan a shadowed afternoon walk near here",
-  "Where's a shady spot to sit at 2pm?",
+  "Where can I wait in shade near here between 2 and 4pm?",
   "Plan a 3-stop day trip that stays out of the sun",
 ];
 const focusClass = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
@@ -79,8 +80,8 @@ export default function AssistantPanel({
               <Kicker>Field notes</Kicker>
               <p className="font-display text-2xl font-semibold leading-tight">A little less sun.</p>
               <p className="mt-2 text-sm" style={{ color: "var(--color-ink-muted)" }}>
-                Ask me to plan around the sun. I can read the live shadows, check whether a spot is
-                shadowed at a given hour, and draw shadow-aware routes.
+                Ask me to plan around the sun. I can find sidewalk shade for a time window,
+                check current shadows, and draw shadow-aware routes.
               </p>
             </div>
             <div className="border-y-2" style={{ borderColor: "var(--color-ink)" }}>
@@ -109,7 +110,7 @@ export default function AssistantPanel({
                 <div className="border-y-2" style={{ borderColor: "var(--color-ink)" }}>
                   {message.answer.blocks.map((block) => {
                     if (block.kind === "unknown") return (
-                      <p key={`unknown:${block.claimKind}`} className="border-b px-2 py-3 text-sm last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>{unknownLabel(block.claimKind)}</p>
+                      <p key={`unknown:${block.claimKind}:${block.reason ?? "unverified"}`} className="border-b px-2 py-3 text-sm last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>{unknownLabel(block.claimKind, block.reason)}</p>
                     );
                     if (block.kind === "notice") return (
                       <p key={`notice:${block.code}`} className="border-b px-2 py-3 text-sm last:border-b-0" style={{ borderColor: "var(--color-rule)" }}>{noticeLabel(block)}</p>
@@ -145,6 +146,7 @@ export default function AssistantPanel({
                             <p className="min-w-0 flex-1 px-2 text-sm font-semibold">{label}</p>
                           )}
                         </div>
+                        {receipt.kind === "shade_window" && <ShadeWindowDetails receipt={receipt} />}
                         <p className="text-[11px]" style={{ color: "var(--color-ink-muted)", paddingLeft: stopIndex >= 0 ? 60 : 8, paddingRight: 8 }}>{detail}</p>
                       </div>
                     );

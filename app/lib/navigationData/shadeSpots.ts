@@ -305,8 +305,8 @@ function spotLabel(segment: SpotSegment, side: SidewalkSide, lng: number, lat: n
     : `${compass}-side sidewalk near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
-/** Exact table arithmetic once a query is snapped; no sub-slot interpolation. */
-export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeSpotsResult {
+/** Shared, validated window/slot preparation for the core and its async loader. */
+export function prepareShadeSpotsWindow(query: ShadeSpotsQuery) {
   const month = queryMonth(query);
   const requestedWindow = { fromMinutes: query.fromMinutes, toMinutes: query.toMinutes };
   const round = (minutes: number) => Math.round(minutes / SHADE_SLOT_MINUTES) * SHADE_SLOT_MINUTES;
@@ -320,25 +320,13 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
     snapped.toMinutes,
   );
   if (start !== snapped.fromMinutes || end !== snapped.toMinutes) reasons.add("table-clipped");
-  const response: ShadeSpotsResult = {
-    generation: view.generation,
-    requestedWindow,
-    effectiveWindow: start < end ? { fromMinutes: start, toMinutes: end } : null,
-    basis: {
-      representativeDate: `${SHADE_REPRESENTATIVE_YEAR}-${String(month + 1).padStart(2, "0")}-${SHADE_REPRESENTATIVE_DAY}`,
-      zone: SHADE_ZONE,
-      slotMinutes: SHADE_SLOT_MINUTES,
-    },
-    reasons: [],
-    skippedSegments: 0,
-    missingGeometrySegments: view.missingGeometry,
-    results: [],
+  const effectiveWindow = start < end ? { fromMinutes: start, toMinutes: end } : null;
+  const basis: ShadeSpotsResult["basis"] = {
+    representativeDate: `${SHADE_REPRESENTATIVE_YEAR}-${String(month + 1).padStart(2, "0")}-${SHADE_REPRESENTATIVE_DAY}`,
+    zone: SHADE_ZONE,
+    slotMinutes: SHADE_SLOT_MINUTES,
   };
-  if (start >= end) {
-    reasons.add("empty-window");
-    response.reasons = [...reasons];
-    return response;
-  }
+  if (start >= end) reasons.add("empty-window");
   const slots: Array<{ minutes: number; slot: number; instant: Date }> = [];
   for (let minutes = start; minutes < end; minutes += SHADE_SLOT_MINUTES) {
     slots.push({
@@ -354,6 +342,25 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
       ),
     });
   }
+  return { requestedWindow, effectiveWindow, basis, reasons: [...reasons], slots };
+}
+
+/** Exact table arithmetic once a query is snapped; no sub-slot interpolation. */
+export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeSpotsResult {
+  const prepared = prepareShadeSpotsWindow(query);
+  const { slots } = prepared;
+  const reasons = new Set(prepared.reasons);
+  const response: ShadeSpotsResult = {
+    generation: view.generation,
+    requestedWindow: prepared.requestedWindow,
+    effectiveWindow: prepared.effectiveWindow,
+    basis: prepared.basis,
+    reasons: [...reasons],
+    skippedSegments: 0,
+    missingGeometrySegments: view.missingGeometry,
+    results: [],
+  };
+  if (!prepared.effectiveWindow) return response;
   const daylight = new Map<NonNullable<SpotSegment["sunCell"]>, typeof slots>();
   const candidates: ShadeSpot[] = [];
   let eligible = 0;

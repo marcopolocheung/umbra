@@ -582,7 +582,7 @@ export default function Home() {
         ...getRouteReceiptMapObjects(),
         ...receiptMapObjects,
       ].find((candidate) => candidate.id === objectId);
-      if (object?.kind === "pin" || object?.kind === "shadow") {
+      if (object?.kind === "pin" || object?.kind === "shadow" || object?.kind === "shade_window") {
         if (object.lat == null || object.lng == null) return;
         map.flyTo({
           center: [object.lng, object.lat],

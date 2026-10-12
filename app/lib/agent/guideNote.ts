@@ -59,6 +59,8 @@ export function guideNote(
   if (parts.length) return { text: parts.join(" "), claimIds };
 
   // A verified shadow or time check still gets a short guide to its receipt.
+  const windows = verified.filter(receipt => receipt.kind === "shade_window");
+  if (windows.length) return { text: "The shade-window estimates and their time samples are in the receipts above.", claimIds: windows.map(receipt => receipt.claimId) };
   const shadowChecks = verified.filter((receipt) => receipt.kind === "shadow");
   const checks = shadowChecks.length
     ? shadowChecks

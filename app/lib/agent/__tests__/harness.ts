@@ -233,6 +233,8 @@ export function makeScenarioContext(): AgentContext {
   const noop = () => {};
   let version = 0;
   return {
+    getShadeCandidates: () => [],
+    registerShadeCandidates: () => {},
     mapRef: { current: null },
     shadowLayerRef: { current: null },
     dateRef: { current: new Date("2026-08-08T18:00:00Z") },

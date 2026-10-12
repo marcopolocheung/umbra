@@ -8,10 +8,12 @@
  * History is the Gemini `contents` array, threaded across turns so the
  * conversation (and the agent's earlier tool observations) persist.
  */
+import { isShadeWindowPayload, shadeWindowObjectId, nycDate } from "./shadeWindows";
 import { callModel, rolesShareConfig, type LlmContent, type LlmPart } from "./llmClient";
 import {
   executeTool,
   parsePins,
+  normalizeShadeToolArgs,
   toolDeclarations,
   type AgentContext,
   type AssistantPin,
@@ -48,10 +50,11 @@ The current map context (center, local time, whether the user's location is know
 
 Procedure (follow in order):
 1. If locationKnown is false: if the user said "here"/"near me", call locate_user; otherwise ask which area they mean. Never invent a location.
-2. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
-3. Find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
-4. Only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
-5. Call plot_points with the FULL ordered list of stops (numbered pins, map auto-framed). This ends your research: if the user asked for a walk or route, one through the pins is drawn for you.
+2. For a shade/sun WINDOW or another date, use find_shade_spots after resolving the area. Its omitted date is selectedDate; explicit today uses todayDate. Do NOT call set_time for this read. After that window search, skip steps 3 and 4 and go to presentation. Window results are sidewalk ALTERNATIVES, not seats or an itinerary. Use coordinate/compass labels; named-street calendars are not supported. Plot alternatives if useful, but route only to one explicitly chosen destination with a known origin. Do not route through all alternatives. A route still uses the selected map departure date/time.
+For an instantaneous check at the selected map time, use check_shadow. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
+3. For ordinary place or itinerary requests, find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
+4. For those instantaneous place checks, only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
+5. Call plot_points with the FULL ordered list of itinerary stops or the returned shade alternatives (numbered pins, map auto-framed). This ends your research: if the user asked for an itinerary walk or route, one through the stops is drawn for you. Shade alternatives are exempt: never route through them automatically.
 
 Rules: never repeat an identical call; stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted. Lead the final answer with your recommendation in one sentence, then the reasons. If the answer offers itineraries or route options, offer at most three, best first — more is slower to read than to walk.`;
 
@@ -86,7 +89,7 @@ const MAX_PINS = 8;
 // a reasoning model handed those instructions with no tools available narrates
 // the calls it can't make (raw `{"name":...}` JSON) into the answer. This prompt
 // keeps the topic guardrail but tells it to synthesize only, never tool-call.
-const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. For time include value {localTime}. For a route include value {status, objective}, requestId, actionId, planRevision and mapObjectId; use the objective from the route evidence (sun or rain). Accessibility has no verification tool: say unknown. Lead the answer with the recommendation in one sentence, then the reasons. If itineraries are offered, at most three, best first. Do not call or mention tools.`;
+const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. Recommendations from find_shade_spots must use shade_window receipts, never place or instantaneous shadow receipts. For shade_window include candidateId, requestedDate, requestedWindow {fromMinutes,toMinutes}, value {meanShade}, and supportingResultIds; use the returned requested window and exact sidewalk identity, never coordinates as identity. Hour samples are optional proposals and must match returned slots. The application renders the verified timeline. For time include value {localTime}. For a route include value {status, objective}, requestId, actionId, planRevision and mapObjectId; use the objective from the route evidence (sun or rain). Accessibility has no verification tool: say unknown. Lead the answer with the recommendation in one sentence, then the reasons. If itineraries are offered, at most three, best first. Do not call or mention tools.`;
 
 export interface ToolEvent {
   name: string;
@@ -176,6 +179,12 @@ function collectPointCandidates(
         p.candidateId ?? (resultId ? `shadow-candidate:${resultId}:${index}` : undefined),
       );
     }
+    return;
+  }
+
+  if (toolName === "find_shade_spots") {
+    if (isShadeWindowPayload(result) && result.status === "ok")
+      for (const spot of result.results) add(spot.lat, spot.lng, spot.label, spot.candidateId);
     return;
   }
 
@@ -341,6 +350,11 @@ function evidenceProposal(
             supportingResultIds: [envelope.resultId],
           });
       }
+    } else if (envelope.toolName === "find_shade_spots" && isShadeWindowPayload(payload) && payload.status === "ok") {
+      for (const spot of payload.results) push({ kind: "shade_window", subject: spot.label,
+        candidateId: spot.candidateId, requestedDate: payload.requestedDate,
+        requestedWindow: payload.requestedWindow, value: { meanShade: spot.meanShade },
+        supportingResultIds: [envelope.resultId] });
     } else if (envelope.toolName === "check_shadow") {
       const values = Array.isArray(payload.results) ? payload.results : [payload];
       for (const raw of values) {
@@ -460,6 +474,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const turnResults = new Map<string, ToolResultEnvelope>();
   const evidence = [...(opts.evidence ?? [])];
   let resultSequence = evidence.length;
+  const currentShadeResultIds: string[] = [];
+  const shadeRouteNotices = new Set<"shade_route_time" | "shade_alternatives">();
   const now = opts.now ?? (() => ctx.dateRef.current.toISOString());
   const observe = (
     name: AgentToolName,
@@ -510,6 +526,15 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         payload: { error: "The tool returned an invalid evidence payload." },
       });
     evidence.push(envelope);
+    if (name === "find_shade_spots" && !ctx.signal?.aborted) {
+      currentShadeResultIds.push(envelope.resultId);
+      if (isShadeWindowPayload(envelope.payload) && envelope.payload.status === "ok") {
+        const data = envelope.payload;
+        ctx.registerShadeCandidates(data.results.map(spot => ({ spot, requestedDate: data.requestedDate, mode: data.mode })));
+        ctx.registerMapObjects(data.results.map(spot => ({ id: shadeWindowObjectId(envelope.resultId, spot.candidateId), kind: "shade_window" as const, lat: spot.lat, lng: spot.lng, label: spot.label })));
+      }
+    }
+    if (name === "plan_shadowed_route" && (enriched.code === "shade_route_time" || enriched.code === "shade_alternatives")) shadeRouteNotices.add(enriched.code);
     if (name === "check_shadow") {
       const values = Array.isArray(enriched.results) ? enriched.results : [enriched];
       ctx.registerMapObjects(
@@ -565,9 +590,20 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // stale across turns). get_current_context is read-only — no side effects.
   let ctxSnapshot: Record<string, unknown> = {};
   try {
-    ctxSnapshot = await executeTool("get_current_context", {}, ctx);
+    ctxSnapshot = (await executeTool("get_current_context", {}, ctx)) ?? {};
   } catch {
     /* map not ready — fall through with empty context */
+  }
+  if (typeof ctxSnapshot.selectedDate !== "string") ctxSnapshot.selectedDate = nycDate(ctx.dateRef.current);
+  if (typeof ctxSnapshot.todayDate !== "string") ctxSnapshot.todayDate = nycDate(new Date());
+  const ambientCandidates: Array<{ id: string; lat: number; lng: number }> = [];
+  for (const [field, idField, prefix] of [["center", "centerCandidateId", "map-center"], ["userLocation", "userLocationCandidateId", "user-location"]]) {
+    if (field === "center" && ctxSnapshot.locationKnown !== true) continue;
+    const value = ctxSnapshot[field] as Record<string, unknown> | undefined;
+    if (!value || typeof value.lat !== "number" || typeof value.lng !== "number" || !Number.isFinite(value.lat) || !Number.isFinite(value.lng)) continue;
+    const id = typeof ctxSnapshot[idField] === "string" ? ctxSnapshot[idField] as string : `${prefix}:${value.lat}:${value.lng}`;
+    ctxSnapshot[idField] = id;
+    ambientCandidates.push({ id, lat: value.lat, lng: value.lng });
   }
   const ctxLine = `\n\nLive map context (already fetched — do NOT ask for it): ${JSON.stringify(
     ctxSnapshot,
@@ -583,7 +619,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const authorityState = () => ({
     currentUserText: opts.userText,
     candidates: [
-      ...evidence.flatMap((entry) => candidateIdentities(entry.resultId, entry.payload)),
+      ...ambientCandidates,
+      ...evidence.filter(validateToolResultEnvelope).flatMap((entry) => candidateIdentities(entry.resultId, entry.payload, entry.toolName)),
       ...mapPins.map((pin, index) => ({
         id: pin.candidateId ?? pin.objectId ?? `map-pin:${index}`,
         lat: pin.lat,
@@ -619,7 +656,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             candidateId: rawArgs.candidateId ?? idFor(rawArgs.lat, rawArgs.lng),
           };
     }
-    if (tool === "search_places" && (rawArgs.lat != null || rawArgs.lng != null)) {
+    if ((tool === "search_places" || tool === "find_shade_spots") && (rawArgs.lat != null || rawArgs.lng != null)) {
       return {
         ...rawArgs,
         nearCandidateId: rawArgs.nearCandidateId ?? idFor(rawArgs.lat, rawArgs.lng),
@@ -651,7 +688,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       return ["model_generated", "current_user_intent"];
     if (tool === "plot_points" || tool === "plan_shadowed_route")
       return ["model_generated", "current_user_intent", "application_state"];
-    if (tool === "check_shadow")
+    if (tool === "check_shadow" || tool === "find_shade_spots")
       return ["model_generated", "current_user_intent", "application_state"];
     const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
     const userTerms = currentTurnTerms(opts.userText);
@@ -706,6 +743,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   };
 
   const plot = async (pins: AssistantPin[]): Promise<void> => {
+    if (ctx.signal?.aborted) return;
     const args = { points: pins };
     const authorization = authorizeToolCall(authorityState(), "plot_points", args, [
       "application_state",
@@ -733,19 +771,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const finalize = (modelText: string, proposed?: unknown): RunAgentResult => {
     const mapObjects = ctx.getMapObjects();
+    const currentShadeEvidence = evidence.filter(entry => entry.toolName !== "find_shade_spots" || currentShadeResultIds.includes(entry.resultId));
     const answer = verifyAnswer(
       proposed ??
         evidenceProposal(
-          evidence,
+          currentShadeEvidence,
           mapObjects,
           /\b(accessib|wheelchair|step[- ]free)/i.test(opts.userText),
         ),
-      { evidence, mapObjects, currentPlanRevision: ctx.getCurrentPlanRevision(), now: now() },
+      { evidence, mapObjects, currentPlanRevision: ctx.getCurrentPlanRevision(), now: now(), currentShadeResultIds },
     );
+    for (const code of shadeRouteNotices) answer.blocks.push({ kind: "notice", code });
     const text =
       answer.blocks
         .map((block) => {
-          if (block.kind === "unknown") return unknownLabel(block.claimKind);
+          if (block.kind === "unknown") return unknownLabel(block.claimKind, block.reason);
           if (block.kind === "notice") return noticeLabel(block);
           const receipt = answer.receipts.find((candidate) => candidate.claimId === block.claimId);
           return receipt ? receiptLabel(receipt) : "";
@@ -798,7 +838,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let routedThisTurn = false;
   let terminalRouteResult: RoutePlanTerminalResult | null = null;
   const routeFallback = async (): Promise<void> => {
+    if (ctx.signal?.aborted) return;
     if (routedThisTurn || mapPins.length < 2 || !/\b(route|walk)/i.test(opts.userText)) return;
+    if (shadeRouteNotices.size) return;
+    const shadeIds = new Set(ctx.getShadeCandidates().map(candidate => candidate.spot.candidateId));
+    if (currentShadeResultIds.length || mapPins.some(pin => shadeIds.has(pin.candidateId ?? ""))) {
+      shadeRouteNotices.add("shade_alternatives"); return;
+    }
     const from = mapPins[0];
     const to = mapPins[mapPins.length - 1];
     const args = {
@@ -861,6 +907,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // --- Research phase: tool-use loop on the "research" model. ---
   for (let step = 0; step < MAX_STEPS; step++) {
+    if (ctx.signal?.aborted) return finalizeNotice("blocked", "conversation reset");
     const res = await callModel(
       {
         contents,
@@ -877,6 +924,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       "research",
     );
 
+    if (ctx.signal?.aborted) return finalizeNotice("blocked", "conversation reset");
     const candidate = res.candidates?.[0]?.content;
     if (!candidate) {
       const blocked = res.promptFeedback?.blockReason;
@@ -921,8 +969,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     contents.push(taggedCandidate);
     const responseParts: LlmPart[] = [];
     for (const part of calls) {
+      if (ctx.signal?.aborted) return finalizeNotice("blocked", "conversation reset");
       const fc = part.functionCall!;
       let args = fc.args ?? {};
+      if (fc.name === "find_shade_spots") args = normalizeShadeToolArgs(args, ctx.dateRef.current);
       // The model's own plot obeys the pin cap too, and a bare pin sitting on a
       // place a tool returned takes that place's name — Gemini plotted twelve
       // unlabelled pins in the live eval, so the answer named places no pin did.
@@ -986,6 +1036,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         if (!result.error && cacheable && !emptySearchResult) cache.set(key, envelope);
       }
       if (envelope && !result.error) turnResults.set(key, envelope);
+      if (fc.name === "find_shade_spots" && envelope && !currentShadeResultIds.includes(envelope.resultId)) currentShadeResultIds.push(envelope.resultId);
       if (
         fc.name === "search_places" &&
         Array.isArray(result.results) &&
@@ -998,7 +1049,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         mapPins = parsePins(args.points);
         plottedThisTurn = true;
       }
-      if (fc.name === "plan_shadowed_route") {
+      if (fc.name === "plan_shadowed_route" && result.code !== "shade_route_time" && result.code !== "shade_alternatives") {
         terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
         routedThisTurn =
           terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
@@ -1055,6 +1106,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     : "\n\nNothing is pinned on the map, so name no specific place.";
 
   // --- Write phase: final answer on the "response" model, no tools. ---
+  if (ctx.signal?.aborted) return finalizeNotice("blocked", "conversation reset");
   const finalRes = await callModel(
     {
       contents,
