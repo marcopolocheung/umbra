@@ -64,7 +64,7 @@ describe("SettingsPanel street shade types", () => {
     readFileSync(join(import.meta.dirname, "../../../server/navigation-prep/models/signatures-v1.json"), "utf8"),
   ) as { types: NavigationSignatureType[] };
 
-  function renderTypes(showStreetTypes: boolean, streetTypes: NavigationSignatureType[] | null) {
+  function renderTypes(showStreetTypes: boolean, streetTypes: NavigationSignatureType[] | null, streetTypesDebug = true) {
     const onChange = vi.fn();
     render(
       <SettingsPanel
@@ -74,6 +74,7 @@ describe("SettingsPanel street shade types", () => {
         onShowSunLinesChange={vi.fn()}
         showSheds={false}
         onShowShedsChange={vi.fn()}
+        streetTypesDebug={streetTypesDebug}
         showStreetTypes={showStreetTypes}
         onShowStreetTypesChange={onChange}
         streetTypes={streetTypes}
@@ -82,6 +83,12 @@ describe("SettingsPanel street shade types", () => {
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
     return onChange;
   }
+
+  it("hides the toggle and legend unless the QA control is enabled", () => {
+    renderTypes(true, model.types, false);
+    expect(screen.queryByRole("checkbox", { name: /street shade types/i })).toBeNull();
+    for (const type of model.types) expect(screen.queryByText(type.name)).toBeNull();
+  });
 
   it("reports the toggle to its owner", () => {
     const onChange = renderTypes(false, null);

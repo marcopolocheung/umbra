@@ -5,6 +5,7 @@ import TimelineSlider from "./components/TimelineSlider";
 import AccumulationPanel from "./components/AccumulationPanel";
 import SaveRouteModal from "./components/SaveRouteModal";
 import SettingsPanel from "./components/SettingsPanel";
+import { streetTypesDebugEnabled } from "./lib/signatures/streetTypesDebug";
 import DateInput from "./components/DateInput";
 import DaySlider from "./components/DaySlider";
 import AppShell from "./components/AppShell";
@@ -224,7 +225,8 @@ export default function Home() {
   const [uiHidden, setUiHidden] = useState(false);
   // Sidewalk sheds from the last route, on the map (#85). Off by default.
   const [showSheds, setShowSheds] = useState(false);
-  // Street shade types along the last walk route (#321). Off by default.
+  // Street shade types: QA only, explicitly enabled in development.
+  const streetTypesDebug = streetTypesDebugEnabled(import.meta.env.DEV, import.meta.env.VITE_STREET_TYPES_DEBUG);
   const [showStreetTypes, setShowStreetTypes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewport, setViewport] = useState(() => ({
@@ -1082,7 +1084,8 @@ export default function Home() {
           onShowSunLinesChange={setShowSunLines}
           showSheds={showSheds}
           onShowShedsChange={setShowSheds}
-          showStreetTypes={showStreetTypes}
+          showStreetTypes={streetTypesDebug && showStreetTypes}
+          streetTypesDebug={streetTypesDebug}
           onShowStreetTypesChange={setShowStreetTypes}
           streetTypes={streetTypes}
         />
@@ -1586,7 +1589,8 @@ export default function Home() {
                   onShowSunLinesChange={setShowSunLines}
                   showSheds={showSheds}
                   onShowShedsChange={setShowSheds}
-                  showStreetTypes={showStreetTypes}
+                  showStreetTypes={streetTypesDebug && showStreetTypes}
+                  streetTypesDebug={streetTypesDebug}
                   onShowStreetTypesChange={setShowStreetTypes}
                   streetTypes={streetTypes}
                 />
@@ -1651,7 +1655,7 @@ export default function Home() {
               shedRings={shedRings}
               showSheds={showSheds}
               streetTypeSegments={streetTypeSegments}
-              showStreetTypes={showStreetTypes}
+              showStreetTypes={streetTypesDebug && showStreetTypes}
               basemapTheme={solar}
             />
           </Suspense>

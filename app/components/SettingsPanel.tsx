@@ -20,6 +20,8 @@ interface SettingsPanelProps {
   onShowSunLinesChange: (v: boolean) => void;
   showSheds: boolean;
   onShowShedsChange: (v: boolean) => void;
+  /** Explicit development-only QA control; hidden by default. */
+  streetTypesDebug?: boolean;
   showStreetTypes: boolean;
   onShowStreetTypesChange: (v: boolean) => void;
   /** Every frozen signature type; null until a walk route has loaded them. */
@@ -44,6 +46,7 @@ export default function SettingsPanel({
   onShowSunLinesChange,
   showSheds,
   onShowShedsChange,
+  streetTypesDebug = false,
   showStreetTypes,
   onShowStreetTypesChange,
   streetTypes,
@@ -161,50 +164,54 @@ export default function SettingsPanel({
             </div>
           )}
 
-          <label className="flex min-h-11 items-center justify-between gap-4 cursor-pointer select-none">
-            <span style={{ color: "var(--color-ink)" }}>Street shade types</span>
-            <input
-              type="checkbox"
-              checked={showStreetTypes}
-              onChange={(e) => onShowStreetTypesChange(e.target.checked)}
-              className="accent-ink w-4 h-4"
-            />
-          </label>
+          {streetTypesDebug && (
+            <>
+              <label className="flex min-h-11 items-center justify-between gap-4 cursor-pointer select-none">
+                <span style={{ color: "var(--color-ink)" }}>Street shade types</span>
+                <input
+                  type="checkbox"
+                  checked={showStreetTypes}
+                  onChange={(e) => onShowStreetTypesChange(e.target.checked)}
+                  className="accent-ink w-4 h-4"
+                />
+              </label>
 
-          {showStreetTypes && (
-            <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--color-rule)" }}>
-              {/* The route's sidewalks: --color-street-type-<group> (streetTypeLayer.ts). */}
-              {STREET_GROUP_SWATCHES.map(([group, swatch]) => (
-                <div key={group} className="flex items-start gap-2">
-                  {/* Bordered like the sheds swatch: the key follows the map's theme, the panel the UI's. */}
-                  <span
-                    className="inline-block w-3 h-3 rounded-sm shrink-0 mt-0.5 border"
-                    style={{ backgroundColor: swatch, borderColor: "var(--color-rule-strong)" }}
-                  />
-                  <span className="flex flex-col max-w-panel-min">
-                    <span style={{ color: "var(--color-ink)" }}>{STREET_SHADE_GROUP_LABELS[group]}</span>
-                    {/* Each type in the group, by its own hours — bins, never "kinds of street". */}
-                    {streetTypes
-                      ?.filter((type) => streetShadeGroup(type) === group)
-                      .map((type) => (
-                        <span key={type.id} style={{ color: "var(--color-ink-muted)" }}>
-                          {type.name}
-                        </span>
-                      ))}
+              {showStreetTypes && (
+                <div className="flex flex-col gap-1.5 pl-1 border-l" style={{ borderColor: "var(--color-rule)" }}>
+                  {/* The route's sidewalks: --color-street-type-<group> (streetTypeLayer.ts). */}
+                  {STREET_GROUP_SWATCHES.map(([group, swatch]) => (
+                    <div key={group} className="flex items-start gap-2">
+                      {/* Bordered like the sheds swatch: the key follows the map's theme, the panel the UI's. */}
+                      <span
+                        className="inline-block w-3 h-3 rounded-sm shrink-0 mt-0.5 border"
+                        style={{ backgroundColor: swatch, borderColor: "var(--color-rule-strong)" }}
+                      />
+                      <span className="flex flex-col max-w-panel-min">
+                        <span style={{ color: "var(--color-ink)" }}>{STREET_SHADE_GROUP_LABELS[group]}</span>
+                        {/* Each type in the group, by its own hours — bins, never "kinds of street". */}
+                        {streetTypes
+                          ?.filter((type) => streetShadeGroup(type) === group)
+                          .map((type) => (
+                            <span key={type.id} style={{ color: "var(--color-ink-muted)" }}>
+                              {type.name}
+                            </span>
+                          ))}
+                      </span>
+                    </div>
+                  ))}
+                  {!streetTypes && (
+                    <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
+                      Shows after a sunny-day walking route in NYC.
+                    </span>
+                  )}
+                  <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
+                    Each sidewalk of the last walking route, grouped by its summer shade in the shade
+                    model; each line gives a type's own hours. No sidewalk sheds, and trees only where
+                    they are mapped.
                   </span>
                 </div>
-              ))}
-              {!streetTypes && (
-                <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
-                  Shows after a sunny-day walking route in NYC.
-                </span>
               )}
-              <span className="max-w-panel-min" style={{ color: "var(--color-ink-muted)" }}>
-                Each sidewalk of the last walking route, grouped by its summer shade in the shade
-                model; each line gives a type's own hours. No sidewalk sheds, and trees only where
-                they are mapped.
-              </span>
-            </div>
+            </>
           )}
         </div>
       )}
