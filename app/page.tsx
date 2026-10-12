@@ -223,6 +223,8 @@ export default function Home() {
   const [uiHidden, setUiHidden] = useState(false);
   // Sidewalk sheds from the last route, on the map (#85). Off by default.
   const [showSheds, setShowSheds] = useState(false);
+  // Street shade types along the last walk route (#321). Off by default.
+  const [showStreetTypes, setShowStreetTypes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewport, setViewport] = useState(() => ({
     x: typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -378,6 +380,8 @@ export default function Home() {
     canTransit,
     shadowField,
     shedRings,
+    streetTypeSegments,
+    streetTypes,
   } = nav;
 
   // "When should I go?" for the selected route. One strip, rendered in whichever
@@ -1071,6 +1075,9 @@ export default function Home() {
           onShowSunLinesChange={setShowSunLines}
           showSheds={showSheds}
           onShowShedsChange={setShowSheds}
+          showStreetTypes={showStreetTypes}
+          onShowStreetTypesChange={setShowStreetTypes}
+          streetTypes={streetTypes}
         />
         <a
           href="/about"
@@ -1569,6 +1576,9 @@ export default function Home() {
                   onShowSunLinesChange={setShowSunLines}
                   showSheds={showSheds}
                   onShowShedsChange={setShowSheds}
+                  showStreetTypes={showStreetTypes}
+                  onShowStreetTypesChange={setShowStreetTypes}
+                  streetTypes={streetTypes}
                 />
                 <a
                   href="/about"
@@ -1630,6 +1640,8 @@ export default function Home() {
               simplifiedWaypoints={simplifiedWaypoints}
               shedRings={shedRings}
               showSheds={showSheds}
+              streetTypeSegments={streetTypeSegments}
+              showStreetTypes={showStreetTypes}
               basemapTheme={solar}
             />
           </Suspense>

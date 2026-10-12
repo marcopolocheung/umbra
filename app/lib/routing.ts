@@ -212,6 +212,8 @@ export interface RouteOption {
   geojson: GeoJSON.Feature<GeoJSON.LineString>;
   /** Per-segment sidewalk choice — see `RouteResult.sides`. Walk routes only. */
   sides?: Array<SidewalkSide | null>;
+  /** The node path `sides` indexes into — see `RouteResult.nodeIds`. Walk routes only. */
+  nodeIds?: number[];
   distanceM: number;
   shadowCoverage: number; // 0–1
   longestContinuousShadowM: number;
@@ -585,6 +587,20 @@ export function snapToEdge(
  * dropped them silently: the edge still looked well-formed, so any access
  * predicate read it as "no restriction".
  */
+/**
+ * Converts a side between the traveller's frame and the canonical one (lower
+ * node id → higher). Walking canonically they agree; walking against it, left
+ * and right swap. The swap is its own inverse, so this maps either way.
+ */
+export function swapSideAgainstCanonical(
+  fromId: number,
+  toId: number,
+  side: SidewalkSide,
+): SidewalkSide {
+  if (fromId < toId) return side;
+  return side === "left" ? "right" : "left";
+}
+
 export function parallelSidewalkEdges(
   fromId: number,
   sourceEdge: GraphEdge,
@@ -592,9 +608,9 @@ export function parallelSidewalkEdges(
   canonicalRightShadow: number,
   objective: ExposureObjective = "sun"
 ): [GraphEdge, GraphEdge] {
-  const isCanonical = fromId < sourceEdge.toId;
-  const travellerLeft = isCanonical ? canonicalLeftShadow : canonicalRightShadow;
-  const travellerRight = isCanonical ? canonicalRightShadow : canonicalLeftShadow;
+  const canonical = { left: canonicalLeftShadow, right: canonicalRightShadow };
+  const travellerLeft = canonical[swapSideAgainstCanonical(fromId, sourceEdge.toId, "left")];
+  const travellerRight = canonical[swapSideAgainstCanonical(fromId, sourceEdge.toId, "right")];
   if (objective === "rain") {
     return [
       { ...sourceEdge, shelterFactor: travellerLeft, side: "left" },

@@ -14,6 +14,11 @@ import type { IShadowLayer } from "../lib/shadow/IShadowLayer";
 import { attachCanopyLayer, type CanopyLayerHandle } from "../lib/canopyRaster/canopyLayer";
 import { createCanopyViewportReader } from "../lib/canopyRaster/viewportCanopy";
 import { attachShedLayer, type ShedLayerHandle } from "../lib/sheds/shedLayer";
+import {
+  attachStreetTypeLayer,
+  type StreetTypeLayerHandle,
+} from "../lib/signatures/streetTypeLayer";
+import type { StreetTypeSegment } from "../lib/navigationData/signatureRoute";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
 import { mapPinElement, placeStopFlagElement, stopFlagElement, transferFlagElement } from "./mapPins";
@@ -59,6 +64,9 @@ interface MapViewProps {
   /** Sidewalk sheds the last route calculation sampled, drawn where they stand. */
   shedRings?: [number, number][][];
   showSheds?: boolean;
+  /** The last walk route's sidewalks by street shade group (#321). */
+  streetTypeSegments?: StreetTypeSegment[];
+  showStreetTypes?: boolean;
   /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
   basemapTheme?: UiTheme;
 }
@@ -296,6 +304,8 @@ export default function MapView({
   simplifiedWaypoints,
   shedRings,
   showSheds = false,
+  streetTypeSegments,
+  showStreetTypes = false,
   basemapTheme = "day",
 }: MapViewProps) {
   const containerRef    = useRef<HTMLDivElement>(null);
@@ -350,6 +360,9 @@ export default function MapView({
   // Read at map load, like `accumulationOnRef`: the props may have changed since mount.
   const shedRingsRef = useRef(shedRings);
   const showShedsRef = useRef(showSheds);
+  const streetTypeRef = useRef<StreetTypeLayerHandle | null>(null);
+  const streetTypeSegmentsRef = useRef(streetTypeSegments);
+  const showStreetTypesRef = useRef(showStreetTypes);
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
@@ -765,6 +778,14 @@ export default function MapView({
         });
         shedRef.current.setRings(shedRingsRef.current ?? []);
 
+        // Street shade types along the last walk (#321). Same placement as the sheds.
+        streetTypeRef.current = attachStreetTypeLayer(map, {
+          belowLayerId: maybeCustom.id,
+          enabled: showStreetTypesRef.current && !accumulationOnRef.current,
+          theme: basemapThemeRef.current,
+        });
+        streetTypeRef.current.setSegments(streetTypeSegmentsRef.current ?? []);
+
         // The canopy ground-protection pass: the same shared store the fill reads
         // through, but as one prepared atlas the renderer can march. Excluded in
         // accumulation/export mode like the fill, and its viewport reads are
@@ -815,6 +836,8 @@ export default function MapView({
       canopyRef.current = null;
       shedRef.current?.remove();
       shedRef.current = null;
+      streetTypeRef.current?.remove();
+      streetTypeRef.current = null;
       canopyAtlasCleanupRef.current?.();
       canopyAtlasCleanupRef.current = null;
       shadowRef.current?.remove();
@@ -895,6 +918,16 @@ export default function MapView({
   }, [showSheds]);
 
   useEffect(() => {
+    streetTypeSegmentsRef.current = streetTypeSegments;
+    streetTypeRef.current?.setSegments(streetTypeSegments ?? []);
+  }, [streetTypeSegments]);
+
+  useEffect(() => {
+    showStreetTypesRef.current = showStreetTypes;
+    streetTypeRef.current?.setEnabled(showStreetTypes && !accumulationOnRef.current);
+  }, [showStreetTypes]);
+
+  useEffect(() => {
     basemapThemeRef.current = basemapTheme;
     // The DOM markers and the sun diagram read `--color-map-*`, which this switches.
     document.documentElement.dataset.basemap = basemapTheme;
@@ -902,6 +935,7 @@ export default function MapView({
     if (!map) return;
     applyBasemapTheme(map, basemapLayersRef.current, basemapTheme);
     applyOverlayTheme(map, basemapTheme);
+    streetTypeRef.current?.setTheme(basemapTheme);
   }, [basemapTheme]);
 
   // -------------------------------------------------------------------------
@@ -912,6 +946,7 @@ export default function MapView({
     accumulationOnRef.current = accumulation.enabled;
     canopyRef.current?.setEnabled(!accumulation.enabled);
     shedRef.current?.setEnabled(showShedsRef.current && !accumulation.enabled);
+    streetTypeRef.current?.setEnabled(showStreetTypesRef.current && !accumulation.enabled);
     if (!shadowRef.current) return;
     if (accumulation.enabled) {
       shadowRef.current.setSunExposure(true, {
