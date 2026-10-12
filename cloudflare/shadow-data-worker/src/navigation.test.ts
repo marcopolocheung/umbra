@@ -88,6 +88,13 @@ describe("navigation allow-list", () => {
     expect(navigationKey(`/navigation/nyc/${generation}/shades/z14-4829-6165.bin`)).toBe(
       `navigation/nyc/${generation}/shades/z14-4829-6165.bin`,
     );
+    // Shade signatures: one index and a payload per cell.
+    expect(navigationKey(`/navigation/nyc/${generation}/signatures/index.json`)).toBe(
+      `navigation/nyc/${generation}/signatures/index.json`,
+    );
+    expect(navigationKey(`/navigation/nyc/${generation}/signatures/z14-4829-6165.bin`)).toBe(
+      `navigation/nyc/${generation}/signatures/z14-4829-6165.bin`,
+    );
   });
 
   it("rejects listing, sibling prefixes, and arbitrary keys", () => {
@@ -102,6 +109,10 @@ describe("navigation allow-list", () => {
       `/navigation/nyc/${generation}/streets/z14-4829-6165.json.bak`,
       `/navigation/nyc/${generation}/shades/z14-4829-6165.txt`,
       `/navigation/nyc/${generation}/shades/z14-4829-6165.bin.bak`,
+      `/navigation/nyc/${generation}/signatures/z14-4829-6165.json`,
+      `/navigation/nyc/${generation}/signatures/index.json.bak`,
+      `/navigation/nyc/${generation}/signatures/index.bin`,
+      `/navigation/nyc/${generation}/signatures/z14-4829-6165.txt`,
       "/navigation/nyc/current.json/extra",
       `/_shadow/navigation/nyc/${generation}/manifest.json`,
     ]) {

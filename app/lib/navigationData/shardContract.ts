@@ -8,6 +8,8 @@
  * "no buildings" answer.
  */
 
+import { SHADE_SLOT_COUNT } from "./shadeSlots";
+
 // ─── Shared records ──────────────────────────────────────────────────────────
 
 export interface GeoBounds {
@@ -125,6 +127,66 @@ export interface NavigationSignatureRef {
   cells: number;
   /** Bytes of every per-cell payload together. */
   payloadBytes: number;
+}
+
+/** Components per signature; each is stored as one int8. */
+export const SIGNATURE_COMPONENTS = 16;
+
+/** Bytes per sidewalk side: 16 int8 components, then one type byte. */
+export const SIGNATURE_BYTES_PER_SIDE = SIGNATURE_COMPONENTS + 1;
+
+/** One frozen type: a bin with its hours, never a "kind of street". */
+export interface NavigationSignatureType {
+  id: number;
+  /** Generated from the type's mean profile; numbers only. */
+  name: string;
+  shaded: number;
+  summerShaded: number;
+  winterShaded: number;
+  /** Summer clock windows (America/New_York), `[start, end)`. */
+  summerShade: Array<[string, string]>;
+  summerSun: Array<[string, string]>;
+}
+
+/** The frozen projection: centre, multiply by `components`, nearest of `centers`. */
+export interface NavigationSignatureModel {
+  version: string;
+  fit: {
+    generation: string;
+    seed: number;
+    sample: number;
+    libraries: Record<string, string>;
+    varianceExplained: number;
+  };
+  /** Shade-table slot indices the model reads, ascending. */
+  daySlots: number[];
+  mean: number[];
+  /** SIGNATURE_COMPONENTS rows × daySlots.length. */
+  components: number[][];
+  /** Per component: z = q × scale. */
+  scales: number[];
+  /** K rows × SIGNATURE_COMPONENTS. */
+  centers: number[][];
+  types: NavigationSignatureType[];
+}
+
+/** The generation's `signatures/index.json`. */
+export interface NavigationSignatureIndex {
+  version: 1;
+  dataset: "nyc-navigation";
+  generation: string;
+  kind: "signatures";
+  model: NavigationSignatureModel;
+  bytesPerSide: number;
+  /** Per cell, in key order; rows follow `shades/<cell>.json` `segments`. */
+  cells: Array<{
+    key: string;
+    shadeKey: string;
+    segments: number;
+    payloadKey: string;
+    bytes: number;
+    sha256: string;
+  }>;
 }
 
 export interface NavigationManifest {
@@ -264,6 +326,7 @@ const buildingShardKeyPattern = /^buildings\/[a-z0-9-]{1,64}\.json$/;
 const shadeIndexKeyPattern = /^shades\/[a-z0-9-]{1,64}\.json$/;
 const shadePayloadKeyPattern = /^shades\/[a-z0-9-]{1,64}\.bin$/;
 const signatureIndexKey = "signatures/index.json";
+const signatureCellPattern = /^[a-z0-9-]{1,64}$/;
 const noticesPathPattern = /^navigation\/nyc\/nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}\/notices\.json$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -784,6 +847,172 @@ export function parseNavigationShadeShard(
       bytes: ref.payloadBytes,
       sha256: parseSha256(ref.payloadSha256, `invalid NYC navigation shade payload (${ref.key})`),
     },
+  };
+}
+
+// ─── Signature index ────────────────────────────────────────────────────────
+
+function isNumberArray(value: unknown, length: number): value is number[] {
+  return Array.isArray(value) && value.length === length && value.every(isFiniteNumber);
+}
+
+function isClockWindows(value: unknown): value is Array<[string, string]> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (window) =>
+        Array.isArray(window) &&
+        window.length === 2 &&
+        window.every((clock) => typeof clock === "string" && /^\d{2}:\d{2}$/.test(clock)),
+    )
+  );
+}
+
+function parseSignatureModel(value: unknown, message: string): NavigationSignatureModel {
+  if (!isRecord(value)) throw new Error(message);
+  assertKeys(
+    value,
+    ["version", "fit", "daySlots", "mean", "components", "scales", "centers", "types"],
+    message,
+  );
+  const { daySlots, components, centers, types } = value;
+  if (
+    typeof value.version !== "string" ||
+    !isRecord(value.fit) ||
+    !Array.isArray(daySlots) ||
+    daySlots.length === 0 ||
+    !daySlots.every(
+      (slot, index) =>
+        isNonNegativeInt(slot) &&
+        slot < SHADE_SLOT_COUNT &&
+        (index === 0 || slot > (daySlots[index - 1] as number)),
+    )
+  )
+    throw new Error(message);
+  const days = daySlots.length;
+  if (
+    !isNumberArray(value.mean, days) ||
+    !Array.isArray(components) ||
+    components.length !== SIGNATURE_COMPONENTS ||
+    !components.every((row) => isNumberArray(row, days)) ||
+    !isNumberArray(value.scales, SIGNATURE_COMPONENTS) ||
+    !value.scales.every((scale) => scale > 0) ||
+    !Array.isArray(centers) ||
+    centers.length === 0 ||
+    centers.length > 255 ||
+    !centers.every((row) => isNumberArray(row, SIGNATURE_COMPONENTS)) ||
+    !Array.isArray(types) ||
+    types.length !== centers.length
+  )
+    throw new Error(message);
+  const parsedTypes = types.map((type, index): NavigationSignatureType => {
+    if (!isRecord(type)) throw new Error(message);
+    assertKeys(
+      type,
+      ["id", "name", "shaded", "summerShaded", "winterShaded", "summerShade", "summerSun"],
+      message,
+    );
+    if (
+      type.id !== index ||
+      typeof type.name !== "string" ||
+      type.name.length === 0 ||
+      !isFiniteNumber(type.shaded) ||
+      !isFiniteNumber(type.summerShaded) ||
+      !isFiniteNumber(type.winterShaded) ||
+      !isClockWindows(type.summerShade) ||
+      !isClockWindows(type.summerSun)
+    )
+      throw new Error(message);
+    return {
+      id: index,
+      name: type.name,
+      shaded: type.shaded,
+      summerShaded: type.summerShaded,
+      winterShaded: type.winterShaded,
+      summerShade: type.summerShade,
+      summerSun: type.summerSun,
+    };
+  });
+  return {
+    version: value.version,
+    fit: value.fit as NavigationSignatureModel["fit"],
+    daySlots: daySlots as number[],
+    mean: value.mean,
+    components: components as number[][],
+    scales: value.scales,
+    centers: centers as number[][],
+    types: parsedTypes,
+  };
+}
+
+/**
+ * Parses `signatures/index.json` against its manifest ref. Each cell's rows
+ * are its shade index's segments, `[left, right]`, 17 bytes per side; the
+ * model is the frozen one every payload was projected with.
+ */
+export function parseNavigationSignatureIndex(
+  value: unknown,
+  ref: NavigationSignatureRef,
+  expectedGeneration?: string,
+): NavigationSignatureIndex {
+  const message = `invalid NYC navigation signature index (${ref.key})`;
+  if (!isRecord(value)) throw new Error(message);
+  assertKeys(
+    value,
+    ["version", "dataset", "generation", "kind", "model", "bytesPerSide", "cells"],
+    message,
+  );
+  if (
+    value.version !== 1 ||
+    value.dataset !== "nyc-navigation" ||
+    (expectedGeneration !== undefined && value.generation !== expectedGeneration) ||
+    value.kind !== "signatures" ||
+    value.bytesPerSide !== SIGNATURE_BYTES_PER_SIDE ||
+    !Array.isArray(value.cells) ||
+    value.cells.length !== ref.cells
+  )
+    throw new Error(message);
+  const generation = parseGeneration(value.generation, message);
+  const model = parseSignatureModel(value.model, message);
+  if (model.version !== ref.model) throw new Error(message);
+
+  const seen = new Set<string>();
+  let payloadBytes = 0;
+  const cells = (value.cells as unknown[]).map((cell) => {
+    if (!isRecord(cell)) throw new Error(message);
+    assertKeys(cell, ["key", "shadeKey", "segments", "payloadKey", "bytes", "sha256"], message);
+    if (
+      typeof cell.key !== "string" ||
+      !signatureCellPattern.test(cell.key) ||
+      seen.has(cell.key) ||
+      cell.shadeKey !== `shades/${cell.key}.json` ||
+      cell.payloadKey !== `signatures/${cell.key}.bin` ||
+      !isPositiveInt(cell.segments) ||
+      cell.bytes !== cell.segments * 2 * SIGNATURE_BYTES_PER_SIDE ||
+      cell.bytes > MAX_SIGNATURE_SHARD_BYTES
+    )
+      throw new Error(message);
+    seen.add(cell.key);
+    payloadBytes += cell.bytes;
+    return {
+      key: cell.key,
+      shadeKey: cell.shadeKey,
+      segments: cell.segments,
+      payloadKey: cell.payloadKey,
+      bytes: cell.bytes,
+      sha256: parseSha256(cell.sha256, message),
+    };
+  });
+  if (payloadBytes !== ref.payloadBytes) throw new Error(message);
+
+  return {
+    version: 1,
+    dataset: "nyc-navigation",
+    generation,
+    kind: "signatures",
+    model,
+    bytesPerSide: SIGNATURE_BYTES_PER_SIDE,
+    cells,
   };
 }
 

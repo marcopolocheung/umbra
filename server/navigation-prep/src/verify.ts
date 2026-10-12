@@ -11,6 +11,7 @@ import {
   parseNavigationNotices,
   parseNavigationPointer,
   parseNavigationShadeShard,
+  parseNavigationSignatureIndex,
   parseNavigationStreetShard,
   type GeoBounds,
   type NavigationBuildingShard,
@@ -287,18 +288,8 @@ async function readSignatures(
   if (raw.byteLength !== ref.bytes) throw new Error(`${ref.key}: byte count drifted`);
   if (sha256Hex(raw) !== ref.sha256) throw new Error(`${ref.key}: digest drifted`);
   bytes.set(ref.key, raw);
-  const index = JSON.parse(raw.toString("utf8")) as SignatureIndex;
-  if (
-    index.version !== 1 ||
-    index.dataset !== "nyc-navigation" ||
-    index.generation !== generation ||
-    index.kind !== "signatures" ||
-    index.model?.version !== ref.model ||
-    index.bytesPerSide !== SIGNATURE_BYTES_PER_SIDE ||
-    !Array.isArray(index.cells) ||
-    index.cells.length !== ref.cells
-  )
-    throw new Error(`${ref.key}: invalid signature index`);
+  // The client's parser: shapes, keys, sizes, generation and model version.
+  const index = parseNavigationSignatureIndex(JSON.parse(raw.toString("utf8")), ref, generation);
   const types = index.model.types.length;
   const claimedShades = new Set<string>();
   let payloadBytes = 0;
@@ -307,12 +298,7 @@ async function readSignatures(
     if (!shade || claimedShades.has(cell.shadeKey))
       throw new Error(`${cell.payloadKey}: no unique shade cell ${cell.shadeKey}`);
     claimedShades.add(cell.shadeKey);
-    if (
-      cell.payloadKey !== `signatures/${cell.key}.bin` ||
-      cell.shadeKey !== `shades/${cell.key}.json` ||
-      cell.segments !== shade.segments ||
-      cell.bytes !== shade.segments * 2 * SIGNATURE_BYTES_PER_SIDE
-    )
+    if (cell.segments !== shade.segments)
       throw new Error(`${cell.payloadKey}: rows do not line up with ${cell.shadeKey}`);
     const payload = await readFile(join(nested, cell.payloadKey));
     if (payload.byteLength !== cell.bytes) throw new Error(`${cell.payloadKey}: byte count drifted`);

@@ -26,6 +26,7 @@ import {
   parseNavigationManifest,
   parseNavigationPointer,
   parseNavigationShadeShard,
+  parseNavigationSignatureIndex,
   parseNavigationStreetShard,
   type GeoBounds,
   type NavigationBuildingShard,
@@ -34,6 +35,7 @@ import {
   type NavigationPointer,
   type NavigationShadeShard,
   type NavigationShadeShardRef,
+  type NavigationSignatureIndex,
   type NavigationStreetShard,
   type NavigationStreetShardRef,
 } from "./shardContract";
@@ -348,6 +350,78 @@ export async function loadNavigationShadeShard(
       report.shadeSegments += shard.segments.length;
     }
     return shard;
+  });
+  return withCallerSignal(shared, options?.signal);
+}
+
+/**
+ * Fetches the generation's shade-signature index (#321): the frozen model and
+ * the per-cell payload list. `null` for a generation built without signatures.
+ * Fetched whole and verified against the manifest ref like any shard.
+ */
+export async function loadNavigationSignatureIndex(
+  snapshot: NavigationSnapshot,
+  options?: NavigationRequestOptions,
+): Promise<NavigationSignatureIndex | null> {
+  if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
+  const ref = snapshot.manifest.signatures;
+  if (!ref) return null;
+  const fetchFn = options?.fetchFn ?? globalThis.fetch;
+  const url = shardUrl(snapshot.base, snapshot.generation, ref.key);
+  const shared = getOrFetch(url, async () => {
+    const response = await fetchFn(url, {
+      headers: { Accept: "application/json" },
+      cache: "force-cache",
+    });
+    if (!response.ok)
+      throw new Error(`NYC navigation signature index request failed (${response.status})`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength !== ref.bytes)
+      throw new Error("NYC navigation signature index byte contract mismatch");
+    if ((await sha256Hex(bytes)) !== ref.sha256)
+      throw new Error("NYC navigation signature index hash mismatch");
+    return parseNavigationSignatureIndex(
+      decodeJson(bytes, "NYC navigation signature index"),
+      ref,
+      snapshot.generation,
+    );
+  });
+  return withCallerSignal(shared, options?.signal);
+}
+
+/**
+ * Fetches one cell's signature payload whole (17 bytes per sidewalk side, at
+ * most a few hundred KB) and verifies it against the index entry. Rows follow
+ * the cell's shade index segments, `[left, right]`.
+ */
+export async function loadNavigationSignatureShard(
+  snapshot: NavigationSnapshot,
+  index: NavigationSignatureIndex,
+  cellKey: string,
+  options?: NavigationRequestOptions,
+): Promise<Uint8Array> {
+  if (!configuredBase()) throw new Error("VITE_NAVIGATION_BASE is not configured");
+  if (index.generation !== snapshot.generation)
+    throw new Error("NYC navigation signature index belongs to another generation");
+  const cell = index.cells.find((entry) => entry.key === cellKey);
+  if (!cell) throw new Error(`NYC navigation signature cell is not published (${cellKey})`);
+  const fetchFn = options?.fetchFn ?? globalThis.fetch;
+  const url = shardUrl(snapshot.base, snapshot.generation, cell.payloadKey);
+  const shared = getOrFetch(url, async () => {
+    const response = await fetchFn(url, {
+      headers: { Accept: "application/octet-stream" },
+      cache: "force-cache",
+    });
+    if (!response.ok)
+      throw new Error(
+        `NYC navigation signature shard request failed (${cell.payloadKey}, ${response.status})`,
+      );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength !== cell.bytes)
+      throw new Error(`NYC navigation signature shard byte contract mismatch (${cell.payloadKey})`);
+    if ((await sha256Hex(bytes)) !== cell.sha256)
+      throw new Error(`NYC navigation signature shard hash mismatch (${cell.payloadKey})`);
+    return bytes;
   });
   return withCallerSignal(shared, options?.signal);
 }

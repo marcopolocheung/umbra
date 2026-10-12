@@ -28,6 +28,12 @@ import {
   SHADE_BYTES_PER_SEGMENT,
   SHADE_SLOT_COUNT,
 } from "../../../app/lib/navigationData/shadeSlots";
+import {
+  SIGNATURE_BYTES_PER_SIDE,
+  SIGNATURE_COMPONENTS,
+  type NavigationSignatureIndex,
+  type NavigationSignatureModel,
+} from "../../../app/lib/navigationData/shardContract";
 import { canonicalJson, sha256Hex } from "./canonical";
 import { loadBuiltShadeShards, type BuiltShadeShard } from "./shade";
 import { rootPath } from "./util";
@@ -35,46 +41,12 @@ import { rootPath } from "./util";
 /** The frozen model version this build projects with. */
 export const SIGNATURE_MODEL_VERSION = "signatures-v1";
 
-export const SIGNATURE_COMPONENTS = 16;
-
-/** Bytes per sidewalk side: 16 int8 components, then one type byte. */
-export const SIGNATURE_BYTES_PER_SIDE = SIGNATURE_COMPONENTS + 1;
+export { SIGNATURE_BYTES_PER_SIDE, SIGNATURE_COMPONENTS };
 
 /** Sides per segment, `[left, right]`, matching the shade table. */
 const SIDES = SHADE_BYTES_PER_SEGMENT;
 
-export interface SignatureType {
-  id: number;
-  /** Generated from the type's mean profile; numbers only. */
-  name: string;
-  shaded: number;
-  summerShaded: number;
-  winterShaded: number;
-  /** Summer clock windows (America/New_York), `[start, end)`. */
-  summerShade: Array<[string, string]>;
-  summerSun: Array<[string, string]>;
-}
-
-export interface SignatureModel {
-  version: string;
-  fit: {
-    generation: string;
-    seed: number;
-    sample: number;
-    libraries: Record<string, string>;
-    varianceExplained: number;
-  };
-  /** Shade-table slot indices the model reads, ascending. */
-  daySlots: number[];
-  mean: number[];
-  /** SIGNATURE_COMPONENTS rows × daySlots.length. */
-  components: number[][];
-  /** Per component: z = q × scale. */
-  scales: number[];
-  /** K rows × SIGNATURE_COMPONENTS. */
-  centers: number[][];
-  types: SignatureType[];
-}
+export type SignatureModel = NavigationSignatureModel;
 
 export function modelPath(version = SIGNATURE_MODEL_VERSION): string {
   return join(import.meta.dirname, "..", "models", `${version}.json`);
@@ -235,23 +207,7 @@ export async function signaturesExecute(): Promise<SignatureProgress> {
 // ─── Folding into a generation ──────────────────────────────────────────────
 
 /** The generation's `signatures/index.json`, `generation` empty until labelled. */
-export interface SignatureIndex {
-  version: 1;
-  dataset: "nyc-navigation";
-  generation: string;
-  kind: "signatures";
-  model: SignatureModel;
-  bytesPerSide: number;
-  /** Per cell, in key order; rows follow `shades/<cell>.json` `segments`. */
-  cells: Array<{
-    key: string;
-    shadeKey: string;
-    segments: number;
-    payloadKey: string;
-    bytes: number;
-    sha256: string;
-  }>;
-}
+export type SignatureIndex = NavigationSignatureIndex;
 
 export interface BuiltSignatures {
   indexKey: string;
