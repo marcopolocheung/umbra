@@ -5,6 +5,13 @@ import { useAgent } from "../useAgent";
 import { guideNote } from "../../lib/agent/guideNote";
 import type { ToolResultEnvelope, VerifiedAnswer } from "../../lib/agent/receipts";
 
+// A pending window read must not repopulate a newly reset conversation.
+import { waitFor } from "@testing-library/react";
+import { shadeContext, shadePayload } from "../../lib/agent/__tests__/shadeFixture";
+import type { AgentContext } from "../../lib/agent/tools";
+import { shadeWindowObjectId } from "../../lib/agent/shadeWindows";
+
+
 const runAgent = vi.fn();
 vi.mock("../../lib/agent/agentLoop", () => ({ runAgent }));
 
@@ -105,5 +112,62 @@ describe("useAgent receipt revalidation", () => {
       rejectionReason: "stale_plan_revision",
     });
     expect(guideNote(result.current.messages.at(-1)!.answer!, [], [])).toBeNull();
+  });
+});
+
+const emptyResult = {
+  text: "", history: [], evidence: [],
+  answer: { blocks: [], receipts: [], rejectedProseCount: 0, danglingClaimBlocks: 0, duplicateClaimProposals: 0 },
+};
+function shadeHookArgs() {
+  return { ...shadeContext(), mapUtcOffsetMin: -240, userLocation: null,
+    getMapObjects: () => [], registerMapObjects: vi.fn(), focusMapObject: vi.fn() };
+}
+
+describe("useAgent shade-window lifecycle", () => {
+  beforeEach(() => runAgent.mockReset());
+
+  it("clears registered candidates and receipt objects on reset", async () => {
+    let ctx!: AgentContext;
+    const payload = shadePayload();
+    runAgent.mockImplementationOnce(async (options) => {
+      ctx = options.ctx;
+      ctx.registerShadeCandidates(payload.results.map(spot => ({ spot, requestedDate:payload.requestedDate, mode:payload.mode })));
+      ctx.registerMapObjects(payload.results.map(spot => ({ id:shadeWindowObjectId("r",spot.candidateId),kind:"shade_window",lat:spot.lat,lng:spot.lng })));
+      return emptyResult;
+    });
+    const args = shadeHookArgs();
+    const { result } = renderHook(() => useAgent(args));
+    await act(async () => { await result.current.sendMessage("Find shade from 2 to 4pm"); });
+    expect(ctx.getShadeCandidates()).toHaveLength(2);
+    expect(ctx.getMapObjects()).toHaveLength(2);
+    act(() => result.current.reset());
+    expect(ctx.getShadeCandidates()).toEqual([]);
+    expect(ctx.getMapObjects()).toEqual([]);
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("cancels a pending read and ignores its late registry writes and answer", async () => {
+    let ctx!: AgentContext;
+    let resolve!: (result: typeof emptyResult) => void;
+    runAgent.mockImplementationOnce((options) => {
+      ctx = options.ctx;
+      return new Promise<typeof emptyResult>(done => { resolve = done; });
+    });
+    const args = shadeHookArgs();
+    const { result } = renderHook(() => useAgent(args));
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.sendMessage("Find shade from 2 to 4pm"); });
+    await waitFor(() => expect(runAgent).toHaveBeenCalled());
+    act(() => result.current.reset());
+    expect(ctx.signal?.aborted).toBe(true);
+    const payload = shadePayload();
+    ctx.registerShadeCandidates(payload.results.map(spot => ({spot,requestedDate:payload.requestedDate,mode:payload.mode})));
+    ctx.registerMapObjects([{id:"late",kind:"shade_window",lat:40,lng:-73}]);
+    expect(ctx.getShadeCandidates()).toEqual([]);
+    expect(ctx.getMapObjects()).toEqual([]);
+    await act(async () => { resolve(emptyResult); await pending; });
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.isThinking).toBe(false);
   });
 });

@@ -5,6 +5,7 @@
  * not try to detect hostile wording: a source category, a bounded value and a
  * deterministic capability check decide whether a value may affect state.
  */
+import { isShadeWindowPayload } from "./shadeWindows";
 import { parseTime } from "../../hooks/useShadowTime";
 
 export const MAX_TRANSCRIPT_TEXT = 2_000;
@@ -229,6 +230,7 @@ const KNOWN_TOOLS = new Set([
   "geocode_place",
   "search_places",
   "check_shadow",
+  "find_shade_spots",
   "set_time",
   "plot_points",
   "plan_shadowed_route",
@@ -407,7 +409,13 @@ function coordinatesAreCandidates(
 export function candidateIdentities(
   resultId: string,
   payload: Record<string, unknown>,
+  toolName?: string,
 ): CandidateIdentity[] {
+  if (typeof payload.error === "string") return [];
+  if (toolName === "locate_user") return geo(payload.lat, payload.lng)
+    ? [{ id: `location:${resultId}`, lat: payload.lat as number, lng: payload.lng as number }] : [];
+  if (toolName === "find_shade_spots") return isShadeWindowPayload(payload) && payload.status === "ok"
+    ? payload.results.map(spot => ({ id: spot.candidateId, lat: spot.lat, lng: spot.lng })) : [];
   const results = Array.isArray(payload.results) ? payload.results : [];
   return results.flatMap((raw, index) => {
     const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -472,6 +480,8 @@ export function authorizeToolCall(
           return reject("time_not_requested_by_current_user");
       }
     }
+    if (tool === "find_shade_spots" && !candidateFor(state, args.nearCandidateId, args.lat, args.lng))
+      return reject("sensitive_argument_not_application_candidate");
     if (tool === "search_places") {
       const hasCoordinateAnchor = args.lat != null || args.lng != null;
       if (hasCoordinateAnchor && !candidateFor(state, args.nearCandidateId, args.lat, args.lng))

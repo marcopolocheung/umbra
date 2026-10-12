@@ -1,3 +1,9 @@
+import {
+  isShadeWindowPayload, matchesShadeFraction, shadeWindowObjectId,
+  shadeClockLabel, SHADE_UNAVAILABLE_LABELS,
+} from "./shadeWindows";
+import type { ShadeWindowPayload, ShadeUnavailableReason } from "../navigationData/shadeSpotsSource";
+import type { ShadeSpotSample, ShadeSpotWindow } from "../navigationData/shadeSpots";
 import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 import {
   isContentProvenance,
@@ -13,6 +19,7 @@ export type AgentToolName =
   | "geocode_place"
   | "search_places"
   | "check_shadow"
+  | "find_shade_spots"
   | "set_time"
   | "plot_points"
   | "plan_shadowed_route";
@@ -66,6 +73,7 @@ export type ToolPayloadByName = {
   geocode_place: PlaceToolPayload;
   search_places: PlaceToolPayload;
   check_shadow: ShadowToolPayload;
+  find_shade_spots: ShadeWindowPayload;
   set_time: TimeToolPayload;
   plot_points: PlotToolPayload;
   plan_shadowed_route: RoutePlanTerminalResult;
@@ -102,6 +110,8 @@ export function validateToolResultEnvelope(value: unknown): boolean {
     case "geocode_place":
     case "search_places":
       return Array.isArray(value.payload.results);
+    case "find_shade_spots":
+      return value.provenance.category === "application_state" && isShadeWindowPayload(value.payload) && (value.payload.status !== "ok" || value.sourceVersion === value.payload.sourceVersion);
     case "check_shadow":
       return (
         Array.isArray(value.payload.results) ||
@@ -178,13 +188,14 @@ function isAgentToolName(value: unknown): value is AgentToolName {
     "geocode_place",
     "search_places",
     "check_shadow",
+    "find_shade_spots",
     "set_time",
     "plot_points",
     "plan_shadowed_route",
   ].includes(value as AgentToolName);
 }
 
-export type ClaimKind = "place" | "shadow" | "time" | "route" | "accessibility";
+export type ClaimKind = "place" | "shadow" | "shade_window" | "time" | "route" | "accessibility";
 export type ClaimVerificationStatus = "verified" | "unknown" | "rejected";
 export type ClaimRejectionReason =
   | "missing_result"
@@ -245,19 +256,32 @@ export interface RouteClaimReceipt extends ClaimBase<"route", {
 
 export interface AccessibilityClaimReceipt extends ClaimBase<"accessibility", "unknown"> {}
 
+export interface ShadeWindowClaimReceipt extends ClaimBase<"shade_window", { meanShade: number; hours: ShadeSpotSample[] }> {
+  candidateId: string;
+  requestedDate: string;
+  requestedWindow: ShadeSpotWindow;
+  effectiveWindow: ShadeSpotWindow;
+  mode: "shade" | "sun";
+  basis?: { representativeDate: string; zone: string; slotMinutes: number };
+  coordinates: { lat: number; lng: number };
+  mapObjectId?: string;
+  reasons?: string[];
+}
+
 export type ClaimReceipt =
   | PlaceClaimReceipt
   | ShadowClaimReceipt
+  | ShadeWindowClaimReceipt
   | TimeClaimReceipt
   | RouteClaimReceipt
   | AccessibilityClaimReceipt;
 
 export type VerifiedAnswerBlock =
   | { kind: "claim"; claimId: string }
-  | { kind: "unknown"; claimKind: ClaimKind }
+  | { kind: "unknown"; claimKind: ClaimKind; reason?: ShadeUnavailableReason }
   | {
       kind: "notice";
-      code: "refusal" | "clarification" | "blocked" | "unverified" | "route_terminal";
+      code: "refusal" | "clarification" | "blocked" | "unverified" | "route_terminal" | "shade_route_time" | "shade_partial" | "shade_alternatives";
       detail?: string;
     };
 
@@ -281,6 +305,7 @@ export interface ClaimKindSupportMetrics {
 export interface ClaimSupportMetrics {
   place: ClaimKindSupportMetrics;
   shadow: ClaimKindSupportMetrics;
+  shade_window: ClaimKindSupportMetrics;
   time: ClaimKindSupportMetrics;
   route: ClaimKindSupportMetrics;
   accessibility: ClaimKindSupportMetrics;
@@ -310,6 +335,7 @@ export function claimSupportMetrics(
   return {
     place: measure("place"),
     shadow: measure("shadow"),
+    shade_window: measure("shade_window"),
     time: measure("time"),
     route: measure("route"),
     accessibility: measure("accessibility"),
@@ -323,7 +349,7 @@ export function claimSupportMetrics(
 
 export interface MapObject {
   id: string;
-  kind: "pin" | "route" | "shadow";
+  kind: "pin" | "route" | "shadow" | "shade_window";
   lat?: number;
   lng?: number;
   label?: string;
@@ -341,6 +367,9 @@ interface LooseReceipt {
   actionId?: unknown;
   planRevision?: unknown;
   objective?: unknown;
+  candidateId?: unknown;
+  requestedDate?: unknown;
+  requestedWindow?: unknown;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -447,6 +476,8 @@ export interface VerifyAnswerOptions {
   now: string;
   /** Tests use this seam to demonstrate that compatibility checks have teeth. */
   allowIncompatibleEvidence?: boolean;
+  /** Only this turn can add new unavailable notices; re-verification preserves existing ones. */
+  currentShadeResultIds?: string[];
 }
 
 /**
@@ -484,6 +515,11 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
           coordinates: { lat: 0, lng: 0 },
           atLocalTime: "unknown",
         };
+      if (claimKind === "shade_window")
+        return { ...common, kind: "shade_window", candidateId: asString(value.candidateId) ?? "unknown",
+          requestedDate: "unknown", requestedWindow: { fromMinutes: 0, toMinutes: 0 },
+          effectiveWindow: { fromMinutes: 0, toMinutes: 0 }, mode: "shade",
+          value: { meanShade: 0, hours: [] }, coordinates: { lat: 0, lng: 0 } };
       if (claimKind === "time")
         return { ...common, kind: "time", value: { localTime: "unknown", unit: "local-time" } };
       return {
@@ -496,7 +532,7 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
         mapObjectId: "unknown",
       };
     };
-    if (!kind || !["place", "shadow", "time", "route", "accessibility"].includes(kind)) {
+    if (!kind || !["place", "shadow", "shade_window", "time", "route", "accessibility"].includes(kind)) {
       receipts.push(reject("accessibility", "malformed_claim"));
       return;
     }
@@ -608,6 +644,43 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
         atLocalTime,
         mapObjectId,
         confidence: "unknown",
+      });
+      return;
+    }
+    if (kind === "shade_window") {
+      if (envelope!.toolName !== "find_shade_spots" || !validateToolResultEnvelope(envelope)) {
+        receipts.push(reject(kind, "wrong_tool_kind")); return;
+      }
+      const payload = envelope!.payload;
+      if (!isShadeWindowPayload(payload) || payload.status !== "ok") {
+        receipts.push(reject(kind, "missing_result")); return;
+      }
+      const candidate = payload.results.find(spot => spot.candidateId === value.candidateId);
+      if (!candidate) { receipts.push(reject(kind, "subject_mismatch")); return; }
+      const requested = isRecord(value.requestedWindow) ? value.requestedWindow : {};
+      if (value.requestedDate !== payload.requestedDate || requested.fromMinutes !== payload.requestedWindow.fromMinutes || requested.toMinutes !== payload.requestedWindow.toMinutes) {
+        receipts.push(reject(kind, "time_mismatch")); return;
+      }
+      const input = isRecord(value.value) ? value.value : {};
+      if (!matchesShadeFraction(input.meanShade, candidate.meanShade) ||
+        (input.hours != null && (!Array.isArray(input.hours) || !input.hours.every(raw => {
+          if (!isRecord(raw)) return false;
+          const actual = candidate.hours.find(h => h.slot === raw.slot && h.minutes === raw.minutes);
+          return !!actual && matchesShadeFraction(raw.shade, actual.shade);
+        })))) {
+        receipts.push(reject(kind, "malformed_claim")); return;
+      }
+      const mapObjectId = shadeWindowObjectId(envelope!.resultId, candidate.candidateId);
+      if (!options.mapObjects.some(object => object.kind === "shade_window" && object.id === mapObjectId && object.lat === candidate.lat && object.lng === candidate.lng)) {
+        receipts.push(reject(kind, "missing_map_object")); return;
+      }
+      const common = base({ ...value, subject: candidate.label }, index, kind, envelope, "verified");
+      receipts.push({ ...common, claimId: `claim-shade_window:${envelope!.resultId}:${candidate.candidateId}`,
+        kind, subject: candidate.label, candidateId: candidate.candidateId,
+        requestedDate: payload.requestedDate, requestedWindow: payload.requestedWindow,
+        effectiveWindow: candidate.effectiveWindow, basis: payload.basis, mode: payload.mode,
+        value: { meanShade: candidate.meanShade, hours: candidate.hours },
+        coordinates: { lat: candidate.lat, lng: candidate.lng }, mapObjectId, reasons: payload.reasons,
       });
       return;
     }
@@ -737,6 +810,14 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
       ? { kind: "claim", claimId: receipt.claimId }
       : { kind: "unknown", claimKind: receipt.kind },
   );
+  const currentShadeIds = new Set(options.currentShadeResultIds ?? []);
+  for (const envelope of options.evidence) {
+    if (envelope.toolName !== "find_shade_spots" || !currentShadeIds.has(envelope.resultId) || !validateToolResultEnvelope(envelope)) continue;
+    const payload = envelope.payload;
+    if (!isShadeWindowPayload(payload)) continue;
+    if (payload.status === "unavailable" && !blocks.some(block => block.kind === "unknown" && block.claimKind === "shade_window" && block.reason === payload.reason)) blocks.push({ kind: "unknown", claimKind: "shade_window", reason: payload.reason });
+    else if (payload.status === "ok" && payload.reasons.includes("incomplete-data") && !blocks.some(block => block.kind === "notice" && block.code === "shade_partial")) blocks.push({ kind: "notice", code: "shade_partial" });
+  }
   if (blocks.length === 0) blocks.push({ kind: "notice", code: "unverified" });
   return {
     blocks,
@@ -755,7 +836,8 @@ export function unsupportedProseReasons(
   return text.trim() ? ["free_text_not_rendered"] : [];
 }
 
-export function unknownLabel(kind: ClaimKind): string {
+export function unknownLabel(kind: ClaimKind, reason?: ShadeUnavailableReason): string {
+  if (kind === "shade_window") return reason ? SHADE_UNAVAILABLE_LABELS[reason] : "Shade window — unverified";
   return kind === "accessibility"
     ? "Accessibility — unknown"
     : `${kind[0].toUpperCase()}${kind.slice(1)} — unverified`;
@@ -771,6 +853,12 @@ export function noticeLabel(block: Extract<VerifiedAnswerBlock, { kind: "notice"
       return `I couldn't respond to that${block.detail ? ` (${block.detail})` : ""}.`;
     case "route_terminal":
       return block.detail ?? "The route result is not currently verified.";
+    case "shade_route_time":
+      return "Set the map to the departure date and time you want, then request the route.";
+    case "shade_alternatives":
+      return "These sidewalks are alternatives. Choose one destination before asking for a route.";
+    case "shade_partial":
+      return "Only sidewalks with complete available data were ranked; coverage is incomplete.";
     case "unverified":
       return "I could not verify a specific result.";
   }
@@ -784,6 +872,10 @@ export function receiptLabel(receipt: ClaimReceipt): string {
       return `${receipt.subject} — located`;
     case "shadow":
       return `${Math.round(receipt.value.fraction * 100)}% shadow at ${receipt.atLocalTime} — checked`;
+    case "shade_window": {
+      const fraction = receipt.mode === "sun" ? 1 - receipt.value.meanShade : receipt.value.meanShade;
+      return `${receipt.subject} — ${Math.round(fraction * 100)}% modelled ${receipt.mode}, ${shadeClockLabel(receipt.effectiveWindow.fromMinutes)}–${shadeClockLabel(receipt.effectiveWindow.toMinutes)} on ${receipt.requestedDate}`;
+    }
     case "time":
       return `${receipt.value.localTime} — set`;
     case "route":
@@ -796,6 +888,8 @@ export function receiptLabel(receipt: ClaimReceipt): string {
 }
 
 export function receiptDetail(receipt: ClaimReceipt): string {
+  if (receipt.kind === "shade_window" && receipt.verification === "verified")
+    return "Estimated from the NYC shade model.";
   // observedAt is the *simulated map date* in UTC (agentLoop's loop clock), so
   // rendering it as a wall-clock time would be a time-zone claim the receipt
   // cannot back up — the source and the evidence age carry the provenance.

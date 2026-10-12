@@ -10,6 +10,9 @@
  * React layer (see useAgent.ts) so they can read/write app state without the
  * agent code importing React.
  */
+import { findShadeSpots, shadeUnavailable } from "../navigationData/shadeSpotsSource";
+import { prepareShadeSpotsWindow, type ShadeSpotsQuery } from "../navigationData/shadeSpots";
+import { nycDate, shadeClockMinutes, shadeRouteTimeMatches, type ShadeCandidate } from "./shadeWindows";
 import type * as maplibregl from "maplibre-gl";
 import type { IShadowLayer } from "../shadow/IShadowLayer";
 import { geocodeForward, geocodeNear, type NominatimResult } from "../nominatim";
@@ -45,6 +48,8 @@ export function assistantPinId(lat: number, lng: number): string {
 }
 
 export interface AgentContext {
+  /** Conversation reset cancels this turn's reads and future actions. */
+  signal?: AbortSignal;
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
   shadowLayerRef: React.MutableRefObject<IShadowLayer | null>;
   dateRef: React.MutableRefObject<Date>;
@@ -67,6 +72,9 @@ export interface AgentContext {
   registerMapObjects: (objects: MapObject[]) => void;
   /** Replace the assistant's itinerary pins on the map. */
   setPins: (pins: AssistantPin[]) => void;
+  /** Validated shade results only; latest search context wins per stable sidewalk ID. */
+  getShadeCandidates: () => ShadeCandidate[];
+  registerShadeCandidates: (candidates: ShadeCandidate[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +215,22 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
     },
   },
   {
+    name: "find_shade_spots",
+    description: "Find up to four nearby sidewalk alternatives for SHADE or SUN over a time window or another date. Use check_shadow for an instantaneous check at the selected map time. Uses typical monthly shade, not exact-day weather; returns requested/effective times and basis. For one time on another date, query one quarter-hour beginning at that time and disclose the window. Names and seats are not known. Do not change the map time for this read. Never claim values or hours not returned. Results are alternatives, not itinerary stops.",
+    parameters: {
+      type: "object",
+      properties: {
+        lat: { type: "number" }, lng: { type: "number" },
+        from: { type: "string", description: "NYC clock time, e.g. 2:00 PM or 14:00." },
+        to: { type: "string", description: "Later NYC clock time on the same day." },
+        date: { type: "string", description: "ISO calendar date. Omitted means the selected NYC map date; explicit today uses todayDate from context." },
+        radiusM: { type: "number", enum: [200, 400, 800] },
+        mode: { type: "string", enum: ["shade", "sun"] },
+        nearCandidateId: { type: "string", description: "Exact known geocode, map-centre or GPS anchor identity." },
+      }, required: ["lat", "lng", "from", "to", "radiusM", "mode"],
+    },
+  },
+  {
     name: "set_time",
     description: "Set the simulation's local time of day so shadows match that hour.",
     parameters: {
@@ -304,6 +328,21 @@ export function parsePins(points: unknown): AssistantPin[] {
   return pins;
 }
 
+/** Freeze the implicit map date before a call joins the dedupe/evidence graph. */
+export function normalizeShadeToolArgs(args: Args, at: Date): Args {
+  return { ...args, date: args.date === undefined ? nycDate(at) : args.date };
+}
+
+export function shadeQueryFromArgs(args: Args): ShadeSpotsQuery | null {
+  const lat = num(args.lat), lng = num(args.lng);
+  const fromMinutes = shadeClockMinutes(args.from), toMinutes = shadeClockMinutes(args.to);
+  if (lat === null || lng === null || fromMinutes === null || toMinutes === null || typeof args.date !== "string" ||
+      ![200, 400, 800].includes(args.radiusM as number) || !["shade", "sun"].includes(args.mode as string)) return null;
+  const query: ShadeSpotsQuery = { lat, lng, fromMinutes, toMinutes, date: args.date,
+    radiusM: args.radiusM as ShadeSpotsQuery["radiusM"], mode: args.mode as "shade" | "sun" };
+  try { prepareShadeSpotsWindow(query); return query; } catch { return null; }
+}
+
 export async function executeTool(
   name: string,
   args: Args,
@@ -317,6 +356,7 @@ export async function executeTool(
   ) {
     return { error: "Mutation rejected by application authority policy." };
   }
+  if (ctx.signal?.aborted) return { error: "The conversation was reset." };
   const offset = ctx.getUtcOffsetMin();
   const map = ctx.mapRef.current;
 
@@ -335,6 +375,10 @@ export async function executeTool(
         center: { lat: +c.lat.toFixed(5), lng: +c.lng.toFixed(5) },
         zoom: +zoom.toFixed(1),
         localTime: fmtLocalTime(now, offset),
+        selectedDate: nycDate(now),
+        todayDate: nycDate(new Date()),
+        centerCandidateId: locationKnown ? `map-center:${c.lat.toFixed(5)}:${c.lng.toFixed(5)}` : undefined,
+        userLocationCandidateId: userLoc ? "user-location" : undefined,
         sunIntensity: +computeSolarIntensity(now, c.lat, c.lng).toFixed(2),
         locationKnown,
         userLocation: userLoc ? { lat: userLoc[1], lng: userLoc[0] } : null,
@@ -510,6 +554,11 @@ export async function executeTool(
       }
     }
 
+    case "find_shade_spots": {
+      const query = shadeQueryFromArgs(normalizeShadeToolArgs(args, ctx.dateRef.current));
+      return query ? { ...await (ctx.signal ? findShadeSpots(query, { signal: ctx.signal }) : findShadeSpots(query)) } : { ...shadeUnavailable("invalid_query") };
+    }
+
     case "set_time": {
       const t = str(args.time);
       if (!t) return { error: "time is required." };
@@ -578,6 +627,13 @@ export async function executeTool(
           via.push([lng, lat]);
         }
       }
+      const chosenIds = [args.fromCandidateId, args.toCandidateId,
+        ...(Array.isArray(args.via) ? args.via.map(raw => (raw as Record<string, unknown>)?.candidateId) : [])];
+      const shadeCandidates = ctx.getShadeCandidates();
+      const selected = shadeCandidates.filter(candidate => chosenIds.includes(candidate.spot.candidateId));
+      if (selected.length > 1) return { error: "Choose one shade alternative before routing.", code: "shade_alternatives" };
+      if (selected.some(candidate => !shadeRouteTimeMatches(candidate, ctx.dateRef.current)))
+        return { error: "Set the map departure date and time first.", code: "shade_route_time" };
       // The navigation hook owns mutations and routing. This wrapper only validates
       // tool arguments, asks it to allocate a versioned request, and awaits the
       // pipeline's terminal result.

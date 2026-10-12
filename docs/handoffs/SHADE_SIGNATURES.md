@@ -11,7 +11,7 @@
 >
 > Read [§ Next: the two plans](#next-the-two-plans) before starting new work here.
 
-**Verified 2026-10-12**, `umbra/main` at `11acdf4`. If this handoff disagrees with the code, the
+**Verified 2026-10-12**, `umbra/main` at `0632433` (A1 merged; A2 contracts below are updated in this PR). If this handoff disagrees with the code, the
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:**
@@ -21,7 +21,8 @@ code wins. Update this file in the same PR that changes a stated contract.
   - Phase 2: the client read side (#341).
   - Phase 3: a route street-type layer (#343).
 - **Published:** generation **`nyc-2026-09-18-e6718823bbb3`**, with signatures, is published and the delivery Worker serves `signatures/` (deployed 2026-10-11).
-- **A1 is implemented in this PR:** pure shade-window search and a development-only street-type QA toggle. A2 follows after review; the assistant does not call the core yet.
+- **A1 is merged (#345):** pure shade-window search and a development-only street-type QA toggle.
+- **A2 is implemented in this PR:** grounded area-window assistant tool, receipts and timelines. A3 follows after review; named-street lookup still needs metadata.
 - **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
@@ -258,7 +259,7 @@ Plan B stalls on imagery.
 on **another date**, and get specific sidewalks with their hours:
 - "Where can I wait in the shade near Bryant Park between 2 and 4 today?"
 - "Shadiest spot to sit near the Met at noon on July 4?"
-- "When is the north side of W 42nd St shaded in August?"
+- "Which sidewalk near W 42nd St is shadiest between noon and 2pm in August?"
 - "Find me somewhere **sunny** to sit near Union Square this afternoon in March." Sun-seeking matters:
   in Hiroshima the preferred side of wide streets flipped between summer and fall.
 
@@ -283,31 +284,34 @@ with exact re-ranking. What makes this an ML/AI-engineering artifact is the **ev
 find_shade_spots({
   lat: number, lng: number,            // the area centre (from geocode_place or the map)
   from: string, to: string,            // local times, e.g. "2:00 PM", "4:00 PM"
-  date?: string,                       // ISO date; default today. Snapped to the representative day.
+  date?: string,                       // ISO date; default selected NYC map date. Typical monthly day.
   radiusM: 200 | 400 | 800,            // enum: the model must not invent radii
   mode: "shade" | "sun",
-  street?: string,                     // "when is <street> shaded": both sides of one street
-  likeCandidateId?: string,            // "shade like this one": a previous result to match
+  nearCandidateId?: string,            // exact geocode / map-centre / GPS anchor identity
 })
 ```
 
 **Returns** at most **4** results, ranked. Each one has:
 - `candidateId`, accepted by `plot_points` and `plan_shadowed_route`;
-- `label`, for example "W 42nd St, north side, between 5th and 6th Ave";
+- `label`, for example "North-side sidewalk near 40.7550, -73.9850"; street/cross-street names require separate metadata;
 - `meanShade` over the window, 0–1;
-- `hours`, as `[{ time: "2:00 PM", shade: 0.92 }, …]` in 15-minute slots, collapsed to the hour if the window is longer than 2 hours;
-- `basis`, for example "typical day, July 15 (the table's representative day for July)";
+- `hours`, as `[{ slot: 420, minutes: 840, shade: 0.92 }, …]` in 15-minute slots; the UI groups longer-than-two-hour timelines into hourly interval means;
 - `lat`/`lng`.
 
-Plus a top-level `note` for degraded answers: out of NYC, no data loaded, or night.
+A successful result has `status: "ok"`, generation/sourceVersion, mode, coverage reasons and at most four candidates.
+Its top-level `basis` is `{representativeDate, zone: "America/New_York", slotMinutes: 15}`;
+`requestedDate` and requested/effective windows disclose the request and table snapping.
+An unavailable result is `{status: "unavailable", reason, results: []}`; the application renders
+a fixed explanation for coverage, missing/configuration/quarantined data, loading failures, night,
+empty windows or no candidates. `street` is not supported without new metadata; similarity is A3.
 
 **Rules the description must state** (overlap with `check_shadow` is the real selection risk, not the tool count):
-- "Use `check_shadow` for *right now* at spots already on the map. Use `find_shade_spots` for a **time window**, a **future or past date**, or 'when is X shaded'."
+- "Use `check_shadow` for *right now* at spots already on the map. Use `find_shade_spots` for a **time window**, a **future or past date**, and area searches. Named-street calendars need metadata first."
 - "Never state a shade value or time that this tool did not return."
 
 ### Implementation notes (reuse, don't rebuild)
 
-- **Cells:** `selectNavigationShards(manifest, zoneAround(lng, lat, radiusM))` in
+- **Cells:** `selectNavigationShardsForBoxes(manifest, anchorBounds, [zoneAround(lng, lat, radiusM)], 0)` in
   `app/lib/navigationData/remoteNavigation.ts`.
 - **Shade bytes:**
   - `loadNavigationShadeShard` plus `loadShadeSlotBlocks`, for only the window's slots: one month, ≤ 64 slots.
@@ -340,7 +344,7 @@ equals the tool's observation. Plan A adds three things:
 1. **A `shade_window` claim kind.** It references `{candidateId, from, to}` and carries `meanShade` and hour values, each checked against the tool result.
    - Rounding to the displayed precision is allowed.
    - **State the tolerance rule in code.** Numeric graders fail on rounding: Anthropic's CORE-Bench score went from 42% to 95% once grader bugs were fixed.
-2. **A regex sweep over free `text` blocks** that rejects any percentage, clock time or shade number not inside a verified claim. The answer schema already forbids them there; this enforces it.
+2. **The existing unconditional free-text rejection remains.** The current verifier already discards every model-written `text` and `unknown` block before rendering, which is stronger than the originally proposed numeric regex sweep. A2 keeps that rule and generates unavailable explanations from application-owned tool evidence.
 3. **An explicit `unknown` block** when the tool returns a degraded `note`. Out-of-NYC questions must say "no shade data here", not guess.
 
 ### Steps (one PR each)
@@ -352,7 +356,7 @@ equals the tool's observation. Plan A adds three things:
 | **A3** | `likeCandidateId` mode: PCA shortlist plus exact re-rank. | **Recall@10 of shortlist+re-rank against brute-force exact search** on ≥ 1,000 query sides from spatially spread cells. Target ≥ 0.95, which replaces phase 0's 0.41. Report the shortlist size vs recall curve. |
 | **A4** | The evaluation (below), plus route explanations: a `plan_shadowed_route` answer may cite "shaded until 9:45am" only through a `shade_window` receipt. | The eval report is checked in at `docs/notes/shade-spots-eval-<date>.md` with every number below. |
 
-### A1 implementation contract (2026-10-12; this PR)
+### A1 implementation contract (2026-10-12; merged #345)
 
 `app/lib/navigationData/shadeSpots.ts` exports two synchronous, deterministic functions:
 
@@ -396,6 +400,62 @@ equals the tool's observation. Plan A adds three things:
 A1 has no fetching, assistant schema/executor, receipts, named-street lookup, similarity mode,
 new published artifact, or deployment. Street-name preservation is a prerequisite for named-street
 queries in A2, not an implicit data-pipeline expansion of this PR.
+
+### A2 implementation contract (2026-10-12; this PR)
+
+- **Area search only:** `find_shade_spots` uses A1's canonical sidewalk sides. Named-street calendars,
+  seating/amenity claims and `likeCandidateId` are not offered. Optional date defaults to the selected
+  map day's NYC calendar date; explicit "today" uses `todayDate` from ambient context. Queries do not
+  move the timeline. Clock arguments must be explicit AM/PM or a 24-hour clock with minutes; malformed
+  strings and overnight windows fail rather than using the forgiving timeline parser's guesses.
+- **Loading:** one navigation snapshot per invocation, complete street geometry for every selected
+  shade-index batch, and only the requested month's snapped window slots. The adapter uses a 15-second
+  waiter deadline and existing shared/hash-verified street/index loaders and range-byte contracts.
+  No buildings or signatures are fetched. Verified cells can survive another cell's failure with an
+  incomplete-coverage notice; no partial window is averaged and no live-shadow fallback is substituted.
+  An anchor inside coverage can search a radius crossing its edge, with partial coverage disclosed.
+- **Caching:** exact normalized calls dedupe within the turn, including the resolved selected date.
+  Final search results are not cached across turns; each new search reacquires the generation. Existing
+  immutable HTTP/decoded street caches remain. A conversation reset cancels its read and prevents late
+  registry writes or responses from restoring cleared evidence/candidates.
+- **Authority:** map-centre/GPS anchors are application-owned identities, minted only when known;
+  named areas geocode first. The read needs current-turn planning intent and an exact known anchor.
+  Only validated application-state `find_shade_spots` payloads preserve A1's stable candidate IDs;
+  provider results keep the independent existing candidate-ID scheme. Opposite sidewalks never match
+  through coordinate tolerance. The session registry stores the latest search context per candidate
+  and clears on reset. Plotting and routing still pass through the existing mutation authority.
+- **Receipts:** `shade_window` proposals cite one resultId, candidateId, requestedDate, requestedWindow
+  and `value.meanShade`. Optional proposed hour values must match exact slot/minute identities.
+  Fractions must equal the observation or its rounding to two decimal places (whole-percentage display).
+  Labels, all samples, mode, effective window, representative day and sourceVersion are canonicalized
+  from validated evidence. Receipt focus uses an exact registered shade-window object; plotting is
+  presentation, not a prerequisite for verifying the table observation. Static window receipts do not
+  acquire the live-shadow check's fifteen-minute expiry.
+- **Unavailable results:** current-turn tool evidence creates a specific application-owned unknown
+  block even when the model supplies no usable proposal. Older window observations are not revived
+  by deterministic fallback on a later failed query. Partial searches retain verified claims with a
+  coverage notice; invented model prose still never renders.
+- **Presentation:** requested date, modelled shade/sun percentage and effective clock window are
+  visible; typical representative day, NYC clock, snapped endpoints and clipped daylight are disclosed.
+  Expandable timelines show quarter-hour rows for up to two hours and actual hourly interval means
+  for longer windows, retaining all samples in the receipt. Sun percentages are derived as `1 - shade`.
+- **Routing:** returned sides are alternatives, not an automatic itinerary. The assistant must pick
+  one explicit destination and a known origin. The existing map departure date must equal that
+  candidate's latest requested date, and its NYC time must lie inside the effective window; a mismatch
+  starts no route job and asks the user to set the departure first. Multiple shade alternatives are
+  rejected as one route. The route request/departure API is unchanged; route explanations remain A4.
+
+The tool is enabled through the existing assistant and `VITE_NAVIGATION_BASE`. This PR changes no
+published data and adds no dependency. A2's scripted/unit integration coverage is separate from A4's
+live pass³, tool-removal ablation, borough holdout and temperature comparison.
+
+**A2 validation:** 2,809 app tests, lint, typecheck and production build pass. Browser checks used
+stubbed model responses and HTTP-served published `e6718823bbb3` bytes: desktop shade and mobile
+sun searches returned four verified results with quarter-hour timelines and snapping disclosure;
+each used eight navigation requests (pointer, manifest, two street indexes, two shade indexes and
+two window ranges), with no building/signature fetches. An out-of-NYC query loaded only pointer and
+manifest and rendered the specific unavailable message. No browser page errors occurred. These
+checks validate the integration, not live-model tool selection or pass³ reliability.
 
 ### Evaluation (A4) — the interview artifact
 
