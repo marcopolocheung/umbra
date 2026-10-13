@@ -58,6 +58,56 @@ describe("llmClient against Gemini", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("/__gemini/v1beta/openai/chat/completions");
   });
 
+  it("unquotes numeric coordinates Gemini sends as strings, leaving other strings alone", async () => {
+    vi.stubEnv("VITE_GEMINI_API_KEY", "k1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        reply({
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "g1",
+              type: "function",
+              function: {
+                name: "check_shadow",
+                arguments:
+                  '{"lat":"40.7359","lng":"-73.9911","radiusM":"400","time":"3:00 PM","points":[{"lat":"1.5","lng":"x"}]}',
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    const res = await callModel({ contents: [{ role: "user", parts: [{ text: "shade?" }] }] });
+    expect(res.candidates![0].content.parts[0].functionCall!.args).toEqual({
+      lat: 40.7359,
+      lng: -73.9911,
+      radiusM: 400,
+      time: "3:00 PM",
+      points: [{ lat: 1.5, lng: "x" }],
+    });
+  });
+
+  it("unquotes coordinates in a tool call the model wrote as text", async () => {
+    vi.stubEnv("VITE_GEMINI_API_KEY", "k1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        reply({
+          role: "assistant",
+          content: '<tool_call>{"name":"check_shadow","arguments":{"lat":"40.7359","lng":"-73.9911"}}</tool_call>',
+        }),
+      ),
+    );
+    const res = await callModel({ contents: [{ role: "user", parts: [{ text: "shade?" }] }] });
+    expect(res.candidates![0].content.parts[0].functionCall).toEqual({
+      name: "check_shadow",
+      args: { lat: 40.7359, lng: -73.9911 },
+    });
+  });
+
   it("moves past a key Gemini rejects to the next key in the pool", async () => {
     vi.stubEnv("VITE_GEMINI_API_KEY", "dead,live");
     const fetchMock = vi

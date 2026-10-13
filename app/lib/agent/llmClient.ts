@@ -407,6 +407,21 @@ function stripToolSyntax(text: string): string {
     .trim();
 }
 
+const NUMERIC_ARG = /^(lat|lng|fromLat|fromLng|toLat|toLng|radiusM)$/;
+
+/**
+ * Gemini sometimes quotes numbers ("lat":"40.7359"); the authority layer
+ * compares coordinates exactly, so a quoted copy of a valid anchor was refused.
+ */
+export function unquoteNumericArgs(value: unknown, key = ""): unknown {
+  if (Array.isArray(value)) return value.map((item) => unquoteNumericArgs(item));
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unquoteNumericArgs(v, k)]));
+  if (typeof value === "string" && NUMERIC_ARG.test(key) && /^-?\d+(\.\d+)?$/.test(value.trim()))
+    return Number(value);
+  return value;
+}
+
 /** OpenAI chat-completions response → neutral IR. */
 function fromOpenAI(data: OpenAIResponse): LlmResponse {
   const msg = data.choices?.[0]?.message;
@@ -420,7 +435,9 @@ function fromOpenAI(data: OpenAIResponse): LlmResponse {
     for (const tc of structured) {
       let args: Record<string, unknown> = {};
       try {
-        args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+        args = tc.function.arguments
+          ? (unquoteNumericArgs(JSON.parse(tc.function.arguments)) as Record<string, unknown>)
+          : {};
       } catch {
         args = {};
       }
@@ -436,7 +453,13 @@ function fromOpenAI(data: OpenAIResponse): LlmResponse {
     // No structured calls — recover any text-embedded ones.
     const recovered = extractTextToolCalls(text);
     if (recovered.length > 0) {
-      for (const c of recovered) parts.push({ functionCall: { name: c.name, args: c.args } });
+      for (const c of recovered)
+        parts.push({
+          functionCall: {
+            name: c.name,
+            args: unquoteNumericArgs(c.args) as Record<string, unknown>,
+          },
+        });
     } else {
       const clean = stripToolSyntax(text);
       if (clean) parts.push({ text: clean });

@@ -487,6 +487,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // This turn's successful results by call, so a repeat is answered, not re-run.
   const turnResults = new Map<string, ToolResultEnvelope>();
   const evidence = [...(opts.evidence ?? [])];
+  const priorEvidenceCount = evidence.length;
   let resultSequence = evidence.length;
   const currentShadeResultIds: string[] = [];
   const shadeRouteNotices = new Set<"shade_route_time" | "shade_alternatives">();
@@ -685,27 +686,33 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   });
   const attachExactCandidateIds = (tool: string, rawArgs: Record<string, unknown>) => {
     const candidates = authorityState().candidates;
-    const idFor = (lat: unknown, lng: unknown) =>
+    const exactId = (lat: unknown, lng: unknown) =>
       candidates.find((candidate) => candidate.lat === lat && candidate.lng === lng)?.id;
+    // A model-invented label ("cafe-0") on exact candidate coordinates takes the
+    // app's identity, as an omitted one does; a valid or unmatched ID is kept.
+    const fixId = (id: unknown, lat: unknown, lng: unknown) =>
+      candidates.some((c) => c.id === id && c.lat === lat && c.lng === lng)
+        ? id
+        : (exactId(lat, lng) ?? id);
     if (tool === "plot_points" && Array.isArray(rawArgs.points)) {
       return {
         ...rawArgs,
         points: rawArgs.points.map((raw) => {
           const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-          return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+          return { ...point, candidateId: fixId(point.candidateId, point.lat, point.lng) };
         }),
       };
     }
     if (tool === "check_shadow") {
       const pointWithId = (raw: unknown) => {
         const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-        return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+        return { ...point, candidateId: fixId(point.candidateId, point.lat, point.lng) };
       };
       return Array.isArray(rawArgs.points)
         ? { ...rawArgs, points: rawArgs.points.map(pointWithId) }
         : {
             ...rawArgs,
-            candidateId: rawArgs.candidateId ?? idFor(rawArgs.lat, rawArgs.lng),
+            candidateId: fixId(rawArgs.candidateId, rawArgs.lat, rawArgs.lng),
           };
     }
     if (
@@ -714,18 +721,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     ) {
       return {
         ...rawArgs,
-        nearCandidateId: rawArgs.nearCandidateId ?? idFor(rawArgs.lat, rawArgs.lng),
+        nearCandidateId: fixId(rawArgs.nearCandidateId, rawArgs.lat, rawArgs.lng),
       };
     }
     if (tool === "plan_shadowed_route") {
       return {
         ...rawArgs,
-        fromCandidateId: rawArgs.fromCandidateId ?? idFor(rawArgs.fromLat, rawArgs.fromLng),
-        toCandidateId: rawArgs.toCandidateId ?? idFor(rawArgs.toLat, rawArgs.toLng),
+        fromCandidateId: fixId(rawArgs.fromCandidateId, rawArgs.fromLat, rawArgs.fromLng),
+        toCandidateId: fixId(rawArgs.toCandidateId, rawArgs.toLat, rawArgs.toLng),
         via: Array.isArray(rawArgs.via)
           ? rawArgs.via.map((raw) => {
               const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-              return { ...point, candidateId: point.candidateId ?? idFor(point.lat, point.lng) };
+              return { ...point, candidateId: fixId(point.candidateId, point.lat, point.lng) };
             })
           : rawArgs.via,
       };
@@ -784,6 +791,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       "kiosk",
       "kiosks",
       "somewhere",
+      // Coverage is NYC-only; the model qualifies places with the city.
+      "new",
+      "york",
+      "nyc",
     ]);
     // Every term must be either from this user turn or this small application
     // taxonomy. One safe-looking overlap cannot launder an added directive.
@@ -830,21 +841,31 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       (entry) =>
         entry.toolName !== "find_shade_spots" || currentShadeResultIds.includes(entry.resultId),
     );
-    const answer = verifyAnswer(
-      proposed ??
+    const verifyOptions = {
+      evidence,
+      mapObjects,
+      currentPlanRevision: ctx.getCurrentPlanRevision(),
+      now: now(),
+      currentShadeResultIds,
+    };
+    const fallback = (source = currentShadeEvidence) =>
+      verifyAnswer(
         evidenceProposal(
-          currentShadeEvidence,
+          source,
           mapObjects,
           /\b(accessib|wheelchair|step[- ]free)/i.test(opts.userText),
         ),
-      {
-        evidence,
-        mapObjects,
-        currentPlanRevision: ctx.getCurrentPlanRevision(),
-        now: now(),
-        currentShadeResultIds,
-      },
-    );
+        verifyOptions,
+      );
+    const verified = (a: VerifiedAnswer) => a.receipts.some((r) => r.verification === "verified");
+    let answer = proposed ? verifyAnswer(proposed, verifyOptions) : fallback();
+    // A mis-shaped proposal must not hide this turn's verified evidence (production
+    // 2026-10-13: a working shade search rendered as "Accessibility — unknown").
+    if (proposed && !verified(answer)) {
+      // This turn's evidence only: a rebuild must not answer with earlier turns' facts.
+      const rebuilt = fallback(evidence.slice(priorEvidenceCount));
+      if (verified(rebuilt)) answer = rebuilt;
+    }
     for (const code of shadeRouteNotices) answer.blocks.push({ kind: "notice", code });
     const text =
       answer.blocks

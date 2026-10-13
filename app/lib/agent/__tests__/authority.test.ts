@@ -206,6 +206,37 @@ describe("C10 untrusted content and authority", () => {
     );
   });
 
+  it("lets the model qualify a user-named place with the city, and nothing else", async () => {
+    vi.mocked(rolesShareConfig).mockReturnValue(true);
+    vi.mocked(executeTool).mockResolvedValue({ results: [] });
+    const geocode = (query: string) => ({
+      candidates: [
+        {
+          content: {
+            role: "model" as const,
+            parts: [{ functionCall: { name: "geocode_place", args: { query } } }],
+          },
+        },
+      ],
+    });
+    const final = {
+      candidates: [{ content: { role: "model" as const, parts: [{ text: "final" }] } }],
+    };
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(geocode("Union Square, New York"))
+      .mockResolvedValueOnce(geocode("Union Square Brooklyn"))
+      .mockResolvedValueOnce(final);
+
+    const result = await runAgent({
+      history: [],
+      userText: "Where can I wait in the shade near Union Square from 2 to 4pm today?",
+      ctx: makeScenarioContext(),
+    });
+
+    const geocodes = result.authorityEvents.filter((e) => e.tool === "geocode_place");
+    expect(geocodes.map((e) => e.decision)).toEqual(["accepted", "rejected"]);
+  });
+
   it("requires a shadow probe time to match an explicit current-turn time", () => {
     const candidate = { id: "candidate:park", lat: 40.7536, lng: -73.9832 };
     const state = { currentUserText: "Is this park shadowed now?", candidates: [candidate] };

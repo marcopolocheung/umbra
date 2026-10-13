@@ -127,6 +127,12 @@ describe("shade-window receipts", () => {
     ).toBe(false);
   });
 
+  it("never turns a claim of unknown kind into an accessibility claim", () => {
+    const answer = verify({ kind: "shade" });
+    expect(answer.receipts).toEqual([]);
+    expect(answer.blocks).toEqual([{ kind: "notice", code: "unverified" }]);
+  });
+
   it("never renders stray model percentages or times", () => {
     const answer = verifyAnswer(
       { blocks: [{ kind: "text", text: "73% shady until 9:45 AM" }], receipts: [proposal] },
