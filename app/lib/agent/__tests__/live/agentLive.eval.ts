@@ -56,11 +56,10 @@ const real = await vi.importActual<typeof import("../../llmClient")>("../../llmC
 
 // A4: shade scenarios read the published table through the production Worker
 // (read-only, no key). The tool's own argument handling is the app's.
-vi.stubEnv(
-  "VITE_NAVIGATION_BASE",
+const NAVIGATION_BASE =
   process.env.AGENT_EVAL_NAVIGATION_BASE ??
-    "https://shademap-nyc-shadow-staging.marcoctpolo.workers.dev",
-);
+  "https://shademap-nyc-shadow-staging.marcoctpolo.workers.dev";
+vi.stubEnv("VITE_NAVIGATION_BASE", NAVIGATION_BASE);
 const liveShadeCandidates: ShadeCandidate[] = [];
 const liveShadeTool: ToolStub = async (args) => {
   const reference = liveShadeCandidates.find((c) => c.spot.candidateId === args.likeCandidateId);
@@ -115,6 +114,8 @@ let lastRequestAt = 0;
 
 vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
+  // A4: the shade tool reads the published table from the delivery Worker.
+  if (url.startsWith(`${NAVIGATION_BASE}/`)) return realFetch(input, init);
   if (!url.startsWith("/__gemini/")) throw new Error(`live eval: unexpected fetch to ${url}`);
 
   const wait = lastRequestAt + MIN_GAP_MS - Date.now();
@@ -265,6 +266,14 @@ interface Row {
   ms: number;
   /** A4 pass: no error, no grounding violation, right first tool, shade expectations met. */
   pass: boolean;
+  /**
+   * A4 task success, independent of which tool answered (so the ablation is a fair
+   * comparison): the final answer carries a verified claim or the expected
+   * unavailable notice, or a should-not-call scenario stayed clear of those tools.
+   */
+  answered: boolean;
+  /** The live shade data could not be read — an infrastructure failure, not the model's. */
+  dataFailure: boolean;
 }
 
 const rows: Row[] = [];
@@ -346,6 +355,16 @@ function summarize(
     invalidParams,
     ms,
     pass: false,
+    answered:
+      !!trace &&
+      (trace.verified?.receipts.some((r) => r.verification === "verified") === true ||
+        (!!scenario.expect.unavailable && !shadeExpectationMisses.length) ||
+        (!!scenario.expect.shouldNotCall && !shadeExpectationMisses.length)),
+    dataFailure: (trace?.toolCalls ?? []).some(
+      (c) =>
+        c.name === "find_shade_spots" &&
+        (c.result.reason === "load_failed" || c.result.reason === "not_configured"),
+    ),
   };
 }
 
@@ -369,6 +388,8 @@ describe("live agent eval — gemini", () => {
     const row = summarize(scenario, trace, error, repeat, Date.now() - started);
     row.pass =
       !row.error &&
+      !row.dataFailure &&
+      row.answered &&
       row.violations.length === 0 &&
       row.shadeExpectationMisses.length === 0 &&
       (row.expectedTool === undefined || row.firstTool === row.expectedTool);
@@ -398,6 +419,8 @@ function a4Summary(all: Row[]): string[] {
   const ablated = process.env.AGENT_EVAL_ABLATE || "none";
   const ids = [...new Set(all.map((r) => r.id))];
   const passAll = ids.filter((id) => all.filter((r) => r.id === id).every((r) => r.pass));
+  const answeredAll = ids.filter((id) => all.filter((r) => r.id === id).every((r) => r.answered));
+  const dataFailures = all.filter((r) => r.dataFailure).length;
   const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "—");
   const scored = all.filter((r) => r.expectedTool);
   const expected = [...new Set(scored.map((r) => r.expectedTool!))].sort();
@@ -408,6 +431,16 @@ function a4Summary(all: Row[]): string[] {
   return [
     `### A4 — repeats ${REPEATS}, ablated: ${ablated}`,
     "",
+    ...(dataFailures
+      ? [
+          `**INVALID RUN: the live shade data failed to load in ${dataFailures}/${all.length} runs.** ` +
+            "Those runs measure the network, not the model; fix and rerun before reading anything below.",
+          "",
+        ]
+      : []),
+    `Task success (a verified answer, the right unavailable notice, or a correct refusal; tool-independent): ` +
+      `${pct(all.filter((r) => r.answered).length, all.length)} of runs · ` +
+      `pass^${REPEATS} ${pct(answeredAll.length, ids.length)} of scenarios`,
     `pass^1: ${pct(all.filter((r) => r.pass).length, all.length)} (${all.filter((r) => r.pass).length}/${all.length} runs) · ` +
       `pass^${REPEATS}: ${pct(passAll.length, ids.length)} (${passAll.length}/${ids.length} scenarios)`,
     `Median LLM calls: ${median(all.map((r) => r.llmCalls))} · median conversation: ${(median(all.map((r) => r.ms)) / 1000).toFixed(1)} s · ` +
@@ -436,6 +469,8 @@ function a4Summary(all: Row[]): string[] {
         (r) =>
           `- ${r.id}#${r.repeat + 1}: ${[
             r.error && `error ${r.error.slice(0, 80)}`,
+            r.dataFailure && "shade data failed to load",
+            !r.answered && "no verified answer",
             ...r.violations,
             ...r.shadeExpectationMisses,
             r.expectedTool &&
