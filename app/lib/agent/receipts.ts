@@ -574,7 +574,7 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
       !kind ||
       !["place", "shadow", "shade_window", "time", "route", "accessibility"].includes(kind)
     ) {
-      receipts.push(reject("accessibility", "malformed_claim"));
+      // An unknown kind supports nothing; it must not render as an accessibility claim.
       return;
     }
     if (kind === "accessibility") {

@@ -311,3 +311,113 @@ it("uses a registered prior sidewalk for a more-like-this follow-up without a ne
     result.answer.receipts.some((r) => r.kind === "shade_window" && r.verification === "verified"),
   ).toBe(true);
 });
+
+// Production smoke 2026-10-13: Gemini labelled its pins "cafe-0", and the
+// authority layer refused the plot.
+describe("model argument drift seen in production", () => {
+  it("falls back to this turn's verified evidence when the written answer verifies nothing", async () => {
+    const ctx = shadeContext();
+    const misshapen = JSON.stringify({
+      blocks: [{ kind: "claim", claimId: "c1" }],
+      receipts: [{ claimId: "c1", kind: "shade", candidateId: "x", supportingResultIds: ["r"] }],
+    });
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce({
+        candidates: [{ content: { role: "model" as const, parts: [{ text: misshapen }] } }],
+      });
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm",
+      ctx,
+    });
+    expect(result.text).not.toContain("Accessibility");
+    expect(
+      result.answer.receipts.filter(
+        (r) => r.kind === "shade_window" && r.verification === "verified",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("never rebuilds an unverified answer from an earlier turn's evidence", async () => {
+    const ctx = shadeContext();
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(final);
+    const first = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm",
+      ctx,
+    });
+    const nothingVerifies = JSON.stringify({
+      blocks: [{ kind: "unknown", claimKind: "accessibility" }],
+      receipts: [{ claimId: "a", kind: "accessibility", value: "unknown" }],
+    });
+    vi.mocked(callModel).mockResolvedValueOnce({
+      candidates: [{ content: { role: "model" as const, parts: [{ text: nothingVerifies }] } }],
+    });
+    const second = await runAgent({
+      history: first.history,
+      evidence: first.evidence,
+      userText: "Is the first one step-free?",
+      ctx,
+    });
+    expect(second.answer.receipts.map((r) => r.kind)).toEqual(["accessibility"]);
+  });
+
+  it("gives an invented pin label the app identity only on exact candidate coordinates", async () => {
+    const ctx = shadeContext();
+    const [a, b] = shadePayload().results;
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(
+        calls([
+          {
+            name: "plot_points",
+            args: {
+              points: [
+                { lat: a.lat, lng: a.lng, label: "A", candidateId: "cafe-0" },
+                { lat: b.lat + 0.01, lng: b.lng, label: "B", candidateId: "cafe-1" },
+              ],
+            },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm",
+      ctx,
+    });
+    // The second point is not a candidate anywhere, so the whole plot stays refused.
+    expect(result.authorityEvents.filter((e) => e.tool === "plot_points")[0]).toMatchObject({
+      decision: "rejected",
+      reasonCode: "sensitive_argument_not_application_candidate",
+    });
+    vi.mocked(callModel)
+      .mockReset()
+      .mockResolvedValueOnce(
+        calls([
+          {
+            name: "plot_points",
+            args: { points: [{ lat: a.lat, lng: a.lng, label: "A", candidateId: "cafe-0" }] },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(final);
+    vi.mocked(rolesShareConfig).mockReturnValue(true);
+    const next = await runAgent({
+      history: result.history,
+      userText: "Show the first one on the map",
+      ctx,
+    });
+    expect(next.authorityEvents.find((e) => e.tool === "plot_points")).toMatchObject({
+      decision: "accepted",
+    });
+    const plotted = vi
+      .mocked(executeTool)
+      .mock.calls.filter(([name]) => name === "plot_points")
+      .at(-1)![1];
+    expect((plotted.points as Array<{ candidateId: string }>)[0].candidateId).toBe(a.candidateId);
+  });
+});
