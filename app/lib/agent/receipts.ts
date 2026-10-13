@@ -1,8 +1,14 @@
 import {
-  isShadeWindowPayload, matchesShadeFraction, shadeWindowObjectId,
-  shadeClockLabel, SHADE_UNAVAILABLE_LABELS,
+  isShadeWindowPayload,
+  matchesShadeFraction,
+  shadeWindowObjectId,
+  shadeClockLabel,
+  SHADE_UNAVAILABLE_LABELS,
 } from "./shadeWindows";
-import type { ShadeWindowPayload, ShadeUnavailableReason } from "../navigationData/shadeSpotsSource";
+import type {
+  ShadeWindowPayload,
+  ShadeUnavailableReason,
+} from "../navigationData/shadeSpotsSource";
 import type { ShadeSpotSample, ShadeSpotWindow } from "../navigationData/shadeSpots";
 import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
 import {
@@ -111,7 +117,11 @@ export function validateToolResultEnvelope(value: unknown): boolean {
     case "search_places":
       return Array.isArray(value.payload.results);
     case "find_shade_spots":
-      return value.provenance.category === "application_state" && isShadeWindowPayload(value.payload) && (value.payload.status !== "ok" || value.sourceVersion === value.payload.sourceVersion);
+      return (
+        value.provenance.category === "application_state" &&
+        isShadeWindowPayload(value.payload) &&
+        (value.payload.status !== "ok" || value.sourceVersion === value.payload.sourceVersion)
+      );
     case "check_shadow":
       return (
         Array.isArray(value.payload.results) ||
@@ -241,11 +251,15 @@ export interface ShadowClaimReceipt
 export interface TimeClaimReceipt
   extends ClaimBase<"time", { localTime: string; unit: "local-time" }> {}
 
-export interface RouteClaimReceipt extends ClaimBase<"route", {
-  status: "completed" | "partial";
-  /** Objective used by the application-owned route calculation. */
-  objective?: "sun" | "rain";
-}> {
+export interface RouteClaimReceipt
+  extends ClaimBase<
+    "route",
+    {
+      status: "completed" | "partial";
+      /** Objective used by the application-owned route calculation. */
+      objective?: "sun" | "rain";
+    }
+  > {
   requestId: string;
   actionId: string;
   planRevision: number;
@@ -256,7 +270,15 @@ export interface RouteClaimReceipt extends ClaimBase<"route", {
 
 export interface AccessibilityClaimReceipt extends ClaimBase<"accessibility", "unknown"> {}
 
-export interface ShadeWindowClaimReceipt extends ClaimBase<"shade_window", { meanShade: number; hours: ShadeSpotSample[] }> {
+export interface ShadeWindowClaimReceipt
+  extends ClaimBase<"shade_window", { meanShade: number; hours: ShadeSpotSample[] }> {
+  similarity?: {
+    reference: import("../navigationData/shadeSpots").ShadeSpot;
+    annualSquaredDistance: number;
+    sampleCount: number;
+    model: string;
+    approximate: true;
+  };
   candidateId: string;
   requestedDate: string;
   requestedWindow: ShadeSpotWindow;
@@ -281,7 +303,15 @@ export type VerifiedAnswerBlock =
   | { kind: "unknown"; claimKind: ClaimKind; reason?: ShadeUnavailableReason }
   | {
       kind: "notice";
-      code: "refusal" | "clarification" | "blocked" | "unverified" | "route_terminal" | "shade_route_time" | "shade_partial" | "shade_alternatives";
+      code:
+        | "refusal"
+        | "clarification"
+        | "blocked"
+        | "unverified"
+        | "route_terminal"
+        | "shade_route_time"
+        | "shade_partial"
+        | "shade_alternatives";
       detail?: string;
     };
 
@@ -370,6 +400,7 @@ interface LooseReceipt {
   candidateId?: unknown;
   requestedDate?: unknown;
   requestedWindow?: unknown;
+  likeCandidateId?: unknown;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -516,10 +547,17 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
           atLocalTime: "unknown",
         };
       if (claimKind === "shade_window")
-        return { ...common, kind: "shade_window", candidateId: asString(value.candidateId) ?? "unknown",
-          requestedDate: "unknown", requestedWindow: { fromMinutes: 0, toMinutes: 0 },
-          effectiveWindow: { fromMinutes: 0, toMinutes: 0 }, mode: "shade",
-          value: { meanShade: 0, hours: [] }, coordinates: { lat: 0, lng: 0 } };
+        return {
+          ...common,
+          kind: "shade_window",
+          candidateId: asString(value.candidateId) ?? "unknown",
+          requestedDate: "unknown",
+          requestedWindow: { fromMinutes: 0, toMinutes: 0 },
+          effectiveWindow: { fromMinutes: 0, toMinutes: 0 },
+          mode: "shade",
+          value: { meanShade: 0, hours: [] },
+          coordinates: { lat: 0, lng: 0 },
+        };
       if (claimKind === "time")
         return { ...common, kind: "time", value: { localTime: "unknown", unit: "local-time" } };
       return {
@@ -532,7 +570,10 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
         mapObjectId: "unknown",
       };
     };
-    if (!kind || !["place", "shadow", "shade_window", "time", "route", "accessibility"].includes(kind)) {
+    if (
+      !kind ||
+      !["place", "shadow", "shade_window", "time", "route", "accessibility"].includes(kind)
+    ) {
       receipts.push(reject("accessibility", "malformed_claim"));
       return;
     }
@@ -649,38 +690,100 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     }
     if (kind === "shade_window") {
       if (envelope!.toolName !== "find_shade_spots" || !validateToolResultEnvelope(envelope)) {
-        receipts.push(reject(kind, "wrong_tool_kind")); return;
+        receipts.push(reject(kind, "wrong_tool_kind"));
+        return;
       }
       const payload = envelope!.payload;
       if (!isShadeWindowPayload(payload) || payload.status !== "ok") {
-        receipts.push(reject(kind, "missing_result")); return;
+        receipts.push(reject(kind, "missing_result"));
+        return;
       }
-      const candidate = payload.results.find(spot => spot.candidateId === value.candidateId);
-      if (!candidate) { receipts.push(reject(kind, "subject_mismatch")); return; }
+      const candidate = payload.results.find((spot) => spot.candidateId === value.candidateId);
+      if (!candidate) {
+        receipts.push(reject(kind, "subject_mismatch"));
+        return;
+      }
       const requested = isRecord(value.requestedWindow) ? value.requestedWindow : {};
-      if (value.requestedDate !== payload.requestedDate || requested.fromMinutes !== payload.requestedWindow.fromMinutes || requested.toMinutes !== payload.requestedWindow.toMinutes) {
-        receipts.push(reject(kind, "time_mismatch")); return;
+      if (
+        value.requestedDate !== payload.requestedDate ||
+        requested.fromMinutes !== payload.requestedWindow.fromMinutes ||
+        requested.toMinutes !== payload.requestedWindow.toMinutes
+      ) {
+        receipts.push(reject(kind, "time_mismatch"));
+        return;
       }
       const input = isRecord(value.value) ? value.value : {};
-      if (!matchesShadeFraction(input.meanShade, candidate.meanShade) ||
-        (input.hours != null && (!Array.isArray(input.hours) || !input.hours.every(raw => {
-          if (!isRecord(raw)) return false;
-          const actual = candidate.hours.find(h => h.slot === raw.slot && h.minutes === raw.minutes);
-          return !!actual && matchesShadeFraction(raw.shade, actual.shade);
-        })))) {
-        receipts.push(reject(kind, "malformed_claim")); return;
+      if (
+        !matchesShadeFraction(input.meanShade, candidate.meanShade) ||
+        (input.hours != null &&
+          (!Array.isArray(input.hours) ||
+            !input.hours.every((raw) => {
+              if (!isRecord(raw)) return false;
+              const actual = candidate.hours.find(
+                (h) => h.slot === raw.slot && h.minutes === raw.minutes,
+              );
+              return !!actual && matchesShadeFraction(raw.shade, actual.shade);
+            })))
+      ) {
+        receipts.push(reject(kind, "malformed_claim"));
+        return;
+      }
+      if (
+        (input.annualSquaredDistance !== undefined &&
+          input.annualSquaredDistance !==
+            payload.similarity?.squaredDistances[candidate.candidateId]) ||
+        (value.likeCandidateId !== undefined &&
+          value.likeCandidateId !== payload.similarity?.reference.candidateId)
+      ) {
+        receipts.push(reject(kind, "malformed_claim"));
+        return;
       }
       const mapObjectId = shadeWindowObjectId(envelope!.resultId, candidate.candidateId);
-      if (!options.mapObjects.some(object => object.kind === "shade_window" && object.id === mapObjectId && object.lat === candidate.lat && object.lng === candidate.lng)) {
-        receipts.push(reject(kind, "missing_map_object")); return;
+      if (
+        !options.mapObjects.some(
+          (object) =>
+            object.kind === "shade_window" &&
+            object.id === mapObjectId &&
+            object.lat === candidate.lat &&
+            object.lng === candidate.lng,
+        )
+      ) {
+        receipts.push(reject(kind, "missing_map_object"));
+        return;
       }
-      const common = base({ ...value, subject: candidate.label }, index, kind, envelope, "verified");
-      receipts.push({ ...common, claimId: `claim-shade_window:${envelope!.resultId}:${candidate.candidateId}`,
-        kind, subject: candidate.label, candidateId: candidate.candidateId,
-        requestedDate: payload.requestedDate, requestedWindow: payload.requestedWindow,
-        effectiveWindow: candidate.effectiveWindow, basis: payload.basis, mode: payload.mode,
+      const common = base(
+        { ...value, subject: candidate.label },
+        index,
+        kind,
+        envelope,
+        "verified",
+      );
+      receipts.push({
+        ...common,
+        claimId: `claim-shade_window:${envelope!.resultId}:${candidate.candidateId}`,
+        kind,
+        subject: candidate.label,
+        candidateId: candidate.candidateId,
+        requestedDate: payload.requestedDate,
+        requestedWindow: payload.requestedWindow,
+        effectiveWindow: candidate.effectiveWindow,
+        basis: payload.basis,
+        mode: payload.mode,
+        ...(payload.similarity
+          ? {
+              similarity: {
+                reference: payload.similarity.reference,
+                annualSquaredDistance: payload.similarity.squaredDistances[candidate.candidateId],
+                sampleCount: payload.similarity.sampleCount,
+                model: payload.similarity.model,
+                approximate: true as const,
+              },
+            }
+          : {}),
         value: { meanShade: candidate.meanShade, hours: candidate.hours },
-        coordinates: { lat: candidate.lat, lng: candidate.lng }, mapObjectId, reasons: payload.reasons,
+        coordinates: { lat: candidate.lat, lng: candidate.lng },
+        mapObjectId,
+        reasons: payload.reasons,
       });
       return;
     }
@@ -727,7 +830,8 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     }
     if (
       requestedObjective != null &&
-      (requestedObjective !== "sun" && requestedObjective !== "rain" || requestedObjective !== terminal.objective)
+      ((requestedObjective !== "sun" && requestedObjective !== "rain") ||
+        requestedObjective !== terminal.objective)
     ) {
       receipts.push(reject(kind, "subject_mismatch"));
       return;
@@ -812,11 +916,30 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
   );
   const currentShadeIds = new Set(options.currentShadeResultIds ?? []);
   for (const envelope of options.evidence) {
-    if (envelope.toolName !== "find_shade_spots" || !currentShadeIds.has(envelope.resultId) || !validateToolResultEnvelope(envelope)) continue;
+    if (
+      envelope.toolName !== "find_shade_spots" ||
+      !currentShadeIds.has(envelope.resultId) ||
+      !validateToolResultEnvelope(envelope)
+    )
+      continue;
     const payload = envelope.payload;
     if (!isShadeWindowPayload(payload)) continue;
-    if (payload.status === "unavailable" && !blocks.some(block => block.kind === "unknown" && block.claimKind === "shade_window" && block.reason === payload.reason)) blocks.push({ kind: "unknown", claimKind: "shade_window", reason: payload.reason });
-    else if (payload.status === "ok" && payload.reasons.includes("incomplete-data") && !blocks.some(block => block.kind === "notice" && block.code === "shade_partial")) blocks.push({ kind: "notice", code: "shade_partial" });
+    if (
+      payload.status === "unavailable" &&
+      !blocks.some(
+        (block) =>
+          block.kind === "unknown" &&
+          block.claimKind === "shade_window" &&
+          block.reason === payload.reason,
+      )
+    )
+      blocks.push({ kind: "unknown", claimKind: "shade_window", reason: payload.reason });
+    else if (
+      payload.status === "ok" &&
+      payload.reasons.includes("incomplete-data") &&
+      !blocks.some((block) => block.kind === "notice" && block.code === "shade_partial")
+    )
+      blocks.push({ kind: "notice", code: "shade_partial" });
   }
   if (blocks.length === 0) blocks.push({ kind: "notice", code: "unverified" });
   return {
@@ -837,7 +960,8 @@ export function unsupportedProseReasons(
 }
 
 export function unknownLabel(kind: ClaimKind, reason?: ShadeUnavailableReason): string {
-  if (kind === "shade_window") return reason ? SHADE_UNAVAILABLE_LABELS[reason] : "Shade window — unverified";
+  if (kind === "shade_window")
+    return reason ? SHADE_UNAVAILABLE_LABELS[reason] : "Shade window — unverified";
   return kind === "accessibility"
     ? "Accessibility — unknown"
     : `${kind[0].toUpperCase()}${kind.slice(1)} — unverified`;
@@ -873,8 +997,9 @@ export function receiptLabel(receipt: ClaimReceipt): string {
     case "shadow":
       return `${Math.round(receipt.value.fraction * 100)}% shadow at ${receipt.atLocalTime} — checked`;
     case "shade_window": {
-      const fraction = receipt.mode === "sun" ? 1 - receipt.value.meanShade : receipt.value.meanShade;
-      return `${receipt.subject} — ${Math.round(fraction * 100)}% modelled ${receipt.mode}, ${shadeClockLabel(receipt.effectiveWindow.fromMinutes)}–${shadeClockLabel(receipt.effectiveWindow.toMinutes)} on ${receipt.requestedDate}`;
+      const fraction =
+        receipt.mode === "sun" ? 1 - receipt.value.meanShade : receipt.value.meanShade;
+      return `${receipt.subject}${receipt.similarity ? " — similar annual shade pattern" : ""} — ${Math.round(fraction * 100)}% modelled ${receipt.mode}, ${shadeClockLabel(receipt.effectiveWindow.fromMinutes)}–${shadeClockLabel(receipt.effectiveWindow.toMinutes)} on ${receipt.requestedDate}`;
     }
     case "time":
       return `${receipt.value.localTime} — set`;

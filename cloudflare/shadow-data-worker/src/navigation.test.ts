@@ -67,6 +67,10 @@ function request(path: string, method = "GET", origin?: string): Request {
 }
 
 describe("navigation allow-list", () => {
+  it("serves profile indexes and range payloads through the existing origin", () => {
+    for (const file of ["index.json", "z14-4829-6165.json", "z14-4829-6165.bin"]) expect(navigationKey(`/navigation/nyc/${generation}/profiles/${file}`)).toBe(`navigation/nyc/${generation}/profiles/${file}`);
+    expect(navigationKey(`/navigation/nyc/${generation}/profiles/raw.txt`)).toBeUndefined();
+  });
   it("serves the pointer, manifest, notices, and every shard kind", () => {
     expect(navigationKey("/navigation/nyc/current.json")).toBe("navigation/nyc/current.json");
     expect(navigationKey(`/navigation/nyc/${generation}/manifest.json`)).toBe(

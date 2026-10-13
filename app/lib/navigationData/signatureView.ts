@@ -51,7 +51,12 @@ export interface SignatureView {
   /** Every frozen type, in id order. */
   readonly types: readonly NavigationSignatureType[];
   /** The `k` nearest held sides to a held side, closest first, excluding itself. */
-  nearest(key: string, side: SignatureSide, k: number): SignatureNeighbour[] | null;
+  nearest(
+    key: string,
+    side: SignatureSide,
+    k: number,
+    eligible?: ReadonlySet<string>,
+  ): SignatureNeighbour[] | null;
 }
 
 export function createSignatureView(
@@ -104,10 +109,16 @@ export function createSignatureView(
     type(id) {
       return types[id];
     },
-    nearest(key, side, k) {
+    nearest(key, side, k, eligible) {
       const query = rowOf.get(`${key}/${side}`);
       if (query === undefined) return null;
-      const count = Math.max(0, Math.min(Math.floor(k), rows - 1));
+      const available = eligible
+        ? keys.reduce(
+            (n, key, r) => n + (r !== query && eligible.has(`${key}/${sides[r]}`) ? 1 : 0),
+            0,
+          )
+        : rows - 1;
+      const count = Number.isFinite(k) ? Math.max(0, Math.min(Math.floor(k), available)) : 0;
       if (count === 0) return [];
       // Top-k by insertion into a sorted buffer: k is small, rows are many.
       const bestRows = new Int32Array(count);
@@ -116,7 +127,8 @@ export function createSignatureView(
       // sum passes the current k-th best: most rows exit after a few terms.
       const q = vectors.slice(query * SIGNATURE_COMPONENTS, (query + 1) * SIGNATURE_COMPONENTS);
       for (let other = 0; other < rows; other++) {
-        if (other === query) continue;
+        if (other === query || (eligible && !eligible.has(`${keys[other]}/${sides[other]}`)))
+          continue;
         const o = other * SIGNATURE_COMPONENTS;
         const worst = bestDistances[count - 1];
         let distance = 0;

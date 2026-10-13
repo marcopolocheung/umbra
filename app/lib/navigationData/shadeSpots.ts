@@ -68,6 +68,8 @@ export interface ShadeSpotSample {
 }
 
 export interface ShadeSpot {
+  /** Owner cell for subsequent verified-reference searches. */
+  shadeKey?: string;
   candidateId: string;
   segmentKey: string;
   /** Canonical side: lower node ID -> higher node ID. */
@@ -99,6 +101,7 @@ export interface ShadeSpotsResult {
 }
 
 interface SpotSegment {
+  shadeKey?: string;
   key: string;
   lo: number;
   hi: number;
@@ -236,8 +239,10 @@ export function createShadeSpotsView(
       if (shadeKeys.has(key)) throw new Error(`duplicate shade spots segment ${key}`);
       shadeKeys.add(key);
       const segment = segments.get(key);
-      if (segment) batch.push(segment.edge);
-      else missingGeometry++;
+      if (segment) {
+        segment.shadeKey = shard.payload.key.replace(/\.bin$/, ".json");
+        batch.push(segment.edge);
+      } else missingGeometry++;
     }
     // A missing edge changes every group's centroid. Skip this shard's scoring
     // until its complete geometry is available; the result reports incompleteness.
@@ -346,7 +351,11 @@ export function prepareShadeSpotsWindow(query: ShadeSpotsQuery) {
 }
 
 /** Exact table arithmetic once a query is snapped; no sub-slot interpolation. */
-export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeSpotsResult {
+export function shadeSpots(
+  view: ShadeSpotsView,
+  query: ShadeSpotsQuery,
+  options?: { candidateIds?: ReadonlySet<string>; all?: boolean },
+): ShadeSpotsResult {
   const prepared = prepareShadeSpotsWindow(query);
   const { slots } = prepared;
   const reasons = new Set(prepared.reasons);
@@ -365,7 +374,11 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
   const candidates: ShadeSpot[] = [];
   let eligible = 0;
   let daylightSegments = 0;
+  const allowedSegments = options?.candidateIds
+    ? new Set([...options.candidateIds].map((id) => id.split(":")[1]))
+    : null;
   for (const segment of view.segments) {
+    if (allowedSegments && !allowedSegments.has(segment.key)) continue;
     const { from, to } = segment.edge;
     const midpoint: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
     const distanceM = haversineMeters([query.lng, query.lat], midpoint);
@@ -391,6 +404,11 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
     }
     const offsets = sidewalkOffsets(segment.edge);
     for (const side of ["left", "right"] as const) {
+      if (
+        options?.candidateIds &&
+        !options.candidateIds.has(`${view.generation}:${segment.key}:${side}`)
+      )
+        continue;
       const lng = midpoint[0] + offsets[side][0];
       const lat = midpoint[1] + offsets[side][1];
       const hours = active.map(({ slot, minutes }, index) => ({
@@ -399,6 +417,7 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
         shade: values[index]![side],
       }));
       candidates.push({
+        shadeKey: segment.shadeKey,
         candidateId: `${view.generation}:${segment.key}:${side}`,
         segmentKey: segment.key,
         side,
@@ -429,6 +448,10 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
   );
   const seen = new Set<string>();
   for (const candidate of candidates) {
+    if (options?.all) {
+      response.results.push(candidate);
+      continue;
+    }
     if (seen.has(candidate.blockFaceId)) continue;
     seen.add(candidate.blockFaceId);
     response.results.push(candidate);
@@ -443,4 +466,35 @@ export function shadeSpots(view: ShadeSpotsView, query: ShadeSpotsQuery): ShadeS
   }
   response.reasons = [...reasons];
   return response;
+}
+
+/** Geometry/daylight eligibility before PCA search; no shade bytes are scored. */
+export function shadeSpotGeometry(view: ShadeSpotsView, query: ShadeSpotsQuery) {
+  const prepared = prepareShadeSpotsWindow(query);
+  return view.segments.flatMap((segment) => {
+    const midpoint: [number, number] = [
+      (segment.edge.from[0] + segment.edge.to[0]) / 2,
+      (segment.edge.from[1] + segment.edge.to[1]) / 2,
+    ];
+    const distanceM = haversineMeters([query.lng, query.lat], midpoint);
+    if (
+      segment.lengthM < 15 ||
+      distanceM > query.radiusM ||
+      !segment.sunCell ||
+      !view.table.covers(segment.key) ||
+      !prepared.slots.some(
+        (s) =>
+          SunCalc.getPosition(s.instant, segment.sunCell!.lat, segment.sunCell!.lng).altitude > 0,
+      )
+    )
+      return [];
+    return (["left", "right"] as const).map((side, index) => ({
+      key: segment.key,
+      side,
+      signatureSide: index as 0 | 1,
+      candidateId: `${view.generation}:${segment.key}:${side}`,
+      blockFaceId: `${segment.chain}:${swapSideAgainstCanonical(segment.chainFrom, segment.chainTo, side)}`,
+      distanceM,
+    }));
+  });
 }

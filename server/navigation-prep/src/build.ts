@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MAX_BUILDING_SHARD_BYTES,
@@ -20,6 +20,8 @@ import { buildingsFromNdjson } from "./buildings";
 import { canonicalJson, jsonBytes, sha256Hex } from "./canonical";
 import { readReceipts } from "./acquire";
 import { loadBuiltShadeShards } from "./shade";
+import { loadBuiltProfiles } from "./profiles";
+import type { ProfileRef } from "../../../app/lib/navigationData/profileContract";
 import { loadBuiltSignatures } from "./signatures";
 import { shardBuildings, shardStreets } from "./sharding";
 import { rootPath } from "./util";
@@ -54,6 +56,7 @@ export interface BuildResult {
   buildingShards: number;
   shadeShards: number;
   signatureCells: number;
+  profileCells: number;
   budgets: {
     streetShardBytes: number;
     buildingShardBytes: number;
@@ -141,6 +144,8 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
   const shadeShards = await loadBuiltShadeShards();
   // Shade signatures (#321), if the `signatures` stage has run. Same rule.
   const signatures = await loadBuiltSignatures(shadeShards);
+  const profiles = await loadBuiltProfiles(shadeShards);
+  if (profiles && !signatures) throw new Error("profiles require signatures");
 
   // Phase A: content digests without the generation label.
   const labelFree = new Map<string, string>();
@@ -167,6 +172,13 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
       sha256Hex(jsonBytes({ ...signatures.index, generation: undefined })),
     );
     for (const [key, payload] of signatures.payloads) labelFree.set(key, sha256Hex(payload));
+  }
+  if (profiles) {
+    labelFree.set(
+      "profiles/index.json",
+      sha256Hex(jsonBytes({ ...profiles.index, generation: undefined })),
+    );
+    for (const [key, ref] of profiles.files) labelFree.set(key, ref.sha256);
   }
   const sortedKeys = [...labelFree.keys()].sort();
   const generationHash = sha256Hex(
@@ -262,6 +274,22 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     };
   }
 
+  let profileRef: ProfileRef | undefined;
+  if (profiles) {
+    profiles.index.generation = generationId;
+    const raw = jsonBytes(profiles.index);
+    bytesMap.set("profiles/index.json", raw);
+    profileRef = {
+      key: "profiles/index.json",
+      bytes: raw.length,
+      sha256: sha256Hex(raw),
+      cells: profiles.index.cells.length,
+      indexBytes: profiles.index.cells.reduce((n, c) => n + c.bytes, 0),
+      payloadBytes: [...profiles.files]
+        .filter(([k]) => k.endsWith(".bin"))
+        .reduce((n, [, r]) => n + r.bytes, 0),
+    };
+  }
   const notices: NavigationNotices = {
     version: 1,
     dataset: "nyc-navigation",
@@ -294,6 +322,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     buildingRefs,
     shadeRefs,
     signatureRef,
+    profileRef,
   );
   const pointer: NavigationPointer = {
     version: 1,
@@ -323,6 +352,13 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     await mkdir(join(nested, "buildings"), { recursive: true });
     if (shadeRefs.length > 0) await mkdir(join(nested, "shades"), { recursive: true });
     if (signatureRef) await mkdir(join(nested, "signatures"), { recursive: true });
+    if (profiles) {
+      await mkdir(join(nested, "profiles"), { recursive: true });
+      for (const [key, ref] of profiles.files) {
+        await copyFile(ref.file, join(nested, key));
+        written.push(join(nested, key));
+      }
+    }
     await writeFile(join(nested, "manifest.json"), Buffer.from(jsonBytes(manifest)));
     await writeFile(join(nested, "notices.json"), Buffer.from(jsonBytes(notices)));
     for (const key of [...bytesMap.keys()].sort()) {
@@ -347,6 +383,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     buildingShards: buildingRefs.length,
     shadeShards: shadeRefs.length,
     signatureCells: signatureRef?.cells ?? 0,
+    profileCells: profileRef?.cells ?? 0,
     budgets: manifest.budgets,
     budgetsEnforced: {
       maxStreetShardBytes: MAX_STREET_SHARD_BYTES,
@@ -384,13 +421,11 @@ function assembleManifest(
   buildingRefs: NavigationBuildingShardRef[],
   shadeRefs: NavigationShadeShardRef[],
   signatureRef: NavigationSignatureRef | undefined,
+  profileRef?: ProfileRef,
 ): NavigationManifest {
   const streetBytes = streetRefs.reduce((sum, ref) => sum + ref.bytes, 0);
   const buildingBytes = buildingRefs.reduce((sum, ref) => sum + ref.bytes, 0);
-  const shadeBytes = shadeRefs.reduce(
-    (sum, ref) => sum + ref.bytes + ref.payloadBytes,
-    0,
-  );
+  const shadeBytes = shadeRefs.reduce((sum, ref) => sum + ref.bytes + ref.payloadBytes, 0);
   const signatureBytes = signatureRef ? signatureRef.bytes + signatureRef.payloadBytes : 0;
   return {
     version: 1,
@@ -413,12 +448,22 @@ function assembleManifest(
     buildingShards: buildingRefs,
     ...(shadeRefs.length > 0 ? { shadeShards: shadeRefs } : {}),
     ...(signatureRef ? { signatures: signatureRef } : {}),
+    ...(profileRef ? { profiles: profileRef } : {}),
     budgets: {
       streetShardBytes: streetBytes,
       buildingShardBytes: buildingBytes,
       shadeShardBytes: shadeBytes,
       ...(signatureRef ? { signatureBytes } : {}),
-      totalBytes: streetBytes + buildingBytes + shadeBytes + signatureBytes + noticesBytes,
+      ...(profileRef
+        ? { profileBytes: profileRef.bytes + profileRef.indexBytes + profileRef.payloadBytes }
+        : {}),
+      totalBytes:
+        streetBytes +
+        buildingBytes +
+        shadeBytes +
+        signatureBytes +
+        noticesBytes +
+        (profileRef ? profileRef.bytes + profileRef.indexBytes + profileRef.payloadBytes : 0),
     },
   };
 }

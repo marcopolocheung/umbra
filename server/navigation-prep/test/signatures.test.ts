@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { parseNavigationManifest } from "../../../app/lib/navigationData/shardContract";
-import { SHADE_BYTES_PER_SEGMENT, SHADE_SLOT_COUNT } from "../../../app/lib/navigationData/shadeSlots";
+import {
+  SHADE_BYTES_PER_SEGMENT,
+  SHADE_SLOT_COUNT,
+} from "../../../app/lib/navigationData/shadeSlots";
 import { build } from "../src/build";
 import { canonicalJson, sha256Hex } from "../src/canonical";
 import { publishPlan } from "../src/publish";
@@ -17,6 +20,7 @@ import {
   projectSignatures,
   signaturesExecute,
 } from "../src/signatures";
+import { profilesExecute } from "../src/profiles";
 import { verifyGeneration } from "../src/verify";
 
 /**
@@ -50,7 +54,10 @@ test("TS projection equals the Python reference on real Midtown sides", async ()
   // Every one of the K types is exercised, so a centroid mix-up cannot pass.
   assert.equal(new Set(fixture.expected.types).size, model.centers.length);
   for (let side = 0; side < sides; side++) {
-    const row = out.subarray(side * SIGNATURE_BYTES_PER_SIDE, (side + 1) * SIGNATURE_BYTES_PER_SIDE);
+    const row = out.subarray(
+      side * SIGNATURE_BYTES_PER_SIDE,
+      (side + 1) * SIGNATURE_BYTES_PER_SIDE,
+    );
     assert.equal(row[SIGNATURE_COMPONENTS], fixture.expected.types[side], `type of side ${side}`);
     for (let c = 0; c < SIGNATURE_COMPONENTS; c++) {
       // Within one quantization step of the float reference, and almost
@@ -70,7 +77,10 @@ test("payload is segments × 2 × 17 bytes, rows following the shade columns", a
   const fixture = await parityFixture();
   const shade = new Uint8Array(Buffer.from(fixture.payloadBase64, "base64"));
   const out = projectSignatures(model, shade, fixture.segments);
-  assert.equal(out.byteLength, fixture.segments * SHADE_BYTES_PER_SEGMENT * SIGNATURE_BYTES_PER_SIDE);
+  assert.equal(
+    out.byteLength,
+    fixture.segments * SHADE_BYTES_PER_SEGMENT * SIGNATURE_BYTES_PER_SIDE,
+  );
 
   // Swap two segment columns in the slot-major shade payload: their signature
   // rows swap with them, and nothing else moves.
@@ -85,13 +95,21 @@ test("payload is segments × 2 × 17 bytes, rows following the shade columns", a
   }
   const moved = projectSignatures(model, swapped, fixture.segments);
   const segmentRow = (bytes: Uint8Array, segment: number) =>
-    Buffer.from(bytes.subarray(segment * 2 * SIGNATURE_BYTES_PER_SIDE, (segment + 1) * 2 * SIGNATURE_BYTES_PER_SIDE));
+    Buffer.from(
+      bytes.subarray(
+        segment * 2 * SIGNATURE_BYTES_PER_SIDE,
+        (segment + 1) * 2 * SIGNATURE_BYTES_PER_SIDE,
+      ),
+    );
   assert.deepEqual(segmentRow(moved, 0), segmentRow(out, 1));
   assert.deepEqual(segmentRow(moved, 1), segmentRow(out, 0));
   for (let segment = 2; segment < fixture.segments; segment++)
     assert.deepEqual(segmentRow(moved, segment), segmentRow(out, segment));
 
-  assert.throws(() => projectSignatures(model, shade.subarray(1), fixture.segments), /shade payload/);
+  assert.throws(
+    () => projectSignatures(model, shade.subarray(1), fixture.segments),
+    /shade payload/,
+  );
 });
 
 // ─── End to end through build → verify → publish plan ───────────────────────
@@ -222,6 +240,9 @@ test("a generation with signatures rebuilds identically, verifies, and plans eve
       Array.from({ length: 8 }, (_, t) => fixture.expected.types.filter((x) => x === t).length),
     );
 
+    const packed = await profilesExecute();
+    assert.equal(packed.cells, 1);
+    assert.equal(packed.bytes, fixture.segments * 2 * 581);
     const first = await build({ grid: 14 });
     assert.equal(first.signatureCells, 1);
     assert.notEqual(first.generation, plain.generation, "signatures are hashed into the id");
@@ -246,17 +267,32 @@ test("a generation with signatures rebuilds identically, verifies, and plans eve
     const payload = await readFile(join(nested, "signatures", "z14-4824-6157.bin"));
     assert.equal(payload.byteLength, shadeIndex.segments.length * 2 * SIGNATURE_BYTES_PER_SIDE);
     for (let side = 0; side < fixture.expected.types.length; side++)
-      assert.equal(payload[side * SIGNATURE_BYTES_PER_SIDE + SIGNATURE_COMPONENTS], fixture.expected.types[side]);
+      assert.equal(
+        payload[side * SIGNATURE_BYTES_PER_SIDE + SIGNATURE_COMPONENTS],
+        fixture.expected.types[side],
+      );
 
     const verified = await verifyGeneration(first.generation);
     assert.equal(verified.signatureCells, 1);
+    assert.equal(verified.profileCells, 1);
+    assert.equal(verified.budgets.actual.profileBytes, manifest.budgets.profileBytes);
     assert.equal(verified.budgets.actual.signatureBytes, manifest.budgets.signatureBytes);
 
     const plan = await publishPlan(first.generation);
     assert.deepEqual(
-      plan.objects.filter((object) => object.kind.startsWith("signature")).map((object) => object.kind),
+      plan.objects
+        .filter((object) => object.kind.startsWith("signature"))
+        .map((object) => object.kind),
       ["signatureIndex", "signaturePayload"],
     );
+    assert.deepEqual(
+      plan.objects.filter((o) => o.kind.startsWith("profile")).map((o) => o.kind),
+      ["profileIndex", "profileCell", "profilePayload"],
+    );
+    const strayProfile = join(nested, "profiles", "unclaimed.bin");
+    await writeFile(strayProfile, new Uint8Array(1));
+    await assert.rejects(publishPlan(first.generation), /unclaimed profile/);
+    await rm(strayProfile);
     assert.equal(plan.payloadBytes, verified.budgets.actual.totalBytes);
     assert.equal(plan.objects.at(-1)?.kind, "pointer");
 

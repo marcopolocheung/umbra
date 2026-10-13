@@ -49,8 +49,9 @@ const SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. 
 The current map context (center, local time, whether the user's location is known) is given to you below — use it directly; do NOT ask for it.
 
 Procedure (follow in order):
-1. If locationKnown is false: if the user said "here"/"near me", call locate_user; otherwise ask which area they mean. Never invent a location.
+1. A similarity request can use an earlier verified sidewalk without resolving a new location. Otherwise, if locationKnown is false: if the user said "here"/"near me", call locate_user; otherwise ask which area they mean. Never invent a location.
 2. For a shade/sun WINDOW or another date, use find_shade_spots after resolving the area. Its omitted date is selectedDate; explicit today uses todayDate. Do NOT call set_time for this read. After that window search, skip steps 3 and 4 and go to presentation. Window results are sidewalk ALTERNATIVES, not seats or an itinerary. Use coordinate/compass labels; named-street calendars are not supported. Plot alternatives if useful, but route only to one explicitly chosen destination with a known origin. Do not route through all alternatives. A route still uses the selected map departure date/time.
+For "more like this" or similar annual shade patterns, use find_shade_spots with likeCandidateId from a previous verified sidewalk result. If the reference is ambiguous, ask which result. Omitted date/window/mode inherit that result and radius defaults to 400 m. The search stays near the reference. Similarity is approximate retrieval over annual modelled shade; its displayed window is a separate comparison, not the ranking metric. Do not invent a similarity percentage.
 For an instantaneous check at the selected map time, use check_shadow. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
 3. For ordinary place or itinerary requests, find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
 4. For those instantaneous place checks, only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
@@ -350,11 +351,21 @@ function evidenceProposal(
             supportingResultIds: [envelope.resultId],
           });
       }
-    } else if (envelope.toolName === "find_shade_spots" && isShadeWindowPayload(payload) && payload.status === "ok") {
-      for (const spot of payload.results) push({ kind: "shade_window", subject: spot.label,
-        candidateId: spot.candidateId, requestedDate: payload.requestedDate,
-        requestedWindow: payload.requestedWindow, value: { meanShade: spot.meanShade },
-        supportingResultIds: [envelope.resultId] });
+    } else if (
+      envelope.toolName === "find_shade_spots" &&
+      isShadeWindowPayload(payload) &&
+      payload.status === "ok"
+    ) {
+      for (const spot of payload.results)
+        push({
+          kind: "shade_window",
+          subject: spot.label,
+          candidateId: spot.candidateId,
+          requestedDate: payload.requestedDate,
+          requestedWindow: payload.requestedWindow,
+          value: { meanShade: spot.meanShade },
+          supportingResultIds: [envelope.resultId],
+        });
     } else if (envelope.toolName === "check_shadow") {
       const values = Array.isArray(payload.results) ? payload.results : [payload];
       for (const raw of values) {
@@ -388,7 +399,10 @@ function evidenceProposal(
         push({
           kind: "route",
           subject: "route",
-          value: { status: terminal.status, ...(terminal.objective ? { objective: terminal.objective } : {}) },
+          value: {
+            status: terminal.status,
+            ...(terminal.objective ? { objective: terminal.objective } : {}),
+          },
           supportingResultIds: [envelope.resultId],
           requestId: terminal.requestId,
           actionId: terminal.actionId,
@@ -530,11 +544,30 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       currentShadeResultIds.push(envelope.resultId);
       if (isShadeWindowPayload(envelope.payload) && envelope.payload.status === "ok") {
         const data = envelope.payload;
-        ctx.registerShadeCandidates(data.results.map(spot => ({ spot, requestedDate: data.requestedDate, mode: data.mode })));
-        ctx.registerMapObjects(data.results.map(spot => ({ id: shadeWindowObjectId(envelope.resultId, spot.candidateId), kind: "shade_window" as const, lat: spot.lat, lng: spot.lng, label: spot.label })));
+        ctx.registerShadeCandidates(
+          data.results.map((spot) => ({
+            spot,
+            requestedDate: data.requestedDate,
+            requestedWindow: data.requestedWindow,
+            mode: data.mode,
+          })),
+        );
+        ctx.registerMapObjects(
+          data.results.map((spot) => ({
+            id: shadeWindowObjectId(envelope.resultId, spot.candidateId),
+            kind: "shade_window" as const,
+            lat: spot.lat,
+            lng: spot.lng,
+            label: spot.label,
+          })),
+        );
       }
     }
-    if (name === "plan_shadowed_route" && (enriched.code === "shade_route_time" || enriched.code === "shade_alternatives")) shadeRouteNotices.add(enriched.code);
+    if (
+      name === "plan_shadowed_route" &&
+      (enriched.code === "shade_route_time" || enriched.code === "shade_alternatives")
+    )
+      shadeRouteNotices.add(enriched.code);
     if (name === "check_shadow") {
       const values = Array.isArray(enriched.results) ? enriched.results : [enriched];
       ctx.registerMapObjects(
@@ -594,14 +627,28 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   } catch {
     /* map not ready — fall through with empty context */
   }
-  if (typeof ctxSnapshot.selectedDate !== "string") ctxSnapshot.selectedDate = nycDate(ctx.dateRef.current);
+  if (typeof ctxSnapshot.selectedDate !== "string")
+    ctxSnapshot.selectedDate = nycDate(ctx.dateRef.current);
   if (typeof ctxSnapshot.todayDate !== "string") ctxSnapshot.todayDate = nycDate(new Date());
   const ambientCandidates: Array<{ id: string; lat: number; lng: number }> = [];
-  for (const [field, idField, prefix] of [["center", "centerCandidateId", "map-center"], ["userLocation", "userLocationCandidateId", "user-location"]]) {
+  for (const [field, idField, prefix] of [
+    ["center", "centerCandidateId", "map-center"],
+    ["userLocation", "userLocationCandidateId", "user-location"],
+  ]) {
     if (field === "center" && ctxSnapshot.locationKnown !== true) continue;
     const value = ctxSnapshot[field] as Record<string, unknown> | undefined;
-    if (!value || typeof value.lat !== "number" || typeof value.lng !== "number" || !Number.isFinite(value.lat) || !Number.isFinite(value.lng)) continue;
-    const id = typeof ctxSnapshot[idField] === "string" ? ctxSnapshot[idField] as string : `${prefix}:${value.lat}:${value.lng}`;
+    if (
+      !value ||
+      typeof value.lat !== "number" ||
+      typeof value.lng !== "number" ||
+      !Number.isFinite(value.lat) ||
+      !Number.isFinite(value.lng)
+    )
+      continue;
+    const id =
+      typeof ctxSnapshot[idField] === "string"
+        ? (ctxSnapshot[idField] as string)
+        : `${prefix}:${value.lat}:${value.lng}`;
     ctxSnapshot[idField] = id;
     ambientCandidates.push({ id, lat: value.lat, lng: value.lng });
   }
@@ -620,7 +667,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     currentUserText: opts.userText,
     candidates: [
       ...ambientCandidates,
-      ...evidence.filter(validateToolResultEnvelope).flatMap((entry) => candidateIdentities(entry.resultId, entry.payload, entry.toolName)),
+      ...ctx
+        .getShadeCandidates()
+        .map((c) => ({ id: c.spot.candidateId, lat: c.spot.lat, lng: c.spot.lng })),
+      ...evidence
+        .filter(validateToolResultEnvelope)
+        .flatMap((entry) => candidateIdentities(entry.resultId, entry.payload, entry.toolName)),
       ...mapPins.map((pin, index) => ({
         id: pin.candidateId ?? pin.objectId ?? `map-pin:${index}`,
         lat: pin.lat,
@@ -656,7 +708,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             candidateId: rawArgs.candidateId ?? idFor(rawArgs.lat, rawArgs.lng),
           };
     }
-    if ((tool === "search_places" || tool === "find_shade_spots") && (rawArgs.lat != null || rawArgs.lng != null)) {
+    if (
+      (tool === "search_places" || tool === "find_shade_spots") &&
+      (rawArgs.lat != null || rawArgs.lng != null)
+    ) {
       return {
         ...rawArgs,
         nearCandidateId: rawArgs.nearCandidateId ?? idFor(rawArgs.lat, rawArgs.lng),
@@ -771,7 +826,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const finalize = (modelText: string, proposed?: unknown): RunAgentResult => {
     const mapObjects = ctx.getMapObjects();
-    const currentShadeEvidence = evidence.filter(entry => entry.toolName !== "find_shade_spots" || currentShadeResultIds.includes(entry.resultId));
+    const currentShadeEvidence = evidence.filter(
+      (entry) =>
+        entry.toolName !== "find_shade_spots" || currentShadeResultIds.includes(entry.resultId),
+    );
     const answer = verifyAnswer(
       proposed ??
         evidenceProposal(
@@ -779,7 +837,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           mapObjects,
           /\b(accessib|wheelchair|step[- ]free)/i.test(opts.userText),
         ),
-      { evidence, mapObjects, currentPlanRevision: ctx.getCurrentPlanRevision(), now: now(), currentShadeResultIds },
+      {
+        evidence,
+        mapObjects,
+        currentPlanRevision: ctx.getCurrentPlanRevision(),
+        now: now(),
+        currentShadeResultIds,
+      },
     );
     for (const code of shadeRouteNotices) answer.blocks.push({ kind: "notice", code });
     const text =
@@ -841,9 +905,15 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (ctx.signal?.aborted) return;
     if (routedThisTurn || mapPins.length < 2 || !/\b(route|walk)/i.test(opts.userText)) return;
     if (shadeRouteNotices.size) return;
-    const shadeIds = new Set(ctx.getShadeCandidates().map(candidate => candidate.spot.candidateId));
-    if (currentShadeResultIds.length || mapPins.some(pin => shadeIds.has(pin.candidateId ?? ""))) {
-      shadeRouteNotices.add("shade_alternatives"); return;
+    const shadeIds = new Set(
+      ctx.getShadeCandidates().map((candidate) => candidate.spot.candidateId),
+    );
+    if (
+      currentShadeResultIds.length ||
+      mapPins.some((pin) => shadeIds.has(pin.candidateId ?? ""))
+    ) {
+      shadeRouteNotices.add("shade_alternatives");
+      return;
     }
     const from = mapPins[0];
     const to = mapPins[mapPins.length - 1];
@@ -972,7 +1042,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       if (ctx.signal?.aborted) return finalizeNotice("blocked", "conversation reset");
       const fc = part.functionCall!;
       let args = fc.args ?? {};
-      if (fc.name === "find_shade_spots") args = normalizeShadeToolArgs(args, ctx.dateRef.current);
+      if (fc.name === "find_shade_spots")
+        args = normalizeShadeToolArgs(args, ctx.dateRef.current, ctx.getShadeCandidates());
       // The model's own plot obeys the pin cap too, and a bare pin sitting on a
       // place a tool returned takes that place's name — Gemini plotted twelve
       // unlabelled pins in the live eval, so the answer named places no pin did.
@@ -1036,7 +1107,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         if (!result.error && cacheable && !emptySearchResult) cache.set(key, envelope);
       }
       if (envelope && !result.error) turnResults.set(key, envelope);
-      if (fc.name === "find_shade_spots" && envelope && !currentShadeResultIds.includes(envelope.resultId)) currentShadeResultIds.push(envelope.resultId);
+      if (
+        fc.name === "find_shade_spots" &&
+        envelope &&
+        !currentShadeResultIds.includes(envelope.resultId)
+      )
+        currentShadeResultIds.push(envelope.resultId);
       if (
         fc.name === "search_places" &&
         Array.isArray(result.results) &&
@@ -1049,7 +1125,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         mapPins = parsePins(args.points);
         plottedThisTurn = true;
       }
-      if (fc.name === "plan_shadowed_route" && result.code !== "shade_route_time" && result.code !== "shade_alternatives") {
+      if (
+        fc.name === "plan_shadowed_route" &&
+        result.code !== "shade_route_time" &&
+        result.code !== "shade_alternatives"
+      ) {
         terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
         routedThisTurn =
           terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";

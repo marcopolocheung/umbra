@@ -29,12 +29,18 @@ import {
   parseNavigationManifest,
   parseNavigationNotices,
   parseNavigationPointer,
+  parseNavigationShadeShard,
+  parseNavigationSignatureIndex,
   type GeoBounds,
   type NavigationManifest,
   type NavigationPointer,
 } from "../../../app/lib/navigationData/shardContract";
 import { BOROUGH_SAMPLES, CASTER_REACH_M, expandBounds, type BoroughSample } from "./boundary";
 import { sha256Hex } from "./util";
+import {
+  parseProfileIndex,
+  parseProfileCell,
+} from "../../../app/lib/navigationData/profileContract";
 import type { SignatureIndex } from "./signatures";
 import { verifyGeneration } from "./verify";
 
@@ -90,7 +96,12 @@ class S3PublishStore implements PublishStore {
     }
   }
 
-  async put(key: string, bytes: Uint8Array, contentType: string, cacheControl: string): Promise<void> {
+  async put(
+    key: string,
+    bytes: Uint8Array,
+    contentType: string,
+    cacheControl: string,
+  ): Promise<void> {
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -166,6 +177,9 @@ export type PublishObjectKind =
   | "shadePayload"
   | "signatureIndex"
   | "signaturePayload"
+  | "profileIndex"
+  | "profileCell"
+  | "profilePayload"
   | "pointer";
 
 export interface PublishObject {
@@ -287,9 +301,13 @@ export async function publishPlan(generation: string): Promise<PublishPlan> {
   await addShards(manifest.streetShards, "streetShard", localStreets);
   await addShards(manifest.buildingShards, "buildingShard", localBuildings);
   if (localStreets.size > 0)
-    throw new Error(`unclaimed street files must not be published: ${[...localStreets].join(", ")}`);
+    throw new Error(
+      `unclaimed street files must not be published: ${[...localStreets].join(", ")}`,
+    );
   if (localBuildings.size > 0)
-    throw new Error(`unclaimed building files must not be published: ${[...localBuildings].join(", ")}`);
+    throw new Error(
+      `unclaimed building files must not be published: ${[...localBuildings].join(", ")}`,
+    );
 
   // Each shade ref claims two objects: its JSON index and its binary payload.
   // The payload is range-fetched by the client, but the whole object must still
@@ -339,7 +357,8 @@ export async function publishPlan(generation: string): Promise<PublishPlan> {
       ),
     ]) {
       const fileName = key.split("/")[1];
-      if (!localSignatures.delete(fileName)) throw new Error(`manifest ref ${key} has no local file`);
+      if (!localSignatures.delete(fileName))
+        throw new Error(`manifest ref ${key} has no local file`);
       const file = join(nested, key);
       const stored = await readExact(file);
       if (stored.byteLength !== bytes) throw new Error(`${key}: byte count drifted`);
@@ -362,6 +381,51 @@ export async function publishPlan(generation: string): Promise<PublishPlan> {
 
   // Planned strictly last so the order itself enforces pointer-last
   // promotion, and promoted from these exact verified bytes.
+  const localProfiles = new Set(
+    await readdir(join(nested, "profiles")).catch(() => [] as string[]),
+  );
+  if (manifest.profiles) {
+    const rootRef = manifest.profiles;
+    const readVerified = async (ref: { key: string; bytes: number; sha256: string }) => {
+      const raw = await readExact(join(nested, ref.key));
+      if (raw.length !== ref.bytes || sha256Hex(raw) !== ref.sha256)
+        throw new Error("profile digest drifted");
+      return JSON.parse(new TextDecoder().decode(raw)) as unknown;
+    };
+    const signatureRef = manifest.signatures!;
+    const signatures = parseNavigationSignatureIndex(
+      await readVerified(signatureRef),
+      signatureRef,
+      generation,
+    );
+    const index = parseProfileIndex(await readVerified(rootRef), manifest, signatures);
+    const refs: Array<{ key: string; bytes: number; sha256: string; kind: PublishObjectKind }> = [
+      { ...rootRef, kind: "profileIndex" },
+    ];
+    for (const cellRef of index.cells) {
+      const shadeRef = manifest.shadeShards!.find(
+        (s) => s.key === cellRef.key.replace("profiles/", "shades/"),
+      )!;
+      const shade = parseNavigationShadeShard(await readVerified(shadeRef), shadeRef, generation);
+      const cell = parseProfileCell(await readVerified(cellRef), cellRef, index, shade);
+      refs.push({ ...cellRef, kind: "profileCell" }, { ...cell.payload, kind: "profilePayload" });
+    }
+    for (const ref of refs) {
+      if (!localProfiles.delete(ref.key.split("/")[1])) throw new Error("missing profile file");
+      const file = join(nested, ref.key);
+      const raw = await readExact(file);
+      if (raw.length !== ref.bytes || sha256Hex(raw) !== ref.sha256)
+        throw new Error("profile digest drifted");
+      objects.push({
+        ...ref,
+        key: `${PREFIX}/${generation}/${ref.key}`,
+        file,
+        cacheControl: IMMUTABLE_CACHE_CONTROL,
+      });
+      payloadBytes += raw.length;
+    }
+  }
+  if (localProfiles.size) throw new Error("unclaimed profile files must not be published");
   objects.push({
     kind: "pointer",
     key: POINTER_KEY,
@@ -581,14 +645,18 @@ export async function publishExecute(
       object.kind === "shadeIndex" ||
       object.kind === "shadePayload" ||
       object.kind === "signatureIndex" ||
-      object.kind === "signaturePayload",
+      object.kind === "signaturePayload" ||
+      object.kind === "profileIndex" ||
+      object.kind === "profileCell" ||
+      object.kind === "profilePayload",
   );
   if (
     shardObjects.length !==
     verified.streetShards +
       verified.buildingShards +
       verified.shadeShards * 2 +
-      (verified.signatureCells > 0 ? verified.signatureCells + 1 : 0)
+      (verified.signatureCells > 0 ? verified.signatureCells + 1 : 0) +
+      (verified.profileCells > 0 ? verified.profileCells * 2 + 1 : 0)
   ) {
     throw new Error("object plan does not match the verified shard count");
   }
@@ -615,7 +683,9 @@ export async function publishExecute(
   for (const sample of samples) {
     const keys = specimenKeysForSample(plan.manifest, sample);
     if (!keys) {
-      throw new Error(`borough sample ${sample.borough} selects no navigation shards; refusing to publish`);
+      throw new Error(
+        `borough sample ${sample.borough} selects no navigation shards; refusing to publish`,
+      );
     }
     const streetObject = plan.objects.find(
       (object) => object.key === `${PREFIX}/${plan.generation}/${keys.streets[0]}`,
@@ -627,12 +697,21 @@ export async function publishExecute(
       throw new Error(`specimen missing from the plan for ${sample.borough}`);
     }
     await verifyStoredObject(store, streetObject.key, streetObject.bytes, streetObject.sha256);
-    await verifyStoredObject(store, buildingObject.key, buildingObject.bytes, buildingObject.sha256);
+    await verifyStoredObject(
+      store,
+      buildingObject.key,
+      buildingObject.bytes,
+      buildingObject.sha256,
+    );
     fetchedForVerification.push(streetObject.key, buildingObject.key);
     specimens.push({
       borough: sample.borough,
       street: { key: streetObject.key, bytes: streetObject.bytes, sha256: streetObject.sha256 },
-      building: { key: buildingObject.key, bytes: buildingObject.bytes, sha256: buildingObject.sha256 },
+      building: {
+        key: buildingObject.key,
+        bytes: buildingObject.bytes,
+        sha256: buildingObject.sha256,
+      },
     });
   }
 
@@ -649,7 +728,10 @@ export async function publishExecute(
   await verifyStoredObject(store, pointerObject.key, pointerObject.bytes, pointerObject.sha256);
   uploaded.push(pointerObject.key);
   // Local record of exactly what was promoted.
-  await writeFile(join(generationDirectory(publishedGeneration).directory, "current.json"), pointerBytes);
+  await writeFile(
+    join(generationDirectory(publishedGeneration).directory, "current.json"),
+    pointerBytes,
+  );
 
   return {
     mode: "execute",
@@ -707,7 +789,10 @@ export async function publishRollback(
   const pointerBytes = await readExact(pointerObject.file);
   await store.put(pointerObject.key, pointerBytes, CONTENT_TYPE, POINTER_CACHE_CONTROL);
   await verifyStoredObject(store, pointerObject.key, pointerObject.bytes, pointerObject.sha256);
-  await writeFile(join(generationDirectory(verified.generation).directory, "current.json"), pointerBytes);
+  await writeFile(
+    join(generationDirectory(verified.generation).directory, "current.json"),
+    pointerBytes,
+  );
 
   return {
     mode: "rollback",

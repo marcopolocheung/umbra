@@ -26,7 +26,7 @@ const rootGatedFiles = new Set(["generation.json", "coverage.json", "bounds.json
 // signatures/index.json (frozen model + cell list) and signatures/<cell>.bin.
 const navigationGenerationPattern = "nyc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-f0-9]{12}";
 const navigationShardKey =
-  "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json|shades/[a-z0-9-]{1,64}\\.(?:json|bin)|signatures/(?:index\\.json|(?!index\\.)[a-z0-9-]{1,64}\\.bin)";
+  "(?:streets|buildings)/[a-z0-9-]{1,64}\\.json|shades/[a-z0-9-]{1,64}\\.(?:json|bin)|profiles/[a-z0-9-]{1,64}\\.(?:json|bin)|signatures/(?:index\\.json|(?!index\\.)[a-z0-9-]{1,64}\\.bin)";
 const navigationPointerKey = "navigation/nyc/current.json";
 const navigationAsset = new RegExp(
   `^navigation\\/nyc\\/(?:current\\.json|${navigationGenerationPattern}\\/(?:manifest\\.json|notices\\.json|${navigationShardKey}))$`,
@@ -48,6 +48,7 @@ function cors(request: Request, env: Env): Headers {
   if (request.headers.get("Origin") === env.ALLOWED_ORIGIN) {
     headers.set("Access-Control-Allow-Origin", env.ALLOWED_ORIGIN);
     headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    headers.set("Access-Control-Expose-Headers", "Content-Range, Content-Length, ETag");
   }
   return headers;
 }
@@ -106,7 +107,7 @@ export function generationNeedsMarker(
  * generation's published root marker. `generation.json` is its own marker.
  */
 /** A single `bytes=` range, or undefined for a full response. */
-export function parseByteRange(header: string | null): { offset?: number; length?: number; suffix?: number } | undefined {
+export function parseByteRange(header: string | null): R2Range | undefined {
   if (!header) return undefined;
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
   if (!match) return undefined;
@@ -158,7 +159,7 @@ export default {
     headers.set("ETag", object.httpEtag);
     headers.set("Accept-Ranges", "bytes");
     headers.set("Cache-Control", cacheControlFor(key));
-    if (range && object.range && "offset" in object.range) {
+    if (range && object.range && "offset" in object.range && typeof object.range.offset === "number" && "length" in object.range && typeof object.range.length === "number") {
       const { offset, length } = object.range;
       headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
       headers.set("Content-Length", String(length));

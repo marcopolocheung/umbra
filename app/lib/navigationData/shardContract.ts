@@ -8,6 +8,7 @@
  * "no buildings" answer.
  */
 
+import { parseProfileRef, type ProfileRef } from "./profileContract";
 import { SHADE_SLOT_COUNT } from "./shadeSlots";
 
 // ─── Shared records ──────────────────────────────────────────────────────────
@@ -205,12 +206,14 @@ export interface NavigationManifest {
   shadeShards?: NavigationShadeShardRef[];
   /** Absent on generations built before the signatures stage. */
   signatures?: NavigationSignatureRef;
+  profiles?: ProfileRef;
   budgets: {
     streetShardBytes: number;
     buildingShardBytes: number;
     shadeShardBytes: number;
     /** Signature index plus every payload; absent when the stage has not run. */
     signatureBytes?: number;
+    profileBytes?: number;
     totalBytes: number;
   };
 }
@@ -651,6 +654,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
       "buildingShards",
       "shadeShards",
       "signatures",
+      "profiles",
       "budgets",
     ],
     "invalid NYC navigation manifest",
@@ -692,6 +696,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
           "buildingShardBytes",
           "shadeShardBytes",
           "signatureBytes",
+          "profileBytes",
           "totalBytes",
         ].includes(key),
     ) ||
@@ -699,6 +704,7 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     !isNonNegativeInt(budgets.buildingShardBytes) ||
     (budgets.shadeShardBytes !== undefined && !isNonNegativeInt(budgets.shadeShardBytes)) ||
     (budgets.signatureBytes !== undefined && !isNonNegativeInt(budgets.signatureBytes)) ||
+    (budgets.profileBytes !== undefined && !isNonNegativeInt(budgets.profileBytes)) ||
     !isNonNegativeInt(budgets.totalBytes) ||
     budgets.streetShardBytes + budgets.buildingShardBytes > MAX_TOTAL_BYTES ||
     budgets.totalBytes > MAX_TOTAL_BYTES
@@ -717,6 +723,15 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
       : budgets.signatureBytes !== undefined
   )
     throw new Error("NYC navigation signatures do not cover the shade table");
+  const profiles = value.profiles !== undefined ? parseProfileRef(value.profiles) : undefined;
+  if (
+    profiles
+      ? !signatures ||
+        profiles.cells !== shadeShards.length ||
+        budgets.profileBytes !== profiles.bytes + profiles.indexBytes + profiles.payloadBytes
+      : budgets.profileBytes !== undefined
+  )
+    throw new Error("profiles do not cover the shade table");
   const streetKeys = new Set(streetShards.map((ref) => ref.key));
   const buildingKeys = new Set(buildingShards.map((ref) => ref.key));
   const shadeKeys = new Set(shadeShards.map((ref) => ref.key));
@@ -749,11 +764,13 @@ export function parseNavigationManifest(value: unknown, generation: string): Nav
     buildingShards,
     ...(value.shadeShards !== undefined ? { shadeShards } : {}),
     ...(signatures ? { signatures } : {}),
+    ...(profiles ? { profiles } : {}),
     budgets: {
       streetShardBytes: budgets.streetShardBytes,
       buildingShardBytes: budgets.buildingShardBytes,
       shadeShardBytes: budgets.shadeShardBytes ?? 0,
       ...(budgets.signatureBytes !== undefined ? { signatureBytes: budgets.signatureBytes } : {}),
+      ...(profiles ? { profileBytes: budgets.profileBytes as number } : {}),
       totalBytes: budgets.totalBytes,
     },
   };
@@ -769,7 +786,17 @@ export function parseNavigationShadeShard(
   if (!isRecord(value)) throw new Error(`invalid NYC navigation shade shard (${ref.key})`);
   assertKeys(
     value,
-    ["version", "dataset", "generation", "kind", "geometryBounds", "supportBounds", "slots", "segments", "payload"],
+    [
+      "version",
+      "dataset",
+      "generation",
+      "kind",
+      "geometryBounds",
+      "supportBounds",
+      "slots",
+      "segments",
+      "payload",
+    ],
     `invalid NYC navigation shade shard (${ref.key})`,
   );
   if (
@@ -822,7 +849,11 @@ export function parseNavigationShadeShard(
   });
 
   const payload = value.payload;
-  assertKeys(payload, ["key", "bytes", "sha256"], `invalid NYC navigation shade shard (${ref.key})`);
+  assertKeys(
+    payload,
+    ["key", "bytes", "sha256"],
+    `invalid NYC navigation shade shard (${ref.key})`,
+  );
   if (
     payload.key !== ref.payloadKey ||
     payload.bytes !== ref.payloadBytes ||

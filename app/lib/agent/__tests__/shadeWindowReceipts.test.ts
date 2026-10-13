@@ -266,3 +266,50 @@ describe("shade-window validation and presentation", () => {
     expect(SHADE_QUERY.date).toBe(payload.requestedDate);
   });
 });
+
+describe("similarity grounding", () => {
+  const reference = payload.results[1];
+  const similar = {
+    ...payload,
+    results: [spot],
+    similarity: {
+      reference,
+      metric: "annual-daylight-l2" as const,
+      model: "signatures-v1",
+      sampleCount: 581,
+      shortlistSize: 1,
+      eligibleSides: 1,
+      approximate: true as const,
+      squaredDistances: { [spot.candidateId]: 100 },
+    },
+  };
+  const envelope = { ...evidence, payload: similar };
+  it("canonicalizes the comparison from tool evidence", () => {
+    expect(isShadeWindowPayload(similar)).toBe(true);
+    expect(verify({}, objects, envelope).receipts[0]).toMatchObject({
+      verification: "verified",
+      similarity: { reference, annualSquaredDistance: 100, sampleCount: 581 },
+    });
+    expect(receiptLabel(verify({}, objects, envelope).receipts[0])).toContain(
+      "similar annual shade pattern",
+    );
+  });
+  it("rejects an altered distance or reference", () => {
+    expect(
+      verify(
+        { value: { meanShade: spot.meanShade, annualSquaredDistance: 101 } },
+        objects,
+        envelope,
+      ).receipts[0].verification,
+    ).toBe("rejected");
+    expect(
+      verify({ likeCandidateId: "invented" }, objects, envelope).receipts[0].verification,
+    ).toBe("rejected");
+    expect(
+      isShadeWindowPayload({
+        ...similar,
+        similarity: { ...similar.similarity, squaredDistances: { [spot.candidateId]: -1 } },
+      }),
+    ).toBe(false);
+  });
+});
