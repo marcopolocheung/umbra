@@ -11,7 +11,7 @@
 >
 > Read [§ Next: the two plans](#next-the-two-plans) before starting new work here.
 
-**Verified 2026-10-12**, `umbra/main` at `0632433` (A1 merged; A2 contracts below are updated in this PR). If this handoff disagrees with the code, the
+**Verified 2026-10-12**, `umbra/main` at `2863cf7` (A1/A2 merged; offline A3 results below). If this handoff disagrees with the code, the
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:**
@@ -22,7 +22,8 @@ code wins. Update this file in the same PR that changes a stated contract.
   - Phase 3: a route street-type layer (#343).
 - **Published:** generation **`nyc-2026-09-18-e6718823bbb3`**, with signatures, is published and the delivery Worker serves `signatures/` (deployed 2026-10-11).
 - **A1 is merged (#345):** pure shade-window search and a development-only street-type QA toggle.
-- **A2 is implemented in this PR:** grounded area-window assistant tool, receipts and timelines. A3 follows after review; named-street lookup still needs metadata.
+- **A2 is merged (#346):** grounded area-window assistant tool, receipts and timelines; named-street lookup still needs metadata.
+- **A3 offline benchmark is complete in this PR; the product mode is not implemented.** Local M=100 recall passes the mean gate, but annual-profile transfer and rare failures must be resolved ([#347](https://github.com/marcopolocheung/umbra/issues/347)).
 - **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
@@ -401,7 +402,7 @@ A1 has no fetching, assistant schema/executor, receipts, named-street lookup, si
 new published artifact, or deployment. Street-name preservation is a prerequisite for named-street
 queries in A2, not an implicit data-pipeline expansion of this PR.
 
-### A2 implementation contract (2026-10-12; this PR)
+### A2 implementation contract (2026-10-12; merged #346)
 
 - **Area search only:** `find_shade_spots` uses A1's canonical sidewalk sides. Named-street calendars,
   seating/amenity claims and `likeCandidateId` are not offered. Optional date defaults to the selected
@@ -457,6 +458,34 @@ two window ranges), with no building/signature fetches. An out-of-NYC query load
 manifest and rendered the specific unavailable message. No browser page errors occurred. These
 checks validate the integration, not live-model tool selection or pass³ reliability.
 
+### A3 offline feasibility (2026-10-12; product integration pending)
+
+The measured report and reproduction commands are in
+[`docs/notes/shade-signature-rerank-2026-10-12.md`](../notes/shade-signature-rerank-2026-10-12.md).
+It adapts Phase 0's loader/sampling/fidelity code and uses the actual client views; nothing refits.
+
+- **Local retrieval passes the mean gate:** 1,414 spatial query sides across 383 cells, ≥500 m
+  separation. The 1,405/1,412 valid 400/800 m pools reach **0.9994 / 0.9932 recall@10 at M=100**.
+  Radius and ≥15 m length filtering must happen **before** PCA shortlisting. Block-face-aware output
+  and cross-area references remain separate product checks.
+- **Scope matters:** M=100 is **0.8935** on a **190,589-side stratified reference**, reaching 0.9731
+  at M=500. That is not full-city exact validation; do not repeat the old "~100 approaches 1" claim
+  without a candidate-pool qualification.
+- **Means hide failures:** five 400 m and 36 800 m queries miss the 0.95 per-query threshold; the
+  worst 800 m case is **0/10** with a **3.07× distance ratio**, recovered by the float projection.
+  M=500 recovers all measured local top tens. Choose a tested expansion/fallback policy.
+- **Transport is the gate:** fetching only shortlist/reference owner cells still needs median
+  **8.25 / 14.02 MB** and **24 / 36 range requests** at 400/800 m, p95 23.85/32.93 MB, under the
+  existing slot-major API. An ideal candidate-only M=100 read is 58,681 bytes, which the current
+  layout does not provide. These are uncompressed byte estimates, not network timings.
+- **Existing client agrees:** 43 queries / 4,258 neighbours (including the worst cases) match Python
+  exactly. Node resident-data M=100 search/rerank medians are 0.070/5.282 ms. Mobile, HTTP and live
+  agent performance are not inferred from those CPU figures.
+
+Before the A3 assistant PR, resolve profile delivery and tail handling in
+[#347](https://github.com/marcopolocheung/umbra/issues/347). Any new published artifact still needs
+owner approval. The offline report does not mark `likeCandidateId` complete or substitute for A4.
+
 ### Evaluation (A4) — the interview artifact
 
 1. **Hermetic tool tests** (A1–A3). These are deterministic and run in `npm test`.
@@ -480,8 +509,9 @@ checks validate the integration, not live-model tool selection or pass³ reliabi
 
 **Interview framing:** "I built a task-shaped tool over an exact physics table. Every number the
 assistant says is verified in code against the tool's output. I measured what the tool adds with an
-ablation and reliability with pass^k, and found the embedding needed exact re-ranking to be usable
-(recall 0.41 → ≥ 0.95)."
+ablation and reliability with pass^k, and measured retrieval against exact table profiles: a radius-filtered shortlist of 100 plus re-ranking
+reached mean recall 0.9994 at 400 m and 0.9932 at 800 m. Rare failures and multi-megabyte annual
+reads were caught before integration; the global-sample M=100 recall was only 0.8935."
 
 ---
 

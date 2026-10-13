@@ -126,6 +126,18 @@ A refit is a new model version. `tools/check_signature_types.py <generation>`
 reads the built bytes and checks the Midtown type shares against phase 0.
 Routing never reads signatures; the shade table stays the source of truth.
 
+### Offline similarity feasibility (A3)
+
+`tools/benchmark_signature_rerank.py` adapts Phase 0's loader and fidelity analysis to the published
+int8 signatures and frozen model, with spatial queries, exact-byte ground truth, local/global
+reference pools and slot-major byte estimates. `tools/benchmark_signature_client.ts` reuses the
+production client views for parity and resident CPU measurements. Neither fits nor publishes data.
+
+The benchmark uses the existing `~/miniconda3` NumPy/SciPy/scikit-learn environment; decoded arrays
+and per-query records belong outside the repo. Run commands, measured curves, limitations and
+follow-up work are in [the dated report](../../docs/notes/shade-signature-rerank-2026-10-12.md).
+Hermetic metric checks: `~/miniconda3/bin/python -m unittest discover -s tools -p test_benchmark_signature_rerank.py`.
+
 ## Budgets and policies
 
 The generation must pass the per-shard and total envelopes in

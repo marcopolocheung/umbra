@@ -86,3 +86,6 @@ nav-dist/
 # land-cover windows, decoded result rasters. Tens to hundreds of MB; re-fetchable
 # via the study's download stage (see docs/notes/shade-accuracy.md).
 studies/shade-audit/cache/
+
+# Local byte-decoding and metric-test Python caches; benchmark arrays live outside the repo.
+/server/navigation-prep/tools/__pycache__/
