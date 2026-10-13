@@ -15,6 +15,7 @@ import type { ToolResultEnvelope } from "../receipts";
 import { callModel, rolesShareConfig } from "../llmClient";
 import { executeTool, toolDeclarations } from "../tools";
 import {
+  chosenTool,
   groundingViolations,
   researchPrompt,
   runScenario,
@@ -37,6 +38,7 @@ import {
   toolErrorStaysHonest,
 } from "./scenarios/grounding";
 import { fallbackPlotWhenModelForgets, happyPathShadowedAfternoon } from "./scenarios/planning";
+import { findThenRouteThere } from "./scenarios/shade";
 
 vi.mock("../llmClient", () => ({
   callModel: vi.fn(),
@@ -129,12 +131,25 @@ describe("agent scenarios", () => {
         expect(trace.answer).toBe(scenario.expect.answer);
       }
       expect(groundingViolations(trace, scenario)).toEqual([]);
+      // The live eval scores tool selection with chosenTool; a scripted correct
+      // turn must score as its expected tool, or the matrix would misreport.
+      if (scenario.expect.tool) expect(chosenTool(trace)).toBe(scenario.expect.tool);
 
       if (scenario.expect.pinLabels) {
         expect(trace.plottedPins.map((p) => p.label)).toEqual(scenario.expect.pinLabels);
       }
       if (scenario.expect.pinCount != null) {
         expect(trace.plottedPins).toHaveLength(scenario.expect.pinCount);
+      }
+      for (const name of scenario.expect.shouldNotCall ?? []) {
+        expect(trace.toolCalls.map((c) => c.name)).not.toContain(name);
+      }
+      if (scenario.expect.unavailable) {
+        expect(trace.verified!.blocks).toContainEqual({
+          kind: "unknown",
+          claimKind: "shade_window",
+          reason: scenario.expect.unavailable,
+        });
       }
 
       // Budgets: the free tier is 5 requests/minute, so round-trips are scarce.
@@ -145,7 +160,7 @@ describe("agent scenarios", () => {
       expect(researchCalls).toBeLessThanOrEqual(MAX_RESEARCH_STEPS);
 
       // The map context costs no round-trip and is read exactly once per turn.
-      expect(trace.contextReads).toBe(1);
+      expect(trace.contextReads).toBe(1 + (scenario.turns?.length ?? 0));
       expect(researchPrompt(trace)).toContain("Live map context");
 
       // Every tool the loop ran was surfaced to the UI.
@@ -342,5 +357,41 @@ describe("harness teeth", () => {
     expect(groundingViolations(trace, scenario)).toContain(
       "answered without plotting the itinerary first",
     );
+  });
+});
+
+describe("route explanations (A4)", () => {
+  it("a route to a shade sidewalk carries its hours only as that sidewalk's verified receipt", async () => {
+    const trace = await run(findThenRouteThere);
+    const receipts = trace.verified!.receipts.filter((r) => r.verification === "verified");
+    expect(receipts.map((r) => r.kind)).toEqual(expect.arrayContaining(["route", "shade_window"]));
+    const shade = receipts.find((r) => r.kind === "shade_window")!;
+    expect(shade.kind === "shade_window" && shade.candidateId).toBe(
+      findThenRouteThere.script
+        .flatMap((t) => ("calls" in t ? t.calls : []))
+        .find((c) => c.name === "plan_shadowed_route")!.args!.toCandidateId,
+    );
+  });
+
+  it("still discards a model-written 'shaded until' sentence on that route", async () => {
+    const trace = await run({
+      ...findThenRouteThere,
+      script: findThenRouteThere.script.map((turn, i, all) =>
+        i === all.length - 1
+          ? {
+              text: JSON.stringify({
+                blocks: [{ kind: "text", text: "The sidewalk is shaded until 9:45am." }],
+                receipts: [],
+              }),
+            }
+          : turn,
+      ),
+    });
+    expect(trace.answer).not.toContain("9:45");
+  });
+
+  it("a route to an ordinary place gets no shade claim", async () => {
+    const trace = await run(askedRouteIsCalculated);
+    expect(trace.verified!.receipts.some((r) => r.kind === "shade_window")).toBe(false);
   });
 });

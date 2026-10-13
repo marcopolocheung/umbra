@@ -365,6 +365,63 @@ describe("model argument drift seen in production", () => {
     expect(second.answer.receipts.map((r) => r.kind)).toEqual(["accessibility"]);
   });
 
+  it("pins a named candidate whose coordinates come back at lower precision (#353)", async () => {
+    const ctx = shadeContext();
+    const [a] = shadePayload().results;
+    const echo = (v: number) => Number(v.toPrecision(13));
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(
+        calls([
+          {
+            name: "plot_points",
+            args: {
+              points: [{ lat: echo(a.lat) + 1e-11, lng: echo(a.lng), candidateId: a.candidateId }],
+            },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm",
+      ctx,
+    });
+    expect(result.authorityEvents.find((e) => e.tool === "plot_points")).toMatchObject({
+      decision: "accepted",
+    });
+    const plotted = vi.mocked(executeTool).mock.calls.find(([name]) => name === "plot_points")![1];
+    expect((plotted.points as Array<{ lat: number; lng: number }>)[0]).toMatchObject({
+      lat: a.lat,
+      lng: a.lng,
+    });
+  });
+
+  it("does not snap a named candidate's coordinates that are actually elsewhere", async () => {
+    const ctx = shadeContext();
+    const [a] = shadePayload().results;
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(
+        calls([
+          {
+            name: "plot_points",
+            args: { points: [{ lat: a.lat + 1e-6, lng: a.lng, candidateId: a.candidateId }] },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm",
+      ctx,
+    });
+    expect(result.authorityEvents.find((e) => e.tool === "plot_points")).toMatchObject({
+      decision: "rejected",
+      reasonCode: "sensitive_argument_not_application_candidate",
+    });
+  });
+
   it("gives an invented pin label the app identity only on exact candidate coordinates", async () => {
     const ctx = shadeContext();
     const [a, b] = shadePayload().results;

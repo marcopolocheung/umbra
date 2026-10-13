@@ -491,6 +491,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let resultSequence = evidence.length;
   const currentShadeResultIds: string[] = [];
   const shadeRouteNotices = new Set<"shade_route_time" | "shade_alternatives">();
+  /** A completed route's destination when it is a verified shade sidewalk. */
+  let routeShadeDestination: string | undefined;
   const now = opts.now ?? (() => ctx.dateRef.current.toISOString());
   const observe = (
     name: AgentToolName,
@@ -694,11 +696,27 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       candidates.some((c) => c.id === id && c.lat === lat && c.lng === lng)
         ? id
         : (exactId(lat, lng) ?? id);
+    // Gemini re-serialises a candidate's coordinates at lower precision
+    // (-73.99124938672036 → -73.9912493867204); for a pin that names the candidate,
+    // a sub-millimetre difference is the same point, so the stored values are used.
+    const snap = (point: Record<string, unknown>) => {
+      const named = candidates.find(
+        (c) =>
+          c.id === point.candidateId &&
+          typeof point.lat === "number" &&
+          typeof point.lng === "number" &&
+          Math.abs(c.lat - point.lat) < 1e-9 &&
+          Math.abs(c.lng - point.lng) < 1e-9,
+      );
+      return named ? { ...point, lat: named.lat, lng: named.lng } : point;
+    };
     if (tool === "plot_points" && Array.isArray(rawArgs.points)) {
       return {
         ...rawArgs,
         points: rawArgs.points.map((raw) => {
-          const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+          const point = snap(
+            raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {},
+          );
           return { ...point, candidateId: fixId(point.candidateId, point.lat, point.lng) };
         }),
       };
@@ -865,6 +883,41 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       // This turn's evidence only: a rebuild must not answer with earlier turns' facts.
       const rebuilt = fallback(evidence.slice(priorEvidenceCount));
       if (verified(rebuilt)) answer = rebuilt;
+    }
+    // A4 route explanation: a route to a shade sidewalk carries that sidewalk's
+    // hours only as its own verified shade_window receipt, never as route prose.
+    const destination = routeShadeDestination;
+    if (
+      destination &&
+      answer.receipts.some((r) => r.kind === "route" && r.verification === "verified") &&
+      !answer.receipts.some(
+        (r) =>
+          r.kind === "shade_window" &&
+          r.candidateId === destination &&
+          r.verification === "verified",
+      )
+    ) {
+      const source = [...evidence]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.toolName === "find_shade_spots" &&
+            isShadeWindowPayload(entry.payload) &&
+            entry.payload.status === "ok" &&
+            entry.payload.results.some((spot) => spot.candidateId === destination),
+        );
+      const shade = source
+        ? verifyAnswer(evidenceProposal([source], mapObjects, false), verifyOptions).receipts.find(
+            (r) =>
+              r.kind === "shade_window" &&
+              r.candidateId === destination &&
+              r.verification === "verified",
+          )
+        : undefined;
+      if (shade) {
+        answer.receipts.push(shade);
+        answer.blocks.push({ kind: "claim", claimId: shade.claimId });
+      }
     }
     for (const code of shadeRouteNotices) answer.blocks.push({ kind: "notice", code });
     const text =
@@ -1154,6 +1207,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         terminalRouteResult = asRouteTerminalResult(result) ?? malformedRouteTerminalResult(result);
         routedThisTurn =
           terminalRouteResult.status === "completed" || terminalRouteResult.status === "partial";
+        if (
+          terminalRouteResult.status === "completed" &&
+          ctx.getShadeCandidates().some((c) => c.spot.candidateId === args.toCandidateId)
+        )
+          routeShadeDestination = args.toCandidateId as string;
       }
       collectPointCandidates(fc.name, args, result, pointCandidates, envelope?.resultId);
       responseParts.push({

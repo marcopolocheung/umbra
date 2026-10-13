@@ -17,7 +17,13 @@
 import type { LlmContent, LlmRequest, LlmResponse, ModelRole } from "../llmClient";
 import type { AgentContext, AssistantPin } from "../tools";
 import type { RoutePlan } from "../../routePlanJob";
-import type { ClaimSupportMetrics, VerifiedAnswer } from "../receipts";
+import type {
+  ClaimSupportMetrics,
+  MapObject,
+  ToolResultEnvelope,
+  VerifiedAnswer,
+} from "../receipts";
+import type { ShadeCandidate } from "../shadeWindows";
 import type { AuthorityAuditEvent } from "../authority";
 
 // ---------------------------------------------------------------------------
@@ -34,7 +40,7 @@ export type ScriptedTurn =
 
 export type ToolStub =
   | Record<string, unknown>
-  | ((args: Record<string, unknown>) => Record<string, unknown>);
+  | ((args: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>);
 
 export interface Scenario {
   /** kebab-case id; used as the test name. */
@@ -42,6 +48,12 @@ export interface Scenario {
   /** One line: the behavior this scenario pins down. */
   intent: string;
   userText: string;
+  /**
+   * Follow-up user turns, run in order after `userText` with the previous
+   * turn's history, evidence and pins on the same context. The script spans
+   * every turn; expectations describe the whole conversation.
+   */
+  turns?: string[];
   /** true → research and response resolve to one model (the fast path). */
   sharedModel?: boolean;
   /** Model turns, replayed in order. */
@@ -61,6 +73,16 @@ export interface Scenario {
   /** Budget: tool executions, excluding the pre-injected context read. */
   maxToolCalls: number;
   expect: {
+    /**
+     * The first substantive tool a correct turn calls ("none" for none), for the
+     * live eval's tool-selection confusion matrix. Lookups that only feed it
+     * (geocode_place, locate_user) and plot_points are not substantive.
+     */
+    tool?: string;
+    /** Tools a correct turn never calls (the "should not call" cases). */
+    shouldNotCall?: string[];
+    /** A shade search that must end in this application-owned unavailable reason. */
+    unavailable?: string;
     /** The exact ordered tool executions, context read excluded. */
     toolOrder: string[];
     /** true → a successful plot_points must precede the write call. */
@@ -139,6 +161,32 @@ export function researchPrompt(trace: Trace): string {
   return req?.systemInstruction?.parts[0].text ?? "";
 }
 
+/**
+ * Every tool the model proposed, in order — read from the history, so a call the
+ * authority layer refused still counts as the model's choice.
+ */
+export function proposedTools(trace: Trace): string[] {
+  return trace.history
+    .flatMap((c) => c.parts)
+    .flatMap((p) => (p.functionCall ? [p.functionCall.name] : []));
+}
+
+/** Lookups that only feed the real choice, and the presentation step, are not the choice. */
+const NOT_SUBSTANTIVE = new Set(["geocode_place", "locate_user", "plot_points"]);
+
+/**
+ * The model's tool selection for the A4 confusion matrix: its first substantive
+ * proposal; a turn that only looked a place up chose the lookup; else "none".
+ */
+export function chosenTool(trace: Trace): string {
+  const proposed = proposedTools(trace);
+  return (
+    proposed.find((n) => !NOT_SUBSTANTIVE.has(n)) ??
+    proposed.find((n) => n !== "plot_points") ??
+    "none"
+  );
+}
+
 /** Each pin's label and its first comma segment — "Bryant Park, Midtown" pins "Bryant Park". */
 function pinLabelSet(pins: AssistantPin[]): string[] {
   return pins.flatMap((p) => (p.label ? [p.label, p.label.split(",")[0].trim()] : []));
@@ -194,6 +242,7 @@ export interface HarnessMocks {
 
 export type RunAgentFn = (opts: {
   history: LlmContent[];
+  evidence?: ToolResultEnvelope[];
   pins?: AssistantPin[];
   userText: string;
   ctx: AgentContext;
@@ -202,6 +251,7 @@ export type RunAgentFn = (opts: {
 }) => Promise<{
   text: string;
   history: LlmContent[];
+  evidence?: ToolResultEnvelope[];
   answer?: VerifiedAnswer;
   metrics?: ClaimSupportMetrics;
 }>;
@@ -228,13 +278,22 @@ export const COMPLETED_ROUTE_TERMINAL = {
   shadowProvenance: null,
 };
 
-/** A context of inert handles — every scenario stubs `executeTool` anyway. */
+/**
+ * A context of inert handles — every scenario stubs `executeTool` anyway — except
+ * the shade-candidate and map-object registries, which the loop writes and the
+ * verifier reads: without them no shade_window claim could verify, and a
+ * follow-up turn could not refer to an earlier sidewalk.
+ */
 export function makeScenarioContext(): AgentContext {
   const noop = () => {};
   let version = 0;
+  const objects: MapObject[] = [];
+  const candidates = new Map<string, ShadeCandidate>();
   return {
-    getShadeCandidates: () => [],
-    registerShadeCandidates: () => {},
+    getShadeCandidates: () => [...candidates.values()],
+    registerShadeCandidates: (items) => {
+      for (const item of items) candidates.set(item.spot.candidateId, item);
+    },
     mapRef: { current: null },
     shadowLayerRef: { current: null },
     dateRef: { current: new Date("2026-08-08T18:00:00Z") },
@@ -257,8 +316,10 @@ export function makeScenarioContext(): AgentContext {
     cancelRoutePlan: () => false,
     // Scripted route terminals use revision 1 even when executeTool is mocked.
     getCurrentPlanRevision: () => Math.max(version, 1),
-    getMapObjects: () => [],
-    registerMapObjects: noop,
+    getMapObjects: () => objects,
+    registerMapObjects: (items) => {
+      for (const item of items) if (!objects.some((o) => o.id === item.id)) objects.push(item);
+    },
     setPins: noop,
   };
 }
@@ -357,6 +418,7 @@ async function replay(
     history: [],
   };
 
+  const ctx = makeScenarioContext();
   mocks.callModel.mockImplementation(async (req: LlmRequest, role?: ModelRole) => {
     const index = trace.llmRequests.length;
     trace.llmRequests.push(req);
@@ -380,25 +442,38 @@ async function replay(
     }
     const stub = scenario.tools?.[name];
     const result = record(
-      typeof stub === "function" ? stub(args) : (stub ?? { error: `No stub for ${name}.` }),
+      typeof stub === "function" ? await stub(args) : (stub ?? { error: `No stub for ${name}.` }),
     );
     if (name === "plot_points" && !result.error) {
       trace.plottedPins = (args.points as AssistantPin[]) ?? [];
     }
+    // As useRouting does in the app, a completed route is drawn as a map object.
+    if (name === "plan_shadowed_route" && result.status === "completed")
+      ctx.registerMapObjects([
+        {
+          id: `route:${result.requestId}:${result.actionId}:${result.planRevision}`,
+          kind: "route",
+        },
+      ]);
     return result;
   });
 
-  const { text, history, answer, metrics } = await runAgent({
-    history: [],
-    pins: scenario.mapPins,
-    userText: scenario.userText,
-    ctx: makeScenarioContext(),
-    onToolEvent: (e) => trace.toolEvents.push(e.name),
-    onAuthorityEvent: (event) => trace.authorityEvents.push(event),
-  });
-  trace.answer = text;
-  trace.verified = answer;
-  trace.metrics = metrics;
-  trace.history = history;
+  let evidence: ToolResultEnvelope[] | undefined;
+  for (const userText of [scenario.userText, ...(scenario.turns ?? [])]) {
+    const result = await runAgent({
+      history: trace.history,
+      evidence,
+      pins: trace.plottedPins,
+      userText,
+      ctx,
+      onToolEvent: (e) => trace.toolEvents.push(e.name),
+      onAuthorityEvent: (event) => trace.authorityEvents.push(event),
+    });
+    trace.answer = result.text;
+    trace.verified = result.answer;
+    trace.metrics = result.metrics;
+    trace.history = result.history;
+    evidence = result.evidence;
+  }
   return trace;
 }
