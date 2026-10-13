@@ -1,5 +1,5 @@
 /**
- * navigation-prep <plan|fixture|acquire|validate|normalize|build|signatures|verify|publish>
+ * navigation-prep <plan|fixture|acquire|validate|normalize|build|signatures|profiles|verify|publish>
  *
  * The NYC navigation pipeline, modelled on transit-prep's discipline:
  * every stage after `acquire` reads only local bytes, and every mutating
@@ -14,6 +14,7 @@ import { publishExecute, publishPlan, publishRollback } from "./publish";
 import { normalize } from "./normalize";
 import { navigationAcquisitionPlan } from "./sources";
 import { defaultCanopyInputs, shadeAgreement, shadeCellMain, shadeExecute } from "./shade";
+import { profilesExecute } from "./profiles";
 import { signaturesExecute } from "./signatures";
 import { validate } from "./validate";
 import { verifyGeneration } from "./verify";
@@ -21,7 +22,7 @@ import { writeEvidence } from "./evidence";
 import type { GridZoom } from "./boundary";
 
 const usage =
-  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|shade [--plan|--execute] [--grid z13|z14] [--concurrency N] [--cells a,b]|signatures|verify [generation]|publish [generation] [--execute|--rollback]>";
+  "usage: navigation-prep <plan|fixture|acquire [--plan|--execute]|validate|normalize [--plan|--only streets|buildings]|build [--dry-run] [--grid z13|z14]|shade [--plan|--execute] [--grid z13|z14] [--concurrency N] [--cells a,b]|signatures|profiles|verify [generation]|publish [generation] [--execute|--rollback]>";
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -133,7 +134,9 @@ async function main(): Promise<void> {
     const only = has("--cells")
       ? flags[flags.indexOf("--cells") + 1].split(",").filter(Boolean)
       : undefined;
-    const concurrency = has("--concurrency") ? Number(flags[flags.indexOf("--concurrency") + 1]) : 8;
+    const concurrency = has("--concurrency")
+      ? Number(flags[flags.indexOf("--concurrency") + 1])
+      : 8;
     if (!Number.isInteger(concurrency) || concurrency < 1)
       throw new Error("--concurrency requires a positive integer");
     const dryRun = has("--plan") || has("--dry-run");
@@ -146,6 +149,10 @@ async function main(): Promise<void> {
       );
       process.exitCode = 1;
     }
+    return;
+  }
+  if (command === "profiles") {
+    await writeEvidence(command, await profilesExecute());
     return;
   }
   if (command === "signatures") {
@@ -181,6 +188,7 @@ async function main(): Promise<void> {
         objects: verified.objects,
         streetShards: verified.streetShards,
         buildingShards: verified.buildingShards,
+        profileCells: verified.profileCells,
         totalBytes: verified.budgets.actual.totalBytes,
       },
       plan: {

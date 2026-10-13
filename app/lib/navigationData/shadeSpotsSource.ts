@@ -27,10 +27,24 @@ export type ShadeUnavailableReason =
   | "night"
   | "empty_window"
   | "no_candidates"
-  | "invalid_query";
+  | "invalid_query"
+  | "invalid_reference"
+  | "stale_reference"
+  | "no_similarity_data";
+export interface ShadeSimilarity {
+  reference: import("./shadeSpots").ShadeSpot;
+  metric: "annual-daylight-l2";
+  model: string;
+  sampleCount: number;
+  shortlistSize: number;
+  eligibleSides: number;
+  approximate: true;
+  squaredDistances: Record<string, number>;
+}
 export type ShadeWindowPayload =
   | (ShadeSpotsResult &
       Record<string, unknown> & {
+        similarity?: ShadeSimilarity;
         status: "ok";
         generation: string;
         source: "nyc-shade-table";

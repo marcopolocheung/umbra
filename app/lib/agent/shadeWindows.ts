@@ -17,6 +17,7 @@ export interface ShadeCandidate {
   spot: ShadeSpot;
   requestedDate: string;
   mode: "shade" | "sun";
+  requestedWindow?: ShadeSpotWindow;
 }
 
 export function nycDate(at: Date): string {
@@ -48,6 +49,9 @@ export function shadeWindowObjectId(resultId: string, candidateId: string): stri
 }
 
 export const SHADE_UNAVAILABLE_LABELS: Record<ShadeUnavailableReason, string> = {
+  invalid_reference: "Choose a sidewalk from an earlier verified shade search to compare.",
+  stale_reference: "The shade dataset has changed. Search again before comparing this sidewalk.",
+  no_similarity_data: "Similar-sidewalk search is unavailable for the loaded dataset.",
   outside_coverage: "No shade-table data is available for this area.",
   not_configured: "Shade-window search is not available in this build.",
   no_shade_table: "The loaded dataset has no shade-window table.",
@@ -133,6 +137,40 @@ export function isShadeWindowPayload(v: unknown): v is ShadeWindowPayload {
     v.effectiveWindow.toMinutes !== prepared.effectiveWindow?.toMinutes
   )
     return false;
+  if (v.similarity !== undefined) {
+    const s = v.similarity;
+    if (
+      !record(s) ||
+      s.metric !== "annual-daylight-l2" ||
+      s.model !== "signatures-v1" ||
+      s.sampleCount !== 581 ||
+      s.approximate !== true ||
+      !Number.isInteger(s.shortlistSize) ||
+      (s.shortlistSize as number) < 1 ||
+      (s.shortlistSize as number) > 500 ||
+      s.shortlistSize !== Math.min(500, s.eligibleSides as number) ||
+      !Number.isInteger(s.eligibleSides) ||
+      (s.eligibleSides as number) < (s.shortlistSize as number) ||
+      !record(s.squaredDistances) ||
+      !record(s.reference) ||
+      !isShadeWindowPayload({ ...v, similarity: undefined, results: [s.reference] }) ||
+      v.results.some(
+        (raw) =>
+          !record(raw) ||
+          raw.candidateId === (s.reference as Record<string, unknown>).candidateId ||
+          raw.blockFaceId === (s.reference as Record<string, unknown>).blockFaceId ||
+          !Number.isSafeInteger(
+            (s.squaredDistances as Record<string, unknown>)[raw.candidateId as string],
+          ) ||
+          ((s.squaredDistances as Record<string, unknown>)[raw.candidateId as string] as number) <
+            0 ||
+          ((s.squaredDistances as Record<string, unknown>)[raw.candidateId as string] as number) >
+            581 * 255 * 255,
+      ) ||
+      Object.keys(s.squaredDistances).length !== v.results.length
+    )
+      return false;
+  }
   const ids = new Set<string>();
   const faces = new Set<string>();
   const month = Number(v.requestedDate.slice(5, 7)) - 1;
@@ -141,6 +179,9 @@ export function isShadeWindowPayload(v: unknown): v is ShadeWindowPayload {
   return v.results.every((raw) => {
     if (
       !record(raw) ||
+      (raw.shadeKey !== undefined &&
+        (typeof raw.shadeKey !== "string" ||
+          !/^shades\/[a-z0-9-]{1,64}\.json$/.test(raw.shadeKey))) ||
       typeof raw.segmentKey !== "string" ||
       !/^\d+,\d+$/.test(raw.segmentKey) ||
       !["left", "right"].includes(raw.side as string) ||
@@ -238,4 +279,39 @@ export function shadeTimelineRows(
       fraction: mode === "sun" ? 1 - shade : shade,
     };
   });
+}
+
+/** Shared clock bins; missing daylight samples remain visibly unavailable. */
+export function shadeComparisonRows(
+  reference: readonly ShadeSpotSample[],
+  match: readonly ShadeSpotSample[],
+  mode: "shade" | "sun",
+) {
+  const minutes = [...new Set([...reference, ...match].map((s) => s.minutes))].sort(
+    (a, b) => a - b,
+  );
+  const hourly = minutes.length > 8;
+  const bins = new Map<number, number[]>();
+  for (const minute of minutes) {
+    const key = hourly ? Math.floor(minute / 60) * 60 : minute;
+    const bin = bins.get(key) ?? [];
+    bin.push(minute);
+    bins.set(key, bin);
+  }
+  const value = (samples: readonly ShadeSpotSample[], times: number[]) => {
+    const selected = samples.filter((s) => times.includes(s.minutes));
+    if (!selected.length) return null;
+    const shade =
+      selected.reduce((n, s) => n + Math.round(s.shade * 255), 0) / (255 * selected.length);
+    return {
+      fraction: mode === "sun" ? 1 - shade : shade,
+      partial: selected.length < times.length,
+    };
+  };
+  return [...bins.values()].map((times) => ({
+    fromMinutes: times[0],
+    toMinutes: times.at(-1)! + 15,
+    reference: value(reference, times),
+    match: value(match, times),
+  }));
 }

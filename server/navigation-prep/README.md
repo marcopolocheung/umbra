@@ -153,3 +153,15 @@ height fallback, ring repair) is implemented once in
 The published generation carries `© OpenStreetMap contributors`, the ODbL
 link, the NYC Open Data terms link, and source notes naming both pinned
 receipts. A NYC Open Data derived-database offer travels with the generation.
+
+## A3 annual-profile packing
+
+After `shade` and `signatures`, run `npm run profiles` before `build`. This copies the frozen
+model's daylight-union slots into exact side-major pages for selective similarity reads;
+it does not recompute shadows or refit the model. Profiles are optional, but present stage
+output must cover every shade cell and match its source digests. `build`, `verify` and the
+existing pointer-last publisher include the new artifacts and budgets.
+
+See [the A3 evidence and activation order](../../docs/notes/shade-similarity-a3-2026-10-13.md).
+Deploy the compatible browser consumer and delivery Worker before owner-approved publication.
+Do not append artifacts to an existing immutable generation.

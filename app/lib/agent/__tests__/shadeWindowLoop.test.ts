@@ -280,3 +280,34 @@ describe("shade-window assistant integration", () => {
     ).toBe(false);
   });
 });
+
+it("uses a registered prior sidewalk for a more-like-this follow-up without a new area search", async () => {
+  const ctx = shadeContext(),
+    p = shadePayload(),
+    spot = p.results[0];
+  ctx.registerShadeCandidates([
+    { spot, requestedDate: p.requestedDate, requestedWindow: p.requestedWindow, mode: p.mode },
+  ]);
+  vi.mocked(callModel)
+    .mockResolvedValueOnce(
+      calls([{ name: "find_shade_spots", args: { likeCandidateId: spot.candidateId } }]),
+    )
+    .mockResolvedValueOnce(final);
+  const result = await runAgent({
+    history: [],
+    userText: "Find more sidewalks with a shade pattern like the first one",
+    ctx,
+  });
+  const call = vi.mocked(executeTool).mock.calls.find(([name]) => name === "find_shade_spots")!;
+  expect(call[1]).toMatchObject({
+    likeCandidateId: spot.candidateId,
+    nearCandidateId: spot.candidateId,
+    date: p.requestedDate,
+    from: "2:00 PM",
+    to: "4:00 PM",
+    radiusM: 400,
+  });
+  expect(
+    result.answer.receipts.some((r) => r.kind === "shade_window" && r.verification === "verified"),
+  ).toBe(true);
+});

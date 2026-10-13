@@ -12,13 +12,23 @@
  */
 import { findShadeSpots, shadeUnavailable } from "../navigationData/shadeSpotsSource";
 import { prepareShadeSpotsWindow, type ShadeSpotsQuery } from "../navigationData/shadeSpots";
-import { nycDate, shadeClockMinutes, shadeRouteTimeMatches, type ShadeCandidate } from "./shadeWindows";
+import { findSimilarShadeSpots } from "../navigationData/shadeSimilaritySource";
+import {
+  nycDate,
+  shadeClockLabel,
+  shadeClockMinutes,
+  shadeRouteTimeMatches,
+  type ShadeCandidate,
+} from "./shadeWindows";
 import type * as maplibregl from "maplibre-gl";
 import type { IShadowLayer } from "../shadow/IShadowLayer";
 import { geocodeForward, geocodeNear, type NominatimResult } from "../nominatim";
 import { haversineMeters } from "../routing";
 import { computeSolarIntensity } from "../shadowSampling";
-import { prefetchBuildingFootprints, queryOffscreenBuildingShadow } from "../shadow/offscreenShadow";
+import {
+  prefetchBuildingFootprints,
+  queryOffscreenBuildingShadow,
+} from "../shadow/offscreenShadow";
 import { fromMapLocal, toMapLocal } from "../timezone";
 import { buildTrip, tripToRoutePlan } from "../trip/trip";
 import { parseTime } from "../../hooks/useShadowTime";
@@ -173,13 +183,20 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "What to look for — a kind of place, not a full address." },
+        query: {
+          type: "string",
+          description: "What to look for — a kind of place, not a full address.",
+        },
         near: {
           type: "string",
-          description: "Area to search in, in the user's own words (a neighbourhood, park or city).",
+          description:
+            "Area to search in, in the user's own words (a neighbourhood, park or city).",
         },
         lat: { type: "number", description: "Anchor latitude — preferred over `near` when known." },
-        lng: { type: "number", description: "Anchor longitude — preferred over `near` when known." },
+        lng: {
+          type: "number",
+          description: "Anchor longitude — preferred over `near` when known.",
+        },
         nearCandidateId: {
           type: "string",
           description: "Application-owned identity for an exact lat/lng anchor.",
@@ -216,18 +233,33 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
   },
   {
     name: "find_shade_spots",
-    description: "Find up to four nearby sidewalk alternatives for SHADE or SUN over a time window or another date. Use check_shadow for an instantaneous check at the selected map time. Uses typical monthly shade, not exact-day weather; returns requested/effective times and basis. For one time on another date, query one quarter-hour beginning at that time and disclose the window. Names and seats are not known. Do not change the map time for this read. Never claim values or hours not returned. Results are alternatives, not itinerary stops.",
+    description:
+      "Find up to four nearby sidewalk alternatives for SHADE or SUN over a time window or another date. Use check_shadow for an instantaneous check at the selected map time. Uses typical monthly shade, not exact-day weather; returns requested/effective times and basis. For one time on another date, query one quarter-hour beginning at that time and disclose the window. Names and seats are not known. Do not change the map time for this read. Never claim values or hours not returned. Results are alternatives, not itinerary stops. For more like an earlier verified sidewalk, pass likeCandidateId. This compares annual shade patterns within the radius of that sidewalk, with an approximate 500-side shortlist and exact annual reranking. Omitted date/window/mode inherit the reference and radius defaults to 400 m. Do not supply another search area. Ask which result if the reference is ambiguous.",
     parameters: {
       type: "object",
       properties: {
-        lat: { type: "number" }, lng: { type: "number" },
+        lat: { type: "number" },
+        lng: { type: "number" },
         from: { type: "string", description: "NYC clock time, e.g. 2:00 PM or 14:00." },
         to: { type: "string", description: "Later NYC clock time on the same day." },
-        date: { type: "string", description: "ISO calendar date. Omitted means the selected NYC map date; explicit today uses todayDate from context." },
+        date: {
+          type: "string",
+          description:
+            "ISO calendar date. Omitted means the selected NYC map date; explicit today uses todayDate from context.",
+        },
         radiusM: { type: "number", enum: [200, 400, 800] },
         mode: { type: "string", enum: ["shade", "sun"] },
-        nearCandidateId: { type: "string", description: "Exact known geocode, map-centre or GPS anchor identity." },
-      }, required: ["lat", "lng", "from", "to", "radiusM", "mode"],
+        likeCandidateId: {
+          type: "string",
+          description:
+            "Exact candidateId from a prior verified find_shade_spots result. Requires no lat/lng or window arguments; defaults inherit the reference.",
+        },
+        nearCandidateId: {
+          type: "string",
+          description: "Exact known geocode, map-centre or GPS anchor identity.",
+        },
+      },
+      required: [],
     },
   },
   {
@@ -329,18 +361,60 @@ export function parsePins(points: unknown): AssistantPin[] {
 }
 
 /** Freeze the implicit map date before a call joins the dedupe/evidence graph. */
-export function normalizeShadeToolArgs(args: Args, at: Date): Args {
+export function normalizeShadeToolArgs(
+  args: Args,
+  at: Date,
+  candidates: readonly ShadeCandidate[] = [],
+): Args {
+  if (args.likeCandidateId !== undefined) {
+    const ref = candidates.find((c) => c.spot.candidateId === args.likeCandidateId);
+    if (!ref) return args;
+    const window = ref.requestedWindow ?? ref.spot.effectiveWindow;
+    return {
+      ...args,
+      lat: ref.spot.lat,
+      lng: ref.spot.lng,
+      nearCandidateId: ref.spot.candidateId,
+      date: args.date === undefined ? ref.requestedDate : args.date,
+      from: args.from === undefined ? shadeClockLabel(window.fromMinutes) : args.from,
+      to: args.to === undefined ? shadeClockLabel(window.toMinutes) : args.to,
+      radiusM: args.radiusM === undefined ? 400 : args.radiusM,
+      mode: args.mode === undefined ? ref.mode : args.mode,
+    };
+  }
   return { ...args, date: args.date === undefined ? nycDate(at) : args.date };
 }
 
 export function shadeQueryFromArgs(args: Args): ShadeSpotsQuery | null {
-  const lat = num(args.lat), lng = num(args.lng);
-  const fromMinutes = shadeClockMinutes(args.from), toMinutes = shadeClockMinutes(args.to);
-  if (lat === null || lng === null || fromMinutes === null || toMinutes === null || typeof args.date !== "string" ||
-      ![200, 400, 800].includes(args.radiusM as number) || !["shade", "sun"].includes(args.mode as string)) return null;
-  const query: ShadeSpotsQuery = { lat, lng, fromMinutes, toMinutes, date: args.date,
-    radiusM: args.radiusM as ShadeSpotsQuery["radiusM"], mode: args.mode as "shade" | "sun" };
-  try { prepareShadeSpotsWindow(query); return query; } catch { return null; }
+  const lat = num(args.lat),
+    lng = num(args.lng);
+  const fromMinutes = shadeClockMinutes(args.from),
+    toMinutes = shadeClockMinutes(args.to);
+  if (
+    lat === null ||
+    lng === null ||
+    fromMinutes === null ||
+    toMinutes === null ||
+    typeof args.date !== "string" ||
+    ![200, 400, 800].includes(args.radiusM as number) ||
+    !["shade", "sun"].includes(args.mode as string)
+  )
+    return null;
+  const query: ShadeSpotsQuery = {
+    lat,
+    lng,
+    fromMinutes,
+    toMinutes,
+    date: args.date,
+    radiusM: args.radiusM as ShadeSpotsQuery["radiusM"],
+    mode: args.mode as "shade" | "sun",
+  };
+  try {
+    prepareShadeSpotsWindow(query);
+    return query;
+  } catch {
+    return null;
+  }
 }
 
 export async function executeTool(
@@ -376,8 +450,19 @@ export async function executeTool(
         zoom: +zoom.toFixed(1),
         localTime: fmtLocalTime(now, offset),
         selectedDate: nycDate(now),
+        shadeReferences: (ctx.getShadeCandidates?.() ?? [])
+          .slice(-8)
+          .map((c) => ({
+            candidateId: c.spot.candidateId,
+            label: c.spot.label,
+            requestedDate: c.requestedDate,
+            requestedWindow: c.requestedWindow ?? c.spot.effectiveWindow,
+            mode: c.mode,
+          })),
         todayDate: nycDate(new Date()),
-        centerCandidateId: locationKnown ? `map-center:${c.lat.toFixed(5)}:${c.lng.toFixed(5)}` : undefined,
+        centerCandidateId: locationKnown
+          ? `map-center:${c.lat.toFixed(5)}:${c.lng.toFixed(5)}`
+          : undefined,
         userLocationCandidateId: userLoc ? "user-location" : undefined,
         sunIntensity: +computeSolarIntensity(now, c.lat, c.lng).toFixed(2),
         locationKnown,
@@ -504,9 +589,7 @@ export async function executeTool(
         // Spots off the viewport each fall through to an Overpass footprint fetch.
         // One fetch covering all of them fills the cache the per-spot calls read.
         const bounds = ctx.mapRef.current?.getBounds();
-        await prefetchBuildingFootprints(
-          pins.filter((p) => !bounds?.contains([p.lng, p.lat])),
-        );
+        await prefetchBuildingFootprints(pins.filter((p) => !bounds?.contains([p.lng, p.lat])));
         const results = [];
         for (const p of pins) {
           const r = await executeTool(
@@ -555,8 +638,24 @@ export async function executeTool(
     }
 
     case "find_shade_spots": {
-      const query = shadeQueryFromArgs(normalizeShadeToolArgs(args, ctx.dateRef.current));
-      return query ? { ...await (ctx.signal ? findShadeSpots(query, { signal: ctx.signal }) : findShadeSpots(query)) } : { ...shadeUnavailable("invalid_query") };
+      const candidates = ctx.getShadeCandidates();
+      const reference = candidates.find((c) => c.spot.candidateId === args.likeCandidateId);
+      if (args.likeCandidateId !== undefined && !reference)
+        return { ...shadeUnavailable("invalid_reference") };
+      const query = shadeQueryFromArgs(
+        normalizeShadeToolArgs(args, ctx.dateRef.current, candidates),
+      );
+      if (reference)
+        return query
+          ? { ...(await findSimilarShadeSpots(reference.spot, query, { signal: ctx.signal })) }
+          : { ...shadeUnavailable("invalid_query") };
+      return query
+        ? {
+            ...(await (ctx.signal
+              ? findShadeSpots(query, { signal: ctx.signal })
+              : findShadeSpots(query))),
+          }
+        : { ...shadeUnavailable("invalid_query") };
     }
 
     case "set_time": {
@@ -627,12 +726,23 @@ export async function executeTool(
           via.push([lng, lat]);
         }
       }
-      const chosenIds = [args.fromCandidateId, args.toCandidateId,
-        ...(Array.isArray(args.via) ? args.via.map(raw => (raw as Record<string, unknown>)?.candidateId) : [])];
+      const chosenIds = [
+        args.fromCandidateId,
+        args.toCandidateId,
+        ...(Array.isArray(args.via)
+          ? args.via.map((raw) => (raw as Record<string, unknown>)?.candidateId)
+          : []),
+      ];
       const shadeCandidates = ctx.getShadeCandidates();
-      const selected = shadeCandidates.filter(candidate => chosenIds.includes(candidate.spot.candidateId));
-      if (selected.length > 1) return { error: "Choose one shade alternative before routing.", code: "shade_alternatives" };
-      if (selected.some(candidate => !shadeRouteTimeMatches(candidate, ctx.dateRef.current)))
+      const selected = shadeCandidates.filter((candidate) =>
+        chosenIds.includes(candidate.spot.candidateId),
+      );
+      if (selected.length > 1)
+        return {
+          error: "Choose one shade alternative before routing.",
+          code: "shade_alternatives",
+        };
+      if (selected.some((candidate) => !shadeRouteTimeMatches(candidate, ctx.dateRef.current)))
         return { error: "Set the map departure date and time first.", code: "shade_route_time" };
       // The navigation hook owns mutations and routing. This wrapper only validates
       // tool arguments, asks it to allocate a versioned request, and awaits the

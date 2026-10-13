@@ -31,6 +31,12 @@ import {
 } from "./boundary";
 import { canonicalJson, jsonBytes, sha256Hex } from "./canonical";
 import { readReceipts } from "./acquire";
+import {
+  parseProfileIndex,
+  parseProfileCell,
+  type ProfileIndex,
+} from "../../../app/lib/navigationData/profileContract";
+import { profilePageHashes } from "./profiles";
 import { RECIPE_ID } from "./build";
 import { SIGNATURE_BYTES_PER_SIDE, type SignatureIndex } from "./signatures";
 import { percentileSummary } from "./stats";
@@ -118,6 +124,7 @@ export interface VerifyResult {
   buildingShards: number;
   shadeShards: number;
   signatureCells: number;
+  profileCells: number;
   budgets: {
     enforced: {
       maxStreetShard: number;
@@ -130,6 +137,7 @@ export interface VerifyResult {
       buildingBytes: number;
       shadeBytes: number;
       signatureBytes: number;
+      profileBytes: number;
       totalBytes: number;
     };
   };
@@ -249,8 +257,10 @@ async function readArtifacts(
     );
     bytes.set(key, raw);
     const payload = await readFile(join(nested, ref.payloadKey));
-    if (payload.byteLength !== ref.payloadBytes) throw new Error(`${ref.payloadKey}: byte count drifted`);
-    if (sha256Hex(payload) !== ref.payloadSha256) throw new Error(`${ref.payloadKey}: digest drifted`);
+    if (payload.byteLength !== ref.payloadBytes)
+      throw new Error(`${ref.payloadKey}: byte count drifted`);
+    if (sha256Hex(payload) !== ref.payloadSha256)
+      throw new Error(`${ref.payloadKey}: digest drifted`);
     bytes.set(ref.payloadKey, payload);
   }
   const signatures = manifest.signatures
@@ -301,9 +311,14 @@ async function readSignatures(
     if (cell.segments !== shade.segments)
       throw new Error(`${cell.payloadKey}: rows do not line up with ${cell.shadeKey}`);
     const payload = await readFile(join(nested, cell.payloadKey));
-    if (payload.byteLength !== cell.bytes) throw new Error(`${cell.payloadKey}: byte count drifted`);
+    if (payload.byteLength !== cell.bytes)
+      throw new Error(`${cell.payloadKey}: byte count drifted`);
     if (sha256Hex(payload) !== cell.sha256) throw new Error(`${cell.payloadKey}: digest drifted`);
-    for (let i = SIGNATURE_BYTES_PER_SIDE - 1; i < payload.byteLength; i += SIGNATURE_BYTES_PER_SIDE)
+    for (
+      let i = SIGNATURE_BYTES_PER_SIDE - 1;
+      i < payload.byteLength;
+      i += SIGNATURE_BYTES_PER_SIDE
+    )
       if (payload[i] >= types) throw new Error(`${cell.payloadKey}: type byte out of range`);
     bytes.set(cell.payloadKey, payload);
     payloadBytes += payload.byteLength;
@@ -329,6 +344,59 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     // Shade payloads are raw bytes; only the JSON documents carry a generation
     // label to strip.
     labelFree.set(key, key.endsWith(".bin") ? sha256Hex(raw) : labelFreeDigest(raw));
+  }
+  const profileObjects = new Map<string, { bytes: number; sha256: string }>();
+  let profileIndex: ProfileIndex | undefined;
+  if (manifest.profiles) {
+    if (!artifacts.signatures) throw new Error("profiles require signatures");
+    const nested = join(directory, "navigation", "nyc", name);
+    const read = async (key: string, size: number, digest: string) => {
+      const raw = await readFile(join(nested, key));
+      if (raw.length !== size || sha256Hex(raw) !== digest)
+        throw new Error(`profile digest/length mismatch ${key}`);
+      profileObjects.set(key, { bytes: size, sha256: digest });
+      labelFree.set(key, key === "profiles/index.json" ? labelFreeDigest(raw) : digest);
+      return raw;
+    };
+    const ref = manifest.profiles;
+    profileIndex = parseProfileIndex(
+      JSON.parse((await read(ref.key, ref.bytes, ref.sha256)).toString()),
+      manifest,
+      artifacts.signatures,
+    );
+    let payloadBytes = 0,
+      indexBytes = 0;
+    for (const cellRef of profileIndex.cells) {
+      const shade = artifacts.shadeShards.get(cellRef.key.replace("profiles/", "shades/"))!;
+      const raw = await read(cellRef.key, cellRef.bytes, cellRef.sha256);
+      const cell = parseProfileCell(JSON.parse(raw.toString()), cellRef, profileIndex, shade);
+      if (cell.segmentsSha256 !== sha256Hex(canonicalJson(shade.segments)))
+        throw new Error("profile row order mismatch");
+      const packed = await read(cell.payload.key, cell.payload.bytes, cell.payload.sha256);
+      if (
+        canonicalJson(profilePageHashes(packed, profileIndex.daySlots.length)) !==
+        canonicalJson(cell.pageHashes)
+      )
+        throw new Error("profile page hashes drifted");
+      const source = artifacts.bytes.get(shade.payload.key)!;
+      for (let row = 0; row < cell.sides; row++)
+        for (let d = 0; d < profileIndex.daySlots.length; d++)
+          if (
+            packed[row * profileIndex.daySlots.length + d] !==
+            source[profileIndex.daySlots[d] * cell.sides + row]
+          )
+            throw new Error("profile bytes differ from shade table");
+      indexBytes += raw.length;
+      payloadBytes += packed.length;
+    }
+    if (indexBytes !== ref.indexBytes || payloadBytes !== ref.payloadBytes)
+      throw new Error("profile budgets drifted");
+    const stored = await readdir(join(nested, "profiles"));
+    if (
+      stored.length !== profileObjects.size ||
+      stored.some((k) => !profileObjects.has(`profiles/${k}`))
+    )
+      throw new Error("unclaimed profile files");
   }
   // Grid is derivable from the published shard keys ("streets/z13-/z14-" prefixes).
   const gridZooms = new Set<number>(
@@ -375,7 +443,11 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
       ? manifest.signatures.bytes + manifest.signatures.payloadBytes
       : 0,
   };
+  const profileBytes = [...profileObjects.values()].reduce((n, r) => n + r.bytes, 0);
+  if (profileBytes !== (manifest.budgets.profileBytes ?? 0))
+    throw new Error("profile budget mismatch");
   const totalBytes =
+    profileBytes +
     budgets.streetBytes +
     budgets.buildingBytes +
     budgets.shadeBytes +
@@ -393,7 +465,9 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
     throw new Error("total budget does not match the manifest");
   if (manifest.budgets.totalBytes > MAX_TOTAL_BYTES)
     throw new Error(`total budget exceeded: ${manifest.budgets.totalBytes}`);
-  const overShade = [...shadeRefs.values()].filter((ref) => ref.payloadBytes > MAX_SHADE_SHARD_BYTES);
+  const overShade = [...shadeRefs.values()].filter(
+    (ref) => ref.payloadBytes > MAX_SHADE_SHARD_BYTES,
+  );
   if (overShade.length > 0)
     throw new Error(`shade shard budget exceeded: ${overShade.map((ref) => ref.key).join(", ")}`);
   const overSignature = (artifacts.signatures?.cells ?? []).filter(
@@ -426,11 +500,12 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
 
   return {
     generation: name,
-    objects: artifacts.bytes.size + 3,
+    objects: artifacts.bytes.size + profileObjects.size + 3,
     streetShards: streetRefs.size,
     buildingShards: buildingRefs.size,
     shadeShards: shadeRefs.size,
     signatureCells: artifacts.signatures?.cells.length ?? 0,
+    profileCells: profileIndex?.cells.length ?? 0,
     budgets: {
       enforced: {
         maxStreetShard: MAX_STREET_SHARD_BYTES,
@@ -443,6 +518,7 @@ export async function verifyGeneration(generation?: string): Promise<VerifyResul
         buildingBytes: budgets.buildingBytes,
         shadeBytes: budgets.shadeBytes,
         signatureBytes: budgets.signatureBytes,
+        profileBytes,
         totalBytes,
       },
     },

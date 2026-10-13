@@ -122,3 +122,11 @@ put its access-key id and secret in AWS Secrets Manager, and inject them into
 the Batch job as `SHADE_PACK_R2_ACCESS_KEY_ID` and
 `SHADE_PACK_R2_SECRET_ACCESS_KEY`. Never put
 either credential in this repository, a Batch command override, or a report.
+
+## Annual-profile delivery (A3)
+
+The navigation allow-list also serves `profiles/index.json`, `profiles/<cell>.json` and
+`profiles/<cell>.bin`. Existing single-range R2 delivery serves verified small profile pages;
+`Content-Range`, `Content-Length` and `ETag` are exposed to the allowed browser origin.
+Deploy this Worker and the compatible browser consumer before promoting a profile-enabled
+manifest. A deployment dry-run does not activate or publish the dataset.

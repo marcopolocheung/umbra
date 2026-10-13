@@ -1,0 +1,277 @@
+{
+  "generation": "nyc-2026-09-18-ab747d9b8627",
+  "sourceGeneration": "nyc-2026-09-18-e6718823bbb3",
+  "attemptedReferences": 1414,
+  "shortlist": 500,
+  "window": {
+    "date": "2026-06-15",
+    "fromMinutes": 840,
+    "toMinutes": 960
+  },
+  "coverageSkips": {
+    "outside_coverage": 25
+  },
+  "radii": {
+    "200": {
+      "queries": 1389,
+      "queriesWithTen": 1373,
+      "meanRecall10": 1,
+      "meanFaceRecall4": 1,
+      "sideFailures": 0,
+      "faceFailures": 0,
+      "profileBytes": {
+        "median": 520576,
+        "p95": 929600,
+        "max": 1598912
+      },
+      "profileRequests": {
+        "median": 16,
+        "p95": 29
+      },
+      "worst": [
+        {
+          "query": 6,
+          "pool": 32,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 47642,
+          "profileRequests": 2
+        },
+        {
+          "query": 453,
+          "pool": 197,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 607726,
+          "profileRequests": 17
+        },
+        {
+          "query": 621,
+          "pool": 71,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 334656,
+          "profileRequests": 10
+        },
+        {
+          "query": 1106,
+          "pool": 63,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 316064,
+          "profileRequests": 11
+        },
+        {
+          "query": 1541,
+          "pool": 139,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 594944,
+          "profileRequests": 18
+        }
+      ],
+      "skippedQueries": 25,
+      "knownM100Failures": {
+        "3052693": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "1765981": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "3034420": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        }
+      }
+    },
+    "400": {
+      "queries": 1389,
+      "queriesWithTen": 1384,
+      "meanRecall10": 1,
+      "meanFaceRecall4": 1,
+      "sideFailures": 0,
+      "faceFailures": 0,
+      "profileBytes": {
+        "median": 1505952,
+        "p95": 2268224,
+        "max": 3439520
+      },
+      "profileRequests": {
+        "median": 35,
+        "p95": 61
+      },
+      "worst": [
+        {
+          "query": 6,
+          "pool": 68,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 103418,
+          "profileRequests": 3
+        },
+        {
+          "query": 453,
+          "pool": 553,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 1648878,
+          "profileRequests": 33
+        },
+        {
+          "query": 621,
+          "pool": 339,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 1171296,
+          "profileRequests": 24
+        },
+        {
+          "query": 1106,
+          "pool": 277,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 873824,
+          "profileRequests": 19
+        },
+        {
+          "query": 1541,
+          "pool": 329,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 1022560,
+          "profileRequests": 22
+        }
+      ],
+      "skippedQueries": 25,
+      "knownM100Failures": {
+        "3052693": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "1765981": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "3034420": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        }
+      }
+    },
+    "800": {
+      "queries": 1389,
+      "queriesWithTen": 1387,
+      "meanRecall10": 1,
+      "meanFaceRecall4": 1,
+      "sideFailures": 0,
+      "faceFailures": 0,
+      "profileBytes": {
+        "median": 2844576,
+        "p95": 4136720,
+        "max": 5242944
+      },
+      "profileRequests": {
+        "median": 68,
+        "p95": 117
+      },
+      "worst": [
+        {
+          "query": 6,
+          "pool": 130,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 252154,
+          "profileRequests": 7
+        },
+        {
+          "query": 453,
+          "pool": 1725,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 3216416,
+          "profileRequests": 71
+        },
+        {
+          "query": 621,
+          "pool": 1439,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 2937536,
+          "profileRequests": 56
+        },
+        {
+          "query": 1106,
+          "pool": 1099,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 2098572,
+          "profileRequests": 24
+        },
+        {
+          "query": 1541,
+          "pool": 1039,
+          "k10": 10,
+          "sideRecall": 1,
+          "faceRecall": 1,
+          "profileBytes": 2472736,
+          "profileRequests": 37
+        }
+      ],
+      "skippedQueries": 25,
+      "knownM100Failures": {
+        "3052693": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "1765981": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        },
+        "3034420": {
+          "sideRecall": 1,
+          "faceRecall": 1
+        }
+      }
+    }
+  },
+  "browserFixture": [
+    {
+      "name": "desktop",
+      "count": 4,
+      "shortlist": 500,
+      "eligible": 569,
+      "elapsedMs": 1371.3000000000466,
+      "overflow": false,
+      "errors": [],
+      "similarityRequests": 70,
+      "annualProfileBytes": 2100896
+    },
+    {
+      "name": "mobile",
+      "count": 4,
+      "shortlist": 500,
+      "eligible": 569,
+      "elapsedMs": 1212.1999999999534,
+      "overflow": false,
+      "errors": [],
+      "similarityRequests": 70,
+      "annualProfileBytes": 2100896
+    }
+  ]
+}

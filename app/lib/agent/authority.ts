@@ -295,7 +295,7 @@ function requested(state: AuthorityState, tool: string): boolean {
   // never a generic side effect of an arbitrary chat message.
   return hasPositivePhrase(
     text,
-    /\b(shadow\w*|sun\w*|shade\w*|park|cafe|coffee|sit|eat|place|stop|route|walk|directions|show|plan|where)\b/i,
+    /\b(shadow\w*|sun\w*|shade\w*|similar|like|match\w*|park|cafe|coffee|sit|eat|place|stop|route|walk|directions|show|plan|where)\b/i,
   );
 }
 
@@ -412,10 +412,14 @@ export function candidateIdentities(
   toolName?: string,
 ): CandidateIdentity[] {
   if (typeof payload.error === "string") return [];
-  if (toolName === "locate_user") return geo(payload.lat, payload.lng)
-    ? [{ id: `location:${resultId}`, lat: payload.lat as number, lng: payload.lng as number }] : [];
-  if (toolName === "find_shade_spots") return isShadeWindowPayload(payload) && payload.status === "ok"
-    ? payload.results.map(spot => ({ id: spot.candidateId, lat: spot.lat, lng: spot.lng })) : [];
+  if (toolName === "locate_user")
+    return geo(payload.lat, payload.lng)
+      ? [{ id: `location:${resultId}`, lat: payload.lat as number, lng: payload.lng as number }]
+      : [];
+  if (toolName === "find_shade_spots")
+    return isShadeWindowPayload(payload) && payload.status === "ok"
+      ? payload.results.map((spot) => ({ id: spot.candidateId, lat: spot.lat, lng: spot.lng }))
+      : [];
   const results = Array.isArray(payload.results) ? payload.results : [];
   return results.flatMap((raw, index) => {
     const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -480,7 +484,18 @@ export function authorizeToolCall(
           return reject("time_not_requested_by_current_user");
       }
     }
-    if (tool === "find_shade_spots" && !candidateFor(state, args.nearCandidateId, args.lat, args.lng))
+    if (
+      tool === "find_shade_spots" &&
+      args.likeCandidateId !== undefined &&
+      (typeof args.likeCandidateId !== "string" ||
+        !/^nyc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}:\d+,\d+:(left|right)$/.test(args.likeCandidateId) ||
+        !candidateFor(state, args.likeCandidateId, args.lat, args.lng))
+    )
+      return reject("sensitive_argument_not_application_candidate");
+    if (
+      tool === "find_shade_spots" &&
+      !candidateFor(state, args.nearCandidateId, args.lat, args.lng)
+    )
       return reject("sensitive_argument_not_application_candidate");
     if (tool === "search_places") {
       const hasCoordinateAnchor = args.lat != null || args.lng != null;

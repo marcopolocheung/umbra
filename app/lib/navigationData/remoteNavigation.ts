@@ -99,7 +99,7 @@ export function navigationApiBase(): string | undefined {
   return configuredBase();
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -114,7 +114,7 @@ function abortReason(signal: AbortSignal): Error {
  * into the fetch itself: a cancelled waiter rejects here while the shared
  * request continues for the callers that still need it.
  */
-function withCallerSignal<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+export function withCallerSignal<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return shared;
   if (signal.aborted) return Promise.reject(abortReason(signal));
   return new Promise<T>((resolve, reject) => {
@@ -144,7 +144,7 @@ function decodeJson(bytes: Uint8Array, label: string): unknown {
 /** In-flight immutable fetches, keyed by URL. Entries are deleted on settle. */
 const inflight = new Map<string, Promise<unknown>>();
 
-function getOrFetch<T>(url: string, task: () => Promise<T>): Promise<T> {
+export function getOrFetch<T>(url: string, task: () => Promise<T>): Promise<T> {
   const existing = inflight.get(url);
   if (existing) return existing as Promise<T>;
   const pending = task();
@@ -218,7 +218,10 @@ export async function loadNavigationManifest(
         throw new Error("NYC navigation manifest exceeds its budget");
       if ((await sha256Hex(bytes)) !== pointer.manifestSha256)
         throw new Error("NYC navigation manifest hash mismatch");
-      return parseNavigationManifest(decodeJson(bytes, "NYC navigation manifest"), pointer.generation);
+      return parseNavigationManifest(
+        decodeJson(bytes, "NYC navigation manifest"),
+        pointer.generation,
+      );
     } finally {
       if (report) report.manifestMs += (globalThis.performance?.now?.() ?? 0) - started;
     }
@@ -226,7 +229,7 @@ export async function loadNavigationManifest(
   return withCallerSignal(shared, options?.signal);
 }
 
-function shardUrl(base: string, generation: string, key: string): string {
+export function shardUrl(base: string, generation: string, key: string): string {
   // The contract's key patterns admit only `streets/<cell>.json` and
   // `buildings/<cell>.json`; the segment check below is the belt to those
   // suspenders, so a corrupt manifest can never steer a fetch outside the
@@ -269,7 +272,9 @@ export async function loadNavigationStreetShard(
       report.streetTransferBytes += bytes.byteLength;
     }
     if (!response.ok)
-      throw new Error(`NYC navigation street shard request failed (${ref.key}, ${response.status})`);
+      throw new Error(
+        `NYC navigation street shard request failed (${ref.key}, ${response.status})`,
+      );
     const tVerify = now();
     if (bytes.byteLength > MAX_STREET_SHARD_BYTES)
       throw new Error(`NYC navigation street shard exceeds its budget (${ref.key})`);
@@ -481,7 +486,9 @@ export async function loadShadeSlotBlocks(
         report.shadePayloadBytes += bytes.byteLength;
       }
       if (!response.ok)
-        throw new Error(`NYC navigation shade payload request failed (${shard.payload.key}, ${response.status})`);
+        throw new Error(
+          `NYC navigation shade payload request failed (${shard.payload.key}, ${response.status})`,
+        );
       let window: Uint8Array;
       if (response.status === 206) {
         if (bytes.byteLength !== end - start)
@@ -525,7 +532,9 @@ export async function loadNavigationBuildingShard(
       report.buildingTransferBytes += bytes.byteLength;
     }
     if (!response.ok)
-      throw new Error(`NYC navigation building shard request failed (${ref.key}, ${response.status})`);
+      throw new Error(
+        `NYC navigation building shard request failed (${ref.key}, ${response.status})`,
+      );
     const tVerify = now();
     if (bytes.byteLength > MAX_BUILDING_SHARD_BYTES)
       throw new Error(`NYC navigation building shard exceeds its budget (${ref.key})`);
@@ -589,7 +598,9 @@ export async function loadNavigationStreetShards(
   }
 
   const loaded = await Promise.all(
-    missing.map(async (ref) => [ref.key, await loadNavigationStreetShard(snapshot, ref, options)] as const),
+    missing.map(
+      async (ref) => [ref.key, await loadNavigationStreetShard(snapshot, ref, options)] as const,
+    ),
   );
 
   // Cache only into a cache that still belongs to this snapshot's generation.
@@ -639,7 +650,9 @@ export async function loadNavigationBuildingShards(
   }
 
   const loaded = await Promise.all(
-    missing.map(async (ref) => [ref.key, await loadNavigationBuildingShard(snapshot, ref, options)] as const),
+    missing.map(
+      async (ref) => [ref.key, await loadNavigationBuildingShard(snapshot, ref, options)] as const,
+    ),
   );
 
   // Cache only into a cache that still belongs to this snapshot's generation.
@@ -847,11 +860,15 @@ export async function loadNavigationSelection(
   // `getOrFetch`, and each waiter's abort races without touching the others.
   const [streets, buildings] = await Promise.all([
     Promise.all(
-      missingStreets.map(async (ref) => [ref.key, await loadNavigationStreetShard(snapshot, ref, options)] as const),
+      missingStreets.map(
+        async (ref) => [ref.key, await loadNavigationStreetShard(snapshot, ref, options)] as const,
+      ),
     ),
     Promise.all(
       missingBuildings.map(
-        async (ref) => [ref.key, await loadNavigationBuildingShard(snapshot, ref, options)] as const),
+        async (ref) =>
+          [ref.key, await loadNavigationBuildingShard(snapshot, ref, options)] as const,
+      ),
     ),
   ]);
 
@@ -879,7 +896,8 @@ function collectShards<T>(
   return new Map(
     refs.map((ref) => {
       const shard = merged.get(ref.key);
-      if (!shard) throw new Error(`NYC navigation shard missing from verified selection (${ref.key})`);
+      if (!shard)
+        throw new Error(`NYC navigation shard missing from verified selection (${ref.key})`);
       return [ref.key, shard] as const;
     }),
   );

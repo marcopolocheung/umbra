@@ -11,7 +11,7 @@
 >
 > Read [§ Next: the two plans](#next-the-two-plans) before starting new work here.
 
-**Verified 2026-10-12**, `umbra/main` at `2863cf7` (A1/A2 merged; offline A3 results below). If this handoff disagrees with the code, the
+**Verified 2026-10-13**, `umbra/main` at `45d6279` (A1/A2 and the offline benchmark merged; A3 implementation in this PR). If this handoff disagrees with the code, the
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:**
@@ -23,7 +23,7 @@ code wins. Update this file in the same PR that changes a stated contract.
 - **Published:** generation **`nyc-2026-09-18-e6718823bbb3`**, with signatures, is published and the delivery Worker serves `signatures/` (deployed 2026-10-11).
 - **A1 is merged (#345):** pure shade-window search and a development-only street-type QA toggle.
 - **A2 is merged (#346):** grounded area-window assistant tool, receipts and timelines; named-street lookup still needs metadata.
-- **A3 offline benchmark is complete in this PR; the product mode is not implemented.** Local M=100 recall passes the mean gate, but annual-profile transfer and rare failures must be resolved ([#347](https://github.com/marcopolocheung/umbra/issues/347)).
+- **A3 is implemented in this PR, pending owner publication.** Verified prior-result references, local M=500 shortlist/exact annual reranking, compact selective profile reads and reference/match timelines. [A3 measurements and activation](../notes/shade-similarity-a3-2026-10-13.md) resolve #347; no data or Worker was published. **Next: A4 live-agent evaluation.**
 - **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
@@ -332,7 +332,7 @@ empty windows or no candidates. `street` is not supported without new metadata; 
   - Break ties by distance.
   - Then de-duplicate so that no two results come from the same block face.
 - **`likeCandidateId` mode:**
-  1. Shortlist 100 by PCA distance (`signatureView.nearest`).
+  1. Filter local eligibility and exclude the reference face; shortlist up to 500 by PCA distance (`signatureView.nearest`).
   2. Re-rank by **exact** L2 distance on the daylight slots from the raw table.
   3. Return the reference side's `hours` beside each match, so similarity is *shown*, not asserted.
 - **Where it runs:** client-side in the agent's tool executor (`app/lib/agent/tools.ts`), like
@@ -482,7 +482,7 @@ It adapts Phase 0's loader/sampling/fidelity code and uses the actual client vie
   exactly. Node resident-data M=100 search/rerank medians are 0.070/5.282 ms. Mobile, HTTP and live
   agent performance are not inferred from those CPU figures.
 
-Before the A3 assistant PR, resolve profile delivery and tail handling in
+The A3 implementation and [new measurements](../notes/shade-similarity-a3-2026-10-13.md) resolve profile delivery and tail handling tracked in
 [#347](https://github.com/marcopolocheung/umbra/issues/347). Any new published artifact still needs
 owner approval. The offline report does not mark `likeCandidateId` complete or substitute for A4.
 

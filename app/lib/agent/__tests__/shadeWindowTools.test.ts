@@ -6,6 +6,7 @@ import {
   toolDeclarations,
 } from "../tools";
 import { findShadeSpots } from "../../navigationData/shadeSpotsSource";
+import { findSimilarShadeSpots } from "../../navigationData/shadeSimilaritySource";
 import { authorizeToolCall } from "../authority";
 import { shadeContext, shadePayload, SHADE_QUERY } from "./shadeFixture";
 import type { RoutePlanRequest } from "../../routePlanJob";
@@ -14,6 +15,7 @@ vi.mock("../../navigationData/shadeSpotsSource", async (original) => ({
   ...(await original<typeof import("../../navigationData/shadeSpotsSource")>()),
   findShadeSpots: vi.fn(),
 }));
+vi.mock("../../navigationData/shadeSimilaritySource", () => ({ findSimilarShadeSpots: vi.fn() }));
 const args = {
   lat: SHADE_QUERY.lat,
   lng: SHADE_QUERY.lng,
@@ -28,18 +30,11 @@ beforeEach(() => {
 });
 
 describe("shade-window executor", () => {
-  it("exposes the area contract without street/similarity modes", () => {
+  it("exposes area and verified-reference searches without street lookup", () => {
     const declaration = toolDeclarations.find((t) => t.name === "find_shade_spots")!;
-    expect(declaration.parameters.required).toEqual([
-      "lat",
-      "lng",
-      "from",
-      "to",
-      "radiusM",
-      "mode",
-    ]);
+    expect(declaration.parameters.required).toEqual([]);
     expect(declaration.parameters.properties).not.toHaveProperty("street");
-    expect(declaration.parameters.properties).not.toHaveProperty("likeCandidateId");
+    expect(declaration.parameters.properties).toHaveProperty("likeCandidateId");
   });
   it("defaults to the NYC selected map day and uses the A1 window query", async () => {
     const ctx = shadeContext();
@@ -163,5 +158,49 @@ describe("routing a chosen shade candidate", () => {
       code: "shade_alternatives",
     });
     expect(ctx.createRoutePlanRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("verified-reference similarity tools", () => {
+  it("inherits the reference date/window/mode, resolves its anchor and defaults to 400 m", async () => {
+    const ctx = shadeContext(),
+      p = shadePayload(),
+      spot = p.results[0];
+    ctx.registerShadeCandidates([
+      { spot, requestedDate: p.requestedDate, requestedWindow: p.requestedWindow, mode: p.mode },
+    ]);
+    ctx.dateRef.current = new Date("2030-12-01T12:00:00Z");
+    vi.mocked(findSimilarShadeSpots).mockResolvedValue(p);
+    const normalized = normalizeShadeToolArgs(
+      { likeCandidateId: spot.candidateId },
+      ctx.dateRef.current,
+      ctx.getShadeCandidates(),
+    );
+    expect(normalized).toMatchObject({
+      date: p.requestedDate,
+      from: "2:00 PM",
+      to: "4:00 PM",
+      mode: "shade",
+      radiusM: 400,
+      nearCandidateId: spot.candidateId,
+    });
+    await executeTool("find_shade_spots", { likeCandidateId: spot.candidateId }, ctx);
+    expect(findSimilarShadeSpots).toHaveBeenCalledWith(
+      spot,
+      { ...SHADE_QUERY, lat: spot.lat, lng: spot.lng },
+      { signal: undefined },
+    );
+    expect(findShadeSpots).not.toHaveBeenCalled();
+  });
+  it("rejects unknown references without falling back to a normal search", async () => {
+    expect(
+      await executeTool(
+        "find_shade_spots",
+        { ...args, likeCandidateId: "invented" },
+        shadeContext(),
+      ),
+    ).toMatchObject({ reason: "invalid_reference" });
+    expect(findSimilarShadeSpots).not.toHaveBeenCalled();
+    expect(findShadeSpots).not.toHaveBeenCalled();
   });
 });

@@ -119,3 +119,18 @@ describe("canonical shade-window UI", () => {
     expect(screen.getByText("No shade-table data is available for this area.")).toBeTruthy();
   });
 });
+
+it("shows verified reference and match columns with approximate-search disclosure", () => {
+  const receipt = answer().receipts[0] as ShadeWindowClaimReceipt;
+  receipt.similarity = {
+    reference: shadePayload().results[1],
+    annualSquaredDistance: 100,
+    sampleCount: 581,
+    model: "signatures-v1",
+    approximate: true,
+  };
+  render(<ShadeWindowDetails receipt={receipt} />);
+  expect(screen.getByText(/Search results are approximate/)).toBeTruthy();
+  expect(screen.getByRole("columnheader", { name: "Reference shade" })).toBeTruthy();
+  expect(screen.getByRole("columnheader", { name: "Match shade" })).toBeTruthy();
+});
