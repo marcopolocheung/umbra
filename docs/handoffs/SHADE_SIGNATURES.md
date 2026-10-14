@@ -11,7 +11,7 @@
 >
 > Read [§ Next: the two plans](#next-the-two-plans) before starting new work here.
 
-**Verified 2026-10-13**, `umbra/main` at `45d6279` (A1/A2 and the offline benchmark merged; A3 implementation in this PR). If this handoff disagrees with the code, the
+**Verified 2026-10-14**, `umbra/main` at `0d9c7d7` (A1–A3 merged; A4a in this PR). If this handoff disagrees with the code, the
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:**
@@ -20,10 +20,11 @@ code wins. Update this file in the same PR that changes a stated contract.
   - Phase 1: the pipeline stage (#323/#324).
   - Phase 2: the client read side (#341).
   - Phase 3: a route street-type layer (#343).
-- **Published:** generation **`nyc-2026-09-18-e6718823bbb3`**, with signatures, is published and the delivery Worker serves `signatures/` (deployed 2026-10-11).
+- **Published:** generation **`nyc-2026-09-18-ab747d9b8627`** (A3 profiles included) is the live pointer; the delivery Worker serves `signatures/`.
 - **A1 is merged (#345):** pure shade-window search and a development-only street-type QA toggle.
 - **A2 is merged (#346):** grounded area-window assistant tool, receipts and timelines; named-street lookup still needs metadata.
-- **A3 is implemented in this PR, pending owner publication.** Verified prior-result references, local M=500 shortlist/exact annual reranking, compact selective profile reads and reference/match timelines. [A3 measurements and activation](../notes/shade-similarity-a3-2026-10-13.md) resolve #347; no data or Worker was published. **Next: A4 live-agent evaluation.**
+- **A3 is merged (#350; production fixes in #352):** verified prior-result references, local M=500 shortlist/exact annual reranking and reference/match timelines. [A3 measurements](../notes/shade-similarity-a3-2026-10-13.md).
+- **A4a is in this PR:** eval harness, 11 shade scenarios, route explanations, the #353 precision fix, and the [first valid live eval](../notes/shade-spots-eval-2026-10-14.md): task success 97% with the tool vs 30% withheld, pass^3 90.9% vs 18.2%, 74/74 `shade_window` claims verified. **Next: A4b** (borough holdout, temperature A/B, a clean ablation).
 - **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
