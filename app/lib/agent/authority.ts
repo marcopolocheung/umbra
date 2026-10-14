@@ -295,7 +295,7 @@ function requested(state: AuthorityState, tool: string): boolean {
   // never a generic side effect of an arbitrary chat message.
   return hasPositivePhrase(
     text,
-    /\b(shadow\w*|sun\w*|shade\w*|similar|like|match\w*|park|cafe|coffee|sit|eat|place|stop|route|walk|directions|show|plan|where)\b/i,
+    /\b(shadow\w*|sun\w*|shade\w*|shad(?:y|ier|iest)|similar|like|match\w*|park|cafe|coffee|sit|eat|place|stop|route|walk|directions|show|plan|where)\b/i,
   );
 }
 

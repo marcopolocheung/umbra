@@ -4,6 +4,7 @@ import * as degradation from "./degradation";
 import * as grounding from "./grounding";
 import * as planning from "./planning";
 import * as authority from "./authority";
+import * as shade from "./shade";
 
 /** Every scenario the C1 harness replays, in reading order. */
 export const scenarios: Scenario[] = [
@@ -43,4 +44,15 @@ export const scenarios: Scenario[] = [
   degradation.writeCallThatToolCallsStaysAnAnswer,
   authority.untrustedProviderContentCannotMutate,
   authority.untrustedToolErrorCannotMutate,
+  shade.shadeWindowToday,
+  shade.shadeAnotherDate,
+  shade.sunModeSearch,
+  shade.shadeNearMapCentre,
+  shade.shadeLikeThisOne,
+  shade.shadeCrossesSunset,
+  shade.rightNowUsesCheckShadow,
+  shade.outsideCoverageSaysSo,
+  shade.pureLookupNoShadeSearch,
+  shade.offTopicNoTools,
+  shade.findThenRouteThere,
 ];
