@@ -63,8 +63,8 @@ rival that is marginally longer. Without the streak in the comparison, the cap c
 eliminate *every* path to the destination (a fixture where the search returned nothing
 is pinned as a regression test). What does *not* hold is comparing labels across
 buckets (H1's per-bucket Pareto sets), and the within-bucket boundary residual (two
-arrivals in one bucket whose next edge straddles a boundary) is unchanged and remains
-H4's oracle's job to measure. The committed H1 regression test was re-derived for the
+arrivals in one bucket whose next edge straddles a boundary) was measured by H4's oracle
+and closed on the front in #246. The committed H1 regression test was re-derived for the
 new objective: the slow path now wins *because its late legs are shaded* (less sun
 time), which is what the duration objective should reward.
 
@@ -112,4 +112,5 @@ Filed as **marcopolocheung/umbra#223**.
   slider is the intended caller.
 - Via-stop legs and transit walk legs still price one frozen instant (H1 gap,
   unchanged); the sketch and refresh pipelines likewise.
-- The bucket-boundary dominance residual is unmeasured — H4.
+- The bucket-boundary dominance residual is fixed on the front (#246); the shipped
+  ladder still has it.

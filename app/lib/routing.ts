@@ -1104,10 +1104,9 @@ export function paretoRoutes(
   // *different buckets* are incomparable: the later one may be the one whose
   // remaining edges are shaded, and letting the earlier prune it is exactly
   // the H5 trap (an earlier arrival is not automatically better). Dominance
-  // applies only inside one bucket; the residual unsoundness — two arrivals
-  // inside the same bucket whose *next* edge straddles a boundary — is bounded
-  // by the bucket width and is H4's oracle's job to measure (#246). Static
-  // runs have one bucket, so this is the old per-node set exactly.
+  // applies only inside one bucket, and inside it only between labels whose
+  // futures are priced alike (`sameFuture`, #246). Static runs have one
+  // bucket, so this is the old per-node set exactly.
   const sets: Array<number[] | undefined> = new Array(N * B);
   // The destination's buckets in the order their sets were created: the
   // destination front is read in this order, and its ties resolve by it.
@@ -1117,10 +1116,17 @@ export function paretoRoutes(
    * (sun), more sheltered metres (rain). Revalidated for the duration
    * objective (H2): both criteria are additive and non-negative per edge, so
    * within one time bucket the label-setting dominance argument holds with
-   * the comparison direction flipped; the bucket-boundary residual is
-   * unchanged from H1 and still H4's to measure. */
+   * the comparison direction flipped (across arrivals, see `sameFuture`). */
   const exposureBetter = (a: { exposureCrit: number }, b: { exposureCrit: number }) =>
     rain ? a.exposureCrit >= b.exposureCrit : a.exposureCrit <= b.exposureCrit;
+
+  /** True when an arrival at `a` faces exactly the future an arrival at `b`
+   * does, so `a` may prune `b`. No waiting, so an earlier arrival stays
+   * earlier on every continuation — and an edge priced in an earlier bucket
+   * can be the sunnier one (#246). Only the same clock, or both clamped into
+   * the last bucket, prices every continuation alike. */
+  const sameFuture = (a: number, b: number) =>
+    a === b || (a <= b && bucketOf(a) === B - 1);
 
   /** Returns true if label a dominates label b: at least as short, at least
    * as good on exposure and — sun only — on sun-streak (a label that has
@@ -1128,13 +1134,13 @@ export function paretoRoutes(
    * `maxContinuousExposureSec` cap will cut, so it must not prune a
    * shade-broken-streak rival that is marginally longer; without this the cap
    * can eliminate every path to the destination), and — only where exposure
-   * is time-dependent — at least as early. Only ever compared within one
-   * bucket (see the Pareto-set comment above). */
+   * is time-dependent — facing the same future (`sameFuture`). Only ever
+   * compared within one bucket (see the Pareto-set comment above). */
   const dom = (a: number, b: number) =>
     lDist[a] <= lDist[b]
     && (rain ? lCrit[a] >= lCrit[b] : lCrit[a] <= lCrit[b])
     && (rain || lStreak[a] <= lStreak[b])
-    && (!ta || lArrival[a] <= lArrival[b]);
+    && (!ta || sameFuture(lArrival[a], lArrival[b]));
 
   /**
    * Try to insert label `incoming` into the Pareto set at `slot`.
@@ -1419,7 +1425,7 @@ export function paretoRoutes(
           if (lDist[id] > newDistM) break;
           if ((rain ? lCrit[id] >= newExposureCrit : lCrit[id] <= newExposureCrit)
             && (rain || lStreak[id] <= newStreakSec)
-            && (!ta || lArrival[id] <= newArrivalSec)) { dominated = true; break; }
+            && (!ta || sameFuture(lArrival[id], newArrivalSec))) { dominated = true; break; }
         }
       }
       if (dominated) continue;

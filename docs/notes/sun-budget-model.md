@@ -61,13 +61,16 @@ bucket). The truth:
 
 | path | metres | sun seconds |
 |---|---|---|
-| 0-1-3-4 (production returns this) | 79.8 | 57.00 |
-| 0-2-3-4 (production drops it) | 86.8 | **55.00** |
+| 0-1-3-4 (the old rule returned this) | 79.8 | 57.00 |
+| 0-2-3-4 (the old rule dropped it) | 86.8 | **55.00** |
 
-So on this fixture the production's least-sun option is **2.00 s worse than the
-true optimum (3.6% of it)**, and a non-dominated option is missing from the front
-entirely. The test asserts both: the oracle's minimum is 55 s, the production's
-is 57 s, and the dropped node-path is absent from the result.
+So on this fixture the search's least-sun option was **2.00 s worse than the
+true optimum (3.6% of it)**, and a non-dominated option was missing from the
+front entirely. **Fixed on the front in #246:** a label now prunes a later one
+only when every continuation is priced alike (the same arrival, or both in the
+last bucket), and the test asserts the front returns 0-2-3-4 at 55 s. The
+shipped ladder (`searchStrategy: "direct"`) keeps one label per (node, bucket),
+so it still returns 57 s; a test pins that as a known approximation.
 
 **Where it is exact.** On the *static* fixtures — a single time bucket, so the
 defect cannot occur by construction — the production's shortest equals the
@@ -88,8 +91,9 @@ cross.)
 - **The bound on the loss is unproven.** The fixture shows a 2 s miss at one
   merge point; whether the error compounds across several merge points, and by
   how much, is not established.
-- **The fix is not here.** Correcting the bucket-boundary dominance belongs to
-  H1/H2's search (`routing.ts`); H4 measures the gap and publishes it.
+- **The ladder is not fixed.** #246 corrected the front's dominance; the
+  ladder the app ships still has the gap, and fixing it exactly needs
+  per-arrival state.
 - **The bucket discretization error against continuous time is not measured.** The
   oracle uses the same buckets as production, so it measures *search* error only.
   The H1 note's pointer ("H4's oracle publishes it") is not satisfied here; a

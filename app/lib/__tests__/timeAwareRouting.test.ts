@@ -246,6 +246,9 @@ describe("paretoRoutes time-aware pricing (H1)", () => {
     const timedRun = time({ timeAware: { bucketMs: BUCKET_MS, bucketCount } });
 
     expect(timedRun.results.length).toBeGreaterThan(0);
-    expect(timedRun.ms).toBeLessThan(Math.max(staticRun.ms, 20) * 15);
+    // 40×, not 15×: since #246 a label prunes a later one only when both face
+    // the same future, so this uniform grid keeps more labels (~8× alone,
+    // ~25× under a loaded suite). The 80× lookup regression still fails it.
+    expect(timedRun.ms).toBeLessThan(Math.max(staticRun.ms, 20) * 40);
   });
 });

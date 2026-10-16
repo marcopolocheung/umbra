@@ -80,13 +80,15 @@ committed regression test pins it: two all-sun paths reach a junction, the
 shorter in bucket 1 and the longer in bucket 2, and the final edge is shaded
 only in bucket 2 — the slow path must survive the junction and win.
 
-**Residual, stated:** inside one bucket, dominance still includes "no later",
-so two arrivals in the *same* bucket whose next edge straddles a bucket
-boundary can in principle mis-prune. That error is bounded by the bucket width
-and is exactly what H4's brute-force oracle must measure. For walk, cost ≈
-time, so the same-bucket rule is nearly implied; for bike/scoot the surface and
-crossing penalties break cost≈time, which is why arrival is part of the label
-at all.
+**Residual, corrected (#246):** the original rule let an earlier arrival in
+the same bucket prune a later one. That was not bounded by the bucket width: a
+whole edge is priced at the bucket of its end, so the later label's next edge
+can land in a shaded bucket while the earlier one's does not, and the loss is
+up to a whole edge per remaining boundary. H4's oracle measured it (57 s vs
+55 s). The front now prunes across arrivals only when every continuation is
+priced alike — the same arrival, or both in the last bucket. The shipped
+ladder (`searchStrategy: "direct"`) keeps one label per bucket and still has
+the gap.
 
 ## Known gaps (deliberate, for later checkpoints)
 

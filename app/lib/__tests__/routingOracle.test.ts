@@ -225,13 +225,13 @@ describe("H4 oracle — a randomized 2×3 grid (static)", () => {
 	});
 });
 
-describe("H4 oracle — the bucket-boundary dominance gap (the published defect)", () => {
+describe("H4 oracle — the bucket-boundary dominance gap (#246)", () => {
 	// Two routes reach node 3 in the *same* bucket (bucket 0): A at 50 s with
-	// 50 s of sun, B at 55 s with 55 s of sun. The production dominance rule
-	// drops B (A is no later, no longer, no sunnier within the bucket) — but B's
-	// next edge, 3→4, finishes at 62 s, inside the shaded bucket 1, while A's
+	// 50 s of sun, B at 55 s with 55 s of sun. The old dominance rule dropped B
+	// (A is no later, no longer, no sunnier within the bucket) — but B's next
+	// edge, 3→4, finishes at 62 s, inside the shaded bucket 1, while A's
 	// finishes at 57 s, still in bucket 0. So B's continuation is cheaper in sun,
-	// and dropping it loses a Pareto point.
+	// and dropping it lost a Pareto point.
 	const graph = buildGraph(
 		[0, 35, 38.5, 70, 79.8],
 		[
@@ -244,17 +244,23 @@ describe("H4 oracle — the bucket-boundary dominance gap (the published defect)
 	);
 	const timeAware = { bucketMs: 60_000, bucketCount: 2 };
 
-	it("the oracle finds a lower-sun path than the production search returns", () => {
+	it("the front keeps the later label and matches the oracle", () => {
 		const paths = enumeratePaths(graph, 0, 4, { timeAware });
 		const oracleMin = leastSun(paths);
 		const results = paretoRoutes(graph, 0, 4, { ...walkOptions, timeAware });
 		const prodMin = Math.min(...results.map((r) => r.exposure!.exposedDurationSec));
 
-		// The oracle's best is 0-2-3-4: 55 s of sun, then a fully shaded final
-		// edge. Production keeps only 0-1-3-4 (57 s) — it dropped 0-2-3-4.
+		// The oracle's best is 0-2-3-4: 55 s of sun, then a fully shaded final edge.
 		expect(oracleMin).toBeCloseTo(55, 6);
-		expect(prodMin).toBeCloseTo(57, 6);
-		expect(prodMin).toBeGreaterThan(oracleMin);
-		expect(results.some((r) => r.nodeIds.join() === "0,2,3,4")).toBe(false);
+		expect(prodMin).toBeCloseTo(oracleMin, 6);
+		expect(results.some((r) => r.nodeIds.join() === "0,2,3,4")).toBe(true);
+	});
+
+	it("the shipped ladder still misses it — a known approximation, not fixed here", () => {
+		// The ladder keeps one label per (node, bucket), so it cannot hold both
+		// arrivals; an exact ladder needs per-arrival state.
+		const results = paretoRoutes(graph, 0, 4, { ...walkOptions, timeAware, searchStrategy: "direct" });
+		const ladderMin = Math.min(...results.map((r) => r.exposure!.exposedDurationSec));
+		expect(ladderMin).toBeCloseTo(57, 6);
 	});
 });
