@@ -427,6 +427,35 @@ describe("model argument drift seen in production", () => {
     expect(routed).toMatchObject({ toLat: a.lat, toLng: a.lng, toCandidateId: a.candidateId });
   });
 
+  it("reads a stray lng as the missing toLng of a named destination (#358)", async () => {
+    const ctx = shadeContext();
+    const [a] = shadePayload().results;
+    const route = {
+      fromLat: SHADE_QUERY.lat,
+      fromLng: SHADE_QUERY.lng,
+      fromCandidateId: `map-center:${SHADE_QUERY.lat}:${SHADE_QUERY.lng}`,
+      toLat: Number(a.lat.toPrecision(15)),
+      lng: Number(a.lng.toPrecision(15)),
+      toCandidateId: a.candidateId,
+    };
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(calls([{ name: "plan_shadowed_route", args: route }]))
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm and route me to the first one",
+      ctx,
+    });
+    expect(result.authorityEvents.find((e) => e.tool === "plan_shadowed_route")).toMatchObject({
+      decision: "accepted",
+    });
+    const routed = vi
+      .mocked(executeTool)
+      .mock.calls.find(([name]) => name === "plan_shadowed_route")![1];
+    expect(routed).toMatchObject({ toLat: a.lat, toLng: a.lng, toCandidateId: a.candidateId });
+  });
+
   it("does not let a refused route call pass on retry (#354)", async () => {
     const ctx = shadeContext();
     const route = {
