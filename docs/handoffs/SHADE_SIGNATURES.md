@@ -11,7 +11,7 @@
 >
 > Read [§ Next: the two plans](#next-the-two-plans) before starting new work here.
 
-**Verified 2026-10-14**, `umbra/main` at `0d9c7d7` (A1–A3 merged; A4a in this PR). If this handoff disagrees with the code, the
+**Verified 2026-10-15**, `umbra/main` at `8a9b8b7` (A1–A4a merged; A4b in this PR). If this handoff disagrees with the code, the
 code wins. Update this file in the same PR that changes a stated contract.
 
 **Status:**
@@ -24,8 +24,10 @@ code wins. Update this file in the same PR that changes a stated contract.
 - **A1 is merged (#345):** pure shade-window search and a development-only street-type QA toggle.
 - **A2 is merged (#346):** grounded area-window assistant tool, receipts and timelines; named-street lookup still needs metadata.
 - **A3 is merged (#350; production fixes in #352):** verified prior-result references, local M=500 shortlist/exact annual reranking and reference/match timelines. [A3 measurements](../notes/shade-similarity-a3-2026-10-13.md).
-- **A4a is in this PR:** eval harness, 11 shade scenarios, route explanations, the #353 precision fix, and the [first valid live eval](../notes/shade-spots-eval-2026-10-14.md): task success 97% with the tool vs 30% withheld, pass^3 90.9% vs 18.2%, 74/74 `shade_window` claims verified. **Next: A4b** (borough holdout, temperature A/B, a clean ablation).
-- **Next:** the old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
+- **A4a is merged (#355):** eval harness, 11 shade scenarios, route explanations, the #353 precision fix, and the [first valid live eval](../notes/shade-spots-eval-2026-10-14.md): task success 97% with the tool vs 30% withheld, pass^3 90.9% vs 18.2%, 74/74 `shade_window` claims verified. Its one failure became #354 (fixed by #356, #357, #359).
+- **A4b is in this PR (switches in #360):** [eval report](../notes/shade-spots-eval-2026-10-15.md) over 16 scenarios. pass^3 87.5% with the tool vs 25.0% with a clean ablation (the tool is never called). The borough holdout scored 80% and found #361, fixed in #362 (holdout re-check 5/5). Temperature 1.0 scored 81.3% vs 87.5% at 0, so **the default stays 0**. **Plan A is complete.** Open limit: the eval stubs geocoding and search, so search quality (and #363's Foursquare merge) is unmeasured.
+- **Next: Plan B, step B1** (dataset build).
+- The old phases 4–6 sketch is replaced by **Plan A** then **Plan B** below. Take one step per PR.
 
 ---
 
