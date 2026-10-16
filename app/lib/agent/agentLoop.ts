@@ -751,10 +751,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         lat: rawArgs.fromLat,
         lng: rawArgs.fromLng,
       });
+      // Gemini sometimes writes the destination's `lng` for `toLng` (#358).
       const to = snap({
         candidateId: rawArgs.toCandidateId,
-        lat: rawArgs.toLat,
-        lng: rawArgs.toLng,
+        lat: rawArgs.toLat ?? rawArgs.lat,
+        lng: rawArgs.toLng ?? rawArgs.lng,
       });
       return {
         ...rawArgs,
