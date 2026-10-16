@@ -39,6 +39,7 @@ import {
   boundUntrustedPayload,
   currentTurnTerms,
   isContentProvenance,
+  NYC_QUALIFIER_TERMS,
   toolErrorText,
   type AuthorityAuditEvent,
   type FieldSourceCategory,
@@ -829,10 +830,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       "kiosk",
       "kiosks",
       "somewhere",
-      // Coverage is NYC-only; the model qualifies places with the city.
-      "new",
-      "york",
-      "nyc",
+      ...NYC_QUALIFIER_TERMS,
     ]);
     // Every term must be either from this user turn or this small application
     // taxonomy. One safe-looking overlap cannot launder an added directive.

@@ -206,7 +206,7 @@ describe("C10 untrusted content and authority", () => {
     );
   });
 
-  it("lets the model qualify a user-named place with the city, and nothing else", async () => {
+  it("lets the model qualify a user-named place with its NYC city or borough, and nothing else", async () => {
     vi.mocked(rolesShareConfig).mockReturnValue(true);
     vi.mocked(executeTool).mockResolvedValue({ results: [] });
     const geocode = (query: string) => ({
@@ -224,7 +224,8 @@ describe("C10 untrusted content and authority", () => {
     };
     vi.mocked(callModel)
       .mockResolvedValueOnce(geocode("Union Square, New York"))
-      .mockResolvedValueOnce(geocode("Union Square Brooklyn"))
+      .mockResolvedValueOnce(geocode("Union Square, Manhattan"))
+      .mockResolvedValueOnce(geocode("Union Square San Francisco"))
       .mockResolvedValueOnce(final);
 
     const result = await runAgent({
@@ -234,7 +235,29 @@ describe("C10 untrusted content and authority", () => {
     });
 
     const geocodes = result.authorityEvents.filter((e) => e.tool === "geocode_place");
-    expect(geocodes.map((e) => e.decision)).toEqual(["accepted", "rejected"]);
+    expect(geocodes.map((e) => e.decision)).toEqual(["accepted", "accepted", "rejected"]);
+  });
+
+  it("accepts a borough on a user-named search anchor, but not in place of one (#361)", () => {
+    const state = {
+      currentUserText: "Shady place to wait near Fordham Plaza from 6 to 9pm tonight?",
+      candidates: [],
+    };
+    const search = (near: string) =>
+      authorizeToolCall(state, "search_places", { query: "plaza", near }, [
+        "model_generated",
+        "current_user_intent",
+      ]).event;
+    expect(search("Fordham Plaza, Bronx")).toMatchObject({ decision: "accepted" });
+    expect(search("Fordham Plaza, the Bronx, New York")).toMatchObject({ decision: "accepted" });
+    expect(search("Bronx")).toMatchObject({
+      decision: "rejected",
+      reasonCode: "missing_current_user_intent",
+    });
+    expect(search("Yankee Stadium, Bronx")).toMatchObject({
+      decision: "rejected",
+      reasonCode: "missing_current_user_intent",
+    });
   });
 
   it("requires a shadow probe time to match an explicit current-turn time", () => {
