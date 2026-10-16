@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeTool, toolDeclarations } from "../agent/tools";
 import type { AgentContext } from "../agent/tools";
 import { geocodeNear } from "../nominatim";
+import { suggestPlaces } from "../../services/foursquare";
 import type { RoutePlan, RoutePlanRequest } from "../routePlanJob";
 import { authorizeToolCall } from "../agent/authority";
 
 vi.mock("../nominatim", () => ({ geocodeForward: vi.fn(), geocodeNear: vi.fn() }));
+vi.mock("../../services/foursquare", () => ({ suggestPlaces: vi.fn(async () => []) }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -353,5 +355,36 @@ describe("search_places", () => {
       "Riverside Park",
     ]);
     expect(result.searchRadiusKm).toBeGreaterThan(2);
+  });
+
+  it("adds Foursquare POIs Nominatim misses, once each, nearest first", async () => {
+    vi.mocked(geocodeNear).mockResolvedValueOnce([hit("Grace Plaza", 40.7545, -73.9845)] as any);
+    vi.mocked(suggestPlaces).mockResolvedValueOnce([
+      { name: "Grace Plaza", lat: 40.7546, lng: -73.9844 }, // the same place again
+      { name: "Blue Bottle Coffee", lat: 40.7538, lng: -73.9834 }, // ~25 m
+    ] as any);
+
+    const result = await executeTool("search_places", { query: "coffee", ...ANCHOR }, makeCtx());
+
+    expect((result.results as { name: string }[]).map((r) => r.name.split(",")[0])).toEqual([
+      "Blue Bottle Coffee",
+      "Grace Plaza",
+    ]);
+    // Searched around the same anchor, within the walking-distance box.
+    const [, ll, opts] = vi.mocked(suggestPlaces).mock.calls[0];
+    expect(ll).toEqual([ANCHOR.lng, ANCHOR.lat]);
+    expect(opts?.radiusM).toBeLessThanOrEqual(2000);
+  });
+
+  it("keeps Nominatim's answer when Foursquare has nothing", async () => {
+    vi.mocked(geocodeNear).mockResolvedValueOnce([hit("Grace Plaza", 40.7545, -73.9845)] as any);
+    vi.mocked(suggestPlaces).mockResolvedValueOnce([]);
+
+    const result = await executeTool("search_places", { query: "plaza", ...ANCHOR }, makeCtx());
+
+    expect((result.results as { name: string }[]).map((r) => r.name.split(",")[0])).toEqual([
+      "Grace Plaza",
+    ]);
+    expect(result.note).toBeUndefined();
   });
 });
