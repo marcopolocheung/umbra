@@ -18,7 +18,7 @@ import {
   type PublishSample,
   type PublishStore,
 } from "../src/publish";
-import { verifyGeneration } from "../src/verify";
+import { latestGeneration, verifyGeneration } from "../src/verify";
 
 /**
  * Publication state machine, deliberately disconnected from the real network:
@@ -354,4 +354,19 @@ test("rollback re-promotes only the pointer and records the prior generation", a
     const localFirst = await readFile(join(root, "normalized", first.generation, "pointer-candidate.json"));
     assert.deepEqual(pointerBytes, new Uint8Array(localFirst), "rollback repoints at the old generation");
   });
+});
+
+test("latestGeneration refuses to guess between generations that share a createdAt (#291)", async () => {
+  const normalized = await mkdtemp(join(tmpdir(), "nav-prep-latest-"));
+  const generationAt = async (name: string, createdAt: string) => {
+    const directory = join(normalized, name, "navigation", "nyc", name);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "manifest.json"), JSON.stringify({ createdAt }));
+  };
+  await generationAt("nyc-2026-09-17-aaaa", "2026-09-17T00:00:00.000Z");
+  await generationAt("nyc-2026-09-18-bbbb", "2026-09-18T00:00:00.000Z");
+  assert.equal(await latestGeneration(normalized), "nyc-2026-09-18-bbbb");
+
+  await generationAt("nyc-2026-09-18-cccc", "2026-09-18T00:00:00.000Z");
+  await assert.rejects(latestGeneration(normalized), /2 generations share createdAt .*pass the generation explicitly/);
 });
