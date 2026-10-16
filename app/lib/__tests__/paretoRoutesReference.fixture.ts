@@ -193,13 +193,17 @@ export function paretoRoutesReference(
   const streakBetter = (a: PLabel, b: PLabel) =>
     rain || a.streakSec <= b.streakSec;
 
+  /** #246: prune across arrivals only when every continuation is priced alike. */
+  const sameFuture = (a: number, b: number) =>
+    a === b || (a <= b && bucketOf(a) === (ta?.bucketCount ?? 1) - 1);
+
   /** Returns true if a dominates b: at least as short, at least as good on
    * exposure and sun-streak, and — only where exposure is time-dependent —
    * at least as early. Only ever compared within one bucket (see the
    * Pareto-set comment above). */
   const dom = (a: PLabel, b: PLabel) =>
     a.distM <= b.distM && exposureBetter(a, b) && streakBetter(a, b)
-    && (!ta || a.arrivalSec <= b.arrivalSec);
+    && (!ta || sameFuture(a.arrivalSec, b.arrivalSec));
 
   /**
    * Try to insert `incoming` into the Pareto set for its node and bucket.
@@ -358,7 +362,7 @@ export function paretoRoutesReference(
         if (ex.distM <= newDistM
           && (rain ? ex.exposureCrit >= newExposureCrit : ex.exposureCrit <= newExposureCrit)
           && (rain || ex.streakSec <= newStreakSec)
-          && (!ta || ex.arrivalSec <= newArrivalSec)) { dominated = true; break; }
+          && (!ta || sameFuture(ex.arrivalSec, newArrivalSec))) { dominated = true; break; }
       }
       if (dominated) continue;
 
