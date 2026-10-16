@@ -823,6 +823,58 @@ describe("snapRouteStopsToReachableEdges", () => {
       snapRouteStopsToReachableEdges(stops, graph, { maxSnapDistanceM: 5 })
     ).toThrow(/stop 2 is \d+ m from the nearest connected walkable street/);
   });
+
+  it("connects every stop when a via stop and the destination sit on different fragments (#305)", () => {
+    // Main street (7 nodes) ← start; island (3 nodes) ← via; a 2-node
+    // fragment ← destination. Fixing pairs from the back moved the destination
+    // onto the island, then the via onto the main street, and never re-checked
+    // the via → destination leg: it came back disconnected.
+    const graph = makeNearbyDisconnectedWaypointGraph();
+    const link = (a: number, b: number) => {
+      const na = graph.nodes.get(a)!;
+      const nb = graph.nodes.get(b)!;
+      const d = haversineMeters([na.lon, na.lat], [nb.lon, nb.lat]);
+      if (!graph.adj.has(a)) graph.adj.set(a, []);
+      if (!graph.adj.has(b)) graph.adj.set(b, []);
+      graph.adj.get(a)!.push({ toId: b, distanceM: d, shadowFactor: 0 });
+      graph.adj.get(b)!.push({ toId: a, distanceM: d, shadowFactor: 0 });
+    };
+    for (let k = 0; k < 4; k++) {
+      graph.nodes.set(10 + k, { id: 10 + k, lat: -0.001 * (k + 1), lon: 0 });
+      link(k === 0 ? 1 : 9 + k, 10 + k);
+    }
+    graph.nodes.set(7, { id: 7, lat: 0.0002, lon: 0.0115 });
+    link(4, 7);
+    graph.nodes.set(8, { id: 8, lat: 0.0004, lon: 0.0113 });
+    graph.nodes.set(9, { id: 9, lat: 0.0004, lon: 0.0117 });
+    link(8, 9);
+    const stops: [number, number][] = [
+      [0.001, 0],
+      [0.010, 0.0002],
+      [0.0115, 0.0004],
+    ];
+
+    const { ids, snapDistancesM } = snapRouteStopsToReachableEdges(stops, graph, { maxSnapDistanceM: 50 });
+
+    expect(snapDistancesM[0]).toBeLessThan(5);
+    const piece = bfsReachable(graph, ids[0]);
+    expect(piece.has(ids[1])).toBe(true);
+    expect(piece.has(ids[2])).toBe(true);
+    expect(dijkstra(graph, ids[1], ids[2], 0)).not.toBeNull();
+  });
+
+  it("still names the stop that cannot reach the main network", () => {
+    const graph = makeNearbyDisconnectedWaypointGraph();
+    const stops: [number, number][] = [
+      [0.001, 0],
+      [0.010, 0.0002],
+      [0.019, 0],
+    ];
+
+    expect(() =>
+      snapRouteStopsToReachableEdges(stops, graph, { maxSnapDistanceM: 5 })
+    ).toThrow(/stop 2 is \d+ m from the nearest connected walkable street/);
+  });
 });
 
 // ── Tests: paretoRoutes ───────────────────────────────────────────────────────
