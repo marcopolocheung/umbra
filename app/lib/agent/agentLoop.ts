@@ -189,7 +189,10 @@ function collectPointCandidates(
     return;
   }
 
+  // A refused route's points are the model's, not the app's: collecting them would
+  // let the same call pass on retry.
   if (toolName === "plan_shadowed_route") {
+    if (result.error) return;
     add(args.fromLat, args.fromLng, args.fromLabel, args.fromCandidateId);
     for (const stop of parsePins(args.via)) add(stop.lat, stop.lng, stop.label, stop.candidateId);
     add(args.toLat, args.toLng, args.toLabel, args.toCandidateId);
@@ -743,13 +746,29 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       };
     }
     if (tool === "plan_shadowed_route") {
+      const from = snap({
+        candidateId: rawArgs.fromCandidateId,
+        lat: rawArgs.fromLat,
+        lng: rawArgs.fromLng,
+      });
+      const to = snap({
+        candidateId: rawArgs.toCandidateId,
+        lat: rawArgs.toLat,
+        lng: rawArgs.toLng,
+      });
       return {
         ...rawArgs,
-        fromCandidateId: fixId(rawArgs.fromCandidateId, rawArgs.fromLat, rawArgs.fromLng),
-        toCandidateId: fixId(rawArgs.toCandidateId, rawArgs.toLat, rawArgs.toLng),
+        fromLat: from.lat,
+        fromLng: from.lng,
+        toLat: to.lat,
+        toLng: to.lng,
+        fromCandidateId: fixId(rawArgs.fromCandidateId, from.lat, from.lng),
+        toCandidateId: fixId(rawArgs.toCandidateId, to.lat, to.lng),
         via: Array.isArray(rawArgs.via)
           ? rawArgs.via.map((raw) => {
-              const point = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+              const point = snap(
+                raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {},
+              );
               return { ...point, candidateId: fixId(point.candidateId, point.lat, point.lng) };
             })
           : rawArgs.via,
