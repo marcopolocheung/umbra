@@ -62,8 +62,11 @@ import { percentileSummary } from "./stats";
  */
 export const MAX_REQUEST_BYTES = 100_000_000;
 
-async function latestGeneration(normalized: string): Promise<string | null> {
+export async function latestGeneration(normalized: string): Promise<string | null> {
   let best: { name: string; createdAt: string } | null = null;
+  // createdAt is the source date, so every build of one snapshot ties; the old
+  // name tiebreak picked a one-cell shade table for a citywide publish (#291).
+  const tied: string[] = [];
   for (const name of await readdir(normalized)) {
     if (name.startsWith(".")) continue;
     try {
@@ -71,16 +74,19 @@ async function latestGeneration(normalized: string): Promise<string | null> {
         await readFile(join(normalized, name, "navigation", "nyc", name, "manifest.json"), "utf8"),
       ) as { createdAt?: string };
       const createdAt = typeof manifest.createdAt === "string" ? manifest.createdAt : "";
-      if (
-        !best ||
-        createdAt > best.createdAt ||
-        (createdAt === best.createdAt && name > best.name)
-      ) {
+      if (!best || createdAt > best.createdAt) {
         best = { name, createdAt };
+        tied.length = 0;
       }
+      if (createdAt === best.createdAt) tied.push(name);
     } catch {
       // Not a generation directory (no manifest through the canonical path).
     }
+  }
+  if (tied.length > 1) {
+    throw new Error(
+      `${tied.length} generations share createdAt ${best?.createdAt} (${tied.sort().join(", ")}); pass the generation explicitly`,
+    );
   }
   return best?.name ?? null;
 }
