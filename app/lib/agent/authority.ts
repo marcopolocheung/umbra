@@ -332,6 +332,27 @@ function termMatches(term: string, values: Set<string>): boolean {
   );
 }
 
+/**
+ * Coverage is NYC-only, and the model qualifies a place the user named with its
+ * city or borough ("Fordham Plaza, Bronx", #361). The borough is needed: bare
+ * "Grand Army Plaza" geocodes to Manhattan's, not Brooklyn's. It can only choose
+ * among same-named NYC places, so it never counts against a query or a `near`.
+ */
+export const NYC_QUALIFIER_TERMS = new Set([
+  "new",
+  "york",
+  "nyc",
+  "manhattan",
+  "brooklyn",
+  "queens",
+  "bronx",
+  "staten",
+  "island",
+]);
+const TRAILING_NYC_QUALIFIERS = new RegExp(
+  `(?:\\s+(?:the\\s+)?(?:${[...NYC_QUALIFIER_TERMS].join("|")}))+$`,
+);
+
 function currentUserSuppliedPhrase(text: string, value: unknown): boolean {
   if (typeof value !== "string" || !value.trim()) return false;
   const normalize = (input: string) =>
@@ -339,7 +360,7 @@ function currentUserSuppliedPhrase(text: string, value: unknown): boolean {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
-  const requested = normalize(value);
+  const requested = normalize(value).replace(TRAILING_NYC_QUALIFIERS, "");
   const terms = requested.match(/[a-z0-9]{3,}/g) ?? [];
   const current = currentTurnTerms(text);
   return (
