@@ -13,7 +13,7 @@
     "acquire:plan": "tsx src/cli.ts acquire --plan",
     "validate": "tsx src/cli.ts validate",
     "normalize": "tsx src/cli.ts normalize",
-    "build": "tsx src/cli.ts build",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsx src/cli.ts build",
     "build:dry": "tsx src/cli.ts build --dry-run",
     "verify": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts verify",
     "publish": "NODE_OPTIONS=--max-old-space-size=6144 tsx src/cli.ts publish",
