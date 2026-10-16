@@ -397,6 +397,59 @@ describe("model argument drift seen in production", () => {
     });
   });
 
+  it("routes to a named candidate whose coordinates come back at lower precision (#354)", async () => {
+    const ctx = shadeContext();
+    const [a] = shadePayload().results;
+    const echo = (v: number) => Number(v.toPrecision(15));
+    const route = {
+      fromLat: SHADE_QUERY.lat,
+      fromLng: SHADE_QUERY.lng,
+      fromCandidateId: `map-center:${SHADE_QUERY.lat}:${SHADE_QUERY.lng}`,
+      toLat: echo(a.lat) + 1e-11,
+      toLng: echo(a.lng),
+      toCandidateId: a.candidateId,
+    };
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "find_shade_spots", args }]))
+      .mockResolvedValueOnce(calls([{ name: "plan_shadowed_route", args: route }]))
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({
+      history: [],
+      userText: "Find shade near here from 2 to 4pm and route me to the first one",
+      ctx,
+    });
+    expect(result.authorityEvents.find((e) => e.tool === "plan_shadowed_route")).toMatchObject({
+      decision: "accepted",
+    });
+    const routed = vi
+      .mocked(executeTool)
+      .mock.calls.find(([name]) => name === "plan_shadowed_route")![1];
+    expect(routed).toMatchObject({ toLat: a.lat, toLng: a.lng, toCandidateId: a.candidateId });
+  });
+
+  it("does not let a refused route call pass on retry (#354)", async () => {
+    const ctx = shadeContext();
+    const route = {
+      fromLat: SHADE_QUERY.lat,
+      fromLng: SHADE_QUERY.lng,
+      fromCandidateId: `map-center:${SHADE_QUERY.lat}:${SHADE_QUERY.lng}`,
+      toLat: 40.7,
+      toLng: -73.99,
+      toCandidateId: "made-up",
+    };
+    vi.mocked(callModel)
+      .mockResolvedValueOnce(calls([{ name: "plan_shadowed_route", args: route }]))
+      .mockResolvedValueOnce(calls([{ name: "plan_shadowed_route", args: route }]))
+      .mockResolvedValueOnce(final);
+    const result = await runAgent({ history: [], userText: "Route me there", ctx });
+    expect(
+      result.authorityEvents.filter((e) => e.tool === "plan_shadowed_route").map((e) => e.decision),
+    ).toEqual(["rejected", "rejected"]);
+    expect(vi.mocked(executeTool).mock.calls.some(([name]) => name === "plan_shadowed_route")).toBe(
+      false,
+    );
+  });
+
   it("does not snap a named candidate's coordinates that are actually elsewhere", async () => {
     const ctx = shadeContext();
     const [a] = shadePayload().results;

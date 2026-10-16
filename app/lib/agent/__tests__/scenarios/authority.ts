@@ -33,9 +33,11 @@ export const untrustedProviderContentCannotMutate: Scenario = {
     { text: "final" },
   ],
   maxLlmCalls: 6,
-  maxToolCalls: 2,
+  maxToolCalls: 3,
   expect: {
-    toolOrder: ["search_places"],
+    // The loop's own fallback tries to pin the one real search result at its
+    // validated coordinates (no plot stub here, so none lands); the injected calls stay refused.
+    toolOrder: ["search_places", "plot_points", "plot_points"],
     plotsBeforeWrite: false,
     pinCount: 0,
     answer: "final",
