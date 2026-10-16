@@ -1868,23 +1868,25 @@ export function snapRouteStopsToReachableEdges(
     return n ? haversineMeters(coords[index], [n.lon, n.lat]) : Infinity;
   });
 
-  for (let i = coords.length - 2; i >= 0; i--) {
-    const reachableToDestination = bfsReachable(graph, ids[i + 1], travelMode);
-    if (reachableToDestination.has(ids[i])) continue;
+  // Every stop joins the largest piece of the network any stop sits in. Moving
+  // stops pair by pair dragged one to whatever fragment its neighbour happened
+  // to be nearest — a 2-node footway cut off by tagging, 1.4 km away in
+  // production (#305) — and a via stop moved toward its predecessor was never
+  // re-checked against its successor. Equal pieces go to the later stop.
+  let target: Set<number> | null = null;
+  const pieces: Set<number>[] = [];
+  for (let i = coords.length - 1; i >= 0; i--) {
+    if (pieces.some((piece) => piece.has(ids[i]))) continue;
+    const piece = bfsReachable(graph, ids[i], travelMode);
+    pieces.push(piece);
+    if (!target || piece.size > target.size) target = piece;
+  }
 
-    // Move the stop that sits in the smaller piece of the network. Trusting
-    // the later stop's snap dragged the earlier one to whatever fragment the
-    // later stop happened to be nearest — a 2-node footway cut off by tagging,
-    // 1.4 km away in production (#305) — when moving the fragment's stop a few
-    // metres onto the street grid connects them. Equal pieces keep the old
-    // behaviour (move the earlier stop). A via stop moved forward is re-checked
-    // against its predecessor on the next iteration, as before.
-    const reachableFromStop = bfsReachable(graph, ids[i], travelMode);
-    const moved = reachableToDestination.size < reachableFromStop.size ? i + 1 : i;
-    const target = moved === i ? reachableToDestination : reachableFromStop;
+  for (let moved = 0; moved < coords.length; moved++) {
+    if (target!.has(ids[moved])) continue;
 
     if (ids[moved] < 0) removeVirtualNode(graph, ids[moved]);
-    const fallback = snapToReachableEdge(coords[moved], graph, target, virtualIdFor(moved), travelMode);
+    const fallback = snapToReachableEdge(coords[moved], graph, target!, virtualIdFor(moved), travelMode);
     const label = describeStop(moved, coords.length);
     if (!fallback) {
       throw new Error(

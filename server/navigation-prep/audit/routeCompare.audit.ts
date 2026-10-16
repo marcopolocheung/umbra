@@ -199,8 +199,8 @@ it("route search comparison", { timeout: 6 * 3600_000 }, async () => {
     try {
       c = await buildCase(route);
     } catch (error) {
-      // Unroutable in production too (e.g. #305) — not a search question.
-      process.stderr.write(`${route.name.padEnd(32)} SKIPPED: ${(error as Error).message.slice(0, 90)}\n`);
+      // An ordinary route that will not snap is a production bug (#305), not a skip.
+      failures.push(`${route.name}: unroutable: ${(error as Error).message.slice(0, 90)}`);
       continue;
     }
     let t = performance.now();
