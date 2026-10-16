@@ -225,8 +225,8 @@ test("the field path keeps canopy that a wholly-outside ring would blank", { ski
   const westTopRow = square(-0.0002, -0.0001, 0.0009, 0.0011);
   const straddling = square(-0.0002, 0.0002, 0.0004, 0.0005);
 
-  // The app bug (#220), documented: this assertion flips when Track A fixes it.
-  assert.equal(field.masked([westTopRow]).maxHeightM, 0, "raw masked() blanks the raster");
+  // The app bug (#220), fixed in #300: a wholly-outside ring no longer blanks the raster.
+  assert.equal(field.masked([westTopRow]).maxHeightM, 20, "raw masked() keeps the canopy");
   // The study's single mask: the field's own re-mask is a no-op.
   const single = singleMaskRaster(field, []);
   assert.equal(single.masked([westTopRow]).maxHeightM, 20);
