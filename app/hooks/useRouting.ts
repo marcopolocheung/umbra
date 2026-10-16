@@ -581,6 +581,34 @@ export function useRouting({
         const west = Math.min(...allLngs) - padding;
         const east = Math.max(...allLngs) + padding;
 
+        // The train graph is a network fetch the walk route does not need, so
+        // it starts with the calculation and rides alongside streets, shade and
+        // the search instead of after them (it was 1.6 s of a 2.3 s transit
+        // stage, then ~1.3 s while it started after graphBuild). Its result is
+        // awaited where it always was; a route that turns out partial simply
+        // leaves it unread.
+        const transitPrefetch = straightLineDistM > MIN_TRANSIT_DISTANCE_M
+          ? (() => {
+              const trainPadding = Math.max(padding, 0.015);
+              const tTransitFetch = performance.now();
+              // Started inside `then` so even a synchronous throw becomes a
+              // rejection the transit branch's catch handles, as before.
+              const graphPromise = Promise.resolve().then(() => fetchBestTrainGraph(
+                Math.min(a[1], b[1]) - trainPadding,
+                Math.min(a[0], b[0]) - trainPadding,
+                Math.max(a[1], b[1]) + trainPadding,
+                Math.max(a[0], b[0]) + trainPadding,
+                calcSignal,
+              )).then((graph) => {
+                transitFetchMs += performance.now() - tTransitFetch;
+                return graph;
+              });
+              graphPromise.catch(() => {});
+              void Promise.resolve().then(ensureZoneLookup).catch(() => {});
+              return graphPromise;
+            })()
+          : null;
+
         const tFetch = performance.now();
         updateProgress({ message: "Fetching walk network" });
 
@@ -1177,32 +1205,6 @@ export function useRouting({
             },
           });
         let snappedStops: ReturnType<typeof snapRouteStopsToReachableEdges>;
-        // The train graph is a network fetch the walk search does not need, and
-        // the walk search runs in a worker — so the fetch rides alongside it
-        // instead of after it (it was 1.6 s of a 2.3 s transit stage). Its
-        // result is awaited where it always was; a route that turns out
-        // partial simply leaves it unread.
-        const transitPrefetch = straightLineDistM > MIN_TRANSIT_DISTANCE_M
-          ? (() => {
-              const trainPadding = Math.max(padding, 0.015);
-              const tTransitFetch = performance.now();
-              // Started inside `then` so even a synchronous throw becomes a
-              // rejection the transit branch's catch handles, as before.
-              const graphPromise = Promise.resolve().then(() => fetchBestTrainGraph(
-                Math.min(a[1], b[1]) - trainPadding,
-                Math.min(a[0], b[0]) - trainPadding,
-                Math.max(a[1], b[1]) + trainPadding,
-                Math.max(a[0], b[0]) + trainPadding,
-                calcSignal,
-              )).then((graph) => {
-                transitFetchMs += performance.now() - tTransitFetch;
-                return graph;
-              });
-              graphPromise.catch(() => {});
-              void Promise.resolve().then(ensureZoneLookup).catch(() => {});
-              return graphPromise;
-            })()
-          : null;
         let forcedPartial: PartialRouteInfo | null = null;
         try {
           snappedStops = snapStops(routeStops);
