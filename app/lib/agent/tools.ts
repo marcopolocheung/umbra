@@ -23,6 +23,7 @@ import {
 import type * as maplibregl from "maplibre-gl";
 import type { IShadowLayer } from "../shadow/IShadowLayer";
 import { geocodeForward, geocodeNear, type NominatimResult } from "../nominatim";
+import { suggestPlaces } from "../../services/foursquare";
 import { haversineMeters } from "../routing";
 import { computeSolarIntensity } from "../shadowSampling";
 import {
@@ -550,31 +551,52 @@ export async function executeTool(
         };
       }
 
+      const anchor = center;
+      // Nominatim is an address geocoder, weak at POIs ("cafés"); Foursquare is a
+      // POI index. Ask both within walking distance; either alone may be empty,
+      // and suggestPlaces resolves [] on any failure, so Nominatim-only still works.
+      const fsqHits = suggestPlaces(q, anchor, {
+        limit: 4,
+        radiusM: Math.round(SEARCH_RADII_DEG[0] * 111_320),
+      });
       let results: NominatimResult[] = [];
       let radiusDeg = SEARCH_RADII_DEG[0];
       for (radiusDeg of SEARCH_RADII_DEG) {
         results = await geocodeNear(q, center[1], center[0], radiusDeg);
         if (results.length > 0) break;
       }
-      const anchor = center;
+      const hits = results.map((r) => {
+        const lat = +parseFloat(r.lat).toFixed(6);
+        const lng = +parseFloat(r.lon).toFixed(6);
+        return {
+          name: providerText(r.display_name.split(",").slice(0, 2).join(", ")),
+          lat,
+          lng,
+          distanceM: Math.round(haversineMeters(anchor, [lng, lat])),
+        };
+      });
+      for (const s of await fsqHits) {
+        const lat = +s.lat.toFixed(6);
+        const lng = +s.lng.toFixed(6);
+        // The same place from both providers is one result (same name, close by);
+        // neighbouring cafés are not. The Nominatim row wins, as in SearchBar.
+        const sameName = (h: { name: string }) =>
+          h.name.split(",")[0].trim().toLowerCase() === s.name.trim().toLowerCase();
+        if (hits.some((h) => sameName(h) && haversineMeters([h.lng, h.lat], [lng, lat]) < 200))
+          continue;
+        hits.push({
+          name: providerText(s.name),
+          lat,
+          lng,
+          distanceM: Math.round(haversineMeters(anchor, [lng, lat])),
+        });
+      }
       return {
         searchedNear: { lat: +center[1].toFixed(5), lng: +center[0].toFixed(5) },
         searchRadiusKm: +((radiusDeg * 111_320) / 1000).toFixed(1),
-        results: results
-          .map((r) => {
-            const lat = +parseFloat(r.lat).toFixed(6);
-            const lng = +parseFloat(r.lon).toFixed(6);
-            return {
-              name: providerText(r.display_name.split(",").slice(0, 2).join(", ")),
-              lat,
-              lng,
-              distanceM: Math.round(haversineMeters(anchor, [lng, lat])),
-            };
-          })
-          .sort((a, b) => a.distanceM - b.distanceM)
-          .slice(0, 4),
+        results: hits.sort((a, b) => a.distanceM - b.distanceM).slice(0, 4),
         note:
-          results.length === 0
+          hits.length === 0
             ? "No matches in that area. Try a broader query or a different anchor."
             : undefined,
       };
