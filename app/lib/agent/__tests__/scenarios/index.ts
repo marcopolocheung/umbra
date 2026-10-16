@@ -55,4 +55,9 @@ export const scenarios: Scenario[] = [
   shade.pureLookupNoShadeSearch,
   shade.offTopicNoTools,
   shade.findThenRouteThere,
+  shade.holdoutBrooklynWindow,
+  shade.holdoutQueensDate,
+  shade.holdoutQueensSun,
+  shade.holdoutBronxSunset,
+  shade.holdoutBrooklynRightNow,
 ];

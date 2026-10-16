@@ -9,7 +9,8 @@ import { defineConfig } from "vitest/config";
  * It uses the app's own Gemini pool (VITE_GEMINI_API_KEY in .env, or in the
  * environment, which wins); AGENT_EVAL_RESEARCH_MODEL / _RESPONSE_MODEL
  * override a role for one run. A4: AGENT_EVAL_REPEATS=3 runs each scenario
- * three times for pass^3; AGENT_EVAL_ABLATE=find_shade_spots withholds a tool.
+ * three times for pass^3; AGENT_EVAL_ABLATE=find_shade_spots withholds a tool
+ * (declaration and prompt mentions); A4b: AGENT_EVAL_TEMPERATURE=1 overrides the app's 0.
  */
 export default defineConfig(() => {
   return {
@@ -28,6 +29,7 @@ export default defineConfig(() => {
         // A4: pass^k repeats, tool ablation, and the shade-data origin.
         AGENT_EVAL_REPEATS: process.env.AGENT_EVAL_REPEATS ?? "",
         AGENT_EVAL_ABLATE: process.env.AGENT_EVAL_ABLATE ?? "",
+        AGENT_EVAL_TEMPERATURE: process.env.AGENT_EVAL_TEMPERATURE ?? "",
         ...(process.env.AGENT_EVAL_NAVIGATION_BASE
           ? { AGENT_EVAL_NAVIGATION_BASE: process.env.AGENT_EVAL_NAVIGATION_BASE }
           : {}),

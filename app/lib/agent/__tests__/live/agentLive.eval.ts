@@ -29,6 +29,7 @@ import {
   type Trace,
 } from "../harness";
 import { scenarios } from "../scenarios";
+import { HOLDOUT_IDS, MANHATTAN_SHADE_IDS } from "../scenarios/shade";
 import { normalizeShadeToolArgs, shadeQueryFromArgs } from "../../tools";
 import type { ShadeCandidate } from "../../shadeWindows";
 import { findShadeSpots } from "../../../navigationData/shadeSpotsSource";
@@ -53,6 +54,51 @@ vi.mock("../../tools", async (importOriginal) => {
 });
 
 const real = await vi.importActual<typeof import("../../llmClient")>("../../llmClient");
+
+/**
+ * A4b clean ablation: withholding a declaration is not enough, because the
+ * system prompts still name the tool and the model calls it anyway (A4a: 7
+ * runs). Drop every prompt sentence that names a withheld tool, and fail loudly
+ * if a mention survives a future prompt edit.
+ */
+const ABLATED = (process.env.AGENT_EVAL_ABLATE ?? "").split(",").filter(Boolean);
+function withoutAblatedTools(text: string): string {
+  if (ABLATED.length === 0) return text;
+  const names = (s: string) => ABLATED.some((name) => s.includes(name));
+  // A procedure step about the tool goes whole; elsewhere only its sentences do.
+  const clean = text
+    .split("\n")
+    .filter((line) => !names(line) || !/^(\d+\.|For )/.test(line))
+    .map((line) =>
+      line
+        .split(/(?<=\.)\s+/)
+        .filter((sentence) => !names(sentence))
+        .join(" "),
+    )
+    .join("\n");
+  for (const name of ABLATED)
+    if (clean.includes(name)) throw new Error(`ablation left "${name}" in the system prompt`);
+  return clean;
+}
+/** A4b temperature A/B: AGENT_EVAL_TEMPERATURE overrides the app's 0 for this run only. */
+const TEMPERATURE =
+  process.env.AGENT_EVAL_TEMPERATURE === undefined || process.env.AGENT_EVAL_TEMPERATURE === ""
+    ? undefined
+    : Number(process.env.AGENT_EVAL_TEMPERATURE);
+const liveCallModel: typeof real.callModel = (req, role) =>
+  real.callModel(
+    {
+      ...req,
+      systemInstruction: req.systemInstruction && {
+        parts: req.systemInstruction.parts.map((p) => ({ text: withoutAblatedTools(p.text) })),
+      },
+      generationConfig:
+        TEMPERATURE === undefined
+          ? req.generationConfig
+          : { ...req.generationConfig, temperature: TEMPERATURE },
+    },
+    role,
+  );
 
 // A4: shade scenarios read the published table through the production Worker
 // (read-only, no key). The tool's own argument handling is the app's.
@@ -381,7 +427,7 @@ describe("live agent eval — gemini", () => {
     liveShadeCandidates.length = 0;
     const started = Date.now();
     try {
-      trace = await runLiveScenario(forLive(scenario), runAgent, mocks, real.callModel);
+      trace = await runLiveScenario(forLive(scenario), runAgent, mocks, liveCallModel);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
@@ -428,8 +474,20 @@ function a4Summary(all: Row[]): string[] {
   const shadeProposed = all.reduce((n, r) => n + (r.claimMetrics?.shade_window.proposed ?? 0), 0);
   const shadeRejected = all.reduce((n, r) => n + (r.claimMetrics?.shade_window.rejected ?? 0), 0);
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
+  // A4b borough holdout: the same rates over the Manhattan shade set and the
+  // untuned outer-borough set, side by side.
+  const split = (label: string, subset: Row[]) => {
+    const subIds = [...new Set(subset.map((r) => r.id))];
+    const allPass = subIds.filter((id) => subset.filter((r) => r.id === id).every((r) => r.pass));
+    return (
+      `| ${label} | ${subIds.length} | ${pct(subset.filter((r) => r.answered).length, subset.length)} | ` +
+      `${pct(subset.filter((r) => r.pass).length, subset.length)} | ${pct(allPass.length, subIds.length)} |`
+    );
+  };
+  const holdout = all.filter((r) => HOLDOUT_IDS.has(r.id));
+  const manhattanShade = all.filter((r) => MANHATTAN_SHADE_IDS.has(r.id));
   return [
-    `### A4 — repeats ${REPEATS}, ablated: ${ablated}`,
+    `### A4 — repeats ${REPEATS}, ablated: ${ablated}, temperature: ${TEMPERATURE ?? "0 (app default)"}`,
     "",
     ...(dataFailures
       ? [
@@ -451,6 +509,17 @@ function a4Summary(all: Row[]): string[] {
     )} of proposed calls · ` +
       `incorrect-value rate (shade_window claims rejected): ${pct(shadeRejected, shadeProposed)} (${shadeRejected}/${shadeProposed})`,
     "",
+    ...(holdout.length
+      ? [
+          "Borough holdout (tool description tuned on Manhattan only):",
+          "",
+          `| set | scenarios | task success | pass^1 | pass^${REPEATS} |`,
+          "|---|---:|---:|---:|---:|",
+          split("Manhattan shade", manhattanShade),
+          split("Brooklyn/Queens/Bronx holdout", holdout),
+          "",
+        ]
+      : []),
     "Tool selection (rows expected, columns first substantive tool proposed):",
     "",
     `| expected \\ actual | ${actual.join(" | ")} |`,
@@ -563,6 +632,7 @@ afterAll(() => {
           provider: "gemini",
           repeats: REPEATS,
           ablated: process.env.AGENT_EVAL_ABLATE || null,
+          temperature: TEMPERATURE ?? null,
           models: [...requestedModels],
           served: [...usage.models],
           usage: { ...usage, models: undefined },
