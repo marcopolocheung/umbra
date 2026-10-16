@@ -1199,8 +1199,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         mapPins = parsePins(args.points);
         plottedThisTurn = true;
       }
+      // A refused call never reached the pipeline, so it is not a route outcome (#354).
       if (
         fc.name === "plan_shadowed_route" &&
+        authorization.allowed &&
         result.code !== "shade_route_time" &&
         result.code !== "shade_alternatives"
       ) {

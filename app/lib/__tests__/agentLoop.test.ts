@@ -326,6 +326,36 @@ describe("terminal route results", () => {
     expect(result.text).not.toMatch(/started|ready|completed/i);
   });
 
+  it("does not blame the pipeline for a route call the authority refused (#354)", async () => {
+    mockExecuteTool.mockImplementation(async (name) => {
+      if (name === "get_current_context") return { center: { lat: 40.7, lng: -74 } };
+      return { ok: true };
+    });
+    mockCallModel
+      .mockResolvedValueOnce(
+        modelResponse([
+          {
+            functionCall: {
+              name: "plan_shadowed_route",
+              // No tool returned these coordinates, so the authority refuses the call.
+              args: { fromLat: 40.61, fromLng: -74.1, toLat: 40.62, toLng: -74.09 },
+            },
+          },
+        ]),
+      )
+      .mockResolvedValue(modelResponse([{ text: "I couldn't plan that route." }]));
+
+    const result = await runAgent({ history: [], userText: "Route me", ctx: makeCtx() });
+
+    expect(mockExecuteTool).not.toHaveBeenCalledWith(
+      "plan_shadowed_route",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(result.text).not.toMatch(/pipeline|invalid terminal result/i);
+  });
+
   it.each([
     [
       {
