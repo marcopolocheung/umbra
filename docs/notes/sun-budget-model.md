@@ -69,8 +69,9 @@ true optimum (3.6% of it)**, and a non-dominated option was missing from the
 front entirely. **Fixed on the front in #246:** a label now prunes a later one
 only when every continuation is priced alike (the same arrival, or both in the
 last bucket), and the test asserts the front returns 0-2-3-4 at 55 s. The
-shipped ladder (`searchStrategy: "direct"`) keeps one label per (node, bucket),
-so it still returns 57 s; a test pins that as a known approximation.
+shipped ladder (`searchStrategy: "direct"`) kept one label per (node, bucket),
+so it still returned 57 s; since #369 each rung keeps two per (node, bucket),
+prunes a later one only under the same rule, and returns 0-2-3-4 at 55 s.
 
 **Where it is exact.** On the *static* fixtures — a single time bucket, so the
 defect cannot occur by construction — the production's shortest equals the
@@ -91,9 +92,10 @@ cross.)
 - **The bound on the loss is unproven.** The fixture shows a 2 s miss at one
   merge point; whether the error compounds across several merge points, and by
   how much, is not established.
-- **The ladder is not fixed.** #246 corrected the front's dominance; the
-  ladder the app ships still has the gap, and fixing it exactly needs
-  per-arrival state.
+- **The ladder is not exact.** #369 gave each rung two labels per (node,
+  bucket), which closes this fixture's gap, but a third distinct future at one
+  slot still loses its label, and a weighted sum still misses a least-sun route
+  in a concave dent of the front (`directRoutes.test.ts`).
 - **The bucket discretization error against continuous time is not measured.** The
   oracle uses the same buckets as production, so it measures *search* error only.
   The H1 note's pointer ("H4's oracle publishes it") is not satisfied here; a

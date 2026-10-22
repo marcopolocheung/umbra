@@ -856,6 +856,10 @@ export function dijkstra(
 export const DETOUR_FLAT_M = 250;
 /** Exported for the caller's H1 horizon: how many buckets cover the detour budget. */
 export const DEFAULT_MAX_DETOUR_FACTOR = 2.0;
+/** Labels each L4 ladder rung keeps per (node, arrival bucket) (#369). 2 fixes the
+ *  H4 oracle's bucket-boundary miss; on the 12 `routeCompare` routes 2 returns the
+ *  same routes as 1 at +0–0.5 s of search, and 3 costs ~2×. */
+const LADDER_SLOT_LABELS = 2;
 
 /**
  * Bi-criteria Pareto routing (NAMOA*-inspired label-setting).
@@ -1183,8 +1187,8 @@ export function paretoRoutes(
   };
 
   if (direct) {
-    // The ladder: one scalar Dijkstra per weight, each keeping one label per
-    // (node, arrival bucket) — the least `sun + λ·distance` — under the same
+    // The ladder: one scalar Dijkstra per weight, each keeping the least
+    // `sun + λ·distance` labels per (node, arrival bucket) under the same
     // budget, prohibited edges and sun-streak cap as the front. Each finds a
     // supported point of the front in roughly one plain search's time, and
     // their destination labels replace the front for the selection below.
@@ -1204,11 +1208,51 @@ export function paretoRoutes(
     // around that scale. The last weight is effectively "shortest": any metre
     // outweighs any sun, yet equal-length paths still break toward shade.
     const LAMBDAS = [0, 0.02, 0.06, 0.15, 0.3, 0.5, 0.75, 1.1, 1.6, 2.5, 5, 1e6];
-    // One label per (node, arrival bucket), the front's own state space: an
-    // arrival in a later bucket can see shadier edges downstream, so it is not
-    // dominated by an earlier, cheaper one (with B = 1 this is per node).
-    const best = new Float64Array(N * B);
-    const bestLabel = new Int32Array(N * B);
+    // Up to LADDER_SLOT_LABELS labels per (node, arrival bucket), the front's
+    // own state space: an arrival in a later bucket can see shadier edges
+    // downstream, so it is not dominated by an earlier, cheaper one (with
+    // B = 1 this is per node). Inside a bucket a label prunes another only
+    // when it weighs no more and faces the same future (`sameFuture`, #369):
+    // a later arrival's next edge can still cross into a shadier bucket.
+    const K = LADDER_SLOT_LABELS;
+    const slotCount = new Uint8Array(N * B);
+    const slotLabels = new Int32Array(N * B * K);
+    /** Admits a label of weight `w` arriving at `arrivalSec` into `slot`, or
+     * returns false. It evicts the kept labels it prunes, then the heaviest
+     * when the slot is full; with K = 1 this is the old least-weight label. */
+    const admit = (slot: number, w: number, arrivalSec: number, weightOf: (id: number) => number): boolean => {
+      const base = slot * K;
+      let n = slotCount[slot];
+      for (let i = 0; i < n; i++) {
+        const id = slotLabels[base + i];
+        if (weightOf(id) <= w && (!ta || sameFuture(lArrival[id], arrivalSec))) return false;
+      }
+      for (let i = n - 1; i >= 0; i--) {
+        const id = slotLabels[base + i];
+        if (w <= weightOf(id) && (!ta || sameFuture(arrivalSec, lArrival[id]))) {
+          lEvicted[id] = 1;
+          slotLabels[base + i] = slotLabels[base + --n];
+        }
+      }
+      if (n === K) {
+        let worst = 0;
+        for (let i = 1; i < n; i++) {
+          if (weightOf(slotLabels[base + i]) > weightOf(slotLabels[base + worst])) worst = i;
+        }
+        if (w >= weightOf(slotLabels[base + worst])) {
+          slotCount[slot] = n;
+          return false;
+        }
+        lEvicted[slotLabels[base + worst]] = 1;
+        slotLabels[base + worst] = slotLabels[base + --n];
+      }
+      slotCount[slot] = n;
+      return true;
+    };
+    /** Records `label` as admitted into `slot` (after `admit` returned true). */
+    const keep = (slot: number, label: number) => {
+      slotLabels[slot * K + slotCount[slot]++] = label;
+    };
     // Exact lower bounds to the destination, for every rung's A*: the least
     // mode cost (crossings included, as the forward search charges them) and
     // the least sun (each edge at its shadiest bucket). Each is consistent,
@@ -1266,15 +1310,14 @@ export function paretoRoutes(
     }
     backward(hSun, (e) => minInc[e]);
     for (const lambda of LAMBDAS) {
-      best.fill(Infinity);
-      bestLabel.fill(-1);
+      slotCount.fill(0);
       // A sliver of distance on every weight: a tie in sun must resolve to the
       // shorter path, or the longer one occupies the node and the detour
       // budget prunes its continuation where the shorter one would have fit.
       const weightOf = (distM: number, crit: number) => crit + (lambda + 1e-6) * distM;
+      const labelWeight = (id: number) => weightOf(lDist[id], lCrit[id]);
       const root = mkLabel(0, 0, 0, 0, startIdx, -1, -1);
-      best[startIdx * B] = 0;
-      bestLabel[startIdx * B] = root;
+      keep(startIdx * B, root);
       const slotOf = (arrivalSec: number) =>
         ta ? Math.min(Math.floor((arrivalSec * 1000) / bucketMs), B - 1) : 0;
       let reached = -1;
@@ -1284,7 +1327,7 @@ export function paretoRoutes(
       while (queue.size > 0) {
         const label = queue.pop();
         const node = lNode[label];
-        if (bestLabel[node * B + slotOf(lArrival[label])] !== label) continue; // superseded
+        if (lEvicted[label]) continue; // superseded
         // The first destination label popped is the least weight over every
         // arrival bucket — weights only grow along a path.
         if (node === endIdx) { reached = label; break; }
@@ -1310,10 +1353,9 @@ export function paretoRoutes(
           if (maxContinuousExposureSec != null && newStreakSec > maxContinuousExposureSec) continue;
           const w = weightOf(newDistM, exposureCrit + inc);
           const slot = to * B + bucket;
-          if (w >= best[slot]) continue;
-          best[slot] = w;
+          if (!admit(slot, w, newArrivalSec, labelWeight)) continue;
           const next = mkLabel(newDistM, exposureCrit + inc, newArrivalSec, newStreakSec, to, label, e);
-          bestLabel[slot] = next;
+          keep(slot, next);
           queue.push(next, w + hSun[to] + lam * hDist[to]);
         }
       }
