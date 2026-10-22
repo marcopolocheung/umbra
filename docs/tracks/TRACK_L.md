@@ -16,11 +16,14 @@ with sources. The decisions below cite it as "the report".
 
 ## Current state
 
-- **Active checkpoint:** L2 completion (#296). The departure-time sample still runs live and
-  falls back to reading map pixels on 64% of edges; it is the largest remaining cost.
+- **Active checkpoint:** none in flight. L2 is complete: L2a (the shade table) and L2
+  completion (#303, the departure sample from the table) are both merged. The next candidates
+  are `shadeTableLoad` (item 2 below) and L1 (#261), and L1 is waiting on the owner to choose
+  between the three options in #261's last comment.
 - **Goal set by the owner (2026-10-07): sub-6 s** on the owner's machine without changing
-  routes. Production (SwiftShader box, roughly 2× the owner's machine) is 27–29 s on UES →
-  Murray Hill; 37–55 s before L2a.
+  routes. On this box (SwiftShader, about 2× slower than the owner's machine), click → options
+  on LES → Kips Bay is **8.6 s** after the L4 A* rungs (#309). It was 27–31 s before L2
+  completion and 37–55 s before L2a.
 - **Done:**
   - **L0 (#267):** a contiguous stage split accounting for ≥ 99.7% of every calculation;
     baseline in `docs/notes/route-latency.md`.
@@ -34,13 +37,22 @@ with sources. The decisions below cite it as "the report".
     unresolved). Production: table `used` on both measured routes, `sweep` 24–26 s → 0.1–0.2 s.
   - **The publish gate:** `npm --prefix server/navigation-prep run audit:shade` recomputes a
     generation through the app's own providers and fails a table that disagrees.
+  - **L2 completion (#303, closes #296):** the departure sample reads the table when it
+    covers the route, so the live sample and its canvas fallback no longer run.
+  - **L4 ladder with A* rungs (#309), the post-calculation gap (#310), and an earlier
+    transit prefetch (#371, −0.5–0.9 s):** the prefetch now starts with the calculation
+    instead of after `graphBuild`.
 - **Open PRs:** none on L.
-- **Next actions, in order** (estimates on this box, where a route is 27 s):
+- **Next actions, in order** (estimates on this box):
   1. **Done: L2 completion (#303)**, the search cap of 8, and the transit prefetch. On this box
      LES → Kips Bay went 27–31 s → 9.6–11.2 s. The owner measured 18 s before the cap.
   2. **`shadeTableLoad` (0.4–2.1 s).** The shade indexes are verified and parsed after the
      street merge, on the critical path.
-  3. **L1 (#261), about −1.5–2 s on repeat routes.** Cache street shards on the device.
+  3. **L1 (#261) — measured 2026-10-07, waiting on the owner.** The byte cache L1 planned
+     already exists: after a reload, all 17 shards come from the HTTP disk cache. `streets` still
+     costs 1.5 s, and that time is hashing, `JSON.parse` and merging 44 MB. The options are a
+     binary shard format (recommended), decoded shards in IndexedDB, or prefetching when the
+     destination is picked.
   4. **L3d (#297)** is now small (`searchPack` 0.3–0.4 s).
   5. **L4 (#270) shipped as the ladder; its rungs are now A* over exact bounds** (routes
      identical on all 12 `routeCompare` routes). The owner's route search went 4.6–5.0 s →
@@ -51,6 +63,8 @@ with sources. The decisions below cite it as "the report".
   6. **The post-calculation gap: 1.1–1.3 s → 0.4–0.5 s** on this box (no redundant shadow
      re-extrude for an unchanged exposure context; the camera fit waits one frame). The rest
      is one SwiftShader map frame, unmeasured on a real GPU.
+  7. **The bus answer (#372):** 25 separate Dijkstras (5 entry × 5 exit stops), 0.25–0.36 s per
+     route.
 - **Decisions made:**
   - **No heavy preprocessing.** Contraction Hierarchies, hub labels, Transfer Patterns and ULTRA
     assume a fixed cost per edge; Umbra's changes with the hour and the walker. They are out.
@@ -71,8 +85,9 @@ with sources. The decisions below cite it as "the report".
     `route-latency.md`, "L4".
   - **A generation is published only after `audit:shade` passes.** Two of the three bugs found
     this week were caught only by comparing the table with the app's own code path.
-- **L3 parity target:** production's current output, #246 included (the H4 oracle pins 57.00 s).
-- **Blocked on:** nothing.
+- **L3 parity target:** production's current output. #246 is fixed on the front (#370), but
+  the shipped ladder still returns 57.00 s on the H4 oracle fixture (#369).
+- **Blocked on:** L1 only, on the owner's choice in #261.
 - **Last verified:** 2026-10-07 — production after publishing `nyc-2026-09-18-393d4cd24a30`
   (`route-latency.md`, "L2a published"); gates: lint 0 errors, typecheck, 2,342 tests, build.
 
