@@ -10,7 +10,7 @@
 
 ## Current state
 
-- **Active checkpoint:** B2 — implemented on `feat/b2-street-names` (this branch). B1 is merged
+- **Active checkpoint:** B3 — position tracking and map matching. B2 merged (#258, 2026-10-03); B1 is merged
   (`app/lib/guidance/maneuvers.ts` is on `main`). B2 keeps OSM `name` on every routing edge and
   threads it into `Maneuver.streetName` (via `streetNamesAlong`); the memory cost is measured
   (24 bytes per edge, ~9.6 MB per 400,000 edges) in
@@ -19,7 +19,8 @@
   (the PR for #145) and #159 merged, as did #150 (chosen sidewalk plumbing), #171
   (roof depth precision) and #178 (wall/ground shadow alignment). No numbered checkpoint
   before B1.
-- **Open PRs:** B2 (this branch) — street names in the graph.
+- **Open PRs:** none. Open follow-up: #255 — street names do not survive the static NYC
+  routing graph path.
 - **Decisions made:**
   - **B1 consumes ordered walking nodes** via `generateManeuvers(nodes, legIndex = 0)` in
     `app/lib/guidance/maneuvers.ts`; distances are cumulative haversine meters along the
@@ -87,8 +88,8 @@
   no A2 stub is needed. `GraphEdge.side` and `RouteResult`/`RouteOption.sides` also exist
   after #150. Remaining integration work: switching sides costs nothing (#151), and
   endpoint connectors currently shift sidewalk labels against final GeoJSON (#180).
-- **Next action:** B3 — position tracking and map matching. B2 is implemented (this branch).
-- **Last verified:** 2026-10-03 — B2 on `feat/b2-street-names`: lint (0 errors), typecheck,
+- **Next action:** B3 — position tracking and map matching.
+- **Last verified:** 2026-10-03 — B2 before merge (#258): lint (0 errors), typecheck,
   tests (1947 passing), build all green. 2026-09-05, main `fb47c18` baseline: 342 tests / 33 files green.
   B1 branch: all four gates green, 376 tests / 34 files (34 new guidance tests), build
   5.57 s; lint has 52 existing warnings and 8 infos (capped output), with no errors in

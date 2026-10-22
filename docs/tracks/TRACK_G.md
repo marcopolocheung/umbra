@@ -10,20 +10,17 @@ A's fixtures), ⚠️ E (G6 rewrites E's biggest file). **G6 runs alone.**
 
 ## Current state
 
-- **Active checkpoint:** **G6(a)** — `useNavigation.ts` split PR open (fixes #362, the
-  in-flight freeze notice). `useNavigation` is a thin facade over `useTrip` /
+- **Active checkpoint:** **G6(b/c)** — the `MapView.tsx` and `page.tsx` splits. **G6(a)
+  merged** 2026-09-15 as umbrapriv #363 (fixes umbrapriv #362, the in-flight freeze
+  notice). `useNavigation` is a thin facade over `useTrip` /
   `useSketch` / `useRouting` (`app/hooks/`, pure helpers in
   `app/lib/navigationHelpers.ts`); page.tsx, useAgent and all tests compile
   untouched against the pinned return key set (`useNavigationKeys.test.ts`).
-  `MapView.tsx` (#313) and `page.tsx` (#343) splits are separate PRs and out of
-  scope here — G6(b/c) take those files next.
+  The `MapView.tsx` and `page.tsx` splits (G6(b/c)) are not started.
 - **Done — G2.** `npm run bench:route` landed with the committed baseline in
   `docs/notes/performance-baseline.md` (see the G2 section below for the split,
   the warm-slower-than-cold finding and issues #259, #261–#266).
-- **Open PRs:** **#258** (`fix/g2-metrics-instrument`, #182 + #183) and **#260**
-  (`feat/g2-route-benchmark`, G2 + the #243 sweep). **Merge #258 first** — #260's warm scenarios
-  call `clearMetrics()` and its cross-check reads `summary.p50TotalMs`, so it does not build
-  without it. GitHub retargets #260 to `main` when #258 merges.
+- **Open PRs:** none. The G2 pair (umbrapriv #258, #260) merged.
 - **G2 is the highest-leverage item on the board.** A5's acceptance criterion is literally
   *"no benchmark → no claim"*, Track H cannot state its central comparison without a committed
   baseline, and Track P cannot publish a performance number that does not exist.
