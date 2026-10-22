@@ -87,8 +87,8 @@ can land in a shaded bucket while the earlier one's does not, and the loss is
 up to a whole edge per remaining boundary. H4's oracle measured it (57 s vs
 55 s). The front now prunes across arrivals only when every continuation is
 priced alike — the same arrival, or both in the last bucket. The shipped
-ladder (`searchStrategy: "direct"`) keeps one label per bucket and still has
-the gap.
+ladder (`searchStrategy: "direct"`) applies the same rule with two labels per
+bucket (#369).
 
 ## Known gaps (deliberate, for later checkpoints)
 

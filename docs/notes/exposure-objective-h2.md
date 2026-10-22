@@ -112,5 +112,5 @@ Filed as **marcopolocheung/umbra#223**.
   slider is the intended caller.
 - Via-stop legs and transit walk legs still price one frozen instant (H1 gap,
   unchanged); the sketch and refresh pipelines likewise.
-- The bucket-boundary dominance residual is fixed on the front (#246); the shipped
-  ladder still has it.
+- The bucket-boundary dominance residual is fixed on the front (#246) and on the
+  shipped ladder (#369, two labels per bucket).

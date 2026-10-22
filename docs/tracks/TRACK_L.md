@@ -85,8 +85,9 @@ with sources. The decisions below cite it as "the report".
     `route-latency.md`, "L4".
   - **A generation is published only after `audit:shade` passes.** Two of the three bugs found
     this week were caught only by comparing the table with the app's own code path.
-- **L3 parity target:** production's current output. #246 is fixed on the front (#370), but
-  the shipped ladder still returns 57.00 s on the H4 oracle fixture (#369).
+- **L3 parity target:** production's current output. The H4 oracle fixture returns 55.00 s on
+  both the front (#370) and the ladder (#369; two labels per slot, +0–0.5 s of search on the
+  12 `routeCompare` routes, same routes).
 - **Blocked on:** L1 only, on the owner's choice in #261.
 - **Last verified:** 2026-10-07 — production after publishing `nyc-2026-09-18-393d4cd24a30`
   (`route-latency.md`, "L2a published"); gates: lint 0 errors, typecheck, 2,342 tests, build.

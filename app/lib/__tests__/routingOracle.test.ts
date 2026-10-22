@@ -256,11 +256,13 @@ describe("H4 oracle — the bucket-boundary dominance gap (#246)", () => {
 		expect(results.some((r) => r.nodeIds.join() === "0,2,3,4")).toBe(true);
 	});
 
-	it("the shipped ladder still misses it — a known approximation, not fixed here", () => {
-		// The ladder keeps one label per (node, bucket), so it cannot hold both
-		// arrivals; an exact ladder needs per-arrival state.
+	it("the shipped ladder keeps the later label too (#369)", () => {
+		// Each rung keeps a few labels per (node, bucket) and prunes a later
+		// arrival only when it faces the same future, so both arrivals at node 3
+		// survive and the least-sun rung finds the shaded finish.
 		const results = paretoRoutes(graph, 0, 4, { ...walkOptions, timeAware, searchStrategy: "direct" });
 		const ladderMin = Math.min(...results.map((r) => r.exposure!.exposedDurationSec));
-		expect(ladderMin).toBeCloseTo(57, 6);
+		expect(ladderMin).toBeCloseTo(55, 6);
+		expect(results.some((r) => r.nodeIds.join() === "0,2,3,4")).toBe(true);
 	});
 });
