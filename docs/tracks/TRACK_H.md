@@ -12,7 +12,10 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H3 — Sun Budget reachability. **H4 merged in part** (#247,
+- **Active checkpoint:** H3 — Sun Budget reachability, split in two. **H3a** (the search,
+  `app/lib/sunReach.ts`, the worker's `reach` command, oracle tests, NYC measurement in
+  `docs/notes/sun-budget-model.md`, "H3") is in review. **H3b** — the map layer, budget slider
+  and outcome wording, `grounding-auditor` on it — is next. **H4 merged in part** (#247,
   2026-10-03): the oracle and the published gap are in `docs/notes/sun-budget-model.md`. The
   checkpoint's Approach items (four property tests, the runtime/memory/cache figures) and the
   P4 hand-off are still open. H1/H2 are merged (#222, #224).
@@ -51,7 +54,9 @@ G's fixture and benchmark infrastructure).
   `maxDetourFactor` untouched (#243 — G2's sweep owns it).
 - **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
   G2 factor sweep (#243 follow-up, Track G).
-- **Next action:** H3 — Sun Budget reachability (needs A5; consume E's `Trip`).
+- **Next action:** H3b — paint `reachable` streets as a layer, a budget slider that re-asks the
+  worker, and distinct text for `exact` / `approximate` / `budget-exhausted` (one way until H5).
+  A5's worker need is met by L3c's `routing.worker.ts`.
   The H4 oracle is written and found a bucket-boundary dominance gap; it gives H3's *path* search
   ground truth (it does not test a reachability region). Its gap is fixed on the front (#370)
   and on the ladder (#369).

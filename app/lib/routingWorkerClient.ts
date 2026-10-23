@@ -15,7 +15,7 @@
 
 import { type DijkstraOptions, paretoRoutes, type RouteResult, type RoutingGraph } from "./routing";
 import { type PackedRoutingGraph, packRoutingGraphInSteps, transferList } from "./routingGraphCodec";
-import { ROUTING_WORKER_PROTOCOL_VERSION, type RoutingWorkerCommand, type RoutingWorkerEvent } from "./routingWorkerProtocol";
+import { type ParetoCommand, ROUTING_WORKER_PROTOCOL_VERSION, type RoutingWorkerEvent } from "./routingWorkerProtocol";
 
 interface Pending {
   resolve: (routes: RouteResult[]) => void;
@@ -66,7 +66,7 @@ function getWorker(): Worker | null {
       answered = true;
       if (event.data.type === "pareto") p.resolve(event.data.routes);
       else {
-        warnOnce("worker error event", event.data.error);
+        warnOnce("worker error event", event.data.type === "error" ? event.data.error : event.data.type);
         settleHere(p);
       }
     };
@@ -149,7 +149,7 @@ export function searchParetoRoutes(
         runHere,
       });
       signal?.addEventListener("abort", onAbort, { once: true });
-      const command: RoutingWorkerCommand = {
+      const command: ParetoCommand = {
         type: "pareto",
         protocol: ROUTING_WORKER_PROTOCOL_VERSION,
         requestId,
