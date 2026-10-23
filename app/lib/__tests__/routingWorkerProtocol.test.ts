@@ -5,11 +5,12 @@ import {
   assertRoutingWorkerCommand,
   handleRoutingCommand,
   ROUTING_WORKER_PROTOCOL_VERSION,
-  type RoutingWorkerCommand,
+  type ParetoCommand,
 } from "../routingWorkerProtocol";
+import { sunReach } from "../sunReach";
 import { randomGraph } from "./paretoCases.fixture";
 
-const command = (overrides: Partial<RoutingWorkerCommand> = {}): RoutingWorkerCommand => ({
+const command = (overrides: Partial<ParetoCommand> = {}): ParetoCommand => ({
   type: "pareto",
   protocol: ROUTING_WORKER_PROTOCOL_VERSION,
   requestId: 3,
@@ -32,6 +33,25 @@ describe("routing worker protocol", () => {
     const expected = paretoRoutes(randomGraph(5, 6, 6, 4), c.startId, c.endId, c.options);
     expect(expected.length).toBeGreaterThan(0);
     expect(handleRoutingCommand(c)).toStrictEqual({ type: "pareto", requestId: 3, routes: expected });
+  });
+
+  it("answers a reach command with the region a direct call returns", () => {
+    const options = { sunBudgetSec: 60, timeBudgetSec: 200, timeAware: { bucketMs: 60_000, bucketCount: 4 } };
+    const event = handleRoutingCommand({
+      type: "reach",
+      protocol: ROUTING_WORKER_PROTOCOL_VERSION,
+      requestId: 4,
+      graph: packRoutingGraph(randomGraph(5, 6, 6, 4)),
+      startId: 0,
+      options,
+    });
+    const expected = sunReach(randomGraph(5, 6, 6, 4), 0, options);
+    expect(expected.reachable.length).toBeGreaterThan(0);
+    expect(event.type).toBe("reach");
+    if (event.type !== "reach") return;
+    expect(event.requestId).toBe(4);
+    expect(event.result.reachable).toStrictEqual(expected.reachable);
+    expect(event.result.outcome).toBe(expected.outcome);
   });
 
   it("turns a failure into an error event for the same request", () => {

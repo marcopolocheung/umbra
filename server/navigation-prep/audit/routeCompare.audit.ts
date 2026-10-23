@@ -29,6 +29,7 @@ import { SHADE_ZONE, shadeSlotByteLength, shadeSlotByteOffset } from "../../../a
 import { utcOffsetMinAt } from "../../../app/lib/timezone";
 import { edgeTraversalSeconds, travelTimeSeconds } from "../../../app/lib/travelMode";
 import { computeSolarIntensity } from "../../../app/lib/shadowSampling";
+import { sunReach } from "../../../app/lib/sunReach";
 import {
   DEFAULT_MAX_DETOUR_FACTOR,
   DETOUR_FLAT_M,
@@ -248,4 +249,38 @@ it("route search comparison", { timeout: 6 * 3600_000 }, async () => {
     if (!leastSunOk) failures.push(`${c.name}: least-sun route worse`);
   }
   expect(failures).toEqual([]);
+});
+
+/**
+ * H3 Sun Budget reachability from each route's start on the same graph:
+ * 8 minutes of sun, 20 minutes of walking, one way, at the route's departure.
+ * `REACH_SLOT` / `REACH_MAX` override the per-slot and work caps for sweeps.
+ */
+it("sun budget reachability", { timeout: 6 * 3600_000 }, async () => {
+  for (const route of ROUTES) {
+    if (only && !only.some((name) => route.name.startsWith(name))) continue;
+    const c = await buildCase(route);
+    const result = sunReach(c.graph, c.startId, {
+      sunBudgetSec: 8 * 60,
+      timeBudgetSec: 20 * 60,
+      travelMode: "walk",
+      timeAware: c.options!.timeAware,
+      ...(process.env.REACH_SLOT ? { maxLabelsPerSlot: Number(process.env.REACH_SLOT) } : {}),
+      ...(process.env.REACH_MAX ? { maxLabels: Number(process.env.REACH_MAX) } : {}),
+    });
+    // Street km: each undirected segment once, whichever sidewalk or direction reached it.
+    const seg = (e: { fromId: number; toId: number }) => `${Math.min(e.fromId, e.toId)},${Math.max(e.fromId, e.toId)}`;
+    const reachSegs = new Set(result.reachable.map(seg));
+    const km = (edges: Array<{ fromId: number; toId: number; distanceM: number }>, skip?: Set<string>) => {
+      const seen = new Map<string, number>();
+      for (const e of edges) if (!skip?.has(seg(e))) seen.set(seg(e), e.distanceM);
+      return ([...seen.values()].reduce((sum, d) => sum + d, 0) / 1000).toFixed(1);
+    };
+    process.stderr.write(
+      `REACH ${c.name.padEnd(32)} ${result.outcome.padEnd(16)} ${String(Math.round(result.stats.ms)).padStart(6)} ms ` +
+      `labels ${String(result.stats.labels).padStart(8)} evicted ${String(result.stats.evicted).padStart(7)} ` +
+      `reachable ${km(result.reachable)} km undecided ${km(result.undecided, reachSegs)} km (street km)\n`,
+    );
+    expect(result.reachable.length).toBeGreaterThan(0);
+  }
 });

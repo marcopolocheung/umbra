@@ -100,3 +100,89 @@ cross.)
   oracle uses the same buckets as production, so it measures *search* error only.
   The H1 note's pointer ("H4's oracle publishes it") is not satisfied here; a
   continuous-shadow oracle is a separate piece.
+
+## H3 — Sun Budget reachability (H3a: the search)
+
+**The question.** From one start, which streets can a walker reach on at most *S* seconds of
+direct sun and *T* seconds of walking? One way: there is no return leg, waiting or dwell yet,
+because H5 owns those. Sun is priced exactly as above, `seconds × (1 − shade)`, with shade read
+at the bucket of arrival at the edge's end. An edge is **reachable** when some walk from the
+start traverses it within both budgets. Walks may revisit nodes, because a loop can carry a
+walker into a shadier bucket. Code: `app/lib/sunReach.ts`. It runs in the routing worker as the
+`reach` command.
+
+**The search.** Label-setting over `(node, arrival, sun)`, popped by arrival, with one Pareto
+set per (node, arrival bucket). Label *a* prunes *b* when *a* arrives no later and
+`sun(a) + slack ≤ sun(b)`.
+- **Why slack is needed.** Two labels in one bucket arrive less than a bucket apart (Δ), so on
+  any continuation *a* is priced at most one bucket earlier. That only happens on edges whose
+  end lands within Δ before a bucket boundary. The first such edge adds at most the largest
+  one-bucket sun jump on the graph, and the rest span less than Δ of walking. Summing over the
+  boundaries still inside *T* bounds the extra sun *a* can pay.
+- **Edge cases.** With static shade or both labels in the last bucket, the slack is 0, which
+  is #370's `sameFuture` (#246 is the fixture where pruning without it is wrong).
+- **Soundness.** Every kept label is a real walk, so **`reachable` is always sound**. A label
+  that prunes another can follow every continuation of it no later and no sunnier.
+
+**Three outcomes, never conflated.**
+- Each Pareto set is capped at 8 labels, and the search is capped at 2,000,000 labels.
+- An outer bound marks an edge *undecided* unless its least-time prefix exceeds *T* or its
+  least optimistic sun prefix (every edge at its shadiest bucket) exceeds *S*.
+- The least-time tree is itself a set of real walks, so it also proves edges the capped search
+  dropped.
+- The outcomes:
+  - `exact` means `reachable` is the whole truth on the bucketed model.
+  - `approximate` means the cap dropped labels; the gap is the `undecided` set.
+  - `budget-exhausted` means the work cap stopped the search.
+- **An undecided edge is not an unreachable one.** Nothing may present it as unreachable.
+
+**Evidence (`app/lib/__tests__/sunReach.test.ts`).**
+- **Exhaustive oracle.** It enumerates every walk bounded by *T*, de-duplicating only identical
+  states. On 60 seeded lattices (static and 2–6 buckets, walk and scoot) plus the #246 fixture,
+  the region is `exact` and equals the oracle's.
+- **Capped search.** With slots of 1, `reachable ⊆ truth ⊆ reachable ∪ undecided` holds on all
+  60 lattices.
+- **Unlimited sun.** With sun unbounded, the result is exact even with slots of 1.
+- **Monotonicity, for `exact` results only.** Widening either budget never shrinks an `exact`
+  region. An `approximate` one can shrink: a wider sun budget admits labels that evict others
+  from a capped slot (the verifier found 90 shrinks in 4,800 widenings at slot caps 1–2, none at
+  the default 8). H3b must not paint `reachable` alone as if it only grows.
+- **The tests can fail.** Dropping the slack term fails the #246 fixture and one lattice.
+  Summing it over the first boundary only, or dropping its short-edge term, each fails a
+  dedicated fixture.
+
+**Measured on NYC** (generation `nyc-2026-09-18-393d4cd24a30`, the 12 `routeCompare` graphs and
+departures, *S* = 8 min, *T* = 20 min, walk, Node on the SwiftShader WSL box; street km count each
+segment once; run with `npm --prefix server/navigation-prep run audit:shade -- routeCompare -t "sun budget"`):
+
+| start | outcome | search | reachable | undecided |
+|---|---|---|---|---|
+| LES → Kips Bay 12:43 | approximate | 393 ms | 353.7 km | 3.6 km |
+| UES → Murray Hill 16:03 | exact | 216 ms | 230.7 km | 0 |
+| UWS → FiDi 15:12 | approximate | 438 ms | 219.5 km | 0.3 km |
+| Chelsea → Union Sq 10:00 | approximate | 237 ms | 252.6 km | 6.0 km |
+| Harlem → UWS 08:30 | approximate | 281 ms | 260.2 km | 0.8 km |
+| Park Slope → Bklyn Hts 14:00 | approximate | 317 ms | 230.6 km | 17.8 km |
+| Williamsburg → Greenpoint 17:30 | approximate | 340 ms | 286.2 km | 10.6 km |
+| Astoria → LIC 11:15 | approximate | 352 ms | 286.7 km | 23.2 km |
+| Midtown → Central Park 13:00 | approximate | 367 ms | 294.6 km | 10.2 km |
+| FiDi → Chinatown 09:00 | approximate | 379 ms | 228.6 km | 0.3 km |
+| Bed-Stuy → Crown Hts 15:45 | approximate | 302 ms | 260.8 km | 8.0 km |
+| Inwood → Washington Hts 12:00 | approximate | 218 ms | 95.7 km | 15.8 km |
+
+Slot cap sweep on four starts: 1 → 8 → 32 → 128 labels per slot.
+- **Reachable** grows by about 1% from 1 to 8 and 0.2–1.1% more at 32, at 2–3× the time.
+- **At 128** every start hits the work cap (3–6 s).
+- **Most of what stays undecided** is the outer bound's looseness, not missed streets:
+  Inwood's barely moves with the cap.
+- **The sun budget binds weakly at these settings.** With sun unbounded, the region is the
+  same on 7 of 12 starts and 5–27% larger on the rest. The slider will matter most at shorter
+  times or tighter sun budgets.
+
+**What H3a does not claim.**
+- It is one way.
+- It uses the same 15-minute buckets as routing, so the discretization error is unmeasured,
+  as above.
+- It does not wait or dwell.
+- `approximate` on real data is the normal case, not a failure.
+- These are Node timings, not browser ones. H3b measures the slider in the browser.
