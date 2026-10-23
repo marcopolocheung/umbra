@@ -108,6 +108,22 @@ describe("sun budget worker protocol", () => {
     expect(walked).toEqual({ type: "walked", requestId: 4, walk: null });
   });
 
+  it("never replays a walk from the previous graph after a new build (#379)", async () => {
+    let seed = 5;
+    const handle = createSunBudgetHandler(async () => fakeBuild(seed++)());
+    const first = await handle(build(1));
+    if (first.type !== "built" || first.built.status !== "ok") throw new Error("not built");
+    const searched = await handle(search(2, first.built.graphId));
+    if (searched.type !== "searched") throw new Error("not searched");
+    const edge = searched.result.reachable[0];
+    // A new start: same budgets, a different graph. Its walk must not come from the old run.
+    const second = await handle(build(3));
+    if (second.type !== "built" || second.built.status !== "ok") throw new Error("not built");
+    const budgets = { sunBudgetSec: 60, timeBudgetSec: 200 };
+    const walked = await handle({ type: "walk", protocol: P, requestId: 4, graphId: second.built.graphId, budgets, edge });
+    expect(walked).toEqual({ type: "walked", requestId: 4, walk: null });
+  });
+
   it("passes an uncovered start through, and rejects a bad command", async () => {
     const handle = createSunBudgetHandler(async () => ({ status: "uncovered", reason: "outside the shade table" }));
     expect(await handle(build(1))).toEqual({ type: "built", requestId: 1, built: { status: "uncovered", reason: "outside the shade table" } });

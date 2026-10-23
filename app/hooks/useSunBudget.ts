@@ -56,6 +56,9 @@ export interface SunBudgetState {
   setWalkMin: (minutes: number) => void;
   /** The walk behind a tapped proven street (#379); "none" when this search can't replay it. */
   walk: SunReachWalk | "none" | null;
+  /** "Show walks": a tap on a solid street shows its walk instead of moving the start. */
+  walkMode: boolean;
+  setWalkMode: (on: boolean) => void;
   showWalk: (street: { lo: number; hi: number }) => void;
   clearWalk: () => void;
 }
@@ -192,6 +195,7 @@ export function useSunBudget(
 
   // #379: the walk behind a tapped street. Cleared whenever the region it belongs to changes.
   const [walk, setWalk] = useState<SunReachWalk | "none" | null>(null);
+  const [walkMode, setWalkModeState] = useState(false);
   const walkAskRef = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new region retires the walk shown on the old one
   useEffect(() => {
@@ -206,19 +210,38 @@ export function useSunBudget(
     (street: { lo: number; hi: number }) => {
       if (!okGraph || !current) return;
       const ask = ++walkAskRef.current;
-      // The proven directed edges on this street: either direction, either sidewalk.
-      const edges = current.result.reachable.filter(
-        (e) => Math.min(e.fromId, e.toId) === street.lo && Math.max(e.fromId, e.toId) === street.hi,
-      );
-      const budgets = { sunBudgetSec: current.sunSec, timeBudgetSec: current.timeSec };
-      Promise.all(edges.map((e) => walkFor(okGraph.graphId, budgets, e).catch(() => null))).then((walks) => {
-        if (ask !== walkAskRef.current) return;
-        const found = walks.filter((w): w is SunReachWalk => w !== null);
-        // Least sun first; "none" says plainly this search can't replay it.
-        setWalk(found.length ? found.reduce((a, b) => (b.sunSec < a.sunSec ? b : a)) : "none");
-      });
+      const onStreet = (e: { fromId: number; toId: number }) =>
+        Math.min(e.fromId, e.toId) === street.lo && Math.max(e.fromId, e.toId) === street.hi;
+      // The search that proved this street: the shown one, or — for a street the
+      // map draws solid from a smaller budget — that budget's (its walk fits ours too).
+      const prover = [current, ...ownEntries].find((entry) => entry.result.reachable.some(onStreet));
+      if (!prover) {
+        setWalk("none");
+        return;
+      }
+      const edges = prover.result.reachable.filter(onStreet);
+      const budgets = { sunBudgetSec: prover.sunSec, timeBudgetSec: prover.timeSec };
+      const ask1 = () => Promise.all(edges.map((e) => walkFor(okGraph.graphId, budgets, e).catch(() => null)));
+      const pick = (walks: Array<SunReachWalk | null>) => walks.filter((w): w is SunReachWalk => w !== null);
+      ask1()
+        .then(async (walks) => {
+          if (pick(walks).length > 0) return walks;
+          // The worker keeps only its last search, which a cached slider step skipped:
+          // run the prover's budgets again (0.2–0.4 s, only on a tap), then replay.
+          await search(okGraph.graphId, { ...budgets, travelMode: "walk" });
+          return ask1();
+        })
+        .then((walks) => {
+          if (ask !== walkAskRef.current) return;
+          const found = pick(walks);
+          // Least sun first; "none" only when even a fresh search can't replay it.
+          setWalk(found.length ? found.reduce((a, b) => (b.sunSec < a.sunSec ? b : a)) : "none");
+        })
+        .catch(() => {
+          if (ask === walkAskRef.current) setWalk("none");
+        });
     },
-    [okGraph, current, walkFor],
+    [okGraph, current, ownEntries, walkFor, search],
   );
 
   const status: SunBudgetStatus = !active
@@ -266,6 +289,11 @@ export function useSunBudget(
     setSunMin,
     setWalkMin,
     walk,
+    walkMode,
+    setWalkMode: (on: boolean) => {
+      setWalkModeState(on);
+      if (!on) clearWalk();
+    },
     showWalk,
     clearWalk,
   };

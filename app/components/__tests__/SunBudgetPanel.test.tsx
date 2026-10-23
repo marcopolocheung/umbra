@@ -97,15 +97,15 @@ describe("SunBudgetPanel", () => {
 
   it("states the tapped walk's time and sun, rounded up so it never shows less sun (#379)", () => {
     const onHideWalk = vi.fn();
-    render(<SunBudgetPanel {...props} walk={{ nodeIds: [1, 2], sunSec: 301, arrivalSec: 840 }} onHideWalk={onHideWalk} />);
-    expect(screen.getByText("This walk: 14 min, 6 min of direct sun.")).toBeTruthy();
+    render(<SunBudgetPanel {...props} walk={{ nodeIds: [1, 2], sides: ["left"], sunSec: 301, arrivalSec: 840 }} onHideWalk={onHideWalk} />);
+    expect(screen.getByText("Shadiest walk found: 14 min, 6 min of direct sun, on the sidewalks drawn.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide walk" }));
     expect(onHideWalk).toHaveBeenCalled();
   });
 
   it("says plainly when the walk behind a street isn't available", () => {
     render(<SunBudgetPanel {...props} walk="none" />);
-    expect(screen.getByText(/isn't available at this budget/)).toBeTruthy();
+    expect(screen.getByText(/Can't redraw the walk behind this street/)).toBeTruthy();
   });
 
   it("switches walking time and announces the result in a live region", () => {

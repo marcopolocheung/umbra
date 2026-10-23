@@ -56,6 +56,8 @@ export interface SunReachResult {
 /** The walk that proved one street reachable (#379), start first. */
 export interface SunReachWalk {
   nodeIds: number[];
+  /** The sidewalk walked on each step (one per edge, so one fewer than nodeIds). */
+  sides: Array<"left" | "right" | null>;
   sunSec: number;
   arrivalSec: number;
 }
@@ -323,6 +325,7 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
       const edges = [...(proofLabel[e] >= 0 ? labelPath(proofLabel[e]) : treePath(from)), e];
       return {
         nodeIds: [startId, ...edges.map((pe) => cg.nodeIds[targets[pe]])],
+        sides: edges.map((pe) => cg.edges[pe].side ?? null),
         sunSec: reachSun[e],
         arrivalSec: reachT[e],
       };

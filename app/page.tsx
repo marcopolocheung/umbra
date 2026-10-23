@@ -392,27 +392,22 @@ export default function Home() {
   const sunDown = solarPosition ? solarPosition.altitudeDeg <= 0 : false;
   const sunBudget = useSunBudget(date, sunDown);
   const sunBudgetOn = sunBudget.status !== "off";
-  // In Sun Budget, a tap on a solid street shows the walk behind it (#379); anywhere else sets a new start.
+  // In Sun Budget a tap sets a new start; with "Show walks" on, a tap on a solid
+  // street shows the walk behind it instead (#379). One gesture never means both.
   const onMapClick = sunBudgetOn
     ? (coord: { lng: number; lat: number }, _event?: MouseEvent, street?: { lo: number; hi: number }) => {
-        if (street && sunBudget.status === "ready") sunBudget.showWalk(street);
-        else sunBudget.setStart([coord.lng, coord.lat]);
+        if (sunBudget.walkMode && street && sunBudget.status === "ready") sunBudget.showWalk(street);
+        else if (!sunBudget.walkMode) sunBudget.setStart([coord.lng, coord.lat]);
       }
     : handleMapClick;
-  // The walk is drawn with the route layer: it is a walk, so it looks like one.
-  const sunBudgetWalkLine = useMemo((): GeoJSON.Feature<GeoJSON.LineString> | null => {
-    const walk = sunBudget.walk;
-    const nodes = sunBudget.nodes;
-    if (!walk || walk === "none" || !nodes) return null;
-    const coordinates = walk.nodeIds.flatMap((id) => {
-      const node = nodes.get(id);
-      return node ? [[node.lon, node.lat]] : [];
-    });
-    return coordinates.length >= 2 ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } } : null;
-  }, [sunBudget.walk, sunBudget.nodes]);
   const reachRegion = useMemo(
-    () => ({ region: sunBudget.region, nodes: sunBudget.nodes, outcome: sunBudget.outcome }),
-    [sunBudget.region, sunBudget.nodes, sunBudget.outcome],
+    () => ({
+      region: sunBudget.region,
+      nodes: sunBudget.nodes,
+      outcome: sunBudget.outcome,
+      walk: sunBudget.walk && sunBudget.walk !== "none" ? sunBudget.walk : null,
+    }),
+    [sunBudget.region, sunBudget.nodes, sunBudget.outcome, sunBudget.walk],
   );
   // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
   const sunBudgetPins = useMemo(
@@ -431,6 +426,8 @@ export default function Home() {
       provenCount={sunBudget.region?.proven.length ?? 0}
       undecidedCount={sunBudget.region?.undecided.length ?? 0}
       walk={sunBudget.walk}
+      walkMode={sunBudget.walkMode}
+      onWalkModeChange={sunBudget.setWalkMode}
       onHideWalk={sunBudget.clearWalk}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
@@ -1744,7 +1741,7 @@ export default function Home() {
               }}
               onMapClick={onMapClick}
               navWaypoints={sunBudgetOn ? {} : navWaypoints}
-              navRoute={sunBudgetOn ? sunBudgetWalkLine : selectedNavRoute}
+              navRoute={sunBudgetOn ? null : selectedNavRoute}
               showSunLines={showSunLines}
               mapClickActive={pendingSlot !== null || sunBudget.status === "picking"}
               onMarkerDragEnd={handleMarkerDragEnd}

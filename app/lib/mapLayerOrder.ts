@@ -9,6 +9,9 @@ const NAVIGATION_LINES = [
   "sun-budget-reach-proven-casing",
   "sun-budget-reach-proven",
   "sun-budget-reach-undecided",
+  // #379: the walk behind a tapped street, above the region it explains.
+  "sun-budget-walk-casing",
+  "sun-budget-walk-line",
   "nav-route-casing",
   "nav-route-line",
   "train-route-lines-casing",
@@ -22,6 +25,8 @@ const NAVIGATION_LINES = [
 
 // Discrete stops are navigation markers, like the DOM pins, rather than paths.
 const TRANSIT_MARKERS = [
+  // #379: where a Sun Budget walk ends — a marker, like the stops.
+  "sun-budget-walk-end",
   "train-route-stops-layer",
   "train-route-transfers-outer",
   "train-route-transfers-inner",

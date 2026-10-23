@@ -20,6 +20,7 @@ import {
 } from "../lib/signatures/streetTypeLayer";
 import type { StreetTypeSegment } from "../lib/navigationData/signatureRoute";
 import type { ReachRegion } from "../lib/reach/mergeRegion";
+import type { SunReachWalk } from "../lib/sunReach";
 import { attachReachLayer, REACH_PROVEN_LAYER_ID, type ReachLayerHandle } from "../lib/reach/reachLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
@@ -79,6 +80,8 @@ interface MapViewProps {
     region: ReachRegion | null;
     nodes: Map<number, { lat: number; lon: number }> | null;
     outcome?: "exact" | "approximate" | "budget-exhausted" | null;
+    /** The walk behind a tapped street (#379), drawn on its sidewalks. */
+    walk?: SunReachWalk | null;
   };
   /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
   basemapTheme?: UiTheme;
@@ -596,7 +599,8 @@ export default function MapView({
       // A tap within a fingertip of a proven Sun Budget street names it (#379).
       let reachStreet: { lo: number; hi: number } | undefined;
       if (map.getLayer(REACH_PROVEN_LAYER_ID)) {
-        const pad = 12;
+        // 44 px across: a fingertip, the touch-target floor.
+        const pad = 22;
         const hit = map.queryRenderedFeatures(
           [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
           { layers: [REACH_PROVEN_LAYER_ID] },
@@ -816,6 +820,7 @@ export default function MapView({
         reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current, enabled: !accumulationOnRef.current });
         reachRef.current.setOutcome(reachRegionRef.current?.outcome ?? null);
         reachRef.current.setRegion(reachRegionRef.current?.region ?? null, reachRegionRef.current?.nodes ?? null);
+        reachRef.current.setWalk(reachRegionRef.current?.walk ?? null, reachRegionRef.current?.nodes ?? null);
 
         // The canopy ground-protection pass: the same shared store the fill reads
         // through, but as one prepared atlas the renderer can march. Excluded in
@@ -959,6 +964,7 @@ export default function MapView({
     reachRegionRef.current = reachRegion;
     reachRef.current?.setOutcome(reachRegion?.outcome ?? null);
     reachRef.current?.setRegion(reachRegion?.region ?? null, reachRegion?.nodes ?? null);
+    reachRef.current?.setWalk(reachRegion?.walk ?? null, reachRegion?.nodes ?? null);
     const map = mapRef.current;
     if (map && reachRef.current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
   }, [reachRegion]);

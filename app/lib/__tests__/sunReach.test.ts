@@ -243,9 +243,12 @@ function walkCost(
     const to = walk.nodeIds[i + 1];
     const isLast = i + 2 === walk.nodeIds.length;
     if (isLast && (from !== last.fromId || to !== last.toId)) return [];
+    // The walk names its sidewalk on every step: price exactly that edge.
+    const side = walk.sides[i];
     const edges = (graph.adj.get(from) ?? []).filter(
-      (e) => e.toId === to && !isProhibitedEdge(e, mode) && (!isLast || last.side === undefined || e.side === last.side),
+      (e) => e.toId === to && !isProhibitedEdge(e, mode) && (e.side ?? null) === side,
     );
+    if (isLast && last.side !== undefined && side !== last.side) return [];
     const next: Array<{ t: number; s: number }> = [];
     for (const st of states) {
       for (const e of edges) {
