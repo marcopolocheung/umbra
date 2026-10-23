@@ -9,7 +9,7 @@
  */
 
 import { buildReachGraph } from "../navigationData/reachGraph";
-import { type SunReachOptions, type SunReachResult, sunReach } from "../sunReach";
+import { type SunReachOptions, type SunReachResult, type SunReachRun, type SunReachWalk, sunReachRun } from "../sunReach";
 import type { ReachGraph } from "../navigationData/reachGraph";
 
 export const SUN_BUDGET_WORKER_PROTOCOL_VERSION = "umbra-sun-budget-worker-v1";
@@ -29,6 +29,16 @@ export type SunBudgetCommand =
       requestId: number;
       graphId: number;
       options: SunReachOptions;
+    }
+  | {
+      /** The walk behind one proven street of the last search on `graphId` (#379). */
+      type: "walk";
+      protocol: typeof SUN_BUDGET_WORKER_PROTOCOL_VERSION;
+      requestId: number;
+      graphId: number;
+      /** The budgets of the region the user tapped; a newer search answers nothing. */
+      budgets: { sunBudgetSec: number; timeBudgetSec: number };
+      edge: { fromId: number; toId: number; side?: string };
     };
 
 /**
@@ -53,6 +63,7 @@ export type BuiltReachGraph =
 export type SunBudgetEvent =
   | { type: "built"; requestId: number; built: BuiltReachGraph }
   | { type: "searched"; requestId: number; result: SunReachResult }
+  | { type: "walked"; requestId: number; walk: SunReachWalk | null }
   | { type: "error"; requestId: number; error: string };
 
 /** The node positions of a graph, as transferable parallel arrays. */
@@ -87,6 +98,8 @@ export function nodeMap(built: Extract<BuiltReachGraph, { status: "ok" }>): Map<
  */
 export function createSunBudgetHandler(build: typeof buildReachGraph = buildReachGraph) {
   let kept: { graphId: number; graph: Extract<ReachGraph, { status: "ok" }> } | null = null;
+  // The last search on the kept graph, for replaying the walk behind a street.
+  let lastRun: { run: SunReachRun; sunBudgetSec: number; timeBudgetSec: number } | null = null;
   let nextGraphId = 1;
   // Builds overlap (a second tap while the first fetches); only the latest may become kept.
   let latestBuild = 0;
@@ -109,6 +122,7 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         if (buildSeq !== latestBuild) throw new Error("superseded by a newer build");
         const graphId = nextGraphId++;
         kept = { graphId, graph };
+        lastRun = null;
         return {
           type: "built",
           requestId,
@@ -116,12 +130,18 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         };
       }
       if (!kept || kept.graphId !== command.graphId) throw new Error(`graph ${command.graphId} is not kept`);
+      if (command.type === "walk") {
+        const { fromId, toId, side } = command.edge;
+        // Only the search behind the region on screen may answer: a slider step since then
+        // ran a newer search whose walks belong to another region.
+        const same =
+          lastRun?.sunBudgetSec === command.budgets.sunBudgetSec && lastRun.timeBudgetSec === command.budgets.timeBudgetSec;
+        return { type: "walked", requestId, walk: same ? lastRun!.run.witness(fromId, toId, side) : null };
+      }
       const { graph } = kept;
-      return {
-        type: "searched",
-        requestId,
-        result: sunReach(graph.graph, graph.startId, { ...command.options, timeAware: graph.timeAware }),
-      };
+      const run = sunReachRun(graph.graph, graph.startId, { ...command.options, timeAware: graph.timeAware });
+      lastRun = { run, sunBudgetSec: command.options.sunBudgetSec, timeBudgetSec: command.options.timeBudgetSec };
+      return { type: "searched", requestId, result: run.result };
     } catch (e) {
       return { type: "error", requestId, error: e instanceof Error ? e.message : String(e) };
     }

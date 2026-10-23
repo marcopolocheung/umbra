@@ -1,7 +1,7 @@
-import { type CSSProperties, useId } from "react";
+import { type CSSProperties, useId, useRef } from "react";
 import type { SunBudgetStatus } from "../hooks/useSunBudget";
 import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
-import type { SunReachOutcome } from "../lib/sunReach";
+import type { SunReachOutcome, SunReachWalk } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
 import Tag from "./ui/Tag";
 import Segmented from "./ui/Segmented";
@@ -19,6 +19,12 @@ interface SunBudgetPanelProps {
   shown: { sunMin: number; walkMin: number } | null;
   /** The region was cut at the edge of NYC's shade data (#380). */
   clipped?: boolean;
+  /** The walk behind a tapped street (#379); "none" when this search can't replay it. */
+  walk?: SunReachWalk | "none" | null;
+  onHideWalk?: () => void;
+  /** "Show walks": a tap on a solid street shows its walk instead of moving the start (#379). */
+  walkMode?: boolean;
+  onWalkModeChange?: (on: boolean) => void;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
   onUseLocation?: () => void;
@@ -92,6 +98,7 @@ export function sunBudgetMessage(p: {
 
 export default function SunBudgetPanel(props: SunBudgetPanelProps) {
   const sliderId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const { headline, detail, plate } = sunBudgetMessage(props);
   const sunLabel = `${props.sunMin} min of sun`;
   return (
@@ -99,7 +106,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col items-start gap-1">
           <Kicker>Sun Budget</Kicker>
-          <h2 className="font-display text-xl font-semibold leading-tight" style={{ color: "var(--color-ink)" }}>
+          <h2 ref={headingRef} tabIndex={-1} className="font-display text-xl font-semibold leading-tight focus:outline-none" style={{ color: "var(--color-ink)" }}>
             Where can I go?
           </h2>
         </div>
@@ -144,6 +151,18 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
         options={SUN_BUDGET_WALK_MINUTES.map((m) => ({ value: String(m), label: `${m} min walk` }))}
       />
 
+      {props.onWalkModeChange && props.status === "ready" && (
+        <Segmented
+          label="What a tap does"
+          value={props.walkMode ? "walk" : "start"}
+          onChange={(value) => props.onWalkModeChange?.(value === "walk")}
+          options={[
+            { value: "start", label: "Move start" },
+            { value: "walk", label: "Show walks" },
+          ]}
+        />
+      )}
+
       {props.status === "picking" && props.onUseLocation && (
         <button type="button" onClick={props.onUseLocation} className={`${ACTION} bg-panel text-ink hover:bg-ground`}>
           <span className="material-symbols-outlined text-lg" aria-hidden="true">my_location</span>
@@ -162,7 +181,34 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
         {detail && (
           <p style={{ fontSize: "var(--text-small)", color: "var(--color-ink-muted)" }}>{detail}</p>
         )}
+        {props.walk && (
+          <p className="border-2 border-ink p-2" style={{ fontSize: "var(--text-small)", color: "var(--color-ink)" }}>
+            {props.walk === "none"
+              ? "Can't redraw the walk behind this street. Change a budget and tap it again."
+              : // Rounded up: never shows less sun than the walk has. Not "the best way there".
+                `Shadiest walk found: ${Math.ceil(props.walk.arrivalSec / 60)} min, ${Math.ceil(props.walk.sunSec / 60)} min of direct sun, on the sidewalks drawn.`}
+          </p>
+        )}
+        {props.status === "ready" && !props.walk && (
+          <p style={{ fontSize: "var(--text-small)", color: "var(--color-ink-muted)" }}>
+            {props.walkMode ? "Tap a solid street to see the walk behind it." : "Tap the map to move the start."}
+          </p>
+        )}
       </div>
+
+      {props.walk && props.walk !== "none" && props.onHideWalk && (
+        <button
+          type="button"
+          onClick={() => {
+            props.onHideWalk?.();
+            // The button leaves with the walk: hand focus to the panel, not the page body.
+            headingRef.current?.focus();
+          }}
+          className={`${ACTION} self-start bg-panel text-ink hover:bg-ground`}
+        >
+          Hide walk
+        </button>
+      )}
 
       <p style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
         Modelled shade (clear sky) in 15-minute steps from building and tree data, for a steady 5 km/h walk with no stops at crossings. One way, no waiting for shade.

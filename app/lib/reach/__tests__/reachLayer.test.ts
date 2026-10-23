@@ -11,8 +11,11 @@ import {
   REACH_SOURCE_ID,
   REACH_UNDECIDED_LAYER_ID,
   REACH_DASH,
+  REACH_DIMMED_OPACITY,
   REACH_UNDECIDED_OPACITY,
+  REACH_WALK_LAYER_IDS,
   reachFeatures,
+  walkFeatures,
 } from "../reachLayer";
 
 type Rgb = readonly [number, number, number];
@@ -79,7 +82,7 @@ describe("reachFeatures", () => {
 
   it("a street proven by any sidewalk is proven, never also dashed", () => {
     const fc = reachFeatures({ proven: [edge(2, 1, "right")], undecided: [edge(1, 2, "left"), edge(2, 3, "left")] }, nodes);
-    expect(fc.features.map((f) => f.properties)).toEqual([{ state: "proven" }, { state: "undecided" }]);
+    expect(fc.features.map((f) => f.properties)).toEqual([{ state: "proven", lo: 1, hi: 2 }, { state: "undecided", lo: 2, hi: 3 }]);
   });
 
   it("skips edges whose nodes the graph does not hold (snap nodes)", () => {
@@ -130,7 +133,33 @@ function fakeMap(style: string[]) {
   };
 }
 
+describe("walkFeatures (#379)", () => {
+  it("draws each step on the sidewalk it takes, and marks where the walk ends", () => {
+    const fc = walkFeatures({ nodeIds: [1, 2, 3], sides: ["left", "right"], sunSec: 1, arrivalSec: 1 }, nodes);
+    expect(fc.features.map((f) => f.properties)).toEqual([{ offset: -4 }, { offset: 4 }, { end: true }]);
+    expect(fc.features[2].geometry).toEqual({ type: "Point", coordinates: [-73.99, 40.752] });
+  });
+});
+
 describe("attachReachLayer", () => {
+  it("dims the region while a walk shows and restores it after (#379)", () => {
+    const fake = fakeMap(["shadow"]);
+    const paint: Record<string, unknown> = {};
+    (fake.map as unknown as { setPaintProperty: (id: string, k: string, v: unknown) => void }).setPaintProperty = (id, key, value) => {
+      if (key === "line-opacity") paint[id] = value;
+    };
+    const layer = attachReachLayer(fake.map, { theme: "day" });
+    layer.setRegion({ proven: [edge(1, 2, "left")], undecided: [edge(2, 3, "left")] }, nodes);
+    layer.setWalk({ nodeIds: [1, 2], sides: ["left"], sunSec: 1, arrivalSec: 1 }, nodes);
+    expect(paint[REACH_PROVEN_LAYER_ID]).toBe(REACH_DIMMED_OPACITY);
+    for (const id of REACH_WALK_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("visible");
+    layer.setWalk(null, nodes);
+    expect(paint[REACH_PROVEN_LAYER_ID]).toBe(1);
+    expect(paint[REACH_UNDECIDED_LAYER_ID]).toBe(REACH_UNDECIDED_OPACITY);
+    for (const id of REACH_WALK_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("none");
+  });
+
+
   it("adds nothing until there is a region to draw", () => {
     const fake = fakeMap(["road", "building", "shadow"]);
     attachReachLayer(fake.map, { theme: "day" }).setRegion(null, null);

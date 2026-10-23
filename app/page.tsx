@@ -392,12 +392,22 @@ export default function Home() {
   const sunDown = solarPosition ? solarPosition.altitudeDeg <= 0 : false;
   const sunBudget = useSunBudget(date, sunDown);
   const sunBudgetOn = sunBudget.status !== "off";
+  // In Sun Budget a tap sets a new start; with "Show walks" on, a tap on a solid
+  // street shows the walk behind it instead (#379). One gesture never means both.
   const onMapClick = sunBudgetOn
-    ? (coord: { lng: number; lat: number }) => sunBudget.setStart([coord.lng, coord.lat])
+    ? (coord: { lng: number; lat: number }, _event?: MouseEvent, street?: { lo: number; hi: number }) => {
+        if (sunBudget.walkMode && street && sunBudget.status === "ready") sunBudget.showWalk(street);
+        else if (!sunBudget.walkMode) sunBudget.setStart([coord.lng, coord.lat]);
+      }
     : handleMapClick;
   const reachRegion = useMemo(
-    () => ({ region: sunBudget.region, nodes: sunBudget.nodes, outcome: sunBudget.outcome }),
-    [sunBudget.region, sunBudget.nodes, sunBudget.outcome],
+    () => ({
+      region: sunBudget.region,
+      nodes: sunBudget.nodes,
+      outcome: sunBudget.outcome,
+      walk: sunBudget.walk && sunBudget.walk !== "none" ? sunBudget.walk : null,
+    }),
+    [sunBudget.region, sunBudget.nodes, sunBudget.outcome, sunBudget.walk],
   );
   // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
   const sunBudgetPins = useMemo(
@@ -415,6 +425,10 @@ export default function Home() {
       outcome={sunBudget.outcome}
       provenCount={sunBudget.region?.proven.length ?? 0}
       undecidedCount={sunBudget.region?.undecided.length ?? 0}
+      walk={sunBudget.walk}
+      walkMode={sunBudget.walkMode}
+      onWalkModeChange={sunBudget.setWalkMode}
+      onHideWalk={sunBudget.clearWalk}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
       shown={sunBudget.shown}

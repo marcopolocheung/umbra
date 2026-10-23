@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // suite can push one past vitest's 5 s default. The whole file gets headroom.
 vi.setConfig({ testTimeout: 30_000 });
 import type { GraphEdge, RoutingGraph } from "../routing";
-import { type SunReachOptions, type SunReachResult, sunReach } from "../sunReach";
+import { type SunReachOptions, type SunReachResult, sunReach, sunReachRun, type SunReachWalk } from "../sunReach";
 import { edgeTraversalSeconds, isProhibitedEdge } from "../travelMode";
 import { randomGraph, rng } from "./paretoCases.fixture";
 
@@ -220,5 +220,107 @@ describe("sunReach — the pruning slack covers every boundary and every short e
 		expect(result.reachable.some((e) => e.fromId === 4 && e.toId === 5)).toBe(true);
 		expect(reachKeys(result)).toEqual(oracleReach(graph, 0, options));
 	});
+});
+
+/**
+ * Re-price a witness walk with the oracle's rules, independent of sunReach: at
+ * each step any parallel sidewalk may be the one walked, so keep the cheapest
+ * (time, sun) reaching each step. Returns every fitting cost of the walk, or [] if
+ * none fits or its last step is not the street it claims to prove.
+ */
+function walkCost(
+  graph: RoutingGraph,
+  walk: SunReachWalk,
+  o: SunReachOptions,
+  last: { fromId: number; toId: number; side?: string },
+): Array<{ t: number; s: number }> {
+  const mode = o.travelMode ?? "walk";
+  const W = o.timeAware ? o.timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
+  const B = o.timeAware?.bucketCount ?? 1;
+  let states: Array<{ t: number; s: number }> = [{ t: 0, s: 0 }];
+  for (let i = 0; i + 1 < walk.nodeIds.length; i++) {
+    const from = walk.nodeIds[i];
+    const to = walk.nodeIds[i + 1];
+    const isLast = i + 2 === walk.nodeIds.length;
+    if (isLast && (from !== last.fromId || to !== last.toId)) return [];
+    // The walk names its sidewalk on every step: price exactly that edge.
+    const side = walk.sides[i];
+    const edges = (graph.adj.get(from) ?? []).filter(
+      (e) => e.toId === to && !isProhibitedEdge(e, mode) && (e.side ?? null) === side,
+    );
+    if (isLast && last.side !== undefined && side !== last.side) return [];
+    const next: Array<{ t: number; s: number }> = [];
+    for (const st of states) {
+      for (const e of edges) {
+        const sec = edgeTraversalSeconds(e, mode);
+        const t = st.t + sec;
+        const b = o.timeAware ? Math.min(Math.floor(t / W), B - 1) : 0;
+        const ts = e.timeShadow;
+        const f = !o.timeAware || !ts || ts.length === 0 ? e.shadowFactor : ts[Math.min(b, ts.length - 1)];
+        const s = st.s + sec * (1 - f);
+        if (t <= o.timeBudgetSec + 1e-9 && s <= o.sunBudgetSec + 1e-9) next.push({ t, s });
+      }
+    }
+    if (next.length === 0) return [];
+    states = next;
+  }
+  return walk.nodeIds.length >= 2 ? states : [];
+}
+
+describe("sunReachRun — the walk behind each proven street (#379)", () => {
+  it("every proven street's witness is a real walk from the start that fits both budgets", () => {
+    let checked = 0;
+    for (const c of cases()) {
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      // A tight slot cap too, so proofs come from both the label search and the least-time tree.
+      for (const cap of [undefined, 1]) {
+        const run = sunReachRun(graph, c.start, { ...c.options, maxLabelsPerSlot: cap });
+        for (const edge of run.result.reachable) {
+          const walk = run.witness(edge.fromId, edge.toId, edge.side);
+          expect(walk, `seed ${c.seed} ${edge.fromId}>${edge.toId}`).not.toBeNull();
+          expect(walk!.nodeIds[0]).toBe(c.start);
+          const costs = walkCost(graph, walk!, c.options, edge);
+          expect(costs.length, `seed ${c.seed} ${edge.fromId}>${edge.toId} fits`).toBeGreaterThan(0);
+          // The numbers shown are the drawn walk's own: some sidewalk choice along it costs exactly them.
+          const match = costs.some((k) => Math.abs(k.t - walk!.arrivalSec) < 1e-6 && Math.abs(k.s - walk!.sunSec) < 1e-6);
+          expect(match, `seed ${c.seed} ${edge.fromId}>${edge.toId} numbers`).toBe(true);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("shows the walk whose numbers it reports, even when the least-time tree beats a label's proof", () => {
+    // Found by search: with slots of one the label search keeps a slower, sunnier
+    // walk to some node, and the least-time tree then proves an edge cheaper.
+    // The witness must switch to the tree's walk, or it draws one walk and
+    // reports another's sun.
+    const graph = randomGraph(12, 6, 6, 6);
+    const o: SunReachOptions = { sunBudgetSec: 400, timeBudgetSec: 300, maxLabelsPerSlot: 1, timeAware: { bucketMs: 45_000, bucketCount: 6 } };
+    const run = sunReachRun(graph, 0, o);
+    for (const edge of run.result.reachable) {
+      const walk = run.witness(edge.fromId, edge.toId, edge.side)!;
+      const costs = walkCost(graph, walk, o, edge);
+      const match = costs.some((k) => Math.abs(k.t - walk.arrivalSec) < 1e-6 && Math.abs(k.s - walk.sunSec) < 1e-6);
+      expect(match, `${edge.fromId}>${edge.toId}:${edge.side}`).toBe(true);
+    }
+  });
+
+  it("has no walk for a street it did not prove", () => {
+    const c = cases()[0];
+    const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+    const run = sunReachRun(graph, c.start, { ...c.options, sunBudgetSec: 0, timeBudgetSec: 0 });
+    expect(run.result.reachable).toEqual([]);
+    expect(run.witness(c.start, c.start + 1)).toBeNull();
+  });
+
+  it("sunReach still returns exactly sunReachRun's result", () => {
+    const c = cases()[3];
+    const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+    const plain = sunReach(graph, c.start, c.options);
+    const run = sunReachRun(graph, c.start, c.options).result;
+    expect({ ...plain, stats: 0 }).toEqual({ ...run, stats: 0 });
+  });
 });
 

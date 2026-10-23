@@ -12,7 +12,7 @@
 
 import type * as maplibregl from "maplibre-gl";
 import { mapColor } from "../basemapTheme";
-import type { SunReachEdge } from "../sunReach";
+import type { SunReachEdge, SunReachWalk } from "../sunReach";
 import type { UiTheme } from "../uiTheme";
 import type { ReachRegion } from "./mergeRegion";
 
@@ -22,6 +22,16 @@ export const REACH_PROVEN_LAYER_ID = "sun-budget-reach-proven";
 export const REACH_UNDECIDED_LAYER_ID = "sun-budget-reach-undecided";
 /** Bottom to top; `mapLayerOrder.ts` keeps them above the shadow, below the routes. */
 export const REACH_LAYER_IDS = [REACH_PROVEN_CASING_ID, REACH_PROVEN_LAYER_ID, REACH_UNDECIDED_LAYER_ID] as const;
+/** #379: the walk behind a tapped street, drawn on the sidewalks it takes. */
+export const REACH_WALK_SOURCE_ID = "sun-budget-walk";
+export const REACH_WALK_CASING_ID = "sun-budget-walk-casing";
+export const REACH_WALK_LINE_ID = "sun-budget-walk-line";
+export const REACH_WALK_END_ID = "sun-budget-walk-end";
+export const REACH_WALK_LAYER_IDS = [REACH_WALK_CASING_ID, REACH_WALK_LINE_ID, REACH_WALK_END_ID] as const;
+/** The region steps back while a walk is shown, so the walk reads on top of it. */
+export const REACH_DIMMED_OPACITY = 0.35;
+/** A sidewalk's side, in pixels off the street's centreline. */
+const WALK_SIDE_OFFSET_PX = 4;
 
 /** Thin when zoomed out so blocks stay blocks; street-width when zoomed in. */
 const width = (z12: number, z16: number): maplibregl.ExpressionSpecification =>
@@ -37,6 +47,8 @@ export const REACH_DASH = { approximate: [1.5, 2], "budget-exhausted": [4, 2] } 
 export interface ReachLayerHandle {
   /** The outcome on screen; a search that stopped early dashes its undecided streets sparser. */
   setOutcome(outcome: "exact" | "approximate" | "budget-exhausted" | null): void;
+  /** Draw the walk behind a tapped street (#379), or clear it with null. */
+  setWalk(walk: SunReachWalk | null, nodes: Map<number, { lat: number; lon: number }> | null): void;
   setRegion(region: ReachRegion | null, nodes: Map<number, { lat: number; lon: number }> | null): void;
   /** Off in Sun Exposure mode, whose GeoTIFF export writes the canvas as drawn. */
   setEnabled(enabled: boolean): void;
@@ -77,10 +89,35 @@ export function reachFeatures(
     if (!a || !b) continue;
     features.push({
       type: "Feature",
-      properties: { state },
+      // lo/hi name the street segment, so a tap can ask for the walk behind it (#379).
+      properties: { state, lo, hi },
       geometry: { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
     });
   }
+  return { type: "FeatureCollection", features };
+}
+
+/** The walk as one line per step on its sidewalk, and a point where it ends. */
+export function walkFeatures(
+  walk: SunReachWalk | null,
+  nodes: Map<number, { lat: number; lon: number }> | null,
+): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  if (!walk || !nodes) return { type: "FeatureCollection", features };
+  for (let i = 0; i + 1 < walk.nodeIds.length; i++) {
+    const a = nodes.get(walk.nodeIds[i]);
+    const b = nodes.get(walk.nodeIds[i + 1]);
+    if (!a || !b) continue;
+    const side = walk.sides[i];
+    features.push({
+      type: "Feature",
+      // Style spec: a positive line-offset is to the right of the line's direction.
+      properties: { offset: side === "right" ? WALK_SIDE_OFFSET_PX : side === "left" ? -WALK_SIDE_OFFSET_PX : 0 },
+      geometry: { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
+    });
+  }
+  const end = nodes.get(walk.nodeIds[walk.nodeIds.length - 1]);
+  if (end) features.push({ type: "Feature", properties: { end: true }, geometry: { type: "Point", coordinates: [end.lon, end.lat] } });
   return { type: "FeatureCollection", features };
 }
 
@@ -143,6 +180,46 @@ export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme; enabled?
       ensure(data);
       hasFeatures = data.features.length > 0;
       applyVisibility();
+    },
+    setWalk(walk, nodes) {
+      const data = walkFeatures(walk, nodes);
+      const source = map.getSource(REACH_WALK_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) source.setData(data);
+      else if (data.features.length > 0) {
+        map.addSource(REACH_WALK_SOURCE_ID, { type: "geojson", data });
+        const lines: maplibregl.FilterSpecification = ["==", ["geometry-type"], "LineString"];
+        const layout: maplibregl.LineLayerSpecification["layout"] = { "line-cap": "round", "line-join": "round" };
+        map.addLayer({
+          id: REACH_WALK_CASING_ID, type: "line", source: REACH_WALK_SOURCE_ID, filter: lines, layout,
+          paint: { "line-color": mapColor(theme, "casing"), "line-width": 8, "line-offset": ["get", "offset"] },
+        });
+        map.addLayer({
+          id: REACH_WALK_LINE_ID, type: "line", source: REACH_WALK_SOURCE_ID, filter: lines, layout,
+          paint: { "line-color": mapColor(theme, "route"), "line-width": 4.5, "line-offset": ["get", "offset"] },
+        });
+        // Where the walk ends: the street that was tapped.
+        map.addLayer({
+          id: REACH_WALK_END_ID, type: "circle", source: REACH_WALK_SOURCE_ID, filter: ["==", ["geometry-type"], "Point"],
+          paint: {
+            "circle-radius": 6,
+            "circle-color": mapColor(theme, "route"),
+            "circle-stroke-color": mapColor(theme, "casing"),
+            "circle-stroke-width": 3,
+          },
+        });
+      }
+      const showing = data.features.length > 0;
+      for (const id of REACH_WALK_LAYER_IDS) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", showing && enabled ? "visible" : "none");
+      }
+      // The region steps back so the walk reads on top of it.
+      const opacity = showing ? REACH_DIMMED_OPACITY : 1;
+      for (const id of [REACH_PROVEN_CASING_ID, REACH_PROVEN_LAYER_ID]) {
+        if (map.getLayer(id)) map.setPaintProperty(id, "line-opacity", opacity);
+      }
+      if (map.getLayer(REACH_UNDECIDED_LAYER_ID)) {
+        map.setPaintProperty(REACH_UNDECIDED_LAYER_ID, "line-opacity", showing ? REACH_DIMMED_OPACITY : REACH_UNDECIDED_OPACITY);
+      }
     },
     setOutcome(next) {
       const nextDash = next === "budget-exhausted" ? "budget-exhausted" : "approximate";
