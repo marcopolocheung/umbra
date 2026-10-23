@@ -1,7 +1,7 @@
 /**
- * Main-thread side of the routing worker (L3c, #263): runs `paretoRoutes` (and
- * H3's `sunReach`) in `app/workers/routing.worker.ts` so a 1–3 s search no
- * longer freezes the map and the timeline.
+ * Main-thread side of the routing worker (L3c, #263): runs `paretoRoutes` in
+ * `app/workers/routing.worker.ts` so a 1–3 s search no longer freezes the map
+ * and the timeline.
  *
  * Same function on a faithfully rebuilt graph, so the routes are the ones the
  * main thread would have found. The main thread only pays one O(E) pack; the
@@ -15,19 +15,12 @@
 
 import { type DijkstraOptions, paretoRoutes, type RouteResult, type RoutingGraph } from "./routing";
 import { type PackedRoutingGraph, packRoutingGraphInSteps, transferList } from "./routingGraphCodec";
-import {
-  type ParetoCommand,
-  type ReachCommand,
-  ROUTING_WORKER_PROTOCOL_VERSION,
-  type RoutingWorkerEvent,
-} from "./routingWorkerProtocol";
-import { type SunReachOptions, type SunReachResult, sunReach } from "./sunReach";
+import { ROUTING_WORKER_PROTOCOL_VERSION, type RoutingWorkerCommand, type RoutingWorkerEvent } from "./routingWorkerProtocol";
 
-/** One in-flight search; `T` is what its command answers with. */
-interface Pending<T = unknown> {
-  resolve: (result: T) => void;
+interface Pending {
+  resolve: (routes: RouteResult[]) => void;
   reject: (error: unknown) => void;
-  runHere: () => T;
+  runHere: () => RouteResult[];
 }
 
 let worker: Worker | null = null;
@@ -35,7 +28,7 @@ let worker: Worker | null = null;
 let disabled = false;
 let answered = false;
 let nextRequestId = 1;
-const pending = new Map<number, Pending<any>>();
+const pending = new Map<number, Pending>();
 let warned = false;
 
 function warnOnce(reason: string, detail?: unknown) {
@@ -44,7 +37,7 @@ function warnOnce(reason: string, detail?: unknown) {
   console.warn(`[routing] worker unavailable (${reason}); searching on the main thread`, detail ?? "");
 }
 
-function settleHere<T>(p: Pending<T>) {
+function settleHere(p: Pending) {
   try {
     p.resolve(p.runHere());
   } catch (e) {
@@ -53,7 +46,7 @@ function settleHere<T>(p: Pending<T>) {
 }
 
 /** Terminate the worker; the next request starts a fresh one. Returns what was in flight. */
-function dropWorker(): Pending<any>[] {
+function dropWorker(): Pending[] {
   worker?.terminate();
   worker = null;
   const inFlight = [...pending.values()];
@@ -72,7 +65,6 @@ function getWorker(): Worker | null {
       pending.delete(event.data.requestId);
       answered = true;
       if (event.data.type === "pareto") p.resolve(event.data.routes);
-      else if (event.data.type === "reach") p.resolve(event.data.result);
       else {
         warnOnce("worker error event", event.data.error);
         settleHere(p);
@@ -113,20 +105,20 @@ async function packInSlices(graph: RoutingGraph, signal?: AbortSignal): Promise<
   }
 }
 
-type Command = Omit<ParetoCommand, "requestId" | "graph"> | Omit<ReachCommand, "requestId" | "graph">;
-
 /**
- * Run `command` in the worker when it can be, else `runHere` on this thread.
- * `signal` aborting terminates the worker — a running synchronous search
- * cannot be interrupted any other way — and rejects with an `AbortError`.
- * `onPacked` fires after the main-thread pack, before the post.
+ * `paretoRoutes(graph, startId, endId, options)`, off the main thread when it
+ * can be. `signal` aborting terminates the worker — a running synchronous
+ * search cannot be interrupted any other way — and rejects with an
+ * `AbortError`. `onPacked` fires after the main-thread pack, before the post.
  */
-function search<T>(
+export function searchParetoRoutes(
   graph: RoutingGraph,
-  command: Command,
-  runHere: () => T,
-  { signal, onPacked }: { signal?: AbortSignal; onPacked?: () => void },
-): Promise<T> {
+  startId: number,
+  endId: number,
+  options: DijkstraOptions,
+  { signal, onPacked }: { signal?: AbortSignal; onPacked?: () => void } = {},
+): Promise<RouteResult[]> {
+  const runHere = () => paretoRoutes(graph, startId, endId, options);
   if (signal?.aborted) return Promise.reject(abortError());
   const w = getWorker();
   if (!w) return new Promise((resolve, reject) => settleHere({ resolve, reject, runHere }));
@@ -134,7 +126,7 @@ function search<T>(
   return packInSlices(graph, signal).then((packed) => {
     onPacked?.();
     if (signal?.aborted) throw abortError();
-    return new Promise<T>((resolve, reject) => {
+    return new Promise<RouteResult[]>((resolve, reject) => {
       // The worker may have failed while the pack was in progress.
       const target = getWorker();
       if (!target) return settleHere({ resolve, reject, runHere });
@@ -146,49 +138,27 @@ function search<T>(
       };
       const done = () => signal?.removeEventListener("abort", onAbort);
       pending.set(requestId, {
-        resolve: (result: T) => {
+        resolve: (routes) => {
           done();
-          resolve(result);
+          resolve(routes);
         },
-        reject: (error: unknown) => {
+        reject: (error) => {
           done();
           reject(error);
         },
         runHere,
       });
       signal?.addEventListener("abort", onAbort, { once: true });
-      target.postMessage({ ...command, requestId, graph: packed }, transferList(packed));
+      const command: RoutingWorkerCommand = {
+        type: "pareto",
+        protocol: ROUTING_WORKER_PROTOCOL_VERSION,
+        requestId,
+        graph: packed,
+        startId,
+        endId,
+        options,
+      };
+      target.postMessage(command, transferList(packed));
     });
   });
-}
-
-/** `paretoRoutes(graph, startId, endId, options)`, off the main thread when it can be. */
-export function searchParetoRoutes(
-  graph: RoutingGraph,
-  startId: number,
-  endId: number,
-  options: DijkstraOptions,
-  opts: { signal?: AbortSignal; onPacked?: () => void } = {},
-): Promise<RouteResult[]> {
-  return search(
-    graph,
-    { type: "pareto", protocol: ROUTING_WORKER_PROTOCOL_VERSION, startId, endId, options },
-    () => paretoRoutes(graph, startId, endId, options),
-    opts,
-  );
-}
-
-/** H3's `sunReach(graph, startId, options)`, off the main thread when it can be. */
-export function searchSunReach(
-  graph: RoutingGraph,
-  startId: number,
-  options: SunReachOptions,
-  opts: { signal?: AbortSignal } = {},
-): Promise<SunReachResult> {
-  return search(
-    graph,
-    { type: "reach", protocol: ROUTING_WORKER_PROTOCOL_VERSION, startId, options },
-    () => sunReach(graph, startId, options),
-    opts,
-  );
 }
