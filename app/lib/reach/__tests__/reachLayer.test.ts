@@ -135,7 +135,7 @@ describe("attachReachLayer", () => {
       { proven: [edge(1, 2, "left")], undecided: [] },
       nodes,
     );
-    const paint = (id: string) => (fake.layers.get(id)?.spec as { paint: Record<string, unknown> }).paint;
+    const paint = (id: string) => (fake.layers.get(id)!.spec as { paint: Record<string, unknown> }).paint;
     expect(paint(REACH_PROVEN_LAYER_ID)["line-dasharray"]).toBeUndefined();
     expect(paint(REACH_UNDECIDED_LAYER_ID)["line-dasharray"]).toEqual([2, 2]);
   });
