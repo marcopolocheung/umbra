@@ -5,7 +5,8 @@ import SunBudgetPanel, { sunBudgetMessage } from "../SunBudgetPanel";
 
 afterEach(cleanup);
 
-const base = { status: "ready" as const, outcome: "exact" as const, provenCount: 40, undecidedCount: 0, sunMin: 8, walkMin: 20 };
+const shown = { sunMin: 8, walkMin: 20 };
+const base = { status: "ready" as const, outcome: "exact" as const, provenCount: 40, undecidedCount: 0, shown };
 
 describe("sunBudgetMessage", () => {
   it("gives each outcome its own words", () => {
@@ -18,6 +19,12 @@ describe("sunBudgetMessage", () => {
     expect(exhausted.detail).toMatch(/stopped early/);
   });
 
+  it("words the headline from the region on screen, not a slider that has moved on", () => {
+    // The slider says 2; the map still shows the 8-minute result.
+    expect(sunBudgetMessage({ ...base, shown: { sunMin: 8, walkMin: 20 } }).headline).toContain("≤ 8 min");
+    expect(sunBudgetMessage({ ...base, shown: null }).headline).toMatch(/Finding/);
+  });
+
   it("never says a street can't be reached", () => {
     const cases = [
       sunBudgetMessage({ ...base, outcome: "approximate", undecidedCount: 5 }),
@@ -28,12 +35,17 @@ describe("sunBudgetMessage", () => {
     for (const m of cases) expect(`${m.headline} ${m.detail ?? ""}`).not.toMatch(/can't reach|unreachable|nowhere|impossible/i);
   });
 
-  it("calls an empty result unconfirmed, not empty", () => {
-    expect(sunBudgetMessage({ ...base, provenCount: 0 }).headline).toMatch(/^Nothing confirmed yet/);
+  it("never mentions dashed streets when none are drawn", () => {
+    const exhausted = sunBudgetMessage({ ...base, outcome: "budget-exhausted", undecidedCount: 0 });
+    expect(`${exhausted.headline} ${exhausted.detail ?? ""}`).not.toMatch(/dashed/i);
+  });
+
+  it("calls an empty finished result unconfirmed, not 'yet'", () => {
+    expect(sunBudgetMessage({ ...base, provenCount: 0 }).headline).toMatch(/^No street confirmed/);
   });
 
   it("at night, says the sun is down instead of budgeting sun that isn't there", () => {
-    const m = sunBudgetMessage({ ...base, sunDown: true });
+    const m = sunBudgetMessage({ ...base, status: "sun-down" });
     expect(m.headline).toMatch(/sun is down/);
     expect(`${m.headline} ${m.detail}`).not.toMatch(/≤ 8 min/);
   });
@@ -44,12 +56,7 @@ describe("sunBudgetMessage", () => {
 });
 
 describe("SunBudgetPanel", () => {
-  const props = {
-    ...base,
-    onSunMinChange: vi.fn(),
-    onWalkMinChange: vi.fn(),
-    onExit: vi.fn(),
-  };
+  const props = { ...base, sunMin: 8, walkMin: 20, onSunMinChange: vi.fn(), onWalkMinChange: vi.fn(), onExit: vi.fn() };
 
   it("labels the sun slider, speaks its value, and reports changes in minutes", () => {
     render(<SunBudgetPanel {...props} />);
@@ -60,8 +67,13 @@ describe("SunBudgetPanel", () => {
   });
 
   it("disables the sun slider when the sun is down", () => {
-    render(<SunBudgetPanel {...props} sunDown />);
+    render(<SunBudgetPanel {...props} status="sun-down" />);
     expect((screen.getByLabelText("Most direct sun") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("states the walking pace it assumes", () => {
+    render(<SunBudgetPanel {...props} />);
+    expect(screen.getByText(/5 km\/h walk/)).toBeTruthy();
   });
 
   it("switches walking time and announces the result in a live region", () => {

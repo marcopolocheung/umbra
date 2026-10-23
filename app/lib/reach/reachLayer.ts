@@ -30,6 +30,8 @@ export const REACH_UNDECIDED_OPACITY = 0.9;
 
 export interface ReachLayerHandle {
   setRegion(region: ReachRegion | null, nodes: Map<number, { lat: number; lon: number }> | null): void;
+  /** Off in Sun Exposure mode, whose GeoTIFF export writes the canvas as drawn. */
+  setEnabled(enabled: boolean): void;
   setTheme(theme: UiTheme): void;
   remove(): void;
 }
@@ -74,8 +76,17 @@ export function reachFeatures(
   return { type: "FeatureCollection", features };
 }
 
-export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme }): ReachLayerHandle {
+export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme; enabled?: boolean }): ReachLayerHandle {
   let theme = opts.theme;
+  let enabled = opts.enabled ?? true;
+  let hasFeatures = false;
+
+  function applyVisibility(): void {
+    const visible = enabled && hasFeatures ? "visible" : "none";
+    for (const id of REACH_LAYER_IDS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible);
+    }
+  }
 
   function ensure(data: GeoJSON.FeatureCollection): void {
     const source = map.getSource(REACH_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -121,10 +132,13 @@ export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme }): Reach
     setRegion(region, nodes) {
       const data = reachFeatures(region, nodes);
       ensure(data);
-      const visible = data.features.length > 0 ? "visible" : "none";
-      for (const id of REACH_LAYER_IDS) {
-        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible);
-      }
+      hasFeatures = data.features.length > 0;
+      applyVisibility();
+    },
+    setEnabled(next) {
+      if (next === enabled) return;
+      enabled = next;
+      applyVisibility();
     },
     setTheme(next) {
       if (next === theme) return;

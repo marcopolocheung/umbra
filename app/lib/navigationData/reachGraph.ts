@@ -8,10 +8,13 @@
  */
 
 import {
+  bfsReachable,
   type GraphEdge,
   parallelSidewalkEdges,
+  removeVirtualNode,
   type RoutingGraph,
   snapToEdge,
+  snapToReachableEdge,
   swapSideAgainstCanonical,
 } from "../routing";
 import { routingEdgeBatch } from "../navigationHelpers";
@@ -44,8 +47,43 @@ export type ReachGraph =
       status: "ok";
       graph: RoutingGraph;
       startId: number;
+      /** Where the search starts: the snapped point on the street, not the tap. */
+      startPoint: [number, number];
       timeAware: { bucketMs: number; bucketCount: number };
     };
+
+/** A start piece this small is a stray fragment (a cut-off path), not a neighbourhood. */
+const MIN_START_PIECE_NODES = 200;
+/** Farther than this from a connected street and the start is not on the network. */
+const MAX_SNAP_M = 100;
+
+/**
+ * The start, snapped onto the street network. A nearest-edge snap can land on
+ * a fragment the data cuts off (a park path, a plaza), and a search from there
+ * would honestly report a tiny region as `exact`; re-snap onto the largest
+ * connected piece instead, as routing does (`snapRouteStopsToReachableEdges`).
+ */
+export function snapStart(
+  center: [number, number],
+  graph: RoutingGraph,
+  travelMode: TravelModeId,
+): number | null {
+  const id = snapToEdge(center, graph, -1, travelMode);
+  const piece = bfsReachable(graph, id, travelMode);
+  if (piece.size >= MIN_START_PIECE_NODES) return id;
+  let largest = piece;
+  const seen = new Set(piece);
+  for (const nodeId of graph.adj.keys()) {
+    if (seen.has(nodeId)) continue;
+    const other = bfsReachable(graph, nodeId, travelMode);
+    for (const n of other) seen.add(n);
+    if (other.size > largest.size) largest = other;
+  }
+  if (largest === piece) return id;
+  if (id < 0) removeVirtualNode(graph, id);
+  const fallback = snapToReachableEdge(center, graph, largest, -1, travelMode);
+  return fallback && fallback.distM <= MAX_SNAP_M ? fallback.id : null;
+}
 
 /**
  * Per-sidewalk edges carrying H1's per-bucket shade from the table. Every
@@ -116,6 +154,14 @@ export async function buildReachGraph(args: {
     return { status: "uncovered", reason: "shade table misses streets here" };
   }
   const graph = timeAwareGraphFromTable(streetGraph, view, perBucket);
-  const startId = snapToEdge(center, graph, -1, travelMode);
-  return { status: "ok", graph, startId, timeAware: { bucketMs: REACH_BUCKET_MS, bucketCount } };
+  const startId = snapStart(center, graph, travelMode);
+  if (startId === null) return { status: "uncovered", reason: "no connected street near the start" };
+  const start = graph.nodes.get(startId)!;
+  return {
+    status: "ok",
+    graph,
+    startId,
+    startPoint: [start.lon, start.lat],
+    timeAware: { bucketMs: REACH_BUCKET_MS, bucketCount },
+  };
 }

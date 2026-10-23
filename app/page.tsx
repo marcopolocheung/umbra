@@ -389,7 +389,8 @@ export default function Home() {
     streetTypes,
   } = nav;
   // H3b Sun Budget: while it is open, a map tap sets its start and the route layers step aside.
-  const sunBudget = useSunBudget(date, travelMode);
+  const sunDown = solarPosition ? solarPosition.altitudeDeg <= 0 : false;
+  const sunBudget = useSunBudget(date, sunDown);
   const sunBudgetOn = sunBudget.status !== "off";
   const onMapClick = sunBudgetOn
     ? (coord: { lng: number; lat: number }) => sunBudget.setStart([coord.lng, coord.lat])
@@ -400,8 +401,13 @@ export default function Home() {
   );
   // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
   const sunBudgetPins = useMemo(
-    () => (sunBudgetOn ? (sunBudget.start ? [{ lng: sunBudget.start[0], lat: sunBudget.start[1], label: "Start" }] : []) : null),
-    [sunBudgetOn, sunBudget.start],
+    () => {
+      if (!sunBudgetOn) return null;
+      // The pin marks where the search starts: the snapped street, or the tap until it is built.
+      const at = sunBudget.startPoint ?? sunBudget.start;
+      return at ? [{ lng: at[0], lat: at[1], label: "Start" }] : [];
+    },
+    [sunBudgetOn, sunBudget.startPoint, sunBudget.start],
   );
   const sunBudgetCard = (
     <SunBudgetPanel
@@ -411,7 +417,7 @@ export default function Home() {
       undecidedCount={sunBudget.region?.undecided.length ?? 0}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
-      sunDown={solarPosition ? solarPosition.altitudeDeg <= 0 : false}
+      shown={sunBudget.shown}
       onSunMinChange={sunBudget.setSunMin}
       onWalkMinChange={sunBudget.setWalkMin}
       onUseLocation={userLocation ? () => sunBudget.setStart(userLocation) : undefined}
@@ -445,6 +451,13 @@ export default function Home() {
   );
 
   const { phase, selectedPlace, dispatch } = useAppState();
+  // Sun Budget lives where QuickActions does (idle, or place detail with no place);
+  // leaving that screen — Directions, a picked place — closes it.
+  const onSunBudgetScreen = phase === "IDLE" || (phase === "PLACE_DETAIL" && !selectedPlace);
+  const exitSunBudget = sunBudget.exit;
+  useEffect(() => {
+    if (!onSunBudgetScreen) exitSunBudget();
+  }, [onSunBudgetScreen, exitSunBudget]);
 
   // Weather for the heat score, from D2's cache — the same response the cloud badge
   // already fetched for this location, matched to the hour the timeline is showing.

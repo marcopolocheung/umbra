@@ -151,6 +151,15 @@ describe("attachReachLayer", () => {
     expect(paint(REACH_UNDECIDED_LAYER_ID)["line-dasharray"]).toBeDefined();
   });
 
+  it("stays hidden while disabled (Sun Exposure export) and returns after", () => {
+    const fake = fakeMap(["shadow"]);
+    const layer = attachReachLayer(fake.map, { theme: "day", enabled: false });
+    layer.setRegion({ proven: [edge(1, 2, "left")], undecided: [] }, nodes);
+    for (const id of REACH_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("none");
+    layer.setEnabled(true);
+    for (const id of REACH_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("visible");
+  });
+
   it("updates the data in place and hides every layer when the region empties", () => {
     const fake = fakeMap(["shadow"]);
     const layer = attachReachLayer(fake.map, { theme: "day" });

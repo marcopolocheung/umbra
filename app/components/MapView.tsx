@@ -794,7 +794,7 @@ export default function MapView({
         streetTypeRef.current.setSegments(streetTypeSegmentsRef.current ?? []);
 
         // H3b Sun Budget region, filed above the shadow with the routes (mapLayerOrder.ts).
-        reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current });
+        reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current, enabled: !accumulationOnRef.current });
         reachRef.current.setRegion(reachRegionRef.current?.region ?? null, reachRegionRef.current?.nodes ?? null);
 
         // The canopy ground-protection pass: the same shared store the fill reads
@@ -968,6 +968,7 @@ export default function MapView({
     canopyRef.current?.setEnabled(!accumulation.enabled);
     shedRef.current?.setEnabled(showShedsRef.current && !accumulation.enabled);
     streetTypeRef.current?.setEnabled(showStreetTypesRef.current && !accumulation.enabled);
+    reachRef.current?.setEnabled(!accumulation.enabled);
     if (!shadowRef.current) return;
     if (accumulation.enabled) {
       shadowRef.current.setSunExposure(true, {

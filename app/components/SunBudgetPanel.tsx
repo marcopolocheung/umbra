@@ -14,8 +14,8 @@ interface SunBudgetPanelProps {
   undecidedCount: number;
   sunMin: number;
   walkMin: number;
-  /** The sun is below the horizon at the selected time: every street is in shade. */
-  sunDown?: boolean;
+  /** The budgets of the region on screen; the sliders run ahead of it while a search runs. */
+  shown: { sunMin: number; walkMin: number } | null;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
   onUseLocation?: () => void;
@@ -34,39 +34,42 @@ export function sunBudgetMessage(p: {
   outcome: SunReachOutcome | null;
   provenCount: number;
   undecidedCount: number;
-  sunMin: number;
-  walkMin: number;
-  sunDown?: boolean;
+  shown: { sunMin: number; walkMin: number } | null;
 }): { headline: string; detail?: string } {
-  if (p.sunDown) {
+  if (p.status === "sun-down") {
     return {
       headline: "The sun is down at the selected time.",
       detail: "There's no direct sun to budget. Move the time slider into daylight.",
     };
   }
   if (p.status === "picking") return { headline: "Tap the map to set a start." };
-  if (p.status === "loading") return { headline: "Finding where you can go…" };
   if (p.status === "uncovered") {
     return { headline: "Sun Budget needs NYC shade data.", detail: "It isn't available for this start yet." };
   }
   if (p.status === "error") return { headline: "Couldn't load the streets here.", detail: "Try another start." };
-  const scope = `in ${p.walkMin} min on ≤ ${p.sunMin} min of direct sun, one way`;
+  if (p.status === "loading" || !p.shown) return { headline: "Finding where you can go…" };
+  // Worded from the region on screen, never from a slider that has moved past it.
+  const scope = `in ${p.shown.walkMin} min on ≤ ${p.shown.sunMin} min of direct sun, one way`;
+  const dashed = p.undecidedCount > 0;
   if (p.provenCount === 0) {
     return {
-      headline: `Nothing confirmed yet ${scope}.`,
-      detail: p.undecidedCount > 0 ? "Dashed streets weren't confirmed either way." : undefined,
+      headline: `No street confirmed ${scope}.`,
+      detail: dashed ? "Dashed streets weren't confirmed either way." : undefined,
     };
   }
-  if (p.outcome === "budget-exhausted") {
+  if (p.outcome === "budget-exhausted" && dashed) {
     return {
-      headline: `Solid streets: reachable ${scope}.`,
+      headline: `Solid streets: a walk from your start reaches them ${scope}.`,
       detail: "The search stopped early. Dashed streets may still be reachable.",
     };
   }
-  if (p.outcome === "approximate" && p.undecidedCount > 0) {
-    return { headline: `Solid streets: reachable ${scope}.`, detail: "Dashed streets weren't confirmed either way." };
+  if (dashed) {
+    return {
+      headline: `Solid streets: a walk from your start reaches them ${scope}.`,
+      detail: "Dashed streets weren't confirmed either way.",
+    };
   }
-  return { headline: `Every street you can reach ${scope}.` };
+  return { headline: `Every street a walk from your start reaches ${scope}.` };
 }
 
 export default function SunBudgetPanel(props: SunBudgetPanelProps) {
@@ -105,7 +108,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
           step={1}
           value={props.sunMin}
           aria-valuetext={sunLabel}
-          disabled={props.sunDown}
+          disabled={props.status === "sun-down"}
           onChange={(event) => props.onSunMinChange(Number(event.target.value))}
           className="sun-budget-range min-h-11 w-full"
           style={{ "--sun-budget-fill": `${(props.sunMin / 20) * 100}%` } as CSSProperties}
@@ -140,7 +143,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
       </div>
 
       <p style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
-        Shade is modelled in 15-minute steps from building and tree data. No waiting, and no trip back.
+        Modelled shade (clear sky) in 15-minute steps from building and tree data, for a steady 5 km/h walk with no stops at crossings. One way, no waiting for shade.
       </p>
     </section>
   );
