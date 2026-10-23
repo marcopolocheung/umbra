@@ -3,6 +3,7 @@ import type { SunBudgetStatus } from "../hooks/useSunBudget";
 import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
 import type { SunReachOutcome } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
+import Tag from "./ui/Tag";
 import Segmented from "./ui/Segmented";
 import "./sunBudget.css";
 
@@ -16,6 +17,8 @@ interface SunBudgetPanelProps {
   walkMin: number;
   /** The budgets of the region on screen; the sliders run ahead of it while a search runs. */
   shown: { sunMin: number; walkMin: number } | null;
+  /** The region was cut at the edge of NYC's shade data (#380). */
+  clipped?: boolean;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
   onUseLocation?: () => void;
@@ -35,7 +38,8 @@ export function sunBudgetMessage(p: {
   provenCount: number;
   undecidedCount: number;
   shown: { sunMin: number; walkMin: number } | null;
-}): { headline: string; detail?: string } {
+  clipped?: boolean;
+}): { headline: string; detail?: string; plate?: string } {
   if (p.status === "sun-down") {
     return {
       headline: "The sun is down at the selected time.",
@@ -51,30 +55,44 @@ export function sunBudgetMessage(p: {
   // Worded from the region on screen, never from a slider that has moved past it.
   const scope = `in ${p.shown.walkMin} min on ≤ ${p.shown.sunMin} min of direct sun, one way`;
   const dashed = p.undecidedCount > 0;
+  // Appended wherever it applies: the region ends where NYC's data does.
+  const edge = p.clipped
+    ? " Streets past the edge of NYC's data aren't shown, and streets near it may be missing if the only way there runs past it."
+    : "";
   if (p.provenCount === 0) {
     return {
+      plate: "None confirmed",
       headline: `No street confirmed ${scope}.`,
-      detail: dashed ? "Dashed streets weren't confirmed either way." : undefined,
+      detail: (dashed ? "Dashed streets weren't confirmed either way." : "") + edge || undefined,
     };
   }
   if (p.outcome === "budget-exhausted" && dashed) {
     return {
+      plate: "Stopped early",
       headline: `Solid streets: a walk from your start reaches them ${scope}.`,
-      detail: "The search stopped early. Dashed streets may still be reachable.",
+      detail: `The search stopped early. Dashed streets may still be reachable.${edge}`,
     };
   }
   if (dashed) {
     return {
+      plate: "Some confirmed",
       headline: `Solid streets: a walk from your start reaches them ${scope}.`,
-      detail: "Dashed streets weren't confirmed either way.",
+      detail: `Dashed streets weren't confirmed either way.${edge}`,
     };
   }
-  return { headline: `Every street a walk from your start reaches ${scope}.` };
+  if (p.clipped) {
+    return {
+      plate: "Up to the data's edge",
+      headline: `Solid streets: a walk from your start reaches them ${scope}.`,
+      detail: edge.trim(),
+    };
+  }
+  return { plate: "All streets", headline: `Every street a walk from your start reaches ${scope}.` };
 }
 
 export default function SunBudgetPanel(props: SunBudgetPanelProps) {
   const sliderId = useId();
-  const { headline, detail } = sunBudgetMessage(props);
+  const { headline, detail, plate } = sunBudgetMessage(props);
   const sunLabel = `${props.sunMin} min of sun`;
   return (
     <section aria-label="Sun Budget" className="flex flex-col gap-3 border-2 border-ink bg-panel p-4">
@@ -133,7 +151,11 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
         </button>
       )}
 
-      <div role="status" aria-live="polite" className="flex flex-col gap-1">
+      <div role="status" aria-live="polite" className="flex flex-col items-start gap-1">
+        {/* The outcome in words (#381): the map's dashes say the same, never colour alone. */}
+        {plate && (
+          <Tag tone="neutral">{plate}</Tag>
+        )}
         <p className="font-semibold" style={{ fontSize: "var(--text-body)", color: "var(--color-ink)" }}>
           {headline}
         </p>

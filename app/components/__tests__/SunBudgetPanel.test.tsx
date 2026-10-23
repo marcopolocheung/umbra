@@ -50,6 +50,25 @@ describe("sunBudgetMessage", () => {
     expect(`${m.headline} ${m.detail}`).not.toMatch(/≤ 8 min/);
   });
 
+  it("labels each outcome in its own words (#381)", () => {
+    const plates = [
+      sunBudgetMessage(base).plate,
+      sunBudgetMessage({ ...base, outcome: "approximate", undecidedCount: 5 }).plate,
+      sunBudgetMessage({ ...base, outcome: "budget-exhausted", undecidedCount: 5 }).plate,
+    ];
+    expect(plates).toEqual(["All streets", "Some confirmed", "Stopped early"]);
+  });
+
+  it("a region cut at the data's edge never claims every street, and says why (#380)", () => {
+    const m = sunBudgetMessage({ ...base, clipped: true });
+    expect(m.headline).not.toMatch(/^Every street/);
+    expect(m.detail).toMatch(/edge of NYC's data/);
+    expect(m.detail).toMatch(/streets near it may be missing/);
+    expect(m.plate).not.toBe("All streets");
+    const dashed = sunBudgetMessage({ ...base, clipped: true, outcome: "approximate", undecidedCount: 3 });
+    expect(dashed.detail).toMatch(/weren't confirmed.*edge of NYC's data/);
+  });
+
   it("says plainly when the start is outside the shade data", () => {
     expect(sunBudgetMessage({ ...base, status: "uncovered", outcome: null }).headline).toMatch(/NYC shade data/);
   });

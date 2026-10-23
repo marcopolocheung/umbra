@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Exhaustive oracles: single cases take up to ~2 s alone, so a loaded full
+// suite can push one past vitest's 5 s default. The whole file gets headroom.
+vi.setConfig({ testTimeout: 30_000 });
 import type { GraphEdge, RoutingGraph } from "../routing";
 import { type SunReachOptions, type SunReachResult, sunReach } from "../sunReach";
 import { edgeTraversalSeconds, isProhibitedEdge } from "../travelMode";

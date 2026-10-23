@@ -14,6 +14,7 @@ import { type CachedReach, mergeRegion, type ReachRegion } from "../lib/reach/me
 import { buildSunReachGraph, searchSunReachGraph } from "../lib/reach/sunBudgetClient";
 import { type BuiltReachGraph, nodeMap } from "../lib/reach/sunBudgetWorkerProtocol";
 import type { SunReachOutcome } from "../lib/sunReach";
+import { getTravelModePolicy } from "../lib/travelMode";
 
 export type SunBudgetStatus = "off" | "picking" | "loading" | "uncovered" | "ready" | "error" | "sun-down";
 
@@ -41,6 +42,10 @@ export interface SunBudgetState {
   shown: { sunMin: number; walkMin: number } | null;
   region: ReachRegion | null;
   outcome: SunReachOutcome | null;
+  /** The region was cut at the edge of the shade data (#380). */
+  clipped: boolean;
+  /** Changes once per start, when its first region is drawn: the moment to fit the map (#378). */
+  fitKey: number | null;
   /** Graph nodes, for drawing edges; null until a graph is built. */
   nodes: Map<number, { lat: number; lon: number }> | null;
   enter: () => void;
@@ -193,6 +198,18 @@ export function useSunBudget(
               ? "ready"
               : "loading";
 
+  // #380: the shown walk can reach the cut only if its radius (as reachGraph sizes it) gets there.
+  const shownRadiusM = current ? current.timeSec * getTravelModePolicy("walk").speedMps * 1.1 : 0;
+  const clipped = Boolean(current && okGraph && okGraph.edgeM !== null && shownRadiusM >= okGraph.edgeM);
+
+  // #378: one fit per start — not per graph, so a timeline move or a rebuild never refits.
+  const fittedStartRef = useRef<[number, number] | null>(null);
+  const fitCountRef = useRef(0);
+  if (current && start && fittedStartRef.current !== start) {
+    fittedStartRef.current = start;
+    fitCountRef.current++;
+  }
+
   return {
     status,
     start,
@@ -201,7 +218,10 @@ export function useSunBudget(
     walkMin,
     shown: current ? { sunMin: current.sunSec / 60, walkMin: current.timeSec / 60 } : null,
     region,
-    outcome: current?.result.outcome ?? null,
+    // A region that reaches the data's edge may miss streets near it: never "every street".
+    outcome: current ? (clipped && current.result.outcome === "exact" ? "approximate" : current.result.outcome) : null,
+    clipped,
+    fitKey: current ? fitCountRef.current : null,
     nodes,
     enter,
     exit,

@@ -396,8 +396,8 @@ export default function Home() {
     ? (coord: { lng: number; lat: number }) => sunBudget.setStart([coord.lng, coord.lat])
     : handleMapClick;
   const reachRegion = useMemo(
-    () => ({ region: sunBudget.region, nodes: sunBudget.nodes }),
-    [sunBudget.region, sunBudget.nodes],
+    () => ({ region: sunBudget.region, nodes: sunBudget.nodes, outcome: sunBudget.outcome }),
+    [sunBudget.region, sunBudget.nodes, sunBudget.outcome],
   );
   // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
   const sunBudgetPins = useMemo(
@@ -418,6 +418,7 @@ export default function Home() {
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
       shown={sunBudget.shown}
+      clipped={sunBudget.clipped}
       onSunMinChange={sunBudget.setSunMin}
       onWalkMinChange={sunBudget.setWalkMin}
       onUseLocation={userLocation ? () => sunBudget.setStart(userLocation) : undefined}
@@ -458,6 +459,47 @@ export default function Home() {
   useEffect(() => {
     if (!onSunBudgetScreen) exitSunBudget();
   }, [onSunBudgetScreen, exitSunBudget]);
+
+  // #378: show the whole region once, when a start's first region lands — unless
+  // the user has moved the map since tapping. Slider steps never refit.
+  const reachRegionRef = useRef(reachRegion);
+  reachRegionRef.current = reachRegion;
+  const userMovedRef = useRef(false);
+  // Attached while Sun Budget is open; opening it re-runs this once the map exists.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !sunBudgetOn) return;
+    const onMove = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent) userMovedRef.current = true;
+    };
+    map.on("movestart", onMove);
+    return () => {
+      map.off("movestart", onMove);
+    };
+  }, [mapRef, sunBudgetOn]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new start re-arms the fit
+  useEffect(() => {
+    userMovedRef.current = false;
+  }, [sunBudget.start]);
+  useEffect(() => {
+    const map = mapRef.current;
+    const { region, nodes } = reachRegionRef.current;
+    if (sunBudget.fitKey === null || !map || !region || !nodes || userMovedRef.current) return;
+    let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+    for (const edge of [...region.proven, ...region.undecided]) {
+      for (const id of [edge.fromId, edge.toId]) {
+        const node = nodes.get(id);
+        if (!node) continue;
+        west = Math.min(west, node.lon);
+        east = Math.max(east, node.lon);
+        south = Math.min(south, node.lat);
+        north = Math.max(north, node.lat);
+      }
+    }
+    if (west === Infinity) return;
+    // Capped like the route fit: a small region must not zoom right in.
+    map.fitBounds([[west, south], [east, north]], { padding: getRouteFitPadding(), duration: 500, maxZoom: 16 });
+  }, [sunBudget.fitKey, mapRef, getRouteFitPadding]);
 
   // Weather for the heat score, from D2's cache — the same response the cloud badge
   // already fetched for this location, matched to the hour the timeline is showing.

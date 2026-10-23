@@ -99,7 +99,9 @@ describe("buildReachGraph", () => {
   }
   afterEach(() => vi.doUnmock("../remoteNavigation"));
 
-  const snapshot = (generation = "nyc-2026-09-18-393d4cd24a30") => ({ generation, manifest: {}, base: "x" });
+  /** NYC-ish support: the start at -73.99, 40.75 is inside, 2.8 km from no edge. */
+  const support = { south: 40.6, west: -74.1, north: 40.9, east: -73.8 };
+  const snapshot = (generation = "nyc-2026-09-18-393d4cd24a30") => ({ generation, manifest: { supportBounds: support }, base: "x" });
 
   it("is uncovered with no navigation dataset configured", async () => {
     expect(await withLoaders({ acquireNavigationSnapshot: async () => null })).toMatchObject({ status: "uncovered" });
@@ -108,6 +110,83 @@ describe("buildReachGraph", () => {
   it("is uncovered for a quarantined shade generation", async () => {
     const r = await withLoaders({ acquireNavigationSnapshot: async () => snapshot("nyc-2026-09-18-b94934cd765a") });
     expect(r).toMatchObject({ status: "uncovered", reason: "shade generation quarantined" });
+  });
+
+  it("is uncovered when the start itself is outside the data", async () => {
+    vi.resetModules();
+    vi.doMock("../remoteNavigation", async (orig) => ({ ...(await orig<object>()), acquireNavigationSnapshot: async () => snapshot() }));
+    const { buildReachGraph } = await import("../reachGraph");
+    expect(await buildReachGraph({ ...args, center: [-87.6, 41.9] })).toMatchObject({ status: "uncovered", reason: "outside the shade table" });
+  });
+
+  it("near the data's edge, cuts the walk area there instead of refusing a covered start (#380)", async () => {
+    // Start 600 m inside the east edge: a 30-min walk box pokes past it.
+    const center: [number, number] = [-73.807, 40.75];
+    let selectedBox: { east: number } | null = null;
+    // Streets: a covered 3-node line inside, and one segment crossing the edge the table does not hold.
+    // 1-3 inside the east edge (-73.8); 4 is past it, so the uncovered 3-4 crosses the edge.
+    const lons: Record<number, number> = { 1: -73.809, 2: -73.808, 3: -73.807, 4: -73.795 };
+    const nodes = new Map([1, 2, 3, 4].map((id) => [id, { id, lat: 40.75, lon: lons[id] }]));
+    const edge = (toId: number) => ({ toId, distanceM: 84, shadowFactor: 0 });
+    const streetGraph = { nodes, adj: new Map([[1, [edge(2)]], [2, [edge(1), edge(3)]], [3, [edge(2), edge(4)]], [4, [edge(3)]]]) };
+    vi.resetModules();
+    vi.doMock("../remoteNavigation", async (orig) => ({
+      ...(await orig<object>()),
+      acquireNavigationSnapshot: async () => snapshot(),
+      selectNavigationShards: (_m: unknown, box: { east: number }) => {
+        selectedBox = box;
+        return { streets: [], buildings: [], shadeShards: [{}] };
+      },
+      loadNavigationStreetShards: async () => [],
+      loadNavigationShadeShard: async () => ({}),
+      loadShadeSlotBlocks: async () => new Map(),
+    }));
+    vi.doMock("../routingGraphAdapter", () => ({ buildRoutingGraphFromStreetShards: () => streetGraph }));
+    vi.doMock("../shadeTable", async (orig) => ({
+      ...(await orig<object>()),
+      createShadeTableView: () => ({ covers: (key: string) => key !== "3,4", shadowFor: () => ({ left: 0, right: 0 }), slots: () => [] }),
+    }));
+    const { buildReachGraph } = await import("../reachGraph");
+    const built = await buildReachGraph({ ...args, center });
+    vi.doUnmock("../routingGraphAdapter");
+    vi.doUnmock("../shadeTable");
+    expect(built).toMatchObject({ status: "ok" });
+    if (built.status === "ok") expect(built.edgeM).toBeGreaterThan(400);
+    expect(selectedBox!.east).toBe(support.east);
+    if (built.status !== "ok") return;
+    // The uncovered segment past the edge is gone; the covered ones stay.
+    expect(built.graph.adj.get(3)!.some((e) => e.toId === 4)).toBe(false);
+    expect(built.graph.adj.get(2)!.some((e) => e.toId === 3)).toBe(true);
+  });
+
+  it("still refuses a hole in the shade data inside the edge, even when cut (#380)", async () => {
+    // Start 600 m inside the east edge: a 30-min walk box pokes past it.
+    const center: [number, number] = [-73.807, 40.75];
+    // Streets: a covered 3-node line inside, and one segment crossing the edge the table does not hold.
+    // All four inside: the uncovered 3-4 is a hole in the data, not the edge.
+    const lons: Record<number, number> = { 1: -73.809, 2: -73.808, 3: -73.807, 4: -73.806 };
+    const nodes = new Map([1, 2, 3, 4].map((id) => [id, { id, lat: 40.75, lon: lons[id] }]));
+    const edge = (toId: number) => ({ toId, distanceM: 84, shadowFactor: 0 });
+    const streetGraph = { nodes, adj: new Map([[1, [edge(2)]], [2, [edge(1), edge(3)]], [3, [edge(2), edge(4)]], [4, [edge(3)]]]) };
+    vi.resetModules();
+    vi.doMock("../remoteNavigation", async (orig) => ({
+      ...(await orig<object>()),
+      acquireNavigationSnapshot: async () => snapshot(),
+      selectNavigationShards: () => ({ streets: [], buildings: [], shadeShards: [{}] }),
+      loadNavigationStreetShards: async () => [],
+      loadNavigationShadeShard: async () => ({}),
+      loadShadeSlotBlocks: async () => new Map(),
+    }));
+    vi.doMock("../routingGraphAdapter", () => ({ buildRoutingGraphFromStreetShards: () => streetGraph }));
+    vi.doMock("../shadeTable", async (orig) => ({
+      ...(await orig<object>()),
+      createShadeTableView: () => ({ covers: (key: string) => key !== "3,4", shadowFor: () => ({ left: 0, right: 0 }), slots: () => [] }),
+    }));
+    const { buildReachGraph } = await import("../reachGraph");
+    const built = await buildReachGraph({ ...args, center });
+    vi.doUnmock("../routingGraphAdapter");
+    vi.doUnmock("../shadeTable");
+    expect(built).toEqual({ status: "uncovered", reason: "shade table misses streets here" });
   });
 
   it("is uncovered outside the dataset's support, or where it publishes no shade", async () => {

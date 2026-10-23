@@ -14,6 +14,7 @@ const ok = async (args: { center: [number, number] }): Promise<BuiltReachGraph> 
   status: "ok",
   graphId: nextGraphId++,
   startPoint: args.center,
+  edgeM: null,
   nodeIds: new Float64Array(),
   nodeLon: new Float64Array(),
   nodeLat: new Float64Array(),
@@ -134,6 +135,63 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.status).toBe("ready"));
     expect(build).toHaveBeenCalledTimes(2);
     expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
+  });
+
+  it("keeps the same fit when the same start's graph is rebuilt (#378)", async () => {
+    let calls = 0;
+    const search = vi.fn<Search>(async () => {
+      if (calls++ === 0) throw new Error("graph 1 is not kept");
+      return result([edge(1, 2)]);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    const first = hook.current.fitKey;
+    act(() => hook.current.setSunMin(9));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(3));
+    expect(hook.current.fitKey).toBe(first);
+  });
+
+  it("asks for one map fit per start, never per slider step (#378)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    expect(hook.current.fitKey).toBeNull();
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.fitKey).not.toBeNull());
+    const first = hook.current.fitKey;
+    act(() => hook.current.setSunMin(12));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(hook.current.fitKey).toBe(first);
+    act(() => hook.current.setStart([-73.98, 40.76]));
+    await waitFor(() => expect(hook.current.fitKey).not.toBe(first));
+  });
+
+  it("calls a region clipped only when the shown walk reaches the data's edge (#380)", async () => {
+    // The edge is 1.2 km away: a 10-min walk (~0.92 km with margin) can't reach it, a 20-min one can.
+    const edgeBuild = async (args: { center: [number, number] }): Promise<BuiltReachGraph> => ({
+      ...((await ok(args)) as Extract<BuiltReachGraph, { status: "ok" }>),
+      edgeM: 1200,
+    });
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, edgeBuild, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    expect(hook.current.clipped).toBe(true);
+    expect(hook.current.outcome).toBe("approximate");
+    act(() => hook.current.setWalkMin(10));
+    await waitFor(() => expect(hook.current.shown?.walkMin).toBe(10));
+    expect(hook.current.clipped).toBe(false);
+    expect(hook.current.outcome).toBe("exact");
   });
 
   it("says uncovered outside the shade table and never searches", async () => {

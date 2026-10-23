@@ -70,7 +70,11 @@ interface MapViewProps {
   streetTypeSegments?: StreetTypeSegment[];
   showStreetTypes?: boolean;
   /** H3b Sun Budget: the region to draw and the graph nodes its edges name. */
-  reachRegion?: { region: ReachRegion | null; nodes: Map<number, { lat: number; lon: number }> | null };
+  reachRegion?: {
+    region: ReachRegion | null;
+    nodes: Map<number, { lat: number; lon: number }> | null;
+    outcome?: "exact" | "approximate" | "budget-exhausted" | null;
+  };
   /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
   basemapTheme?: UiTheme;
 }
@@ -795,6 +799,7 @@ export default function MapView({
 
         // H3b Sun Budget region, filed above the shadow with the routes (mapLayerOrder.ts).
         reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current, enabled: !accumulationOnRef.current });
+        reachRef.current.setOutcome(reachRegionRef.current?.outcome ?? null);
         reachRef.current.setRegion(reachRegionRef.current?.region ?? null, reachRegionRef.current?.nodes ?? null);
 
         // The canopy ground-protection pass: the same shared store the fill reads
@@ -937,6 +942,7 @@ export default function MapView({
 
   useEffect(() => {
     reachRegionRef.current = reachRegion;
+    reachRef.current?.setOutcome(reachRegion?.outcome ?? null);
     reachRef.current?.setRegion(reachRegion?.region ?? null, reachRegion?.nodes ?? null);
     const map = mapRef.current;
     if (map && reachRef.current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);

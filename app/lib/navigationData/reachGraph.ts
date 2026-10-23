@@ -10,6 +10,7 @@
 import {
   bfsReachable,
   type GraphEdge,
+  haversineMeters,
   parallelSidewalkEdges,
   removeVirtualNode,
   type RoutingGraph,
@@ -17,7 +18,6 @@ import {
   snapToReachableEdge,
   swapSideAgainstCanonical,
 } from "../routing";
-import { routingEdgeBatch } from "../navigationHelpers";
 import { utcOffsetMinAt } from "../timezone";
 import { getTravelModePolicy, type TravelModeId } from "../travelMode";
 import {
@@ -50,6 +50,12 @@ export type ReachGraph =
       /** Where the search starts: the snapped point on the street, not the tap. */
       startPoint: [number, number];
       timeAware: { bucketMs: number; bucketCount: number };
+      /**
+       * Metres from the start to the nearest edge of the data when the graph
+       * was cut there (#380), else null. A walk radius that reaches it may be
+       * missing streets near the edge.
+       */
+      edgeM: number | null;
     };
 
 /** A start piece this small is a stray fragment (a cut-off path), not a neighbourhood. */
@@ -130,7 +136,29 @@ export async function buildReachGraph(args: {
   // Everything a walker can cover in the time budget, plus a margin for the
   // street grid's detours over the straight line.
   const radiusM = timeBudgetSec * getTravelModePolicy(travelMode).speedMps * 1.1;
-  const box = zoneAround(center[0], center[1], radiusM);
+  const support = snapshot.manifest.supportBounds;
+  const inside = (lon: number, lat: number) =>
+    lon >= support.west && lon <= support.east && lat >= support.south && lat <= support.north;
+  if (!inside(center[0], center[1])) return { status: "uncovered", reason: "outside the shade table" };
+  // Near the data's edge the walk radius pokes past it: cut the box there
+  // rather than refuse a start that is itself covered (#380).
+  const full = zoneAround(center[0], center[1], radiusM);
+  const box = {
+    south: Math.max(full.south, support.south),
+    west: Math.max(full.west, support.west),
+    north: Math.min(full.north, support.north),
+    east: Math.min(full.east, support.east),
+  };
+  const clipped = box.south !== full.south || box.west !== full.west || box.north !== full.north || box.east !== full.east;
+  const [lon, lat] = center;
+  const edgeM = clipped
+    ? Math.min(
+        haversineMeters(center, [lon, support.south]),
+        haversineMeters(center, [lon, support.north]),
+        haversineMeters(center, [support.west, lat]),
+        haversineMeters(center, [support.east, lat]),
+      )
+    : null;
   const selection = selectNavigationShards(snapshot.manifest, box);
   if (!selection || selection.shadeShards.length === 0) {
     return { status: "uncovered", reason: "outside the shade table" };
@@ -150,8 +178,21 @@ export async function buildReachGraph(args: {
   );
   const view = createShadeTableView(shadeShards.map((shard, i) => ({ shard, blocks: blocks[i] })));
   const streetGraph = buildRoutingGraphFromStreetShards(streets);
-  if (!routingEdgeBatch(streetGraph).keys.every((key) => view.covers(key))) {
-    return { status: "uncovered", reason: "shade table misses streets here" };
+  // A street the table does not hold is dropped only when it crosses the data's
+  // edge (#380); one wholly inside is a hole in the data, and refuses as before.
+  const pastEdge = (id: number) => {
+    const node = streetGraph.nodes.get(id);
+    return !node || !inside(node.lon, node.lat);
+  };
+  for (const [fromId, edges] of streetGraph.adj) {
+    const kept: GraphEdge[] = [];
+    for (const edge of edges) {
+      if (view.covers(`${Math.min(fromId, edge.toId)},${Math.max(fromId, edge.toId)}`)) kept.push(edge);
+      else if (!(clipped && (pastEdge(fromId) || pastEdge(edge.toId)))) {
+        return { status: "uncovered", reason: "shade table misses streets here" };
+      }
+    }
+    streetGraph.adj.set(fromId, kept);
   }
   const graph = timeAwareGraphFromTable(streetGraph, view, perBucket);
   const startId = snapStart(center, graph, travelMode);
@@ -163,5 +204,6 @@ export async function buildReachGraph(args: {
     startId,
     startPoint: [start.lon, start.lat],
     timeAware: { bucketMs: REACH_BUCKET_MS, bucketCount },
+    edgeM,
   };
 }
