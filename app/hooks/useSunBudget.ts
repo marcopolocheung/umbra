@@ -10,9 +10,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildReachGraph, type ReachGraph } from "../lib/navigationData/reachGraph";
 import { type CachedReach, mergeRegion, type ReachRegion } from "../lib/reach/mergeRegion";
-import { searchSunReach } from "../lib/routingWorkerClient";
+import { buildSunReachGraph, searchSunReachGraph } from "../lib/reach/sunBudgetClient";
+import { type BuiltReachGraph, nodeMap } from "../lib/reach/sunBudgetWorkerProtocol";
 import type { SunReachOutcome } from "../lib/sunReach";
 
 export type SunBudgetStatus = "off" | "picking" | "loading" | "uncovered" | "ready" | "error" | "sun-down";
@@ -25,7 +25,8 @@ const SLIDER_DEBOUNCE_MS = 150;
 const DEPARTURE_SETTLE_MS = 600;
 const SLOT_MS = 15 * 60_000;
 
-type OkGraph = Extract<ReachGraph, { status: "ok" }>;
+/** A graph the worker built and keeps; the main thread holds its id and node positions. */
+type OkGraph = Extract<BuiltReachGraph, { status: "ok" }>;
 /** A result, and the graph it is a result for. */
 type Entry = CachedReach & { graph: OkGraph };
 
@@ -53,19 +54,25 @@ export function useSunBudget(
   departure: Date,
   sunDown: boolean,
   // Injected so tests need no network or worker; module functions, so stable.
-  build: typeof buildReachGraph = buildReachGraph,
-  search: typeof searchSunReach = searchSunReach,
+  build: typeof buildSunReachGraph = buildSunReachGraph,
+  search: typeof searchSunReachGraph = searchSunReachGraph,
 ): SunBudgetState {
   const [active, setActive] = useState(false);
   const [start, setStartState] = useState<[number, number] | null>(null);
   const [sunMin, setSunMin] = useState(8);
   const [walkMin, setWalkMin] = useState(20);
-  const [graph, setGraph] = useState<ReachGraph | "loading" | "error" | null>(null);
+  const [graph, setGraph] = useState<BuiltReachGraph | "loading" | "error" | null>(null);
+  // A search error on a kept graph means the worker lost it (it failed and
+  // restarted): rebuild once rather than leave the user on an error.
+  const [rebuild, setRebuild] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [currentKey, setCurrentKey] = useState<{ graph: OkGraph; sunSec: number; timeSec: number } | null>(null);
   const [searchFailed, setSearchFailed] = useState(false);
   // Read for the cache hit only: a new entry landing must not start another search.
   const entriesRef = useRef(entries);
+  // One automatic rebuild per question (start + departure), not per graph: a
+  // rebuild makes a new graph, so a per-graph guard would rebuild forever.
+  const rebuiltRef = useRef(false);
   entriesRef.current = entries;
 
   // The shade table is clock-slotted at 15 minutes; round to the nearest slot,
@@ -78,6 +85,11 @@ export function useSunBudget(
     return () => clearTimeout(timer);
   }, [slot]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new question (start, departure) resets the guard
+  useEffect(() => {
+    rebuiltRef.current = false;
+  }, [start, settledSlot]);
+
   const enter = useCallback(() => setActive(true), []);
   const exit = useCallback(() => {
     setActive(false);
@@ -85,6 +97,7 @@ export function useSunBudget(
   }, []);
 
   // A new start or departure slot is a new graph.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `rebuild` re-asks for the same graph after the worker lost it
   useEffect(() => {
     setEntries([]);
     setCurrentKey(null);
@@ -95,14 +108,11 @@ export function useSunBudget(
     }
     const controller = new AbortController();
     setGraph("loading");
-    build({
-      center: start,
-      timeBudgetSec: GRAPH_WALK_SEC,
-      departure: new Date(settledSlot * SLOT_MS),
-      // The panel speaks in walking minutes, so the region is a walking one.
-      travelMode: "walk",
-      signal: controller.signal,
-    }).then(
+    // Always walking (the worker builds at walk pace): the panel speaks in walking minutes.
+    build(
+      { center: start, timeBudgetSec: GRAPH_WALK_SEC, departure: new Date(settledSlot * SLOT_MS) },
+      { signal: controller.signal },
+    ).then(
       (built) => {
         if (!controller.signal.aborted) setGraph(built);
       },
@@ -113,9 +123,11 @@ export function useSunBudget(
       },
     );
     return () => controller.abort();
-  }, [active, start, settledSlot, sunDown, build]);
+  }, [active, start, settledSlot, sunDown, build, rebuild]);
 
   const okGraph = graph && typeof graph !== "string" && graph.status === "ok" ? graph : null;
+  // Rebuilt once per graph from the arrays the worker handed over.
+  const nodes = useMemo(() => (okGraph ? nodeMap(okGraph) : null), [okGraph]);
 
   // Re-search on a budget change, debounced; a newer change aborts the older search.
   useEffect(() => {
@@ -130,9 +142,8 @@ export function useSunBudget(
     const controller = new AbortController();
     const timer = setTimeout(() => {
       search(
-        okGraph.graph,
-        okGraph.startId,
-        { sunBudgetSec: sunSec, timeBudgetSec: timeSec, travelMode: "walk", timeAware: okGraph.timeAware },
+        okGraph.graphId,
+        { sunBudgetSec: sunSec, timeBudgetSec: timeSec, travelMode: "walk" },
         { signal: controller.signal },
       ).then(
         (result) => {
@@ -144,7 +155,13 @@ export function useSunBudget(
         (error) => {
           if (controller.signal.aborted) return;
           console.warn("[sun budget] search failed", error);
-          setSearchFailed(true);
+          // Once per graph: the worker may have restarted and lost it.
+          if (!rebuiltRef.current) {
+            rebuiltRef.current = true;
+            setRebuild((n) => n + 1);
+          } else {
+            setSearchFailed(true);
+          }
         },
       );
     }, SLIDER_DEBOUNCE_MS);
@@ -185,7 +202,7 @@ export function useSunBudget(
     shown: current ? { sunMin: current.sunSec / 60, walkMin: current.timeSec / 60 } : null,
     region,
     outcome: current?.result.outcome ?? null,
-    nodes: okGraph?.graph.nodes ?? null,
+    nodes,
     enter,
     exit,
     setStart: setStartState,
