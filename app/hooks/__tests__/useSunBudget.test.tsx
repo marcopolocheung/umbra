@@ -14,6 +14,7 @@ const ok = async (args: { center: [number, number] }): Promise<BuiltReachGraph> 
   status: "ok",
   graphId: nextGraphId++,
   startPoint: args.center,
+  clipped: false,
   nodeIds: new Float64Array(),
   nodeLon: new Float64Array(),
   nodeLat: new Float64Array(),
@@ -134,6 +135,39 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.status).toBe("ready"));
     expect(build).toHaveBeenCalledTimes(2);
     expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
+  });
+
+  it("asks for one map fit per start, never per slider step (#378)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    expect(hook.current.fitKey).toBeNull();
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.fitKey).not.toBeNull());
+    const first = hook.current.fitKey;
+    act(() => hook.current.setSunMin(12));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(hook.current.fitKey).toBe(first);
+    act(() => hook.current.setStart([-73.98, 40.76]));
+    await waitFor(() => expect(hook.current.fitKey).not.toBe(first));
+  });
+
+  it("never reports a region cut at the data's edge as exact (#380)", async () => {
+    const clippedBuild = async (args: { center: [number, number] }): Promise<BuiltReachGraph> => ({
+      ...(await ok(args) as Extract<BuiltReachGraph, { status: "ok" }>),
+      clipped: true,
+    });
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, clippedBuild, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    expect(hook.current.clipped).toBe(true);
+    expect(hook.current.outcome).toBe("approximate");
   });
 
   it("says uncovered outside the shade table and never searches", async () => {

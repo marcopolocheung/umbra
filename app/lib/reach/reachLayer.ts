@@ -27,8 +27,12 @@ export const REACH_LAYER_IDS = [REACH_PROVEN_CASING_ID, REACH_PROVEN_LAYER_ID, R
 const width = (z12: number, z16: number): maplibregl.ExpressionSpecification =>
   ["interpolate", ["linear"], ["zoom"], 12, z12, 16, z16];
 export const REACH_UNDECIDED_OPACITY = 0.9;
+/** Undecided streets: "not confirmed" dashes, and sparser where the search stopped early (#381). */
+export const REACH_DASH = { approximate: [1.5, 2], "budget-exhausted": [1, 4] } as const;
 
 export interface ReachLayerHandle {
+  /** The outcome on screen; a search that stopped early dashes its undecided streets sparser. */
+  setOutcome(outcome: "exact" | "approximate" | "budget-exhausted" | null): void;
   setRegion(region: ReachRegion | null, nodes: Map<number, { lat: number; lon: number }> | null): void;
   /** Off in Sun Exposure mode, whose GeoTIFF export writes the canvas as drawn. */
   setEnabled(enabled: boolean): void;
@@ -80,6 +84,7 @@ export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme; enabled?
   let theme = opts.theme;
   let enabled = opts.enabled ?? true;
   let hasFeatures = false;
+  let dash: keyof typeof REACH_DASH = "approximate";
 
   function applyVisibility(): void {
     const visible = enabled && hasFeatures ? "visible" : "none";
@@ -123,7 +128,7 @@ export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme; enabled?
         "line-color": mapColor(theme, "route"),
         "line-width": width(1, 2.5),
         "line-opacity": REACH_UNDECIDED_OPACITY,
-        "line-dasharray": [1.5, 2],
+        "line-dasharray": [...REACH_DASH[dash]],
       },
     });
   }
@@ -134,6 +139,14 @@ export function attachReachLayer(map: ReachMap, opts: { theme: UiTheme; enabled?
       ensure(data);
       hasFeatures = data.features.length > 0;
       applyVisibility();
+    },
+    setOutcome(next) {
+      const nextDash = next === "budget-exhausted" ? "budget-exhausted" : "approximate";
+      if (nextDash === dash) return;
+      dash = nextDash;
+      if (map.getLayer(REACH_UNDECIDED_LAYER_ID)) {
+        map.setPaintProperty(REACH_UNDECIDED_LAYER_ID, "line-dasharray", [...REACH_DASH[dash]]);
+      }
     },
     setEnabled(next) {
       if (next === enabled) return;

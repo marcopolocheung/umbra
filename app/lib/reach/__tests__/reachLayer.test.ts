@@ -10,6 +10,7 @@ import {
   REACH_PROVEN_LAYER_ID,
   REACH_SOURCE_ID,
   REACH_UNDECIDED_LAYER_ID,
+  REACH_DASH,
   REACH_UNDECIDED_OPACITY,
   reachFeatures,
 } from "../reachLayer";
@@ -141,6 +142,21 @@ describe("attachReachLayer", () => {
     attachReachLayer(fake.map, { theme: "day" }).setRegion({ proven: [edge(1, 2, "left")], undecided: [] }, nodes);
     reconcileMapLayerOrder(fake.map, ["label"], "shadow");
     expect(fake.order).toEqual(["road", "building", "shadow", ...REACH_LAYER_IDS, "nav-route-casing", "nav-route-line", "label"]);
+  });
+
+  it("dashes a stopped-early search's undecided streets sparser than an approximate one's (#381)", () => {
+    const fake = fakeMap(["shadow"]);
+    const painted: unknown[] = [];
+    (fake.map as unknown as { setPaintProperty: (id: string, k: string, v: unknown) => void }).setPaintProperty = (_id, key, value) => {
+      if (key === "line-dasharray") painted.push(value);
+    };
+    const layer = attachReachLayer(fake.map, { theme: "day" });
+    layer.setRegion({ proven: [edge(1, 2, "left")], undecided: [edge(2, 3, "left")] }, nodes);
+    layer.setOutcome("budget-exhausted");
+    layer.setOutcome("budget-exhausted");
+    layer.setOutcome("approximate");
+    expect(painted).toEqual([[...REACH_DASH["budget-exhausted"]], [...REACH_DASH.approximate]]);
+    expect(REACH_DASH["budget-exhausted"]).not.toEqual(REACH_DASH.approximate);
   });
 
   it("dashes only the undecided layer", () => {

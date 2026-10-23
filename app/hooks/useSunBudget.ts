@@ -41,6 +41,10 @@ export interface SunBudgetState {
   shown: { sunMin: number; walkMin: number } | null;
   region: ReachRegion | null;
   outcome: SunReachOutcome | null;
+  /** The region was cut at the edge of the shade data (#380). */
+  clipped: boolean;
+  /** Changes once per start, when its first region is drawn: the moment to fit the map (#378). */
+  fitKey: number | null;
   /** Graph nodes, for drawing edges; null until a graph is built. */
   nodes: Map<number, { lat: number; lon: number }> | null;
   enter: () => void;
@@ -201,7 +205,10 @@ export function useSunBudget(
     walkMin,
     shown: current ? { sunMin: current.sunSec / 60, walkMin: current.timeSec / 60 } : null,
     region,
-    outcome: current?.result.outcome ?? null,
+    // A graph cut at the data's edge may miss streets past it: never "every street".
+    outcome: current ? (okGraph?.clipped && current.result.outcome === "exact" ? "approximate" : current.result.outcome) : null,
+    clipped: okGraph?.clipped ?? false,
+    fitKey: current && okGraph ? okGraph.graphId : null,
     nodes,
     enter,
     exit,
