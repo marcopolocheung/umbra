@@ -3,7 +3,7 @@ import type { SunBudgetStatus } from "../hooks/useSunBudget";
 import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
 import type { SunReachOutcome } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
-import Plate from "./ui/Plate";
+import Tag from "./ui/Tag";
 import Segmented from "./ui/Segmented";
 import "./sunBudget.css";
 
@@ -56,7 +56,9 @@ export function sunBudgetMessage(p: {
   const scope = `in ${p.shown.walkMin} min on ≤ ${p.shown.sunMin} min of direct sun, one way`;
   const dashed = p.undecidedCount > 0;
   // Appended wherever it applies: the region ends where NYC's data does.
-  const edge = p.clipped ? " Streets past the edge of NYC's data aren't shown." : "";
+  const edge = p.clipped
+    ? " Streets past the edge of NYC's data aren't shown, and streets near it may be missing if the only way there runs past it."
+    : "";
   if (p.provenCount === 0) {
     return {
       plate: "None confirmed",
@@ -152,9 +154,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
       <div role="status" aria-live="polite" className="flex flex-col items-start gap-1">
         {/* The outcome in words (#381): the map's dashes say the same, never colour alone. */}
         {plate && (
-          <Plate as="span" tone="ink" className="px-2 py-0.5 font-extrabold uppercase tracking-wider" style={{ fontFamily: "var(--font-label)", fontSize: "var(--text-caption)" }}>
-            {plate}
-          </Plate>
+          <Tag tone="neutral">{plate}</Tag>
         )}
         <p className="font-semibold" style={{ fontSize: "var(--text-body)", color: "var(--color-ink)" }}>
           {headline}

@@ -497,7 +497,8 @@ export default function Home() {
       }
     }
     if (west === Infinity) return;
-    map.fitBounds([[west, south], [east, north]], { padding: getRouteFitPadding(), duration: 500 });
+    // Capped like the route fit: a small region must not zoom right in.
+    map.fitBounds([[west, south], [east, north]], { padding: getRouteFitPadding(), duration: 500, maxZoom: 16 });
   }, [sunBudget.fitKey, mapRef, getRouteFitPadding]);
 
   // Weather for the heat score, from D2's cache — the same response the cloud badge

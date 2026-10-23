@@ -63,6 +63,7 @@ describe("sunBudgetMessage", () => {
     const m = sunBudgetMessage({ ...base, clipped: true });
     expect(m.headline).not.toMatch(/^Every street/);
     expect(m.detail).toMatch(/edge of NYC's data/);
+    expect(m.detail).toMatch(/streets near it may be missing/);
     expect(m.plate).not.toBe("All streets");
     const dashed = sunBudgetMessage({ ...base, clipped: true, outcome: "approximate", undecidedCount: 3 });
     expect(dashed.detail).toMatch(/weren't confirmed.*edge of NYC's data/);

@@ -42,8 +42,8 @@ export type BuiltReachGraph =
       status: "ok";
       graphId: number;
       startPoint: [number, number];
-      /** Cut at the data's edge: no region on this graph can be called exact (#380). */
-      clipped: boolean;
+      /** Metres from the start to the data's edge when the graph was cut there, else null (#380). */
+      edgeM: number | null;
       /** Node ids with their positions, parallel arrays (transferred). */
       nodeIds: Float64Array;
       nodeLon: Float64Array;
@@ -112,7 +112,7 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         return {
           type: "built",
           requestId,
-          built: { status: "ok", graphId, startPoint: graph.startPoint, clipped: graph.clipped, ...nodeArrays(graph.graph) },
+          built: { status: "ok", graphId, startPoint: graph.startPoint, edgeM: graph.edgeM, ...nodeArrays(graph.graph) },
         };
       }
       if (!kept || kept.graphId !== command.graphId) throw new Error(`graph ${command.graphId} is not kept`);

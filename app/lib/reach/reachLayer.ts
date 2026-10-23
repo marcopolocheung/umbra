@@ -27,8 +27,12 @@ export const REACH_LAYER_IDS = [REACH_PROVEN_CASING_ID, REACH_PROVEN_LAYER_ID, R
 const width = (z12: number, z16: number): maplibregl.ExpressionSpecification =>
   ["interpolate", ["linear"], ["zoom"], 12, z12, 16, z16];
 export const REACH_UNDECIDED_OPACITY = 0.9;
-/** Undecided streets: "not confirmed" dashes, and sparser where the search stopped early (#381). */
-export const REACH_DASH = { approximate: [1.5, 2], "budget-exhausted": [1, 4] } as const;
+/**
+ * Undecided streets (#381): short dashes when the search finished, long dashes
+ * when it stopped early. Both keep roughly as much ink, so the streets the copy
+ * says "may still be reachable" never fade to a hairline of dots.
+ */
+export const REACH_DASH = { approximate: [1.5, 2], "budget-exhausted": [4, 2] } as const;
 
 export interface ReachLayerHandle {
   /** The outcome on screen; a search that stopped early dashes its undecided streets sparser. */

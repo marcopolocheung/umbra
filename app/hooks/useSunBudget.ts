@@ -14,6 +14,7 @@ import { type CachedReach, mergeRegion, type ReachRegion } from "../lib/reach/me
 import { buildSunReachGraph, searchSunReachGraph } from "../lib/reach/sunBudgetClient";
 import { type BuiltReachGraph, nodeMap } from "../lib/reach/sunBudgetWorkerProtocol";
 import type { SunReachOutcome } from "../lib/sunReach";
+import { getTravelModePolicy } from "../lib/travelMode";
 
 export type SunBudgetStatus = "off" | "picking" | "loading" | "uncovered" | "ready" | "error" | "sun-down";
 
@@ -197,6 +198,18 @@ export function useSunBudget(
               ? "ready"
               : "loading";
 
+  // #380: the shown walk can reach the cut only if its radius (as reachGraph sizes it) gets there.
+  const shownRadiusM = current ? current.timeSec * getTravelModePolicy("walk").speedMps * 1.1 : 0;
+  const clipped = Boolean(current && okGraph && okGraph.edgeM !== null && shownRadiusM >= okGraph.edgeM);
+
+  // #378: one fit per start — not per graph, so a timeline move or a rebuild never refits.
+  const fittedStartRef = useRef<[number, number] | null>(null);
+  const fitCountRef = useRef(0);
+  if (current && start && fittedStartRef.current !== start) {
+    fittedStartRef.current = start;
+    fitCountRef.current++;
+  }
+
   return {
     status,
     start,
@@ -205,10 +218,10 @@ export function useSunBudget(
     walkMin,
     shown: current ? { sunMin: current.sunSec / 60, walkMin: current.timeSec / 60 } : null,
     region,
-    // A graph cut at the data's edge may miss streets past it: never "every street".
-    outcome: current ? (okGraph?.clipped && current.result.outcome === "exact" ? "approximate" : current.result.outcome) : null,
-    clipped: okGraph?.clipped ?? false,
-    fitKey: current && okGraph ? okGraph.graphId : null,
+    // A region that reaches the data's edge may miss streets near it: never "every street".
+    outcome: current ? (clipped && current.result.outcome === "exact" ? "approximate" : current.result.outcome) : null,
+    clipped,
+    fitKey: current ? fitCountRef.current : null,
     nodes,
     enter,
     exit,

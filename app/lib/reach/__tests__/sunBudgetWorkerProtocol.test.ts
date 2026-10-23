@@ -19,7 +19,7 @@ const fakeBuild = (seed: number) => async (): Promise<ReachGraph> => ({
   startId: 0,
   startPoint: [-74, 40.7],
   timeAware,
-  clipped: false,
+  edgeM: null,
 });
 const build = (requestId: number): SunBudgetCommand => ({
   type: "build", protocol: P, requestId, center: [-74, 40.7], timeBudgetSec: 1800, departureMs: 0,
