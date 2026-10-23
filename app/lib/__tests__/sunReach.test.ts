@@ -165,3 +165,55 @@ describe("sunReach — the bucket-boundary merge (#246)", () => {
     expect(reachKeys(result)).toEqual(oracleReach(graph, 0, options));
   });
 });
+
+describe("sunReach — the pruning slack covers every boundary and every short edge", () => {
+	/** A graph from edges given in walking SECONDS (walk speed 1.4 m/s), both directions. */
+	function secondsGraph(edges: Array<[number, number, number, number[]]>): RoutingGraph {
+		const ids = [...new Set(edges.flatMap(([a, b]) => [a, b]))];
+		const graph: RoutingGraph = { nodes: new Map(ids.map((id) => [id, { id, lat: 40.7 + id / 1000, lon: -74 }])), adj: new Map() };
+		for (const [a, b, sec, timeShadow] of edges) {
+			const e = (toId: number): GraphEdge => ({ toId, distanceM: sec * 1.4, shadowFactor: timeShadow[0], timeShadow });
+			for (const [x, y] of [[a, b], [b, a]]) {
+				if (!graph.adj.has(x)) graph.adj.set(x, []);
+				graph.adj.get(x)!.push(e(y));
+			}
+		}
+		return graph;
+	}
+	const SUNNY = [0, 0, 0];
+	const SHADE = [1, 1, 1];
+
+	// In both fixtures A reaches node 3 at 50 s on 35 s of sun and B at 56 s on
+	// more; only B's later clock carries the last edge into shade. A must not
+	// prune B, or that edge is lost while the search still reports `exact`.
+
+	it("sums the slack over every boundary still inside the time budget", () => {
+		// Boundaries at 60 s and 120 s. A pays 8 s more at each (16 s); B is 15 s
+		// behind, so one boundary's slack (8 + Δ 6) would wrongly let A prune B.
+		const graph = secondsGraph([
+			[0, 1, 35, SUNNY], [1, 3, 15, SHADE],
+			[0, 2, 50, SUNNY], [2, 3, 6, SHADE],
+			[3, 4, 8, [0, 1, 1]], [4, 5, 50, SHADE], [5, 6, 8, [0, 0, 1]],
+		]);
+		const options: SunReachOptions = { sunBudgetSec: 50.5, timeBudgetSec: 125, timeAware: { bucketMs: 60_000, bucketCount: 3 } };
+		const result = sunReach(graph, 0, { ...options, maxLabelsPerSlot: 64 });
+		expect(result.reachable.some((e) => e.fromId === 5 && e.toId === 6)).toBe(true);
+		expect(reachKeys(result)).toEqual(oracleReach(graph, 0, options));
+	});
+
+	it("charges the short-edge term: two short edges in one window cost twice the largest jump", () => {
+		// Two 4.5 s edges both end inside A's last 6 s before 60 s. A pays 9 s
+		// more; B is 6 s behind, so the jump alone (4.5 s) would let A prune B.
+		const graph = secondsGraph([
+			[0, 1, 35, [0, 0]], [1, 3, 15, [1, 1]],
+			[0, 2, 41, [0, 0]], [2, 3, 15, [1, 1]],
+			[3, 4, 4.5, [0, 1]], [4, 5, 4.5, [0, 1]],
+		]);
+		const options: SunReachOptions = { sunBudgetSec: 42, timeBudgetSec: 66, timeAware: { bucketMs: 60_000, bucketCount: 2 } };
+		const result = sunReach(graph, 0, options);
+		expect(result.outcome).toBe("exact");
+		expect(result.reachable.some((e) => e.fromId === 4 && e.toId === 5)).toBe(true);
+		expect(reachKeys(result)).toEqual(oracleReach(graph, 0, options));
+	});
+});
+

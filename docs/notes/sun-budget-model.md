@@ -143,8 +143,13 @@ set per (node, arrival bucket). Label *a* prunes *b* when *a* arrives no later a
 - **Capped search.** With slots of 1, `reachable ⊆ truth ⊆ reachable ∪ undecided` holds on all
   60 lattices.
 - **Unlimited sun.** With sun unbounded, the result is exact even with slots of 1.
-- **Monotonicity.** Widening either budget never shrinks the region.
+- **Monotonicity, for `exact` results only.** Widening either budget never shrinks an `exact`
+  region. An `approximate` one can shrink: a wider sun budget admits labels that evict others
+  from a capped slot (the verifier found 90 shrinks in 4,800 widenings at slot caps 1–2, none at
+  the default 8). H3b must not paint `reachable` alone as if it only grows.
 - **The tests can fail.** Dropping the slack term fails the #246 fixture and one lattice.
+  Summing it over the first boundary only, or dropping its short-edge term, each fails a
+  dedicated fixture.
 
 **Measured on NYC** (generation `nyc-2026-09-18-393d4cd24a30`, the 12 `routeCompare` graphs and
 departures, *S* = 8 min, *T* = 20 min, walk, Node on the SwiftShader WSL box; street km count each

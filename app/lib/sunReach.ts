@@ -125,7 +125,7 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
     const s = new Float64Array(cap); s.set(lS); lS = s;
     const d = new Uint8Array(cap); d.set(lDead); lDead = d;
   };
-  const slotCount = new Uint8Array(N * B);
+  const slotCount = new Int32Array(N * B);
   const slotLabels = new Int32Array(N * B * K);
   /** a can reach everything b can: no later, and no sunnier by more than the slack. */
   const covers = (a: number, t: number, s: number) =>
