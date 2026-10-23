@@ -41,9 +41,9 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode, onSunB
           Draw route
         </button>
         {onSunBudget && (
-          <button type="button" onClick={onSunBudget} className={`${ACTION} col-span-2 bg-panel text-ink hover:bg-ground`}>
+          <button type="button" onClick={onSunBudget} className={`${ACTION} col-span-2 bg-panel text-ink hover:bg-ground`} aria-label="Sun budget: where can I go?">
             <span className="material-symbols-outlined text-lg" aria-hidden="true">explore</span>
-            Where can I go on a sun budget?
+            Sun budget
           </button>
         )}
       </div>

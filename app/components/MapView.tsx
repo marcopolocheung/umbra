@@ -793,8 +793,8 @@ export default function MapView({
         });
         streetTypeRef.current.setSegments(streetTypeSegmentsRef.current ?? []);
 
-        // H3b Sun Budget region. Same placement as the sheds.
-        reachRef.current = attachReachLayer(map, { belowLayerId: maybeCustom.id, theme: basemapThemeRef.current });
+        // H3b Sun Budget region, filed above the shadow with the routes (mapLayerOrder.ts).
+        reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current });
         reachRef.current.setRegion(reachRegionRef.current?.region ?? null, reachRegionRef.current?.nodes ?? null);
 
         // The canopy ground-protection pass: the same shared store the fill reads
@@ -938,6 +938,8 @@ export default function MapView({
   useEffect(() => {
     reachRegionRef.current = reachRegion;
     reachRef.current?.setRegion(reachRegion?.region ?? null, reachRegion?.nodes ?? null);
+    const map = mapRef.current;
+    if (map && reachRef.current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
   }, [reachRegion]);
 
   useEffect(() => {

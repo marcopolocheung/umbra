@@ -398,6 +398,11 @@ export default function Home() {
     () => ({ region: sunBudget.region, nodes: sunBudget.nodes }),
     [sunBudget.region, sunBudget.nodes],
   );
+  // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
+  const sunBudgetPins = useMemo(
+    () => (sunBudgetOn ? (sunBudget.start ? [{ lng: sunBudget.start[0], lat: sunBudget.start[1], label: "Start" }] : []) : null),
+    [sunBudgetOn, sunBudget.start],
+  );
   const sunBudgetCard = (
     <SunBudgetPanel
       status={sunBudget.status}
@@ -406,6 +411,7 @@ export default function Home() {
       undecidedCount={sunBudget.region?.undecided.length ?? 0}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
+      sunDown={solarPosition ? solarPosition.altitudeDeg <= 0 : false}
       onSunMinChange={sunBudget.setSunMin}
       onWalkMinChange={sunBudget.setWalkMin}
       onUseLocation={userLocation ? () => sunBudget.setStart(userLocation) : undefined}
@@ -1665,16 +1671,16 @@ export default function Home() {
                 setShadowLayerReady(layer !== null);
               }}
               onMapClick={onMapClick}
-              navWaypoints={navWaypoints}
+              navWaypoints={sunBudgetOn ? {} : navWaypoints}
               navRoute={sunBudgetOn ? null : selectedNavRoute}
               showSunLines={showSunLines}
               mapClickActive={pendingSlot !== null || sunBudget.status === "picking"}
               onMarkerDragEnd={handleMarkerDragEnd}
-              navTrainDrawData={navTrainDrawData}
-              navMrtEntrances={navMrtEntrances}
-              additionalWaypoints={additionalWaypoints}
+              navTrainDrawData={sunBudgetOn ? null : navTrainDrawData}
+              navMrtEntrances={sunBudgetOn ? null : navMrtEntrances}
+              additionalWaypoints={sunBudgetOn ? [] : additionalWaypoints}
               userLocation={userLocation}
-              assistantPins={assistantPins}
+              assistantPins={sunBudgetPins ?? assistantPins}
               drawMode={drawMode}
               sketchPoints={sketchPoints}
               onSketchPointClick={handleSketchPointClick}

@@ -1,9 +1,10 @@
-import { useId } from "react";
+import { type CSSProperties, useId } from "react";
 import type { SunBudgetStatus } from "../hooks/useSunBudget";
 import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
 import type { SunReachOutcome } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
 import Segmented from "./ui/Segmented";
+import "./sunBudget.css";
 
 interface SunBudgetPanelProps {
   status: SunBudgetStatus;
@@ -13,6 +14,8 @@ interface SunBudgetPanelProps {
   undecidedCount: number;
   sunMin: number;
   walkMin: number;
+  /** The sun is below the horizon at the selected time: every street is in shade. */
+  sunDown?: boolean;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
   onUseLocation?: () => void;
@@ -33,7 +36,14 @@ export function sunBudgetMessage(p: {
   undecidedCount: number;
   sunMin: number;
   walkMin: number;
+  sunDown?: boolean;
 }): { headline: string; detail?: string } {
+  if (p.sunDown) {
+    return {
+      headline: "The sun is down at the selected time.",
+      detail: "There's no direct sun to budget. Move the time slider into daylight.",
+    };
+  }
   if (p.status === "picking") return { headline: "Tap the map to set a start." };
   if (p.status === "loading") return { headline: "Finding where you can go…" };
   if (p.status === "uncovered") {
@@ -83,7 +93,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
             Most direct sun
           </label>
           {/* The slider speaks its value (aria-valuetext); the one live region is the result below. */}
-          <output htmlFor={sliderId} aria-hidden="true" className="font-semibold" style={{ fontSize: "var(--text-body)" }}>
+          <output htmlFor={sliderId} aria-hidden="true" className="font-semibold tabular-nums" style={{ fontSize: "var(--text-body)" }}>
             {sunLabel}
           </output>
         </div>
@@ -95,9 +105,15 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
           step={1}
           value={props.sunMin}
           aria-valuetext={sunLabel}
+          disabled={props.sunDown}
           onChange={(event) => props.onSunMinChange(Number(event.target.value))}
-          className="min-h-11 w-full accent-ink"
+          className="sun-budget-range min-h-11 w-full"
+          style={{ "--sun-budget-fill": `${(props.sunMin / 20) * 100}%` } as CSSProperties}
         />
+        <div className="flex justify-between tabular-nums" aria-hidden="true" style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
+          <span>0 min</span>
+          <span>20 min</span>
+        </div>
       </div>
 
       <Segmented

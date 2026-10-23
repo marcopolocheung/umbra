@@ -1,0 +1,10 @@
+/* H3b Sun Budget slider: a track that reads against the panel (rule, ≥3:1),
+   an ink fill to the value, and the same focus ring as the Directions slider. */
+.sun-budget-range { appearance: none; height: 44px; margin: 0; background: transparent; cursor: pointer; }
+.sun-budget-range::-webkit-slider-runnable-track { height: 6px; background: linear-gradient(90deg, var(--color-ink) var(--sun-budget-fill), var(--color-rule) var(--sun-budget-fill)); }
+.sun-budget-range::-moz-range-track { height: 6px; background: var(--color-rule); }
+.sun-budget-range::-moz-range-progress { height: 6px; background: var(--color-ink); }
+.sun-budget-range::-webkit-slider-thumb { appearance: none; width: 28px; height: 28px; margin-top: -11px; border: 3px solid var(--color-ink); border-radius: var(--radius-circle); background: var(--color-panel); }
+.sun-budget-range::-moz-range-thumb { width: 28px; height: 28px; border: 3px solid var(--color-ink); border-radius: var(--radius-circle); background: var(--color-panel); }
+.sun-budget-range:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.sun-budget-range:disabled { cursor: not-allowed; opacity: 0.5; }

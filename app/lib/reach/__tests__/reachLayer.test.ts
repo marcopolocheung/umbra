@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { BASEMAP_PALETTES, mapColor } from "../../basemapTheme";
+import { reconcileMapLayerOrder } from "../../mapLayerOrder";
 import { isBlueDominantShadowPixel } from "../../shadowSampling";
 import { shadowPixelAt } from "../../shadowField/__tests__/agreement/harness";
 import type { SunReachEdge } from "../../sunReach";
 import {
   attachReachLayer,
+  REACH_LAYER_IDS,
   REACH_PROVEN_LAYER_ID,
-  REACH_PROVEN_OPACITY,
   REACH_SOURCE_ID,
   REACH_UNDECIDED_LAYER_ID,
   REACH_UNDECIDED_OPACITY,
@@ -20,28 +21,40 @@ const detected = (c: Rgb) => isBlueDominantShadowPixel(c[0], c[1], c[2]);
 // ─── Invariant #5 ─────────────────────────────────────────────────────────────
 
 describe("the reach lines and the shadow predicate (invariant #5)", () => {
-  // Beneath the buildings, the lines can land on any solid basemap colour.
+  // Drawn above the shadow layer, a line pixel is the line's own colour (casing
+  // and ink opaque) or the dash over whatever lies beneath, shaded or not.
   const surfaces = Object.entries(BASEMAP_PALETTES).flatMap(([theme, colors]) =>
     Object.entries(colors)
       .filter(([, c]) => c.startsWith("#"))
       .map(([role, hex]) => ({ name: `${theme} ${role}`, theme: theme as "day" | "night", rgb: rgb(hex) })),
   );
-  const under = (line: Rgb, surface: Rgb, opacity: number): Rgb =>
-    surface.map((c, i) => Math.round(line[i] * opacity + c * (1 - opacity))) as unknown as Rgb;
+  const over = (line: Rgb, under: Rgb, opacity: number): Rgb =>
+    under.map((c, i) => Math.round(line[i] * opacity + c * (1 - opacity))) as unknown as Rgb;
 
-  for (const opacity of [REACH_UNDECIDED_OPACITY, REACH_PROVEN_OPACITY]) {
-    it(`at opacity ${opacity}, never makes sun read as shadow, nor loses a shadow the predicate saw`, () => {
-      for (const s of surfaces) {
-        const line = rgb(mapColor(s.theme, "route"));
-        const lined = under(line, s.rgb, opacity);
-        if (!detected(s.rgb)) expect({ name: s.name, detected: detected(lined) }).toEqual({ name: s.name, detected: false });
-        for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-          if (!detected(shadowPixelAt(t, s.rgb))) continue;
-          expect({ name: s.name, t, detected: detected(shadowPixelAt(t, lined)) }).toEqual({ name: s.name, t, detected: true });
-        }
+  it("never paints a colour the canvas sampler reads as shadow", () => {
+    for (const theme of ["day", "night"] as const) {
+      expect(detected(rgb(mapColor(theme, "route")))).toBe(false);
+      expect(detected(rgb(mapColor(theme, "casing")))).toBe(false);
+    }
+  });
+
+  it("the dash never turns a sunlit pixel into shadow", () => {
+    for (const s of surfaces) {
+      if (detected(s.rgb)) continue;
+      const dashed = over(rgb(mapColor(s.theme, "route")), s.rgb, REACH_UNDECIDED_OPACITY);
+      expect({ name: s.name, detected: detected(dashed) }).toEqual({ name: s.name, detected: false });
+    }
+  });
+
+  it("is not blue over shadow either: the region is ink, never a shade signal", () => {
+    for (const s of surfaces) {
+      for (const t of [0, 0.5, 1]) {
+        const shaded = shadowPixelAt(t, s.rgb);
+        const dashed = over(rgb(mapColor(s.theme, "route")), shaded, REACH_UNDECIDED_OPACITY);
+        expect({ name: s.name, t, detected: detected(dashed) }).toEqual({ name: s.name, t, detected: false });
       }
-    });
-  }
+    }
+  });
 });
 
 // ─── Features ─────────────────────────────────────────────────────────────────
@@ -54,13 +67,18 @@ const nodes = new Map([
 const edge = (fromId: number, toId: number, side: "left" | "right"): SunReachEdge => ({ fromId, toId, side, distanceM: 100 });
 
 describe("reachFeatures", () => {
-  it("tags proven and undecided edges and offsets each sidewalk to its own side", () => {
-    const fc = reachFeatures({ proven: [edge(1, 2, "left")], undecided: [edge(2, 3, "right")] }, nodes);
-    expect(fc.features.map((f) => f.properties)).toEqual([
-      { state: "proven", offset: -3 },
-      { state: "undecided", offset: 3 },
-    ]);
+  it("draws one centreline per street, whichever sidewalk or direction reached it", () => {
+    const fc = reachFeatures(
+      { proven: [edge(1, 2, "left"), edge(2, 1, "left"), edge(1, 2, "right")], undecided: [] },
+      nodes,
+    );
+    expect(fc.features).toHaveLength(1);
     expect(fc.features[0].geometry.coordinates).toEqual([[-73.99, 40.75], [-73.99, 40.751]]);
+  });
+
+  it("a street proven by any sidewalk is proven, never also dashed", () => {
+    const fc = reachFeatures({ proven: [edge(2, 1, "right")], undecided: [edge(1, 2, "left"), edge(2, 3, "left")] }, nodes);
+    expect(fc.features.map((f) => f.properties)).toEqual([{ state: "proven" }, { state: "undecided" }]);
   });
 
   it("skips edges whose nodes the graph does not hold (snap nodes)", () => {
@@ -72,10 +90,10 @@ describe("reachFeatures", () => {
 
 type ReachMap = Parameters<typeof attachReachLayer>[0];
 
-function fakeMap(style: Array<{ id: string; sourceLayer?: string }>) {
-  const order = style.map((l) => l.id);
-  const layers = new globalThis.Map<string, { sourceLayer?: string; layout: Record<string, unknown>; spec?: unknown }>(
-    style.map((l) => [l.id, { sourceLayer: l.sourceLayer, layout: {} }]),
+function fakeMap(style: string[]) {
+  const order = [...style];
+  const layers = new globalThis.Map<string, { layout: Record<string, unknown>; spec?: unknown }>(
+    style.map((id) => [id, { layout: {} }]),
   );
   const sources = new globalThis.Map<string, { data: GeoJSON.FeatureCollection }>();
   let addLayerCalls = 0;
@@ -85,13 +103,17 @@ function fakeMap(style: Array<{ id: string; sourceLayer?: string }>) {
       return source && { setData: (data: GeoJSON.FeatureCollection) => { source.data = data; } };
     },
     addSource: (id: string, spec: { data: GeoJSON.FeatureCollection }) => sources.set(id, { data: spec.data }),
-    addLayer: (layer: { id: string }, beforeId?: string) => {
+    addLayer: (layer: { id: string }) => {
       addLayerCalls++;
-      order.splice(beforeId === undefined ? order.length : order.indexOf(beforeId), 0, layer.id);
+      order.push(layer.id);
       layers.set(layer.id, { layout: {}, spec: layer });
     },
     getLayer: (id: string) => layers.get(id),
     getLayersOrder: () => [...order],
+    moveLayer: (id: string) => {
+      order.splice(order.indexOf(id), 1);
+      order.push(id);
+    },
     setLayoutProperty: (id: string, key: string, value: unknown) => {
       const layer = layers.get(id);
       if (layer) layer.layout[key] = value;
@@ -99,7 +121,7 @@ function fakeMap(style: Array<{ id: string; sourceLayer?: string }>) {
     setPaintProperty: () => {},
   };
   return {
-    map: map as unknown as ReachMap,
+    map: map as unknown as ReachMap & Parameters<typeof reconcileMapLayerOrder>[0],
     order,
     layers,
     features: () => sources.get(REACH_SOURCE_ID)?.data.features.length,
@@ -107,48 +129,36 @@ function fakeMap(style: Array<{ id: string; sourceLayer?: string }>) {
   };
 }
 
-const STYLE = [
-  { id: "road", sourceLayer: "transportation" },
-  { id: "building", sourceLayer: "building" },
-  { id: "shadow" },
-];
-
 describe("attachReachLayer", () => {
   it("adds nothing until there is a region to draw", () => {
-    const fake = fakeMap(STYLE);
-    attachReachLayer(fake.map, { belowLayerId: "shadow", theme: "day" }).setRegion(null, null);
+    const fake = fakeMap(["road", "building", "shadow"]);
+    attachReachLayer(fake.map, { theme: "day" }).setRegion(null, null);
     expect(fake.order).toEqual(["road", "building", "shadow"]);
   });
 
-  it("draws both layers beneath the buildings, never above the shadow layer", () => {
-    const fake = fakeMap(STYLE);
-    attachReachLayer(fake.map, { belowLayerId: "shadow", theme: "day" }).setRegion(
-      { proven: [edge(1, 2, "left")], undecided: [edge(2, 3, "left")] },
-      nodes,
-    );
-    expect(fake.order).toEqual(["road", REACH_PROVEN_LAYER_ID, REACH_UNDECIDED_LAYER_ID, "building", "shadow"]);
+  it("files above the shadow and under the route once the stack is reconciled", () => {
+    const fake = fakeMap(["road", "building", "shadow", "nav-route-casing", "nav-route-line", "label"]);
+    attachReachLayer(fake.map, { theme: "day" }).setRegion({ proven: [edge(1, 2, "left")], undecided: [] }, nodes);
+    reconcileMapLayerOrder(fake.map, ["label"], "shadow");
+    expect(fake.order).toEqual(["road", "building", "shadow", ...REACH_LAYER_IDS, "nav-route-casing", "nav-route-line", "label"]);
   });
 
   it("dashes only the undecided layer", () => {
-    const fake = fakeMap(STYLE);
-    attachReachLayer(fake.map, { belowLayerId: "shadow", theme: "day" }).setRegion(
-      { proven: [edge(1, 2, "left")], undecided: [] },
-      nodes,
-    );
+    const fake = fakeMap(["shadow"]);
+    attachReachLayer(fake.map, { theme: "day" }).setRegion({ proven: [edge(1, 2, "left")], undecided: [] }, nodes);
     const paint = (id: string) => (fake.layers.get(id)!.spec as { paint: Record<string, unknown> }).paint;
     expect(paint(REACH_PROVEN_LAYER_ID)["line-dasharray"]).toBeUndefined();
-    expect(paint(REACH_UNDECIDED_LAYER_ID)["line-dasharray"]).toEqual([2, 2]);
+    expect(paint(REACH_UNDECIDED_LAYER_ID)["line-dasharray"]).toBeDefined();
   });
 
-  it("updates the data in place and hides both layers when the region empties", () => {
-    const fake = fakeMap(STYLE);
-    const layer = attachReachLayer(fake.map, { belowLayerId: "shadow", theme: "day" });
+  it("updates the data in place and hides every layer when the region empties", () => {
+    const fake = fakeMap(["shadow"]);
+    const layer = attachReachLayer(fake.map, { theme: "day" });
     layer.setRegion({ proven: [edge(1, 2, "left")], undecided: [] }, nodes);
     layer.setRegion({ proven: [edge(1, 2, "left"), edge(2, 3, "right")], undecided: [] }, nodes);
-    expect(fake.addLayerCalls()).toBe(2);
+    expect(fake.addLayerCalls()).toBe(3);
     expect(fake.features()).toBe(2);
     layer.setRegion(null, null);
-    expect(fake.layers.get(REACH_PROVEN_LAYER_ID)?.layout.visibility).toBe("none");
-    expect(fake.layers.get(REACH_UNDECIDED_LAYER_ID)?.layout.visibility).toBe("none");
+    for (const id of REACH_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("none");
   });
 });

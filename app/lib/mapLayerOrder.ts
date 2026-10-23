@@ -5,6 +5,10 @@ type LayerOrderMap = Pick<maplibregl.Map, "getLayersOrder" | "moveLayer">;
 // Casings precede their strokes. These lines must clear the custom layer's
 // building depth, but leave the basemap's words and paired icons unobscured.
 const NAVIGATION_LINES = [
+  // H3b Sun Budget region: under every route, so a route drawn over it stays on top.
+  "sun-budget-reach-proven-casing",
+  "sun-budget-reach-proven",
+  "sun-budget-reach-undecided",
   "nav-route-casing",
   "nav-route-line",
   "train-route-lines-casing",
