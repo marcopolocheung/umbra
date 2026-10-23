@@ -74,7 +74,8 @@ describe("sunReach against the exhaustive oracle", () => {
     });
   }
 
-  it("stays sound when the slot cap drops labels: reachable ⊆ truth ⊆ reachable ∪ undecided", () => {
+  // 60 exhaustive oracles: ~6 s under a loaded full suite, past vitest's 5 s default.
+  it("stays sound when the slot cap drops labels: reachable ⊆ truth ⊆ reachable ∪ undecided", { timeout: 30_000 }, () => {
     let approximate = 0;
     for (const c of cases()) {
       const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);

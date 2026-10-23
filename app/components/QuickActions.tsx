@@ -4,6 +4,8 @@ interface QuickActionsProps {
   onNavigate: () => void;
   onDrawRoute: () => void;
   drawMode: boolean;
+  /** H3b: opens Sun Budget — where can I go on a sun budget, no destination. */
+  onSunBudget?: () => void;
 }
 
 const ACTION =
@@ -15,7 +17,7 @@ const ACTION =
  * the map (after Back, Done, a sketch or an assistant plan), so "nothing
  * planned" would be false.
  */
-export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: QuickActionsProps) {
+export default function QuickActions({ onNavigate, onDrawRoute, drawMode, onSunBudget }: QuickActionsProps) {
   return (
     <div className="flex flex-col gap-3 border-2 border-ink bg-panel p-4">
       <div className="flex flex-col items-start gap-1">
@@ -38,6 +40,12 @@ export default function QuickActions({ onNavigate, onDrawRoute, drawMode }: Quic
           <span className="material-symbols-outlined text-lg" aria-hidden="true">draw</span>
           Draw route
         </button>
+        {onSunBudget && (
+          <button type="button" onClick={onSunBudget} className={`${ACTION} col-span-2 bg-panel text-ink hover:bg-ground`} aria-label="Sun budget: where can I go?">
+            <span className="material-symbols-outlined text-lg" aria-hidden="true">explore</span>
+            Sun budget
+          </button>
+        )}
       </div>
     </div>
   );

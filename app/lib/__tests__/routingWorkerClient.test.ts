@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { paretoRoutes, type RoutingGraph } from "../routing";
 import { handleRoutingCommand, type RoutingWorkerCommand } from "../routingWorkerProtocol";
+import { sunReach } from "../sunReach";
 import { randomGraph } from "./paretoCases.fixture";
 
 /** A stand-in Worker: records posts; the test answers through `reply`. */
@@ -51,6 +52,29 @@ afterEach(() => {
 });
 
 describe("routing worker client", () => {
+  it("resolves a reach search from the worker's reach answer, not by re-running it here (H3b)", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const { searchSunReach } = await client();
+    const options = { sunBudgetSec: 60, timeBudgetSec: 200 };
+    const r = searchSunReach(graphA, 0, options);
+    await flush();
+    const w = FakeWorker.instances[0];
+    expect(w.posts[0].command.type).toBe("reach");
+    w.reply(0);
+    const result = await r;
+    expect(result.reachable).toStrictEqual(sunReach(graphA, 0, options).reachable);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("runs a reach search on this thread when there is no Worker", async () => {
+    vi.stubGlobal("Worker", undefined);
+    const { searchSunReach } = await client();
+    const options = { sunBudgetSec: 60, timeBudgetSec: 200 };
+    await expect(searchSunReach(graphA, 0, options)).resolves.toMatchObject({
+      reachable: sunReach(graphA, 0, options).reachable,
+    });
+  });
+
   it("matches replies to requests by id and transfers the graph buffers", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     const { searchParetoRoutes } = await client();

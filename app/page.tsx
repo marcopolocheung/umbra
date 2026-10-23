@@ -18,6 +18,8 @@ import { streetTypeBreakdown } from "./lib/navigationData/signatureRoute";
 import RoutePreviewGrip from "./components/RoutePreviewGrip";
 import HourlyExposureStrip from "./components/HourlyExposureStrip";
 import QuickActions from "./components/QuickActions";
+import SunBudgetPanel from "./components/SunBudgetPanel";
+import { useSunBudget } from "./hooks/useSunBudget";
 import DirectionsPanel from "./components/DirectionsPanel";
 import NavigationStatusPanel from "./components/NavigationStatusPanel";
 import ArrivalPanel from "./components/ArrivalPanel";
@@ -386,6 +388,42 @@ export default function Home() {
     streetTypeSegments,
     streetTypes,
   } = nav;
+  // H3b Sun Budget: while it is open, a map tap sets its start and the route layers step aside.
+  const sunDown = solarPosition ? solarPosition.altitudeDeg <= 0 : false;
+  const sunBudget = useSunBudget(date, sunDown);
+  const sunBudgetOn = sunBudget.status !== "off";
+  const onMapClick = sunBudgetOn
+    ? (coord: { lng: number; lat: number }) => sunBudget.setStart([coord.lng, coord.lat])
+    : handleMapClick;
+  const reachRegion = useMemo(
+    () => ({ region: sunBudget.region, nodes: sunBudget.nodes }),
+    [sunBudget.region, sunBudget.nodes],
+  );
+  // While Sun Budget is open the map shows its start alone, not an earlier trip's pins.
+  const sunBudgetPins = useMemo(
+    () => {
+      if (!sunBudgetOn) return null;
+      // The pin marks where the search starts: the snapped street, or the tap until it is built.
+      const at = sunBudget.startPoint ?? sunBudget.start;
+      return at ? [{ lng: at[0], lat: at[1], label: "Start" }] : [];
+    },
+    [sunBudgetOn, sunBudget.startPoint, sunBudget.start],
+  );
+  const sunBudgetCard = (
+    <SunBudgetPanel
+      status={sunBudget.status}
+      outcome={sunBudget.outcome}
+      provenCount={sunBudget.region?.proven.length ?? 0}
+      undecidedCount={sunBudget.region?.undecided.length ?? 0}
+      sunMin={sunBudget.sunMin}
+      walkMin={sunBudget.walkMin}
+      shown={sunBudget.shown}
+      onSunMinChange={sunBudget.setSunMin}
+      onWalkMinChange={sunBudget.setWalkMin}
+      onUseLocation={userLocation ? () => sunBudget.setStart(userLocation) : undefined}
+      onExit={sunBudget.exit}
+    />
+  );
   // The selected route's sidewalks by year-round shade, for its card (#321).
   const selectedWalkMetres = filteredRoutes[selectedRouteIndex]?.distanceM;
   const streetTypeLine = useMemo(
@@ -413,6 +451,13 @@ export default function Home() {
   );
 
   const { phase, selectedPlace, dispatch } = useAppState();
+  // Sun Budget lives where QuickActions does (idle, or place detail with no place);
+  // leaving that screen — Directions, a picked place — closes it.
+  const onSunBudgetScreen = phase === "IDLE" || (phase === "PLACE_DETAIL" && !selectedPlace);
+  const exitSunBudget = sunBudget.exit;
+  useEffect(() => {
+    if (!onSunBudgetScreen) exitSunBudget();
+  }, [onSunBudgetScreen, exitSunBudget]);
 
   // Weather for the heat score, from D2's cache — the same response the cloud badge
   // already fetched for this location, matched to the hour the timeline is showing.
@@ -1131,10 +1176,11 @@ export default function Home() {
             onBack={() => dispatch({ type: "BACK" })}
           />
         ) : (
-          <QuickActions
+          sunBudgetOn ? sunBudgetCard : <QuickActions
             onNavigate={() => dispatch({ type: "START_DIRECTIONS" })}
             onDrawRoute={handleDrawModeToggle}
             drawMode={drawMode}
+            onSunBudget={sunBudget.enter}
           />
         );
 
@@ -1242,10 +1288,11 @@ export default function Home() {
 
       default: // IDLE
         return (
-          <QuickActions
+          sunBudgetOn ? sunBudgetCard : <QuickActions
             onNavigate={() => dispatch({ type: "START_DIRECTIONS" })}
             onDrawRoute={handleDrawModeToggle}
             drawMode={drawMode}
+            onSunBudget={sunBudget.enter}
           />
         );
     }
@@ -1558,11 +1605,12 @@ export default function Home() {
             />
           ) : (
             <div className="flex flex-col gap-3">
-              <QuickActions
+              {sunBudgetOn ? sunBudgetCard : <QuickActions
                 onNavigate={() => dispatch({ type: "START_DIRECTIONS" })}
                 onDrawRoute={handleDrawModeToggle}
                 drawMode={drawMode}
-              />
+                onSunBudget={sunBudget.enter}
+              />}
               <div
                 className="mt-2 border p-1.5 flex flex-col gap-1"
                 style={{ background: "var(--color-panel)", borderColor: "var(--color-rule)" }}
@@ -1635,17 +1683,17 @@ export default function Home() {
                 shadowLayerRef.current = layer;
                 setShadowLayerReady(layer !== null);
               }}
-              onMapClick={handleMapClick}
-              navWaypoints={navWaypoints}
-              navRoute={selectedNavRoute}
+              onMapClick={onMapClick}
+              navWaypoints={sunBudgetOn ? {} : navWaypoints}
+              navRoute={sunBudgetOn ? null : selectedNavRoute}
               showSunLines={showSunLines}
-              mapClickActive={pendingSlot !== null}
+              mapClickActive={pendingSlot !== null || sunBudget.status === "picking"}
               onMarkerDragEnd={handleMarkerDragEnd}
-              navTrainDrawData={navTrainDrawData}
-              navMrtEntrances={navMrtEntrances}
-              additionalWaypoints={additionalWaypoints}
+              navTrainDrawData={sunBudgetOn ? null : navTrainDrawData}
+              navMrtEntrances={sunBudgetOn ? null : navMrtEntrances}
+              additionalWaypoints={sunBudgetOn ? [] : additionalWaypoints}
               userLocation={userLocation}
-              assistantPins={assistantPins}
+              assistantPins={sunBudgetPins ?? assistantPins}
               drawMode={drawMode}
               sketchPoints={sketchPoints}
               onSketchPointClick={handleSketchPointClick}
@@ -1656,6 +1704,7 @@ export default function Home() {
               showSheds={showSheds}
               streetTypeSegments={streetTypeSegments}
               showStreetTypes={streetTypesDebug && showStreetTypes}
+              reachRegion={reachRegion}
               basemapTheme={solar}
             />
           </Suspense>

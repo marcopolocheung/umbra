@@ -16,8 +16,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { buildRoutingGraphFromStreetShards } from "../../../app/lib/navigationData/routingGraphAdapter";
-import { routingEdgeBatch } from "../../../app/lib/navigationHelpers";
 import { createShadeTableView, shadeSlotsForDeparture } from "../../../app/lib/navigationData/shadeTable";
+import { timeAwareGraphFromTable } from "../../../app/lib/navigationData/reachGraph";
 import {
   parseNavigationManifest,
   parseNavigationShadeShard,
@@ -33,10 +33,8 @@ import { sunReach } from "../../../app/lib/sunReach";
 import {
   DEFAULT_MAX_DETOUR_FACTOR,
   DETOUR_FLAT_M,
-  type GraphEdge,
   haversineMeters,
   paretoRoutes,
-  parallelSidewalkEdges,
   type RouteResult,
   type RoutingGraph,
   snapRouteStopsToReachableEdges,
@@ -116,32 +114,7 @@ async function buildCase(route: (typeof ROUTES)[number]): Promise<RouteCase> {
     return { shard, blocks };
   })));
 
-  const table = new Map<string, { left: number[]; right: number[] }>();
-  for (const key of routingEdgeBatch(graph).keys) {
-    const left: number[] = [];
-    const right: number[] = [];
-    for (const slot of perBucket) {
-      const v = view.shadowFor(key, slot);
-      left.push(v?.left ?? 0);
-      right.push(v?.right ?? 0);
-    }
-    table.set(key, { left, right });
-  }
-  const adj = new Map<number, GraphEdge[]>();
-  for (const [fromId, edges] of graph.adj) {
-    if (!adj.has(fromId)) adj.set(fromId, []);
-    for (const edge of edges) {
-      const lo = Math.min(fromId, edge.toId);
-      const hi = Math.max(fromId, edge.toId);
-      const t = table.get(`${lo},${hi}`)!;
-      const canonical = fromId < edge.toId;
-      adj.get(fromId)!.push(...parallelSidewalkEdges(fromId, edge, t.left[0], t.right[0]).map((s) => ({
-        ...s,
-        timeShadow: s.side === "left" ? (canonical ? t.left : t.right) : (canonical ? t.right : t.left),
-      })));
-    }
-  }
-  const routingGraph: RoutingGraph = { nodes: graph.nodes, adj };
+  const routingGraph = timeAwareGraphFromTable(graph, view, perBucket);
   const snapped = snapRouteStopsToReachableEdges([route.a, route.b], routingGraph, { maxSnapDistanceM: 100 });
   const midLat = (route.a[1] + route.b[1]) / 2;
   const midLng = (route.a[0] + route.b[0]) / 2;

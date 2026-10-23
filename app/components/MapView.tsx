@@ -19,6 +19,8 @@ import {
   type StreetTypeLayerHandle,
 } from "../lib/signatures/streetTypeLayer";
 import type { StreetTypeSegment } from "../lib/navigationData/signatureRoute";
+import type { ReachRegion } from "../lib/reach/mergeRegion";
+import { attachReachLayer, type ReachLayerHandle } from "../lib/reach/reachLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
 import { mapPinElement, placeStopFlagElement, stopFlagElement, transferFlagElement } from "./mapPins";
@@ -67,6 +69,8 @@ interface MapViewProps {
   /** The last walk route's sidewalks by street shade group (#321). */
   streetTypeSegments?: StreetTypeSegment[];
   showStreetTypes?: boolean;
+  /** H3b Sun Budget: the region to draw and the graph nodes its edges name. */
+  reachRegion?: { region: ReachRegion | null; nodes: Map<number, { lat: number; lon: number }> | null };
   /** Day or night basemap. Follows solar altitude, never the UI override (decision D2). */
   basemapTheme?: UiTheme;
 }
@@ -306,6 +310,7 @@ export default function MapView({
   showSheds = false,
   streetTypeSegments,
   showStreetTypes = false,
+  reachRegion,
   basemapTheme = "day",
 }: MapViewProps) {
   const containerRef    = useRef<HTMLDivElement>(null);
@@ -363,6 +368,8 @@ export default function MapView({
   const streetTypeRef = useRef<StreetTypeLayerHandle | null>(null);
   const streetTypeSegmentsRef = useRef(streetTypeSegments);
   const showStreetTypesRef = useRef(showStreetTypes);
+  const reachRef = useRef<ReachLayerHandle | null>(null);
+  const reachRegionRef = useRef(reachRegion);
   // Read at map load, which can come after Sun Exposure was toggled — the mount-time
   // `accumulation` prop would be stale by then.
   const accumulationOnRef = useRef(accumulation.enabled);
@@ -786,6 +793,10 @@ export default function MapView({
         });
         streetTypeRef.current.setSegments(streetTypeSegmentsRef.current ?? []);
 
+        // H3b Sun Budget region, filed above the shadow with the routes (mapLayerOrder.ts).
+        reachRef.current = attachReachLayer(map, { theme: basemapThemeRef.current, enabled: !accumulationOnRef.current });
+        reachRef.current.setRegion(reachRegionRef.current?.region ?? null, reachRegionRef.current?.nodes ?? null);
+
         // The canopy ground-protection pass: the same shared store the fill reads
         // through, but as one prepared atlas the renderer can march. Excluded in
         // accumulation/export mode like the fill, and its viewport reads are
@@ -838,6 +849,8 @@ export default function MapView({
       shedRef.current = null;
       streetTypeRef.current?.remove();
       streetTypeRef.current = null;
+      reachRef.current?.remove();
+      reachRef.current = null;
       canopyAtlasCleanupRef.current?.();
       canopyAtlasCleanupRef.current = null;
       shadowRef.current?.remove();
@@ -923,6 +936,13 @@ export default function MapView({
   }, [streetTypeSegments]);
 
   useEffect(() => {
+    reachRegionRef.current = reachRegion;
+    reachRef.current?.setRegion(reachRegion?.region ?? null, reachRegion?.nodes ?? null);
+    const map = mapRef.current;
+    if (map && reachRef.current) reconcileMapLayerOrder(map, basemapSymbolIdsRef.current, shadowLayerIdRef.current);
+  }, [reachRegion]);
+
+  useEffect(() => {
     showStreetTypesRef.current = showStreetTypes;
     streetTypeRef.current?.setEnabled(showStreetTypes && !accumulationOnRef.current);
   }, [showStreetTypes]);
@@ -936,6 +956,7 @@ export default function MapView({
     applyBasemapTheme(map, basemapLayersRef.current, basemapTheme);
     applyOverlayTheme(map, basemapTheme);
     streetTypeRef.current?.setTheme(basemapTheme);
+    reachRef.current?.setTheme(basemapTheme);
   }, [basemapTheme]);
 
   // -------------------------------------------------------------------------
@@ -947,6 +968,7 @@ export default function MapView({
     canopyRef.current?.setEnabled(!accumulation.enabled);
     shedRef.current?.setEnabled(showShedsRef.current && !accumulation.enabled);
     streetTypeRef.current?.setEnabled(showStreetTypesRef.current && !accumulation.enabled);
+    reachRef.current?.setEnabled(!accumulation.enabled);
     if (!shadowRef.current) return;
     if (accumulation.enabled) {
       shadowRef.current.setSunExposure(true, {

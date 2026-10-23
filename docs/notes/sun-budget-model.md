@@ -186,3 +186,42 @@ Slot cap sweep on four starts: 1 → 8 → 32 → 128 labels per slot.
 - It does not wait or dwell.
 - `approximate` on real data is the normal case, not a failure.
 - These are Node timings, not browser ones. H3b measures the slider in the browser.
+
+## H3b — Sun Budget on the map
+
+**What the user gets.** "Sun budget" on the idle screen opens a panel. Tap a start, set the most
+direct sun (0–20 min) and a walk of 10, 20 or 30 min, and the streets a walk from that start
+reaches are drawn: solid where proven, dashed where neither proven nor ruled out. Walking pace
+only (1.4 m/s): the panel speaks in walking minutes. NYC only — outside the published shade table
+the panel says so and draws nothing (no live-sampling fallback; owner decision 2026-10-22).
+
+**Never shrinking, soundly.** A wider budget can return a smaller `approximate` region (H3a,
+above). `mergeRegion` paints the union of `reachable` over every cached result for the same graph
+whose sun and walk budgets are both ≤ the current ones — each of those streets still has a witness
+walk within the current budgets. Results are bound to the graph object they came from; a search
+for an earlier start that lands late is never read (`useSunBudget.test.tsx`, which fails on the
+first version of the hook).
+
+**Measured in the browser** (production preview, SwiftShader in WSL, 390×844, real generation
+`nyc-2026-09-18-393d4cd24a30`, Midtown, June 21 15:00, before the review fixes moved the layer):
+
+| step | result |
+|---|---|
+| tap → first region drawn | 3.3 s (shard load + graph build + one search) |
+| main-thread long tasks, idle page | none |
+| main-thread long tasks, tap → first region | 2, longest 826 ms — the graph build, on the main thread |
+| main-thread long tasks, 7 slider steps | 5, longest 113 ms (merge + redraw; the search is in the worker) |
+| outcome, 8 → 20 min of sun | `approximate` at 8–12, `exact` at 15–20 |
+
+G2 committed no main-thread long-task budget, so these are stated, not checked against one.
+The 826 ms first-tap task is the one material cost; moving the graph build into the worker is
+filed as a follow-up.
+
+**What H3b does not claim.**
+- The proven walk to a solid street can loop and switch sidewalks; the map shows the street, not
+  the walk.
+- The departure is rounded to the nearest 15-minute clock slot; the shade is clear-sky geometry.
+- Walk time has no stops at crossings.
+- The browser figures are SwiftShader, roughly 2× slower than the owner's machine, and predate
+  the review fixes (lines above the shadow, one per street) — the look after them is unverified
+  in a browser.
