@@ -392,9 +392,24 @@ export default function Home() {
   const sunDown = solarPosition ? solarPosition.altitudeDeg <= 0 : false;
   const sunBudget = useSunBudget(date, sunDown);
   const sunBudgetOn = sunBudget.status !== "off";
+  // In Sun Budget, a tap on a solid street shows the walk behind it (#379); anywhere else sets a new start.
   const onMapClick = sunBudgetOn
-    ? (coord: { lng: number; lat: number }) => sunBudget.setStart([coord.lng, coord.lat])
+    ? (coord: { lng: number; lat: number }, _event?: MouseEvent, street?: { lo: number; hi: number }) => {
+        if (street && sunBudget.status === "ready") sunBudget.showWalk(street);
+        else sunBudget.setStart([coord.lng, coord.lat]);
+      }
     : handleMapClick;
+  // The walk is drawn with the route layer: it is a walk, so it looks like one.
+  const sunBudgetWalkLine = useMemo((): GeoJSON.Feature<GeoJSON.LineString> | null => {
+    const walk = sunBudget.walk;
+    const nodes = sunBudget.nodes;
+    if (!walk || walk === "none" || !nodes) return null;
+    const coordinates = walk.nodeIds.flatMap((id) => {
+      const node = nodes.get(id);
+      return node ? [[node.lon, node.lat]] : [];
+    });
+    return coordinates.length >= 2 ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } } : null;
+  }, [sunBudget.walk, sunBudget.nodes]);
   const reachRegion = useMemo(
     () => ({ region: sunBudget.region, nodes: sunBudget.nodes, outcome: sunBudget.outcome }),
     [sunBudget.region, sunBudget.nodes, sunBudget.outcome],
@@ -415,6 +430,8 @@ export default function Home() {
       outcome={sunBudget.outcome}
       provenCount={sunBudget.region?.proven.length ?? 0}
       undecidedCount={sunBudget.region?.undecided.length ?? 0}
+      walk={sunBudget.walk}
+      onHideWalk={sunBudget.clearWalk}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
       shown={sunBudget.shown}
@@ -1727,7 +1744,7 @@ export default function Home() {
               }}
               onMapClick={onMapClick}
               navWaypoints={sunBudgetOn ? {} : navWaypoints}
-              navRoute={sunBudgetOn ? null : selectedNavRoute}
+              navRoute={sunBudgetOn ? sunBudgetWalkLine : selectedNavRoute}
               showSunLines={showSunLines}
               mapClickActive={pendingSlot !== null || sunBudget.status === "picking"}
               onMarkerDragEnd={handleMarkerDragEnd}

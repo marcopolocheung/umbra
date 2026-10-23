@@ -20,7 +20,7 @@ import {
 } from "../lib/signatures/streetTypeLayer";
 import type { StreetTypeSegment } from "../lib/navigationData/signatureRoute";
 import type { ReachRegion } from "../lib/reach/mergeRegion";
-import { attachReachLayer, type ReachLayerHandle } from "../lib/reach/reachLayer";
+import { attachReachLayer, REACH_PROVEN_LAYER_ID, type ReachLayerHandle } from "../lib/reach/reachLayer";
 import { applyBasemapTheme, applyOverlayTheme, mapColor } from "../lib/basemapTheme";
 import { reconcileMapLayerOrder } from "../lib/mapLayerOrder";
 import { mapPinElement, placeStopFlagElement, stopFlagElement, transferFlagElement } from "./mapPins";
@@ -45,7 +45,12 @@ interface MapViewProps {
   onMapReady?: (map: maplibregl.Map) => void;
   onShadowLayerReady?: (layer: IShadowLayer | null) => void;
   navMode?: boolean;
-  onMapClick?: (coord: { lng: number; lat: number }, originalEvent?: MouseEvent) => void;
+  onMapClick?: (
+    coord: { lng: number; lat: number },
+    originalEvent?: MouseEvent,
+    /** The proven Sun Budget street under the tap, if any (#379). */
+    reachStreet?: { lo: number; hi: number },
+  ) => void;
   navWaypoints?: { a?: [number, number]; b?: [number, number] };
   navRoute?: GeoJSON.Feature<GeoJSON.LineString> | GeoJSON.FeatureCollection | null;
   showSunLines?: boolean;
@@ -588,7 +593,17 @@ export default function MapView({
         onSketchPointClickRef.current?.(pt);
         return;
       }
-      onMapClickRef.current?.({ lng: e.lngLat.lng, lat: e.lngLat.lat }, e.originalEvent);
+      // A tap within a fingertip of a proven Sun Budget street names it (#379).
+      let reachStreet: { lo: number; hi: number } | undefined;
+      if (map.getLayer(REACH_PROVEN_LAYER_ID)) {
+        const pad = 12;
+        const hit = map.queryRenderedFeatures(
+          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
+          { layers: [REACH_PROVEN_LAYER_ID] },
+        )[0];
+        if (hit) reachStreet = { lo: Number(hit.properties.lo), hi: Number(hit.properties.hi) };
+      }
+      onMapClickRef.current?.({ lng: e.lngLat.lng, lat: e.lngLat.lat }, e.originalEvent, reachStreet);
     });
 
     // Rubber band preview line: updates on every mouse move during draw mode

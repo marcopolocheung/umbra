@@ -53,9 +53,30 @@ export interface SunReachResult {
   stats: { labels: number; evicted: number; ms: number };
 }
 
+/** The walk that proved one street reachable (#379), start first. */
+export interface SunReachWalk {
+  nodeIds: number[];
+  sunSec: number;
+  arrivalSec: number;
+}
+
+/**
+ * A result plus how to replay the walk behind any proven street. Kept apart
+ * from `SunReachResult` so the plain result stays cheap to post across threads.
+ */
+export interface SunReachRun {
+  result: SunReachResult;
+  /** The walk that proved `fromId → toId` (on `side`), or null if it is not proven. */
+  witness(fromId: number, toId: number, side?: string): SunReachWalk | null;
+}
+
 export const SUN_REACH_DEFAULTS = { maxLabelsPerSlot: 8, maxLabels: 2_000_000 };
 
 export function sunReach(graph: RoutingGraph, startId: number, options: SunReachOptions): SunReachResult {
+  return sunReachRun(graph, startId, options).result;
+}
+
+export function sunReachRun(graph: RoutingGraph, startId: number, options: SunReachOptions): SunReachRun {
   const t0 = performance.now();
   const { sunBudgetSec: S, timeBudgetSec: T, travelMode = "walk", timeAware: ta } = options;
   const K = options.maxLabelsPerSlot ?? SUN_REACH_DEFAULTS.maxLabelsPerSlot;
@@ -118,8 +139,13 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
   let lT = new Float64Array(cap);
   let lS = new Float64Array(cap);
   let lDead = new Uint8Array(cap);
+  // The walk behind each label: the label it extends and the edge it took (−1 at the start).
+  let lParent = new Int32Array(cap);
+  let lEdge = new Int32Array(cap);
   const grow = () => {
     cap *= 2;
+    const p = new Int32Array(cap); p.set(lParent); lParent = p;
+    const ed = new Int32Array(cap); ed.set(lEdge); lEdge = ed;
     const n = new Int32Array(cap); n.set(lNode); lNode = n;
     const t = new Float64Array(cap); t.set(lT); lT = t;
     const s = new Float64Array(cap); s.set(lS); lS = s;
@@ -134,9 +160,14 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
 
   const reachSun = new Float64Array(E).fill(Number.POSITIVE_INFINITY);
   const reachT = new Float64Array(E);
+  // What proved each edge: the label the walk stood on before taking it, or
+  // −1 when the least-time tree did (its parents are `treeEdge`).
+  const proofLabel = new Int32Array(E).fill(-1);
   const heap = new NumericMinHeap();
   const startIdx = cg.indexOf.get(startId)!;
   lNode[0] = startIdx;
+  lParent[0] = -1;
+  lEdge[0] = -1;
   count = 1;
   slotLabels[startIdx * B * K] = 0;
   slotCount[startIdx * B] = 1;
@@ -157,7 +188,7 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
       if (ns > S) continue;
       // A real walk traverses e within both budgets: e is reachable, whatever
       // happens to the label below.
-      if (ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; }
+      if (ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; proofLabel[e] = label; }
       const v = targets[e];
       const slot = v * B + bucketOf(nt);
       const base = slot * K;
@@ -168,7 +199,7 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
       if (count === maxLabels) { exhausted = true; break; }
       if (count === cap) grow();
       const id = count++;
-      lNode[id] = v; lT[id] = nt; lS[id] = ns;
+      lNode[id] = v; lT[id] = nt; lS[id] = ns; lParent[id] = label; lEdge[id] = e;
       for (let i = n - 1; i >= 0; i--) {
         const other = slotLabels[base + i];
         if (covers(id, lT[other], lS[other])) {
@@ -204,6 +235,7 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
   // at its real buckets: a capped search can drop a fast, sunny label, and the
   // tree still proves what it reaches.
   const treeSun = new Float64Array(N);
+  const treeEdge = new Int32Array(N).fill(-1);
   const least = (cost: Float64Array, limit: number, pricing: boolean) => {
     const d = new Float64Array(N).fill(Number.POSITIVE_INFINITY);
     d[startIdx] = 0;
@@ -216,7 +248,10 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
         const nd = d[x] + cost[e];
         if (nd <= limit && nd < d[targets[e]]) {
           d[targets[e]] = nd;
-          if (pricing) treeSun[targets[e]] = treeSun[x] + inc[e * B + bucketOf(nd)];
+          if (pricing) {
+            treeSun[targets[e]] = treeSun[x] + inc[e * B + bucketOf(nd)];
+            treeEdge[targets[e]] = e;
+          }
           h.push(targets[e], nd);
         }
       }
@@ -231,7 +266,7 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
       if (prohibited[e]) continue;
       const nt = tMin[x] + sec[e];
       const ns = treeSun[x] + inc[e * B + bucketOf(nt)];
-      if (nt <= T && ns <= S && ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; }
+      if (nt <= T && ns <= S && ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; proofLabel[e] = -1; }
     }
   }
 
@@ -257,10 +292,42 @@ export function sunReach(graph: RoutingGraph, startId: number, options: SunReach
   const complete = !exhausted && evicted === 0;
   const outcome: SunReachOutcome =
     complete || outer.length === 0 ? "exact" : exhausted ? "budget-exhausted" : "approximate";
-  return {
+  const result: SunReachResult = {
     outcome,
     reachable,
     undecided: outcome === "exact" ? [] : outer.map((e, i) => edgeOut(e, outerFrom[i])),
     stats: { labels: count, evicted, ms: performance.now() - t0 },
   };
+
+  // Edge → its source node, for walking a proof back to the start.
+  const edgeFrom = new Int32Array(E);
+  for (let x = 0; x < N; x++) for (let e = offsets[x]; e < offsets[x + 1]; e++) edgeFrom[e] = x;
+  /** Edges from the start to node `x` along the least-time tree, start first. */
+  const treePath = (x: number): number[] => {
+    const path: number[] = [];
+    for (let node = x; node !== startIdx; node = edgeFrom[treeEdge[node]]) path.push(treeEdge[node]);
+    return path.reverse();
+  };
+  /** Edges of the walk a label stands on, start first. */
+  const labelPath = (label: number): number[] => {
+    const path: number[] = [];
+    for (let l = label; lEdge[l] >= 0; l = lParent[l]) path.push(lEdge[l]);
+    return path.reverse();
+  };
+  const witness = (fromId: number, toId: number, side?: string): SunReachWalk | null => {
+    const from = cg.indexOf.get(fromId);
+    if (from === undefined) return null;
+    for (let e = offsets[from]; e < offsets[from + 1]; e++) {
+      if (cg.nodeIds[targets[e]] !== toId || (side !== undefined && cg.edges[e].side !== side)) continue;
+      if (reachSun[e] === Number.POSITIVE_INFINITY) continue;
+      const edges = [...(proofLabel[e] >= 0 ? labelPath(proofLabel[e]) : treePath(from)), e];
+      return {
+        nodeIds: [startId, ...edges.map((pe) => cg.nodeIds[targets[pe]])],
+        sunSec: reachSun[e],
+        arrivalSec: reachT[e],
+      };
+    }
+    return null;
+  };
+  return { result, witness };
 }

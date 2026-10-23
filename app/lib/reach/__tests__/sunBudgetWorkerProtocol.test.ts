@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReachGraph } from "../../navigationData/reachGraph";
-import { sunReach } from "../../sunReach";
+import { sunReach, sunReachRun } from "../../sunReach";
 import { randomGraph } from "../../__tests__/paretoCases.fixture";
 import {
   createSunBudgetHandler,
@@ -77,6 +77,35 @@ describe("sun budget worker protocol", () => {
     expect(await slow).toMatchObject({ type: "error", requestId: 1 });
     if (fast.type !== "built" || fast.built.status !== "ok") throw new Error("not built");
     expect(await handle(search(3, fast.built.graphId))).toMatchObject({ type: "searched" });
+  });
+
+  it("replays the walk behind a street of the search on screen (#379)", async () => {
+    const handle = createSunBudgetHandler(fakeBuild(5));
+    const built = await handle(build(1));
+    if (built.type !== "built" || built.built.status !== "ok") throw new Error("not built");
+    const graphId = built.built.graphId;
+    const searched = await handle(search(2, graphId));
+    if (searched.type !== "searched") throw new Error("not searched");
+    const edge = searched.result.reachable[searched.result.reachable.length - 1];
+    const budgets = { sunBudgetSec: 60, timeBudgetSec: 200 };
+    const walked = await handle({ type: "walk", protocol: P, requestId: 3, graphId, budgets, edge });
+    const expected = sunReachRun(randomGraph(5, 6, 6, 4), 0, { ...budgets, timeAware }).witness(edge.fromId, edge.toId, edge.side);
+    expect(expected).not.toBeNull();
+    expect(walked).toEqual({ type: "walked", requestId: 3, walk: expected });
+  });
+
+  it("answers no walk once a newer search has replaced the region the user tapped", async () => {
+    const handle = createSunBudgetHandler(fakeBuild(5));
+    const built = await handle(build(1));
+    if (built.type !== "built" || built.built.status !== "ok") throw new Error("not built");
+    const graphId = built.built.graphId;
+    const searched = await handle(search(2, graphId));
+    if (searched.type !== "searched") throw new Error("not searched");
+    const edge = searched.result.reachable[0];
+    // The slider moved: a search at another budget ran after the tapped region was drawn.
+    await handle({ type: "search", protocol: P, requestId: 3, graphId, options: { sunBudgetSec: 30, timeBudgetSec: 200 } });
+    const walked = await handle({ type: "walk", protocol: P, requestId: 4, graphId, budgets: { sunBudgetSec: 60, timeBudgetSec: 200 }, edge });
+    expect(walked).toEqual({ type: "walked", requestId: 4, walk: null });
   });
 
   it("passes an uncovered start through, and rejects a bad command", async () => {

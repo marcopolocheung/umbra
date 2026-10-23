@@ -77,7 +77,8 @@ export function reachFeatures(
     if (!a || !b) continue;
     features.push({
       type: "Feature",
-      properties: { state },
+      // lo/hi name the street segment, so a tap can ask for the walk behind it (#379).
+      properties: { state, lo, hi },
       geometry: { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
     });
   }

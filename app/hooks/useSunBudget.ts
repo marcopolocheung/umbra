@@ -11,7 +11,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type CachedReach, mergeRegion, type ReachRegion } from "../lib/reach/mergeRegion";
-import { buildSunReachGraph, searchSunReachGraph } from "../lib/reach/sunBudgetClient";
+import { buildSunReachGraph, searchSunReachGraph, sunReachWalk } from "../lib/reach/sunBudgetClient";
+import type { SunReachWalk } from "../lib/sunReach";
 import { type BuiltReachGraph, nodeMap } from "../lib/reach/sunBudgetWorkerProtocol";
 import type { SunReachOutcome } from "../lib/sunReach";
 import { getTravelModePolicy } from "../lib/travelMode";
@@ -53,6 +54,10 @@ export interface SunBudgetState {
   setStart: (coord: [number, number]) => void;
   setSunMin: (minutes: number) => void;
   setWalkMin: (minutes: number) => void;
+  /** The walk behind a tapped proven street (#379); "none" when this search can't replay it. */
+  walk: SunReachWalk | "none" | null;
+  showWalk: (street: { lo: number; hi: number }) => void;
+  clearWalk: () => void;
 }
 
 export function useSunBudget(
@@ -61,6 +66,7 @@ export function useSunBudget(
   // Injected so tests need no network or worker; module functions, so stable.
   build: typeof buildSunReachGraph = buildSunReachGraph,
   search: typeof searchSunReachGraph = searchSunReachGraph,
+  walkFor: typeof sunReachWalk = sunReachWalk,
 ): SunBudgetState {
   const [active, setActive] = useState(false);
   const [start, setStartState] = useState<[number, number] | null>(null);
@@ -184,6 +190,37 @@ export function useSunBudget(
       : null;
   const region = useMemo(() => (current ? mergeRegion(ownEntries, current) : null), [ownEntries, current]);
 
+  // #379: the walk behind a tapped street. Cleared whenever the region it belongs to changes.
+  const [walk, setWalk] = useState<SunReachWalk | "none" | null>(null);
+  const walkAskRef = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new region retires the walk shown on the old one
+  useEffect(() => {
+    walkAskRef.current++;
+    setWalk(null);
+  }, [current]);
+  const clearWalk = useCallback(() => {
+    walkAskRef.current++;
+    setWalk(null);
+  }, []);
+  const showWalk = useCallback(
+    (street: { lo: number; hi: number }) => {
+      if (!okGraph || !current) return;
+      const ask = ++walkAskRef.current;
+      // The proven directed edges on this street: either direction, either sidewalk.
+      const edges = current.result.reachable.filter(
+        (e) => Math.min(e.fromId, e.toId) === street.lo && Math.max(e.fromId, e.toId) === street.hi,
+      );
+      const budgets = { sunBudgetSec: current.sunSec, timeBudgetSec: current.timeSec };
+      Promise.all(edges.map((e) => walkFor(okGraph.graphId, budgets, e).catch(() => null))).then((walks) => {
+        if (ask !== walkAskRef.current) return;
+        const found = walks.filter((w): w is SunReachWalk => w !== null);
+        // Least sun first; "none" says plainly this search can't replay it.
+        setWalk(found.length ? found.reduce((a, b) => (b.sunSec < a.sunSec ? b : a)) : "none");
+      });
+    },
+    [okGraph, current, walkFor],
+  );
+
   const status: SunBudgetStatus = !active
     ? "off"
     : !start
@@ -228,5 +265,8 @@ export function useSunBudget(
     setStart: setStartState,
     setSunMin,
     setWalkMin,
+    walk,
+    showWalk,
+    clearWalk,
   };
 }

@@ -1,7 +1,7 @@
 import { type CSSProperties, useId } from "react";
 import type { SunBudgetStatus } from "../hooks/useSunBudget";
 import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
-import type { SunReachOutcome } from "../lib/sunReach";
+import type { SunReachOutcome, SunReachWalk } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
 import Tag from "./ui/Tag";
 import Segmented from "./ui/Segmented";
@@ -19,6 +19,9 @@ interface SunBudgetPanelProps {
   shown: { sunMin: number; walkMin: number } | null;
   /** The region was cut at the edge of NYC's shade data (#380). */
   clipped?: boolean;
+  /** The walk behind a tapped street (#379); "none" when this search can't replay it. */
+  walk?: SunReachWalk | "none" | null;
+  onHideWalk?: () => void;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
   onUseLocation?: () => void;
@@ -163,6 +166,22 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
           <p style={{ fontSize: "var(--text-small)", color: "var(--color-ink-muted)" }}>{detail}</p>
         )}
       </div>
+
+      {props.walk && (
+        <div className="flex items-center justify-between gap-2 border-2 border-ink p-2">
+          <p style={{ fontSize: "var(--text-small)", color: "var(--color-ink)" }}>
+            {props.walk === "none"
+              ? "The walk behind this street isn't available at this budget."
+              : // Rounded up: never shows less sun than the walk has.
+                `This walk: ${Math.ceil(props.walk.arrivalSec / 60)} min, ${Math.ceil(props.walk.sunSec / 60)} min of direct sun.`}
+          </p>
+          {props.onHideWalk && (
+            <button type="button" onClick={props.onHideWalk} className={`${ACTION} shrink-0 bg-panel text-ink hover:bg-ground`}>
+              Hide walk
+            </button>
+          )}
+        </div>
+      )}
 
       <p style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
         Modelled shade (clear sky) in 15-minute steps from building and tree data, for a steady 5 km/h walk with no stops at crossings. One way, no waiting for shade.

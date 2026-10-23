@@ -79,7 +79,7 @@ describe("reachFeatures", () => {
 
   it("a street proven by any sidewalk is proven, never also dashed", () => {
     const fc = reachFeatures({ proven: [edge(2, 1, "right")], undecided: [edge(1, 2, "left"), edge(2, 3, "left")] }, nodes);
-    expect(fc.features.map((f) => f.properties)).toEqual([{ state: "proven" }, { state: "undecided" }]);
+    expect(fc.features.map((f) => f.properties)).toEqual([{ state: "proven", lo: 1, hi: 2 }, { state: "undecided", lo: 2, hi: 3 }]);
   });
 
   it("skips edges whose nodes the graph does not hold (snap nodes)", () => {

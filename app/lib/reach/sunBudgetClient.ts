@@ -17,10 +17,12 @@ import {
   type SunBudgetCommand,
   type SunBudgetEvent,
 } from "./sunBudgetWorkerProtocol";
-import type { SunReachOptions, SunReachResult } from "../sunReach";
+import type { SunReachOptions, SunReachResult, SunReachWalk } from "../sunReach";
 
-type Payload = Omit<Extract<SunBudgetCommand, { type: "build" }>, "requestId" | "protocol"> |
-  Omit<Extract<SunBudgetCommand, { type: "search" }>, "requestId" | "protocol">;
+type Payload =
+  | Omit<Extract<SunBudgetCommand, { type: "build" }>, "requestId" | "protocol">
+  | Omit<Extract<SunBudgetCommand, { type: "search" }>, "requestId" | "protocol">
+  | Omit<Extract<SunBudgetCommand, { type: "walk" }>, "requestId" | "protocol">;
 
 let worker: Worker | null = null;
 let disabled = false;
@@ -98,3 +100,18 @@ export async function searchSunReachGraph(
   if (event.type !== "searched") throw new Error(`unexpected ${event.type}`);
   return event.result;
 }
+
+/**
+ * The walk behind a proven street of the last search on `graphId` (#379); null
+ * if that street was not proven by it.
+ */
+export async function sunReachWalk(
+  graphId: number,
+  budgets: { sunBudgetSec: number; timeBudgetSec: number },
+  edge: { fromId: number; toId: number; side?: string },
+): Promise<SunReachWalk | null> {
+  const event = await send({ type: "walk", graphId, budgets, edge });
+  if (event.type !== "walked") throw new Error(`unexpected ${event.type}`);
+  return event.walk;
+}
+

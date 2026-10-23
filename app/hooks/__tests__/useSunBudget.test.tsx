@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BuiltReachGraph } from "../../lib/reach/sunBudgetWorkerProtocol";
-import type { SunReachEdge, SunReachOptions, SunReachResult } from "../../lib/sunReach";
+import type { SunReachEdge, SunReachOptions, SunReachResult, SunReachWalk } from "../../lib/sunReach";
 import { useSunBudget } from "../useSunBudget";
 
 afterEach(cleanup);
@@ -192,6 +192,40 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.shown?.walkMin).toBe(10));
     expect(hook.current.clipped).toBe(false);
     expect(hook.current.outcome).toBe("exact");
+  });
+
+  it("shows the least-sun walk behind a tapped street, and forgets it when the region changes (#379)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2), edge(2, 1), edge(5, 6)]));
+    const walk = (sunSec: number): SunReachWalk => ({ nodeIds: [9, 1, 2], sunSec, arrivalSec: 120 });
+    const walkFor = vi.fn(async (_g: number, _b: unknown, e: { fromId: number }) => (e.fromId === 1 ? walk(90) : walk(40)));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search, walkFor));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    act(() => hook.current.showWalk({ lo: 1, hi: 2 }));
+    await waitFor(() => expect(hook.current.walk).not.toBeNull());
+    // Both directions of street 1–2 were proven; the shadier walk wins.
+    expect(walkFor).toHaveBeenCalledTimes(2);
+    expect(walkFor.mock.calls[0][1]).toEqual({ sunBudgetSec: 480, timeBudgetSec: 1200 });
+    expect(hook.current.walk).toEqual(walk(40));
+    act(() => hook.current.setSunMin(10));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hook.current.walk).toBeNull());
+  });
+
+  it("says 'none' when the search can't replay the tapped street", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const walkFor = vi.fn(async () => null);
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search, walkFor));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    act(() => hook.current.showWalk({ lo: 1, hi: 2 }));
+    await waitFor(() => expect(hook.current.walk).toBe("none"));
   });
 
   it("says uncovered outside the shade table and never searches", async () => {
