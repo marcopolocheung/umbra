@@ -12,14 +12,14 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H3 — Sun Budget reachability, split in two. **H3a** (the search,
-  `app/lib/sunReach.ts`, the worker's `reach` command, oracle tests, NYC measurement in
-  `docs/notes/sun-budget-model.md`, "H3") is merged (#375). **H3b** — the Sun Budget panel, the
-  reach map layer and the never-shrink merge (`docs/notes/sun-budget-model.md`, "H3b") — is in
-  review; NYC only, walking pace. **H4 merged in part** (#247,
-  2026-10-03): the oracle and the published gap are in `docs/notes/sun-budget-model.md`. The
-  checkpoint's Approach items (four property tests, the runtime/memory/cache figures) and the
-  P4 hand-off are still open. H1/H2 are merged (#222, #224).
+- **Active checkpoint:** H5 — waiting, dwell and the return leg. **H3 is done:** the search
+  (H3a, #375), the map (H3b, #376) and its follow-ups — the graph built in its own worker
+  (#382, #377), the fit to the region and per-outcome labels (#383, #378/#381), starts near
+  NYC's edge (#383, the cheap part of #380) and the walk behind a street (#384, #379). NYC only,
+  walking pace, one way; #380 stays open for a fallback outside NYC's shade data. **H4 merged in
+  part** (#247, 2026-10-03): the oracle and the published gap are in
+  `docs/notes/sun-budget-model.md`. The checkpoint's Approach items (four property tests, the
+  runtime/memory/cache figures) and the P4 hand-off are still open. H1/H2 are merged (#222, #224).
 - **H4 (#247):** `app/lib/__tests__/routingOracle.test.ts` — exhaustive path enumeration
   as ground truth for the H1/H2 search on small fixtures. Result: the search is exact on
   static fixtures, but **lost a Pareto point at a bucket-boundary merge**
@@ -55,9 +55,9 @@ G's fixture and benchmark infrastructure).
   `maxDetourFactor` untouched (#243 — G2's sweep owns it).
 - **Blocked on:** nothing for H3's design; H3's *runs* need A5 (worker) and the
   G2 factor sweep (#243 follow-up, Track G).
-- **Next action:** after H3b merges, H5 (waiting, dwell, the return leg) — or H3's filed
-  follow-ups: the graph build into the worker (the 826 ms first tap), fit the map to the region,
-  show the walk behind a street, and a fallback outside NYC.
+- **Next action:** H5 — waiting, dwell and the return leg (the brief's "subtle part": with
+  waiting, an earlier arrival no longer dominates). The browser check of H3 on a phone is still
+  outstanding (the session cannot build a data-backed preview).
   The H4 oracle is written and found a bucket-boundary dominance gap; it gives H3's *path* search
   ground truth (it does not test a reachability region). Its gap is fixed on the front (#370)
   and on the ladder (#369).
