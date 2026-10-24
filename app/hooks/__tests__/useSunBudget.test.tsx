@@ -196,7 +196,7 @@ describe("useSunBudget", () => {
 
   it("shows the least-sun walk behind a tapped street, and forgets it when the region changes (#379)", async () => {
     const search = vi.fn<Search>(async () => result([edge(1, 2), edge(2, 1), edge(5, 6)]));
-    const walk = (sunSec: number): SunReachWalk => ({ nodeIds: [9, 1, 2], sides: ["left", "left"], sunSec, arrivalSec: 120 });
+    const walk = (sunSec: number): SunReachWalk => ({ nodeIds: [9, 1, 2], sides: ["left", "left"], waits: [], sunSec, arrivalSec: 120 });
     const walkFor = vi.fn(async (_g: number, _b: unknown, e: { fromId: number }) => (e.fromId === 1 ? walk(90) : walk(40)));
     const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search, walkFor));
     act(() => {
@@ -229,7 +229,7 @@ describe("useSunBudget", () => {
     act(() => hook.current.showWalk({ lo: 1, hi: 2 }));
     act(() => hook.current.setSunMin(10));
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
-    await act(async () => release({ nodeIds: [9, 1, 2], sides: ["left", "left"], sunSec: 5, arrivalSec: 60 }));
+    await act(async () => release({ nodeIds: [9, 1, 2], sides: ["left", "left"], waits: [], sunSec: 5, arrivalSec: 60 }));
     expect(hook.current.walk).toBeNull();
   });
 
@@ -242,7 +242,7 @@ describe("useSunBudget", () => {
       return result([edge(1, 2)]);
     });
     const walkFor = vi.fn(async (_g: number, b: { sunBudgetSec: number }) =>
-      b.sunBudgetSec === workerBudget ? ({ nodeIds: [9, 1, 2], sides: ["left", "left"], sunSec: 30, arrivalSec: 90 } as SunReachWalk) : null,
+      b.sunBudgetSec === workerBudget ? ({ nodeIds: [9, 1, 2], sides: ["left", "left"], waits: [], sunSec: 30, arrivalSec: 90 } as SunReachWalk) : null,
     );
     const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search, walkFor));
     act(() => {
