@@ -362,7 +362,7 @@ describe("H5 — waiting at a corner until the shade arrives", () => {
       const options = { ...c.options, allowWaits: true };
       const truth = oracleReach(graph, c.start, options);
       // Waits add a label per corner per boundary: give the search room to be complete.
-      const result = sunReach(graph, c.start, { ...options, maxLabelsPerSlot: 64 });
+      const result = sunReach(graph, c.start, { ...options, maxLabelsPerSlot: 256 });
       expect(result.outcome, `seed ${c.seed}`).toBe("exact");
       expect(reachKeys(result), `seed ${c.seed}`).toEqual(truth);
       if (truth.size > oracleReach(graph, c.start, c.options).size) usedWaits++;

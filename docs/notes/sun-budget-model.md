@@ -225,3 +225,46 @@ filed as a follow-up.
 - The browser figures are SwiftShader, roughly 2× slower than the owner's machine, and predate
   the review fixes (lines above the shadow, one per street) — the look after them is unverified
   in a browser.
+
+## H5a — waiting at a corner
+
+**The model.** With `allowWaits` (time-aware shade only), a walker standing at a corner may wait
+until the next shade bucket begins. While waiting they stand on the corner's shadiest sidewalk:
+the largest shade, in the current bucket, of any street leaving the corner. A wait costs
+`seconds × (1 − that shade)`. Waits end only on bucket boundaries. Within a bucket the shade
+cannot change, so a shorter wait buys nothing. This keeps the state space finite and the oracle
+exact. A walk reports its waits (`SunReachWalk.waits`, an index into `nodeIds` and a length).
+No UI calls it yet.
+
+**Earlier arrival no longer dominates.** The committed fixture ("the earlier arrival is the
+worse one") reaches a corner at 20 s. Walking on at once crosses the next street in full sun, at
+22 s of sun in total. Waiting 40 s in the shade for that street's shadow costs 2 s in total, and
+only the wait fits a 3 s budget.
+
+**Pruning, re-proved.** H3's rule lets *a* prune *b* (same corner and bucket, *a* earlier by
+Δ) when `sun(a) + slack ≤ sun(b)`. With waits, *a* follows *b*'s walk Δ early (the slack covers
+the extra sun) until *b*'s first wait. *a* then waits to the same boundary, which is Δ more
+seconds of standing and at most Δ more sun. From that boundary on, the two are the same walk.
+So with waits the slack gains a `+ Δ` term (`covers` in `sunReach.ts`). Without waits nothing
+changes.
+- **This term may be looser than needed.** A fuzz of 24,000 random graphs (sunny corners, shade
+  arriving in small steps) found no case where the plain H3 slack is wrong with waits on. Often
+  *a* can just skip the wait and stay within the old slack. That argument is not a proof, so
+  the provable term ships, and no committed fixture fails without it.
+- **Cost.** More labels survive pruning. The seeded oracle suite needs 256 labels per slot (not
+  64) to stay `exact` with waits on. The H3 NYC timings are not re-measured with waits.
+
+**Evidence (`app/lib/__tests__/sunReach.test.ts`, "H5").**
+- The search with waits equals the exhaustive oracle (which also waits) on every seeded
+  time-aware lattice, and waiting opens streets on some of them.
+- Turning waits on never shrinks a region.
+- Every witness with waits re-prices exactly: walking sun + waiting sun = the reported sun.
+- A wait in the sun is priced. A sunny corner can't buy free shade by standing.
+- The search waits at the start when that's where the shade is.
+- Mutants: removing the wait move, or making waits free, each fails the oracle and witness tests.
+
+**What H5a does not claim.**
+- There is no dwell, and no return leg. Those are H5b, a round trip on a two-phase graph.
+- The waiting walker crosses to the corner's shadiest sidewalk for free, the way the search
+  already switches sidewalks for free.
+- Opening hours are not modelled.

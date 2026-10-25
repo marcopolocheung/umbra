@@ -181,9 +181,14 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   };
   const slotCount = new Int32Array(N * B);
   const slotLabels = new Int32Array(N * B * K);
-  /** a can reach everything b can: no later, and no sunnier by more than the slack. */
+  /**
+   * a can reach everything b can: no later, and no sunnier by more than the slack.
+   * H5: with waits, a follows b's walk Δ early until b's first wait, then waits to
+   * the same boundary — Δ more seconds standing, at most Δ more sun — and from
+   * there the two are one walk. So waiting adds Δ to the slack.
+   */
   const covers = (a: number, t: number, s: number) =>
-    lT[a] <= t && lS[a] + slack(lT[a], t - lT[a]) <= s;
+    lT[a] <= t && lS[a] + slack(lT[a], t - lT[a]) + (waits ? t - lT[a] : 0) <= s;
   let evicted = 0;
 
   const reachSun = new Float64Array(E).fill(Number.POSITIVE_INFINITY);
