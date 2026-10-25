@@ -12,7 +12,9 @@ G's fixture and benchmark infrastructure).
 
 ## Current state
 
-- **Active checkpoint:** H5 — waiting, dwell and the return leg. **H3 is done:** the search
+- **Active checkpoint:** H5 — waiting, dwell and the return leg. **H5a (waiting) is in review**
+  (`sunReach` `allowWaits`, notes in `docs/notes/sun-budget-model.md`); H5b (dwell + the return
+  leg, a round trip on a two-phase graph) is drafted on `feat/h5b-round-trip`. **H3 is done:** the search
   (H3a, #375), the map (H3b, #376) and its follow-ups — the graph built in its own worker
   (#382, #377), the fit to the region and per-outcome labels (#383, #378/#381), starts near
   NYC's edge (#383, the cheap part of #380) and the walk behind a street (#384, #379). NYC only,

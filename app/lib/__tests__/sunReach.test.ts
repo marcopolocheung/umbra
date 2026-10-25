@@ -37,9 +37,28 @@ function oracleReach(graph: RoutingGraph, startId: number, o: SunReachOptions): 
       out.add(keyOf(node, edge));
       walk(edge.toId, nt, ns);
     }
+    // H5: wait until the next bucket begins, standing on the node's shadiest corner.
+    if (o.allowWaits && o.timeAware) {
+      const boundary = (Math.floor(t / W) + 1) * W;
+      if (boundary <= o.timeBudgetSec && Math.floor(t / W) < B - 1) {
+        const ns = s + (boundary - t) * (1 - nodeShadeAt(graph, node, Math.floor(t / W)));
+        if (ns <= o.sunBudgetSec) walk(node, boundary, ns);
+      }
+    }
   };
   walk(startId, 0, 0);
   return out;
+}
+
+/** The shadiest sidewalk touching `node` in bucket `b`: where a waiting walker stands (H5). */
+function nodeShadeAt(graph: RoutingGraph, node: number, b: number): number {
+  let best = 0;
+  for (const edge of graph.adj.get(node) ?? []) {
+    const ts = edge.timeShadow;
+    const f = !ts || ts.length === 0 ? edge.shadowFactor : ts[Math.min(b, ts.length - 1)];
+    if (f > best) best = f;
+  }
+  return best;
 }
 
 const keyOf = (from: number, e: { toId: number; side?: string }) => `${from}>${e.toId}:${e.side ?? ""}`;
@@ -238,7 +257,17 @@ function walkCost(
   const W = o.timeAware ? o.timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
   const B = o.timeAware?.bucketCount ?? 1;
   let states: Array<{ t: number; s: number }> = [{ t: 0, s: 0 }];
+  // H5: stand still where the walk says, priced like the oracle's wait.
+  const waitAt = (i: number) => {
+    for (const w of walk.waits.filter((x) => x.atNode === i)) {
+      states = states.map((st) => {
+        const b = Math.min(Math.floor(st.t / W), B - 1);
+        return { t: st.t + w.seconds, s: st.s + w.seconds * (1 - nodeShadeAt(graph, walk.nodeIds[i], b)) };
+      });
+    }
+  };
   for (let i = 0; i + 1 < walk.nodeIds.length; i++) {
+    waitAt(i);
     const from = walk.nodeIds[i];
     const to = walk.nodeIds[i + 1];
     const isLast = i + 2 === walk.nodeIds.length;
@@ -321,6 +350,123 @@ describe("sunReachRun — the walk behind each proven street (#379)", () => {
     const plain = sunReach(graph, c.start, c.options);
     const run = sunReachRun(graph, c.start, c.options).result;
     expect({ ...plain, stats: 0 }).toEqual({ ...run, stats: 0 });
+  });
+});
+
+describe("H5 — waiting at a corner until the shade arrives", () => {
+  it("matches the exhaustive oracle, waits included, on every seeded lattice", () => {
+    let usedWaits = 0;
+    for (const c of cases()) {
+      if (!c.options.timeAware) continue;
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const options = { ...c.options, allowWaits: true };
+      const truth = oracleReach(graph, c.start, options);
+      // Waits add a label per corner per boundary: give the search room to be complete.
+      const result = sunReach(graph, c.start, { ...options, maxLabelsPerSlot: 256 });
+      expect(result.outcome, `seed ${c.seed}`).toBe("exact");
+      expect(reachKeys(result), `seed ${c.seed}`).toEqual(truth);
+      if (truth.size > oracleReach(graph, c.start, c.options).size) usedWaits++;
+    }
+    // Waiting must actually open streets somewhere, or the test proves nothing.
+    expect(usedWaits).toBeGreaterThan(0);
+  });
+
+  it("never shrinks the region: waiting only adds walks", () => {
+    for (const c of cases().slice(0, 30)) {
+      if (!c.options.timeAware) continue;
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      expect(subset(reachKeys(sunReach(graph, c.start, c.options)), reachKeys(sunReach(graph, c.start, { ...c.options, allowWaits: true })))).toBe(true);
+    }
+  });
+
+  it("every witness with waits costs exactly what it reports", () => {
+    let withWaits = 0;
+    for (const c of cases()) {
+      if (!c.options.timeAware) continue;
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const options = { ...c.options, allowWaits: true };
+      const run = sunReachRun(graph, c.start, options);
+      for (const edge of run.result.reachable) {
+        const walk = run.witness(edge.fromId, edge.toId, edge.side)!;
+        if (walk.waits.length) withWaits++;
+        const costs = walkCost(graph, walk, options, edge);
+        const match = costs.some((k) => Math.abs(k.t - walk.arrivalSec) < 1e-6 && Math.abs(k.s - walk.sunSec) < 1e-6);
+        expect(match, `seed ${c.seed} ${edge.fromId}>${edge.toId}`).toBe(true);
+      }
+    }
+    expect(withWaits).toBeGreaterThan(0);
+  });
+
+  it("the earlier arrival is the worse one: waiting in shade beats rushing into sun (brief's acceptance)", () => {
+    // Corner 1 is reached at 20 s over a mostly-shaded approach (2 s of sun). The
+    // street 1→2 (20 s) is in full sun in bucket 0 and fully shaded from bucket 1
+    // (60 s on). Corner 1 has a shaded side to stand on (the 1→3 spur). Rushing on
+    // reaches 2 at 40 s with 22 s of sun; pacing the approach to kill time costs
+    // 2 s per pass; standing in the shade until 60 s costs nothing more — the
+    // later arrival is strictly better, and only waiting fits a 3 s budget.
+    const node = (id: number, m: number) => [id, { id, lat: 40.7 + m / 111_320, lon: -74 }] as const;
+    const graph: RoutingGraph = { nodes: new Map([node(0, 0), node(1, 28), node(2, 56), node(3, 29)]), adj: new Map() };
+    const link = (a: number, b: number, m: number, timeShadow: number[]) => {
+      for (const [x, y] of [[a, b], [b, a]]) {
+        if (!graph.adj.has(x)) graph.adj.set(x, []);
+        graph.adj.get(x)!.push({ toId: y, distanceM: m, shadowFactor: timeShadow[0], timeShadow });
+      }
+    };
+    link(0, 1, 28, [0.9, 0.9]); // mostly shaded approach, 20 s, 2 s of sun
+    link(1, 2, 28, [0, 1]); // sunny until 60 s, shaded after
+    link(1, 3, 1.4, [1, 1]); // a shaded corner to stand on
+    const base: SunReachOptions = { sunBudgetSec: 3, timeBudgetSec: 120, timeAware: { bucketMs: 60_000, bucketCount: 2 } };
+    const rushed = sunReach(graph, 0, base);
+    const waited = sunReachRun(graph, 0, { ...base, allowWaits: true });
+    expect(rushed.reachable.some((e) => e.fromId === 1 && e.toId === 2)).toBe(false);
+    const into2 = waited.result.reachable.find((e) => e.fromId === 1 && e.toId === 2);
+    expect(into2?.sunSec).toBeCloseTo(2, 9);
+    // The proof waits at corner 1 for the shade, then walks.
+    const walk = waited.witness(1, 2)!;
+    expect(walk.waits).toEqual([{ atNode: 1, seconds: 40 }]);
+    expect(oracleReach(graph, 0, { ...base, allowWaits: true }).has("1>2:")).toBe(true);
+  });
+
+  it("will wait at the start itself when that's where the shade is", () => {
+    // Found by the search, not planned: with a shaded first sidewalk, standing at
+    // the start until the far street turns shady is a zero-sun plan.
+    const node = (id: number, m: number) => [id, { id, lat: 40.7 + m / 111_320, lon: -74 }] as const;
+    const graph: RoutingGraph = { nodes: new Map([node(0, 0), node(1, 28), node(2, 56)]), adj: new Map() };
+    const one = (from: number, to: number, m: number, ts: number[]) => {
+      if (!graph.adj.has(from)) graph.adj.set(from, []);
+      graph.adj.get(from)!.push({ toId: to, distanceM: m, shadowFactor: ts[0], timeShadow: ts });
+    };
+    one(0, 1, 28, [1, 1]);
+    one(1, 0, 28, [0.1, 0.1]);
+    one(1, 2, 28, [0, 1]);
+    one(2, 1, 28, [0.1, 0.1]);
+    const o: SunReachOptions = { sunBudgetSec: 5, timeBudgetSec: 120, timeAware: { bucketMs: 60_000, bucketCount: 2 }, allowWaits: true };
+    const walk = sunReachRun(graph, 0, o).witness(1, 2)!;
+    expect(walk).toMatchObject({ nodeIds: [0, 1, 2], waits: [{ atNode: 0, seconds: 60 }], sunSec: 0 });
+    expect(oracleReach(graph, 0, o).has("1>2:")).toBe(true);
+  });
+
+  it("prices a wait in the sun: a sunny corner is no place to wait", () => {
+    // Nowhere to wait in shade: the start's only sidewalk is mostly sunny (0.1)
+    // and so is corner 1's. Any wait for 1→2's shade costs ~0.9 s of sun per
+    // second, far over a 5 s budget, so 2 stays out of reach. A free wait would
+    // reach it at no cost (stand at the start, then walk), so this pins the price.
+    // (The search does find a free wait when the start has a shaded side — see
+    // the next test.)
+    const node = (id: number, m: number) => [id, { id, lat: 40.7 + m / 111_320, lon: -74 }] as const;
+    const graph: RoutingGraph = { nodes: new Map([node(0, 0), node(1, 28), node(2, 56)]), adj: new Map() };
+    const one = (from: number, to: number, m: number, timeShadow: number[]) => {
+      if (!graph.adj.has(from)) graph.adj.set(from, []);
+      graph.adj.get(from)!.push({ toId: to, distanceM: m, shadowFactor: timeShadow[0], timeShadow });
+    };
+    // One-way so nothing can be paced: a shaded run in, then the sunny street.
+    one(0, 1, 28, [0.1, 0.1]);
+    one(1, 0, 28, [0.1, 0.1]);
+    one(1, 2, 28, [0, 1]);
+    one(2, 1, 28, [0.1, 0.1]);
+    const o: SunReachOptions = { sunBudgetSec: 5, timeBudgetSec: 120, timeAware: { bucketMs: 60_000, bucketCount: 2 }, allowWaits: true };
+    expect(sunReach(graph, 0, o).reachable.some((e) => e.fromId === 1 && e.toId === 2)).toBe(false);
+    expect(oracleReach(graph, 0, o).has("1>2:")).toBe(false);
   });
 });
 

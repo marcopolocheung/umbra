@@ -97,7 +97,7 @@ describe("SunBudgetPanel", () => {
 
   it("states the tapped walk's time and sun, rounded up so it never shows less sun (#379)", () => {
     const onHideWalk = vi.fn();
-    render(<SunBudgetPanel {...props} walk={{ nodeIds: [1, 2], sides: ["left"], sunSec: 301, arrivalSec: 840 }} onHideWalk={onHideWalk} />);
+    render(<SunBudgetPanel {...props} walk={{ nodeIds: [1, 2], sides: ["left"], waits: [], sunSec: 301, arrivalSec: 840 }} onHideWalk={onHideWalk} />);
     expect(screen.getByText("Shadiest walk found: 14 min, 6 min of direct sun, on the sidewalks drawn.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide walk" }));
     expect(onHideWalk).toHaveBeenCalled();

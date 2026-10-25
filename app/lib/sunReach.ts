@@ -33,6 +33,12 @@ export interface SunReachOptions {
   maxLabelsPerSlot?: number;
   /** Work cap: labels created before the search stops (`budget-exhausted`). */
   maxLabels?: number;
+  /**
+   * H5: a walker may wait at a node until the next shade bucket begins, standing
+   * on its shadiest sidewalk; the wait costs seconds × (1 − that shade). Only
+   * with `timeAware` — under static shade waiting never helps.
+   */
+  allowWaits?: boolean;
 }
 
 export type SunReachOutcome = "exact" | "approximate" | "budget-exhausted";
@@ -58,6 +64,8 @@ export interface SunReachWalk {
   nodeIds: number[];
   /** The sidewalk walked on each step (one per edge, so one fewer than nodeIds). */
   sides: Array<"left" | "right" | null>;
+  /** H5: where the walk stands still, as an index into `nodeIds`, and for how long. */
+  waits: Array<{ atNode: number; seconds: number }>;
   sunSec: number;
   arrivalSec: number;
 }
@@ -73,6 +81,9 @@ export interface SunReachRun {
 }
 
 export const SUN_REACH_DEFAULTS = { maxLabelsPerSlot: 8, maxLabels: 2_000_000 };
+
+/** `lEdge` for a label made by waiting where it stood (H5), not by walking a street. */
+const WAIT_EDGE = -2;
 
 export function sunReach(graph: RoutingGraph, startId: number, options: SunReachOptions): SunReachResult {
   return sunReachRun(graph, startId, options).result;
@@ -96,6 +107,10 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   const inc = new Float64Array(E * B);
   const minInc = new Float64Array(E);
   const prohibited = new Uint8Array(E);
+  // H5: waiting. A node's shade in a bucket is its shadiest sidewalk — where a
+  // waiting walker stands. Only time-aware shade makes waiting worth anything.
+  const waits = Boolean(options.allowWaits && ta);
+  const nodeShade = new Float64Array(waits ? N * B : 0);
   for (let e = 0; e < E; e++) {
     const edge = cg.edges[e];
     if (isProhibitedEdge(edge, travelMode)) prohibited[e] = 1;
@@ -108,6 +123,17 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
       m = Math.min(m, inc[e * B + b]);
     }
     minInc[e] = m;
+  }
+  if (waits) {
+    for (let x = 0; x < N; x++) {
+      for (let e = offsets[x]; e < offsets[x + 1]; e++) {
+        const ts = cg.edges[e].timeShadow;
+        for (let b = 0; b < B; b++) {
+          const f = !ts || ts.length === 0 ? cg.edges[e].shadowFactor : ts[Math.min(b, ts.length - 1)];
+          if (f > nodeShade[x * B + b]) nodeShade[x * B + b] = f;
+        }
+      }
+    }
   }
 
   // Slack for pruning across arrivals (#370 generalised). Two labels in one
@@ -155,9 +181,14 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   };
   const slotCount = new Int32Array(N * B);
   const slotLabels = new Int32Array(N * B * K);
-  /** a can reach everything b can: no later, and no sunnier by more than the slack. */
+  /**
+   * a can reach everything b can: no later, and no sunnier by more than the slack.
+   * H5: with waits, a follows b's walk Δ early until b's first wait, then waits to
+   * the same boundary — Δ more seconds standing, at most Δ more sun — and from
+   * there the two are one walk. So waiting adds Δ to the slack.
+   */
   const covers = (a: number, t: number, s: number) =>
-    lT[a] <= t && lS[a] + slack(lT[a], t - lT[a]) <= s;
+    lT[a] <= t && lS[a] + slack(lT[a], t - lT[a]) + (waits ? t - lT[a] : 0) <= s;
   let evicted = 0;
 
   const reachSun = new Float64Array(E).fill(Number.POSITIVE_INFINITY);
@@ -176,6 +207,48 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   heap.push(0, 0);
   let exhausted = false;
 
+  /**
+   * Offer a label at node `v` (arrival `nt`, sun `ns`) reached from `parent` by
+   * `edge` — a street, or WAIT_EDGE for standing still. Returns false when the
+   * work cap stops the search.
+   */
+  const offer = (v: number, nt: number, ns: number, parent: number, edge: number): boolean => {
+    const slot = v * B + bucketOf(nt);
+    const base = slot * K;
+    let n = slotCount[slot];
+    for (let i = 0; i < n; i++) if (covers(slotLabels[base + i], nt, ns)) return true;
+    if (count === maxLabels) { exhausted = true; return false; }
+    if (count === cap) grow();
+    const id = count++;
+    lNode[id] = v; lT[id] = nt; lS[id] = ns; lParent[id] = parent; lEdge[id] = edge;
+    for (let i = n - 1; i >= 0; i--) {
+      const other = slotLabels[base + i];
+      if (covers(id, lT[other], lS[other])) {
+        lDead[other] = 1;
+        slotLabels[base + i] = slotLabels[base + --n];
+      }
+    }
+    if (n === K) {
+      // Full of mutually uncovered labels: drop the one with the most
+      // time + sun (the new label included), and remember the search is
+      // no longer complete.
+      let worst = -1;
+      let worstKey = nt + ns;
+      for (let i = 0; i < n; i++) {
+        const o = slotLabels[base + i];
+        if (lT[o] + lS[o] > worstKey) { worst = i; worstKey = lT[o] + lS[o]; }
+      }
+      evicted++;
+      if (worst < 0) { lDead[id] = 1; slotCount[slot] = n; return true; }
+      lDead[slotLabels[base + worst]] = 1;
+      slotLabels[base + worst] = slotLabels[base + --n];
+    }
+    slotLabels[base + n++] = id;
+    slotCount[slot] = n;
+    heap.push(id, nt);
+    return true;
+  };
+
   while (heap.size > 0) {
     const label = heap.pop();
     if (lDead[label]) continue;
@@ -191,44 +264,17 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
       // A real walk traverses e within both budgets: e is reachable, whatever
       // happens to the label below.
       if (ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; proofLabel[e] = label; }
-      const v = targets[e];
-      const slot = v * B + bucketOf(nt);
-      const base = slot * K;
-      let n = slotCount[slot];
-      let dominated = false;
-      for (let i = 0; i < n && !dominated; i++) dominated = covers(slotLabels[base + i], nt, ns);
-      if (dominated) continue;
-      if (count === maxLabels) { exhausted = true; break; }
-      if (count === cap) grow();
-      const id = count++;
-      lNode[id] = v; lT[id] = nt; lS[id] = ns; lParent[id] = label; lEdge[id] = e;
-      for (let i = n - 1; i >= 0; i--) {
-        const other = slotLabels[base + i];
-        if (covers(id, lT[other], lS[other])) {
-          lDead[other] = 1;
-          slotLabels[base + i] = slotLabels[base + --n];
-        }
-      }
-      if (n === K) {
-        // Full of mutually uncovered labels: drop the one with the most
-        // time + sun (the new label included), and remember the search is
-        // no longer complete.
-        let worst = -1;
-        let worstKey = nt + ns;
-        for (let i = 0; i < n; i++) {
-          const o = slotLabels[base + i];
-          if (lT[o] + lS[o] > worstKey) { worst = i; worstKey = lT[o] + lS[o]; }
-        }
-        evicted++;
-        if (worst < 0) { lDead[id] = 1; slotCount[slot] = n; continue; }
-        lDead[slotLabels[base + worst]] = 1;
-        slotLabels[base + worst] = slotLabels[base + --n];
-      }
-      slotLabels[base + n++] = id;
-      slotCount[slot] = n;
-      heap.push(id, nt);
+      if (!offer(targets[e], nt, ns, label, e)) break;
     }
     if (exhausted) break;
+    // H5: wait where you stand until the next bucket, on the node's shadiest corner.
+    if (waits && bucketOf(t) < B - 1) {
+      const boundary = (Math.floor(t / W) + 1) * W;
+      if (boundary <= T) {
+        const ns = s + (boundary - t) * (1 - nodeShade[u * B + bucketOf(t)]);
+        if (ns <= S && !offer(u, boundary, ns, label, WAIT_EDGE)) break;
+      }
+    }
   }
 
   // Outer bound: an edge needs both its least-time and its least-sun (every
@@ -311,9 +357,10 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     return path.reverse();
   };
   /** Edges of the walk a label stands on, start first. */
-  const labelPath = (label: number): number[] => {
-    const path: number[] = [];
-    for (let l = label; lEdge[l] >= 0; l = lParent[l]) path.push(lEdge[l]);
+  /** The walk a label stands on, start first: street edges, and waits as WAIT_EDGE with their length. */
+  const labelPath = (label: number): Array<{ edge: number; seconds: number }> => {
+    const path: Array<{ edge: number; seconds: number }> = [];
+    for (let l = label; lParent[l] >= 0; l = lParent[l]) path.push({ edge: lEdge[l], seconds: lT[l] - lT[lParent[l]] });
     return path.reverse();
   };
   const witness = (fromId: number, toId: number, side?: string): SunReachWalk | null => {
@@ -322,13 +369,22 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     for (let e = offsets[from]; e < offsets[from + 1]; e++) {
       if (cg.nodeIds[targets[e]] !== toId || (side !== undefined && cg.edges[e].side !== side)) continue;
       if (reachSun[e] === Number.POSITIVE_INFINITY) continue;
-      const edges = [...(proofLabel[e] >= 0 ? labelPath(proofLabel[e]) : treePath(from)), e];
-      return {
-        nodeIds: [startId, ...edges.map((pe) => cg.nodeIds[targets[pe]])],
-        sides: edges.map((pe) => cg.edges[pe].side ?? null),
-        sunSec: reachSun[e],
-        arrivalSec: reachT[e],
-      };
+      const steps = [
+        ...(proofLabel[e] >= 0 ? labelPath(proofLabel[e]) : treePath(from).map((pe) => ({ edge: pe, seconds: 0 }))),
+        { edge: e, seconds: 0 },
+      ];
+      const nodeIds = [startId];
+      const sides: SunReachWalk["sides"] = [];
+      const waits: SunReachWalk["waits"] = [];
+      for (const step of steps) {
+        if (step.edge === WAIT_EDGE) {
+          waits.push({ atNode: nodeIds.length - 1, seconds: step.seconds });
+          continue;
+        }
+        nodeIds.push(cg.nodeIds[targets[step.edge]]);
+        sides.push(cg.edges[step.edge].side ?? null);
+      }
+      return { nodeIds, sides, waits, sunSec: reachSun[e], arrivalSec: reachT[e] };
     }
     return null;
   };

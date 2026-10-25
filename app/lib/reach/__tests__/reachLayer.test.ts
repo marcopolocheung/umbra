@@ -135,7 +135,7 @@ function fakeMap(style: string[]) {
 
 describe("walkFeatures (#379)", () => {
   it("draws each step on the sidewalk it takes, and marks where the walk ends", () => {
-    const fc = walkFeatures({ nodeIds: [1, 2, 3], sides: ["left", "right"], sunSec: 1, arrivalSec: 1 }, nodes);
+    const fc = walkFeatures({ nodeIds: [1, 2, 3], sides: ["left", "right"], waits: [], sunSec: 1, arrivalSec: 1 }, nodes);
     expect(fc.features.map((f) => f.properties)).toEqual([{ offset: -4 }, { offset: 4 }, { end: true }]);
     expect(fc.features[2].geometry).toEqual({ type: "Point", coordinates: [-73.99, 40.752] });
   });
@@ -150,7 +150,7 @@ describe("attachReachLayer", () => {
     };
     const layer = attachReachLayer(fake.map, { theme: "day" });
     layer.setRegion({ proven: [edge(1, 2, "left")], undecided: [edge(2, 3, "left")] }, nodes);
-    layer.setWalk({ nodeIds: [1, 2], sides: ["left"], sunSec: 1, arrivalSec: 1 }, nodes);
+    layer.setWalk({ nodeIds: [1, 2], sides: ["left"], waits: [], sunSec: 1, arrivalSec: 1 }, nodes);
     expect(paint[REACH_PROVEN_LAYER_ID]).toBe(REACH_DIMMED_OPACITY);
     for (const id of REACH_WALK_LAYER_IDS) expect(fake.layers.get(id)?.layout.visibility).toBe("visible");
     layer.setWalk(null, nodes);
