@@ -11,6 +11,7 @@
  * Results and method: `docs/notes/sun-budget-model.md`, "H4 — properties".
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -21,6 +22,7 @@ import { type CachedReach, mergeRegion } from "../reach/mergeRegion";
 import type { GraphEdge, RoutingGraph } from "../routing";
 import { type SunReachOptions, type SunReachWalk, sunReach, sunReachRun } from "../sunReach";
 import { edgeTraversalSeconds, isProhibitedEdge } from "../travelMode";
+import { routeNeedsCanvas } from "../../hooks/useRouting";
 import { randomGraph } from "./paretoCases.fixture";
 import { cases, reachKeys, roundTripCases, subset } from "./sunReachOracle.fixture";
 
@@ -111,17 +113,38 @@ describe("H4 property 2 — geometry exposure never depends on the map", () => {
     return { nodes, adj: new Map([[1, [edge(2)]], [2, [edge(1), edge(3)]], [3, [edge(2)]]]) };
   };
 
-  it("builds identical per-bucket shade whatever the map shows, and never touches it", () => {
-    const a = timeAwareGraphFromTable(streets(), view, slots);
-    const b = timeAwareGraphFromTable(streets(), view, slots);
-    expect(b.adj).toEqual(a.adj);
-    // Its signature has no map, zoom, viewport or style: (graph, view, slots).
-    expect(timeAwareGraphFromTable.length).toBe(3);
-    // And a departure sample reads the same table with no map either.
-    const sample = departureFromShadeTable(view, ["1,2", "2,3"], new Date("2026-07-01T16:00:00Z"), 40.75, -73.99);
-    expect(departureFromShadeTable(view, ["1,2", "2,3"], new Date("2026-07-01T16:00:00Z"), 40.75, -73.99)).toEqual(sample);
+  it("reads each sidewalk's own column at each bucket's own slot — the table, not the map", () => {
+    // Values, not just determinism: a swapped side or slot fails here.
+    const g = timeAwareGraphFromTable(streets(), view, slots);
+    const forward = g.adj.get(1)!.filter((e) => e.toId === 2);
+    const left = forward.find((e) => e.side === "left")!;
+    const right = forward.find((e) => e.side === "right")!;
+    expect(left.timeShadow).toEqual(slots.map((slot) => view.shadowFor("1,2", slot)!.left));
+    expect(right.timeShadow).toEqual(slots.map((slot) => view.shadowFor("1,2", slot)!.right));
+    // Walking against the stored direction swaps which column is your left.
+    const back = g.adj.get(2)!.find((e) => e.toId === 1 && e.side === "left")!;
+    expect(back.timeShadow).toEqual(slots.map((slot) => view.shadowFor("1,2", slot)!.right));
+  });
+
+  it("a Directions route the table covers never reads the canvas, whatever the map's state", () => {
+    // `routeNeedsCanvas` is the one gate on the pixel path (invariant #5).
+    for (const coverageConfidence of [0, 0.2, 0.49, 1]) {
+      expect(routeNeedsCanvas({ departureFromTable: true, rain: false, coverageConfidence })).toBe(false);
+    }
+    // Off the table, low coverage still falls back, and rain never does.
+    expect(routeNeedsCanvas({ departureFromTable: false, rain: false, coverageConfidence: 0.2 })).toBe(true);
+    expect(routeNeedsCanvas({ departureFromTable: false, rain: true, coverageConfidence: 0.2 })).toBe(false);
+  });
+
+  it("the table path's code never calls a map, canvas or style API", () => {
+    // A hidden zoom or basemap dependency needs one of these calls; this cannot
+    // catch a value smuggled in through a global, and the note says so.
+    const files = ["../navigationData/reachGraph.ts", "../navigationData/shadeTable.ts", "../sunReach.ts", "../reach/mergeRegion.ts"];
+    for (const f of files) {
+      const src = readFileSync(new URL(f, import.meta.url), "utf8");
+      expect(src, f).not.toMatch(/getZoom|getCanvas|readBuildingShadowMask|queryRenderedFeatures|querySourceFeatures|getStyle|maplibre/);
+    }
     expect(departureFromShadeTable.length).toBe(5);
-    // The search over it has no map input either: (graph, start, options).
     expect(sunReachRun.length).toBe(3);
   });
 });

@@ -392,21 +392,33 @@ the fourth is H3's one-way monotonicity, extended here.
 - **The region under *B − ε* is inside the region under *B*, as painted.** A single capped
   result can shrink when the budget grows by 1 s; the test finds such shrinks (at slot caps
   1–2) and requires that `mergeRegion`, which is what the map paints, never does.
-- **Zoom and basemap never change geometry exposure.** The table path,
-  `timeAwareGraphFromTable(graph, view, slots)` → `sunReachRun(graph, start, options)`, and the
-  departure sample `departureFromShadeTable` take no map, zoom, viewport or style input, and
-  repeated builds are identical.
+- **Zoom and basemap never change geometry exposure.** Three tests, each failing on a mutant that
+  passed the first version (which checked only argument counts and determinism):
+  - **Values, not just determinism.** The table graph carries each sidewalk's own column at each
+    bucket's own slot, so a swapped side or slot fails.
+  - **Directions never reads the canvas when the table covers the route.**
+    `routeNeedsCanvas` (`useRouting.ts`) is the one gate on the pixel path. It is false whenever
+    the table covers every edge, whatever the coverage, and still true off the table at low
+    coverage (rain never falls back).
+  - **No map API on the table path.** `reachGraph.ts`, `shadeTable.ts`, `sunReach.ts` and
+    `mergeRegion.ts` call no map, canvas or style API.
+  - **Limits.** These cannot catch a value smuggled in through a global, or a canvas read that
+    bypasses `routeNeedsCanvas`. No hook test runs the full Directions table path, which would
+    need the published-snapshot pipeline mocked end to end.
   - **Not true of the live tile provider:** below zoom 15 MapTiler serves a decimated building
     layer. That path is zoom-dependent by design and guarded instead: it reports completeness
     0.5 there, so its answers fall under the routing confidence floor
     (`providers.test.ts`, "reports full completeness only where the tile layer is complete").
 - **A start time reaches every leg and every stay.** Two halves:
   - a departure 15 min later reads every bucket one table slot later
-    (`shadeSlotsForDeparture`);
+    (`shadeSlotsForDeparture`). Shifts that are not a whole bucket round to the nearest slot, so
+    "exactly" holds per bucket only;
   - on that later sky, every proof the search returns (one way, with waits, round trip)
     re-prices exactly on the original sky with its clock started one bucket in, streets, waits,
     the stop and the walk home alike.
   - For Directions this needs #391: routes with stops are priced at one instant today.
+  - **What this is and isn't.** Half (b) checks that each witness costs what it reports on a
+    shifted sky. No test chains the two halves, for example `buildReachGraph` at two departures.
 - **The tests can fail.** Each of these breaks at least one test:
   - pricing a street at its start bucket;
   - pricing a stop at its first bucket only;

@@ -176,20 +176,30 @@ outcome says which: `exact`, `approximate` or `budget-exhausted`. Method:
 - **Properties (H4)**, each with a test that fails when the code is broken:
   - widening a budget never removes a street (`exact` results, waits and round trips included);
   - what the map paints never shrinks, even from capped results that do;
-  - geometry exposure from the shade table takes no map, zoom or basemap input;
-  - a later departure moves every walking, waiting and stop price by exactly that much.
-- **Runtime on NYC** (Node, SwiftShader WSL box, 6 runs per start, median of medians across the
-  12 starts; min–max of the medians):
+  - geometry exposure from the shade table reads each sidewalk's own column at each bucket's own
+    slot; a Directions route the table covers never reads the canvas; the table path's code calls
+    no map, canvas or style API;
+  - a departure one 15-minute bucket later moves every walking, waiting and stop price by exactly
+    one bucket. Shifts that are not a whole bucket are rounded to the nearest slot.
+- **Runtime on NYC** (Node 24 on the WSL box: one untimed warm-up and 5 timed runs per start,
+  median of the medians across the 12 starts; min–max of the medians):
   - one way: 370 ms (204–560 ms);
   - with waits: 550 ms (346–832 ms);
   - round trip, 10-min stop: 360 ms (270–555 ms).
-  - Browser, desktop: the first region draws in 4.1–4.7 s (graph build + search); later trip
-    switches redraw in 0.3–1.2 s.
-- **Memory:** 29 bytes per label in typed arrays, grown by doubling. Peak labels were 0.59M one
-  way (about 30 MB allocated) and 1.14M with waits (about 61 MB). Heap readings around the
-  search were too noisy to report (0.2–70 MB, swamped by garbage collection).
-- **Cache:** the panel keeps every result for its graph. Sweeping the sun slider 18 steps over
-  8–15 min and back ran 9 searches, one per new value; the 9 repeats were served from the cache.
+- **In the browser** (production preview, SwiftShader, desktop): the first region draws in
+  4.1–4.7 s (graph build + search); later trip switches redraw in 0.3–1.2 s.
+- **Memory, label store only:** 29 bytes per label in typed arrays, grown by doubling.
+  - Peak labels: 0.59M one way, ending at about 30 MB allocated (a 1,048,576-label capacity), and
+    1.14M with waits, ending at about 61 MB.
+  - While the arrays double, old and new coexist, so the transient peak is about 46 MB and 91 MB.
+  - Excludes the fixed per-slot table and the per-edge arrays.
+  - Heap readings around the search were too noisy to report (0.2–70 MB, swamped by garbage
+    collection).
+- **Cache:** the panel keeps every completed result for its graph, but a search aborted by a newer
+  slider step is not kept (#394).
+  - A scripted sweep of 18 steps over 8–15 min and back made 10 and 13 worker searches in two runs,
+    for 8 distinct values. Each repeat was a value whose first search was aborted.
+  - A hand on a slider moves slower than this script, so this is the worst case.
 
 **What this does not say.**
 - Proven streets are proven on the *model*: clear-sky geometry at 15-minute buckets, a steady
