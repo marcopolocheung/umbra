@@ -69,6 +69,14 @@ describe("sunBudgetMessage", () => {
     expect(dashed.detail).toMatch(/weren't confirmed.*edge of NYC's data/);
   });
 
+  it("says a round trip is there and back, with its stop, in the headline (H5c)", () => {
+    expect(sunBudgetMessage({ ...base, shown: { ...shown, stayMin: 0 } }).headline).toContain("of direct sun, there and back.");
+    expect(sunBudgetMessage({ ...base, shown: { ...shown, stayMin: 10 } }).headline).toContain(
+      "in 20 min on ≤ 8 min of direct sun, there and back, with a 10-min stop",
+    );
+    expect(sunBudgetMessage({ ...base, shown: { ...shown, stayMin: null } }).headline).toContain("one way");
+  });
+
   it("says plainly when the start is outside the shade data", () => {
     expect(sunBudgetMessage({ ...base, status: "uncovered", outcome: null }).headline).toMatch(/NYC shade data/);
   });
@@ -106,6 +114,25 @@ describe("SunBudgetPanel", () => {
   it("says plainly when the walk behind a street isn't available", () => {
     render(<SunBudgetPanel {...props} walk="none" />);
     expect(screen.getByText(/Can't redraw the walk behind this street/)).toBeTruthy();
+  });
+
+  it("switches to a round trip, then offers the stop (H5c)", () => {
+    const onStayMinChange = vi.fn();
+    const { rerender } = render(<SunBudgetPanel {...props} stayMin={null} onStayMinChange={onStayMinChange} />);
+    expect(screen.queryByRole("group", { name: "Stop on the way" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Round trip" }));
+    expect(onStayMinChange).toHaveBeenLastCalledWith(0);
+    rerender(<SunBudgetPanel {...props} stayMin={0} onStayMinChange={onStayMinChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "10 min stop" }));
+    expect(onStayMinChange).toHaveBeenLastCalledWith(10);
+    fireEvent.click(screen.getByRole("button", { name: "One way" }));
+    expect(onStayMinChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("states a round trip's time home, its stop, and all its sun (H5c)", () => {
+    const walk = { nodeIds: [1, 2, 1], sides: ["left", "left"] as Array<"left">, waits: [], dwell: { atNode: 1, seconds: 600 }, sunSec: 301, arrivalSec: 1500 };
+    render(<SunBudgetPanel {...props} walk={walk} />);
+    expect(screen.getByText("Shadiest round trip found: 25 min home, 10 of them at the stop, 6 min of direct sun in all, on the sidewalks drawn.")).toBeTruthy();
   });
 
   it("switches walking time and announces the result in a live region", () => {

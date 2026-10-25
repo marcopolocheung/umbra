@@ -345,3 +345,33 @@ with `REACH_WAITS=1` and/or `REACH_DWELL=<minutes>` on the same audit command; s
   reaches is undecided, not proven.
 - There is no UI yet. The panel's round-trip toggle and stay length are H5c.
 - Directions routes ignore a stop's dwell (#391).
+
+## H5c — round trips in the Sun Budget panel
+
+**What the user gets.** A "One way / Round trip" switch, and with a round trip a stop of none,
+10 or 30 minutes. The walk time stays walking time: a 20-minute round trip with a 10-minute stop
+searches a 30-minute budget with `roundTrip: { dwellSec: 600 }`, and the stop's sun counts against
+the sun budget. The headline names the trip ("there and back, with a 10-min stop"). A tapped
+street shows its whole outing: out, the stop (where the marker sits), and home, with the time
+home, the minutes at the stop and all the sun. Waiting stays off in the UI (H5b: on NYC it
+shrinks regions at the default cap).
+
+**Trips never mix.** The map merges results for the same graph *and* the same trip only. A
+one-way street is never proof of a round trip (`useSunBudget.test.tsx`; the mutant that merges
+across trips fails it). The worker replays a walk only for the trip on screen
+(`sunBudgetWorkerProtocol.test.ts`).
+
+**Checked in the browser** (production preview, SwiftShader in WSL, real generation
+`nyc-2026-09-18-393d4cd24a30` served locally behind `VITE_NAVIGATION_BASE`, a plain background
+in place of MapTiler, Midtown, July 1 15:00).
+- Desktop: the first one-way region drew in 4.4 s (graph build + search). Switching to a round
+  trip, then a 10-minute stop, then back to one way redrew in 0.3–1.2 s each, and the right
+  region showed each time.
+- A tapped street showed its round trip ("30 min home, 10 of them at the stop, 3 min of direct
+  sun in all").
+- Phone (390×844): the round trip with a 30-minute stop drew. Every control in the panel is at
+  least 44 px tall.
+- **Not checked:**
+  - with real MapTiler tiles, or at night;
+  - the panel's look inside the phone's bottom sheet: the scripted drag couldn't open the sheet,
+    so the controls were measured, not seen.

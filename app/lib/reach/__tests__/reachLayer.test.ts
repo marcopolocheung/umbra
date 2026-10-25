@@ -139,6 +139,16 @@ describe("walkFeatures (#379)", () => {
     expect(fc.features.map((f) => f.properties)).toEqual([{ offset: -4 }, { offset: 4 }, { end: true }]);
     expect(fc.features[2].geometry).toEqual({ type: "Point", coordinates: [-73.99, 40.752] });
   });
+
+  it("marks a round trip's stop, not home, where it ends (H5c)", () => {
+    const fc = walkFeatures(
+      { nodeIds: [1, 2, 3, 2, 1], sides: ["left", "left", "left", "left"], waits: [], dwell: { atNode: 2, seconds: 600 }, sunSec: 1, arrivalSec: 1 },
+      nodes,
+    );
+    expect(fc.features.filter((f) => f.geometry.type === "LineString")).toHaveLength(4);
+    const n3 = nodes.get(3)!;
+    expect(fc.features.at(-1)).toMatchObject({ properties: { end: true }, geometry: { type: "Point", coordinates: [n3.lon, n3.lat] } });
+  });
 });
 
 describe("attachReachLayer", () => {

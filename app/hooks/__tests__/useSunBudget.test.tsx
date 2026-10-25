@@ -40,7 +40,40 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.status).toBe("ready"));
     expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
     expect(search.mock.calls[0][1]).toMatchObject({ sunBudgetSec: 480, timeBudgetSec: 1200, travelMode: "walk" });
-    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20 });
+    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20, stayMin: null });
+  });
+
+  it("searches a round trip with its stop added to the walking time (H5c)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+      hook.current.setStayMin(10);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    expect(search.mock.calls.at(-1)![1]).toEqual({ sunBudgetSec: 480, timeBudgetSec: 1800, travelMode: "walk", roundTrip: { dwellSec: 600 } });
+    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20, stayMin: 10 });
+  });
+
+  it("never paints a one-way street into a round trip's region, or back (H5c)", async () => {
+    // One way proves 1>2 and 2>3; the round trip at a wider sun budget only 1>2.
+    const search = vi.fn<Search>(async (_id, o) => (o.roundTrip ? result([edge(1, 2)]) : result([edge(1, 2), edge(2, 3)])));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(ids(hook.current.region?.proven)).toEqual(["1>2", "2>3"]));
+    act(() => {
+      hook.current.setStayMin(0);
+      hook.current.setSunMin(10);
+    });
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBe(0));
+    expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
+    act(() => hook.current.setStayMin(null));
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBeNull());
+    expect(ids(hook.current.region?.proven)).toEqual(["1>2", "2>3"]);
   });
 
   it("never drops a proven street when the sun budget widens and the new result is approximate", async () => {

@@ -107,7 +107,7 @@ export async function searchSunReachGraph(
  */
 export async function sunReachWalk(
   graphId: number,
-  budgets: { sunBudgetSec: number; timeBudgetSec: number },
+  budgets: Pick<SunReachOptions, "sunBudgetSec" | "timeBudgetSec" | "roundTrip">,
   edge: { fromId: number; toId: number; side?: string },
 ): Promise<SunReachWalk | null> {
   const event = await send({ type: "walk", graphId, budgets, edge });
