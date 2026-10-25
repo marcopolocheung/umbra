@@ -96,6 +96,34 @@ const ROUND_TRIP_TRIES = 4;
 /** `lEdge` for a label made by waiting where it stood (H5), not by walking a street. */
 const WAIT_EDGE = -2;
 
+/**
+ * #391: standing `seconds` at `nodeId` from `startSec` after departure, on its
+ * shadiest sidewalk, priced bucket by bucket — the stay `sunReachRun` prices
+ * for a round trip, for any caller with a graph. One piece per bucket spanned,
+ * each with that bucket's shade.
+ */
+export function stayExposure(
+  graph: RoutingGraph,
+  nodeId: number,
+  startSec: number,
+  seconds: number,
+  timeAware: { bucketMs: number; bucketCount: number } | undefined,
+): Array<{ durationSec: number; shade: number }> {
+  const W = timeAware ? timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
+  const B = timeAware?.bucketCount ?? 1;
+  const edges = graph.adj.get(nodeId) ?? [];
+  const shadeIn = (b: number) =>
+    Math.max(0, ...edges.map((e) => (!timeAware || !e.timeShadow?.length ? e.shadowFactor : e.timeShadow[Math.min(b, e.timeShadow.length - 1)])));
+  const pieces: Array<{ durationSec: number; shade: number }> = [];
+  for (let t = startSec, end = startSec + seconds; t < end; ) {
+    const b = timeAware ? Math.min(Math.floor(t / W), B - 1) : 0;
+    const until = timeAware && b < B - 1 ? Math.min(end, (b + 1) * W) : end;
+    pieces.push({ durationSec: until - t, shade: shadeIn(b) });
+    t = until;
+  }
+  return pieces;
+}
+
 export function sunReach(graph: RoutingGraph, startId: number, options: SunReachOptions): SunReachResult {
   return sunReachRun(graph, startId, options).result;
 }

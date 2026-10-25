@@ -35,4 +35,25 @@ describe("refreshRouteExposure", () => {
     ]);
     expect(walkSegments).toHaveLength(2);
   });
+
+  it("keeps a stay's sun through a refresh of a walking route (#391)", () => {
+    const sampleEdges = vi.fn((edges: EdgeRef[]): EdgeShadow[] =>
+      edges.map(() => ({ left: 1, right: 1, source: "overpass", confidence: 1 })),
+    );
+    const field = { sampleEdges } as unknown as ShadowField;
+    const stay = { distanceM: 0, durationSec: 1800, protection: 0.25, confidence: 1, provenance: "geometry" as const };
+    const route = {
+      travelMode: "walk",
+      geojson: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[-74, 40.7], [-74, 40.701]] } },
+      sampledEdges: [{ from: [-74, 40.7], to: [-74, 40.701], side: null }],
+      exposureSegments: [{ distanceM: 111, protection: 0, confidence: 1 }, stay],
+    } as unknown as RouteOption;
+    const context = resolveExposureContext({ objective: "sun" }, { time: new Date("2026-06-21T16:00:00Z") });
+
+    const next = refreshRouteExposure(route, field, context);
+
+    expect(next.exposureSegments).toContainEqual(stay);
+    // The walk re-sampled fully shaded; the stay keeps its 75% sun.
+    expect(next.exposure!.exposedDurationSec).toBeCloseTo(1800 * 0.75, 6);
+  });
 });

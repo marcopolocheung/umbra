@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type * as maplibregl from "maplibre-gl";
 import { boxAround, fetchStationEntranceBoxes } from "../lib/overpass";
+import { stayExposure } from "../lib/sunReach";
 import {
   dijkstra,
   graphToGeoJSON,
@@ -314,6 +315,9 @@ export function useRouting({
   // Volatile across renders: `calculateRoute` keeps its identity and reads this.
   const rainModeRef = useRef(rainMode);
   rainModeRef.current = rainMode;
+  // #391: the trip's stay at each stop, positional over [A, ...via, B].
+  const dwellSignatureRef = useRef(dwellSignature);
+  dwellSignatureRef.current = dwellSignature;
   const exposureSettingsRef = useRef(exposureSettings);
   exposureSettingsRef.current = exposureSettings;
   const calcGenRef = useRef(0);
@@ -1071,17 +1075,31 @@ export function useRouting({
         // time — documented in docs/notes/time-aware-routing-h1.md).
         const timeShadowByEdge = new Map<string, { left: number[]; right: number[] }>();
         let timeBucketCount = 0;
-        // Only the no-via branch runs `paretoRoutes` — via-stop legs and
-        // transit walk legs call `dijkstra`, which still prices one frozen
-        // instant (a stated gap in docs/notes/time-aware-routing-h1.md). Those
-        // routes would pay the sweep for nothing, so they don't run it.
-        if (TIME_AWARE_ROUTING && !rainObjective && edgeRefs.length > 0
-          && (plan?.via ?? additionalWaypoints).length === 0) {
+        // Via-stop legs choose their path at one instant (`dijkstra`), but
+        // report it at the clock each leg actually runs at, stays included
+        // (#391) — so they sweep too, over the whole trip.
+        // A plan from the agent carries no stays; only the trip's own stops have them.
+        const viaCount = (plan?.via ?? additionalWaypoints).length;
+        const stopStays: number[] = (() => {
+          if (plan || viaCount === 0) return [];
+          try {
+            const minutes = JSON.parse(dwellSignatureRef.current) as unknown;
+            return Array.isArray(minutes) && minutes.length === viaCount + 2
+              ? minutes.map((m) => (typeof m === "number" && m > 0 ? m * 60 : 0))
+              : [];
+          } catch {
+            return [];
+          }
+        })();
+        const staySec = stopStays.slice(1, -1).reduce((sum, sec) => sum + sec, 0);
+        if (TIME_AWARE_ROUTING && !rainObjective && edgeRefs.length > 0) {
           const tSweep = performance.now();
+          // Through every stop, not A→B: a detour via a café can be far longer.
+          const throughStopsM = routeStops.slice(1).reduce((sum, stop, i) => sum + haversineMeters(routeStops[i], stop), 0);
           const horizonSec = travelTimeSeconds(
-            straightLineDistM * DEFAULT_MAX_DETOUR_FACTOR + DETOUR_FLAT_M,
+            Math.max(straightLineDistM, throughStopsM) * DEFAULT_MAX_DETOUR_FACTOR + DETOUR_FLAT_M * (viaCount + 1),
             travelModeRef.current,
-          );
+          ) + staySec;
           timeBucketCount = Math.max(
             1,
             Math.min(MAX_TIME_BUCKETS, Math.ceil((horizonSec * 1000) / TIME_BUCKET_MS)),
@@ -1371,6 +1389,9 @@ export function useRouting({
             const surfaceMetresM: Record<string, number> = {};
             let failed = false;
             let failedLeg: number | null = null;
+            // #391: the clock each leg starts at — earlier legs and stays included.
+            let clockSec = 0;
+            const legClock = opts.timeAware ? { timeAware: opts.timeAware } : null;
 
             // A1: one progress update per strength pass. The browser yield that
             // used to sit here (and once per leg) moves to a single point after
@@ -1383,12 +1404,26 @@ export function useRouting({
             });
 
             for (let seg = 0; seg < nodeChain.length - 1; seg++) {
+              // A stay at the stop this leg leaves (none at A), on its shadiest sidewalk.
+              const stay = seg > 0 ? (stopStays[seg] ?? 0) : 0;
+              if (legClock && stay > 0) {
+                for (const piece of stayExposure(routingGraph, nodeChain[seg], clockSec, stay, legClock.timeAware)) {
+                  exposureSegments.push({
+                    distanceM: 0,
+                    durationSec: piece.durationSec,
+                    protection: piece.shade,
+                    confidence: 1,
+                    provenance: "geometry",
+                  });
+                }
+                clockSec += stay;
+              }
               const segResult = dijkstra(
                 routingGraph,
                 nodeChain[seg],
                 nodeChain[seg + 1],
                 strength,
-                opts,
+                legClock ? { ...opts, reportClock: { ...legClock, startSec: clockSec } } : opts,
               );
               if (myGen !== calcGenRef.current) return cancelled();
               if (!segResult) {
@@ -1421,6 +1456,7 @@ export function useRouting({
                 exposureSegments: segResult.exposureSegments,
                 sampledEdges: segResult.sampledEdges,
               });
+              if (segResult.endClockSec != null) clockSec = segResult.endClockSec;
               totalDist += segResult.distanceM;
               totalShadowDist += segResult.distanceM * segResult.shadowCoverage;
               totalDryDist += segResult.distanceM * (segResult.dryCoverage ?? 0);

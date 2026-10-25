@@ -247,3 +247,43 @@ function priceFrom(graph: RoutingGraph, walk: SunReachWalk, o: SunReachOptions, 
   }
   return states;
 }
+
+describe("stayExposure — one pricing of a stay for routes and Sun Budget (#391)", () => {
+  it("prices a round trip's stay exactly as the Sun Budget search does", async () => {
+    const { stayExposure } = await import("../sunReach");
+    let compared = 0;
+    for (const c of roundTripCases().slice(0, 20)) {
+      if (!c.options.timeAware) continue;
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const run = sunReachRun(graph, c.start, { ...c.options, allowWaits: false });
+      for (const edge of run.result.reachable.slice(0, 5)) {
+        const walk = run.witness(edge.fromId, edge.toId, edge.side)!;
+        if (!walk.dwell || walk.dwell.seconds === 0) continue;
+        // Re-price the outing with stayExposure for the stay and plain arrival
+        // pricing for the streets: it must total the reported sun.
+        const mode = c.options.travelMode ?? "walk";
+        const W = c.options.timeAware!.bucketMs / 1000;
+        const B = c.options.timeAware!.bucketCount;
+        let t = 0;
+        let s = 0;
+        for (let i = 0; i < walk.nodeIds.length; i++) {
+          if (walk.dwell.atNode === i) {
+            for (const p of stayExposure(graph, walk.nodeIds[i], t, walk.dwell.seconds, c.options.timeAware)) s += p.durationSec * (1 - p.shade);
+            t += walk.dwell.seconds;
+          }
+          if (i + 1 === walk.nodeIds.length) break;
+          const e = (graph.adj.get(walk.nodeIds[i]) ?? []).find(
+            (x) => x.toId === walk.nodeIds[i + 1] && !isProhibitedEdge(x, mode) && (x.side ?? null) === walk.sides[i],
+          )!;
+          const sec = edgeTraversalSeconds(e, mode);
+          t += sec;
+          const ts = e.timeShadow;
+          s += sec * (1 - (!ts || ts.length === 0 ? e.shadowFactor : ts[Math.min(Math.floor(t / W), B - 1, ts.length - 1)]));
+        }
+        expect(s, `seed ${c.seed}`).toBeCloseTo(walk.sunSec, 6);
+        compared++;
+      }
+    }
+    expect(compared).toBeGreaterThan(10);
+  });
+});

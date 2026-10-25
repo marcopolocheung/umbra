@@ -92,9 +92,21 @@ bucket (#369).
 
 ## Known gaps (deliberate, for later checkpoints)
 
-- **Via-stop legs and transit walk legs are still priced at one frozen
-  instant** — they call `dijkstra`, which does not read `timeAware`. The sweep
-  is skipped on those routes so they don't pay for it. H2/H3 consume them.
+- **Via-stop legs choose their path at one instant, but report it at their
+  own clock (#391).** `dijkstra` still picks each leg on the static factor;
+  with `reportClock` it prices the chosen path at the bucket each edge's end is
+  reached in, starting where the previous leg and the stay at the stop ended.
+  A stay is priced like Sun Budget's (`stayExposure`): on the stop's shadiest
+  sidewalk, bucket by bucket. The sweep runs on those routes now, over a
+  horizon through every stop plus every stay. Stays come only from the trip
+  (a share link's `dwell`, a saved record); an agent plan carries none, and no
+  control in the app sets one yet. The card's "N min in sun" adds a stay's sun
+  (`routeExposureMinutes`), and a conditions refresh keeps the stays, since they
+  have no location to re-sample. Measured on NYC (Midtown A → stop → B, July 1
+  14:00, preview build, SwiftShader): the card read 7 min in sun with or without
+  a 30-min stay before; it reads 7 without and 14 with. Shade sampling went
+  from ~40 ms to ~85 ms (now swept); the whole route stayed ~2.4 s.
+- **Transit walk legs are still priced at one frozen instant.**
 - The sketch pipeline (`useSketch.ts`) and condition-only refresh
   (`routeExposureRefresh.ts`) still sample at one instant. H2/H3 consume them.
 - Bucket factors are piecewise-constant in time; the discretization error is

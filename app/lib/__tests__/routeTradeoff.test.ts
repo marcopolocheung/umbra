@@ -339,3 +339,21 @@ describe("routeShadowShare", () => {
     expect(routeShadowShare(walk)).toBe(0.73);
   });
 });
+
+describe("a stay's sun reaches the card (#391)", () => {
+  it("adds a stop's sun and shade minutes to a walking route's", () => {
+    // 840 m at walking pace (10 min), half in shade: 5 min sun, 5 min shade.
+    // A 30-min stay at the stop, a third in sun: 10 min sun, 20 min shade.
+    const r = {
+      ...route("Via", 840, 0.5),
+      exposureSegments: [{ distanceM: 0, durationSec: 1800, protection: 2 / 3 }],
+    };
+    const m = routeExposureMinutes(r)!;
+    expect(m.sunMinutes).toBeCloseTo(5 + 10, 6);
+    expect(m.shadowMinutes).toBeCloseTo(5 + 20, 6);
+    expect(routeExposureLine(r)).toMatch(/^15 min in sun/);
+    // Walked segments are already in the distance figure: never counted twice.
+    const walkedOnly = { ...route("Via", 840, 0.5), exposureSegments: [{ distanceM: 840, durationSec: 600, protection: 0.5 }] };
+    expect(routeExposureMinutes(walkedOnly)!.sunMinutes).toBeCloseTo(5, 6);
+  });
+});

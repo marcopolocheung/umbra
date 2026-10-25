@@ -80,6 +80,8 @@ export type ExposureObjective = "sun" | "rain";
 
 export interface RouteResult {
   nodeIds: number[];
+  /** #391: with `reportClock`, seconds after departure when this leg ends — the next leg's start. */
+  endClockSec?: number;
   /**
    * Which sidewalk the search chose for each traversed segment: `sides[i]` is the
    * side of the edge from `nodeIds[i]` to `nodeIds[i + 1]`, so this is always one
@@ -327,6 +329,13 @@ export interface DijkstraOptions {
   searchStrategy?: "pareto" | "direct";
   /** Deprecated compatibility input. Rain no longer has an intensity scale. */
   precipIntensity?: number;
+  /**
+   * `dijkstra` only, sun only (#391): report the chosen path's exposure at the
+   * buckets the walker actually reaches each edge, with the clock starting at
+   * `startSec` after departure — a leg after earlier legs and stops. The path
+   * choice is unchanged; only what is reported moves with the clock.
+   */
+  reportClock?: { timeAware: { bucketMs: number; bucketCount: number }; startSec: number };
 }
 
 /** Haversine distance in meters. a/b are [lng, lat]. */
@@ -740,6 +749,9 @@ export function dijkstra(
     speedMps?: number;
   }> = [];
   const sampledEdges: NonNullable<RouteResult["sampledEdges"]> = [];
+  // #391: with a clock, each edge reports the bucket its end is reached in.
+  const clock = rain ? undefined : options.reportClock;
+  let clockSec = clock?.startSec ?? 0;
 
   for (let i = 0; i < nodeIds.length - 1; i++) {
     // Use prevEdge (the exact edge Dijkstra chose) so parallel sidewalk edges
@@ -748,6 +760,12 @@ export function dijkstra(
     if (!edge || edge.toId !== nodeIds[i + 1]) { sides.push(null); continue; }
     sides.push(edge.side ?? null);
     totalDist += edge.distanceM;
+    const durationSec = edgeTraversalSeconds(edge, travelMode);
+    clockSec += durationSec;
+    const ts = edge.timeShadow;
+    const shade = clock && ts && ts.length > 0
+      ? ts[Math.min(Math.floor((clockSec * 1000) / clock.timeAware.bucketMs), clock.timeAware.bucketCount - 1, ts.length - 1)]
+      : edge.shadowFactor;
     const fromNode = graph.nodes.get(nodeIds[i]);
     const toNodeForSample = graph.nodes.get(nodeIds[i + 1]);
     if (fromNode && toNodeForSample) {
@@ -757,7 +775,7 @@ export function dijkstra(
         side: edge.side ?? null,
       });
     }
-    shadowedDist += edge.distanceM * edge.shadowFactor;
+    shadowedDist += edge.distanceM * shade;
     const shelterConfidence = edge.shelterFactor == null
       ? undefined
       : edge.shelterConfidence ?? edge.exposureConfidence ?? 1;
@@ -769,17 +787,19 @@ export function dijkstra(
     }
     surfaceMetresM[edge.surface ?? "unknown"] =
       (surfaceMetresM[edge.surface ?? "unknown"] ?? 0) + edge.distanceM;
-    const protection = rain ? edge.shelterFactor : edge.shadowFactor;
+    const protection = rain ? edge.shelterFactor : shade;
     const exposureConfidence = rain ? shelterConfidence : edge.exposureConfidence ?? 1;
     exposureSegments.push({
       distanceM: edge.distanceM,
+      // With a clock, durations are the mode's traversal clock, as paretoRoutes reports them (H2).
+      ...(clock ? { durationSec } : {}),
       protection,
       confidence: exposureConfidence,
       provenance: protection == null ? "unknown" : "geometry",
     });
 
     // Shadow continuity tracking
-    const isShadowed = edge.shadowFactor > SHADOW_THRESH;
+    const isShadowed = shade > SHADOW_THRESH;
     if (isShadowed) {
       currentStreakM += edge.distanceM;
       longestContinuousShadowM = Math.max(longestContinuousShadowM, currentStreakM);
@@ -846,6 +866,7 @@ export function dijkstra(
     exposure: computeExposureMetrics(objective, exposureSegments),
     exposureSegments,
     sampledEdges,
+    ...(clock ? { endClockSec: clockSec } : {}),
   };
 }
 
