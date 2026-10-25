@@ -1,6 +1,7 @@
 /**
  * H3b — Sun Budget: pick a start, then see every street reachable on at most
- * `sunMin` minutes of direct sun and `walkMin` minutes of walking, one way.
+ * `sunMin` minutes of direct sun and `walkMin` minutes of walking, one way —
+ * or (H5c) there and back, with an optional stop of `stayMin` minutes.
  *
  * One graph per (start, departure slot); budget changes only re-search it.
  * Every result is cached against the graph object it was computed on, and only
@@ -22,6 +23,10 @@ export type SunBudgetStatus = "off" | "picking" | "loading" | "uncovered" | "rea
 /** The graph is built for the longest walk the panel offers, so changing walk time never refetches. */
 export const SUN_BUDGET_WALK_MINUTES = [10, 20, 30] as const;
 const GRAPH_WALK_SEC = Math.max(...SUN_BUDGET_WALK_MINUTES) * 60;
+/** H5c: stops a round trip offers. A round trip walks half as far out, so the graph above still covers it. */
+export const SUN_BUDGET_STAY_MINUTES = [0, 10, 30] as const;
+/** But a stop makes the outing last longer than the walk: the graph's shade must cover walk + stop. */
+const GRAPH_HORIZON_SEC = GRAPH_WALK_SEC + Math.max(...SUN_BUDGET_STAY_MINUTES) * 60;
 const SLIDER_DEBOUNCE_MS = 150;
 /** While the timeline plays, wait for the clock to settle before rebuilding. */
 const DEPARTURE_SETTLE_MS = 600;
@@ -29,8 +34,8 @@ const SLOT_MS = 15 * 60_000;
 
 /** A graph the worker built and keeps; the main thread holds its id and node positions. */
 type OkGraph = Extract<BuiltReachGraph, { status: "ok" }>;
-/** A result, and the graph it is a result for. */
-type Entry = CachedReach & { graph: OkGraph };
+/** A result, the graph it is a result for, and its trip: null one way, else the stop in seconds. */
+type Entry = CachedReach & { graph: OkGraph; staySec: number | null };
 
 export interface SunBudgetState {
   status: SunBudgetStatus;
@@ -39,8 +44,10 @@ export interface SunBudgetState {
   startPoint: [number, number] | null;
   sunMin: number;
   walkMin: number;
+  /** H5c: null for one way; else a round trip with a stop of this many minutes. */
+  stayMin: number | null;
   /** The budgets of the region on screen — they trail the sliders while a search runs. */
-  shown: { sunMin: number; walkMin: number } | null;
+  shown: { sunMin: number; walkMin: number; stayMin: number | null } | null;
   region: ReachRegion | null;
   outcome: SunReachOutcome | null;
   /** The region was cut at the edge of the shade data (#380). */
@@ -54,6 +61,7 @@ export interface SunBudgetState {
   setStart: (coord: [number, number]) => void;
   setSunMin: (minutes: number) => void;
   setWalkMin: (minutes: number) => void;
+  setStayMin: (minutes: number | null) => void;
   /** The walk behind a tapped proven street (#379); "none" when this search can't replay it. */
   walk: SunReachWalk | "none" | null;
   /** "Show walks": a tap on a solid street shows its walk instead of moving the start. */
@@ -62,6 +70,9 @@ export interface SunBudgetState {
   showWalk: (street: { lo: number; hi: number }) => void;
   clearWalk: () => void;
 }
+
+/** The search option for a trip: nothing one way, else a round trip with that stop. */
+const tripOf = (staySec: number | null) => (staySec === null ? {} : { roundTrip: { dwellSec: staySec } });
 
 export function useSunBudget(
   departure: Date,
@@ -75,12 +86,13 @@ export function useSunBudget(
   const [start, setStartState] = useState<[number, number] | null>(null);
   const [sunMin, setSunMin] = useState(8);
   const [walkMin, setWalkMin] = useState(20);
+  const [stayMin, setStayMin] = useState<number | null>(null);
   const [graph, setGraph] = useState<BuiltReachGraph | "loading" | "error" | null>(null);
   // A search error on a kept graph means the worker lost it (it failed and
   // restarted): rebuild once rather than leave the user on an error.
   const [rebuild, setRebuild] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [currentKey, setCurrentKey] = useState<{ graph: OkGraph; sunSec: number; timeSec: number } | null>(null);
+  const [currentKey, setCurrentKey] = useState<{ graph: OkGraph; sunSec: number; timeSec: number; staySec: number | null } | null>(null);
   const [searchFailed, setSearchFailed] = useState(false);
   // Read for the cache hit only: a new entry landing must not start another search.
   const entriesRef = useRef(entries);
@@ -124,7 +136,7 @@ export function useSunBudget(
     setGraph("loading");
     // Always walking (the worker builds at walk pace): the panel speaks in walking minutes.
     build(
-      { center: start, timeBudgetSec: GRAPH_WALK_SEC, departure: new Date(settledSlot * SLOT_MS) },
+      { center: start, timeBudgetSec: GRAPH_WALK_SEC, horizonSec: GRAPH_HORIZON_SEC, departure: new Date(settledSlot * SLOT_MS) },
       { signal: controller.signal },
     ).then(
       (built) => {
@@ -147,9 +159,11 @@ export function useSunBudget(
   useEffect(() => {
     if (!okGraph) return;
     const sunSec = sunMin * 60;
-    const timeSec = walkMin * 60;
-    const key = { graph: okGraph, sunSec, timeSec };
-    if (entriesRef.current.some((e) => e.graph === okGraph && e.sunSec === sunSec && e.timeSec === timeSec)) {
+    const staySec = stayMin === null ? null : stayMin * 60;
+    // The walk is walking time; a stop adds its own time on top (its sun counts against the sun budget).
+    const timeSec = walkMin * 60 + (staySec ?? 0);
+    const key = { graph: okGraph, sunSec, timeSec, staySec };
+    if (entriesRef.current.some((e) => e.graph === okGraph && e.sunSec === sunSec && e.timeSec === timeSec && e.staySec === staySec)) {
       setCurrentKey(key);
       return;
     }
@@ -157,13 +171,13 @@ export function useSunBudget(
     const timer = setTimeout(() => {
       search(
         okGraph.graphId,
-        { sunBudgetSec: sunSec, timeBudgetSec: timeSec, travelMode: "walk" },
+        { sunBudgetSec: sunSec, timeBudgetSec: timeSec, travelMode: "walk", ...tripOf(staySec) },
         { signal: controller.signal },
       ).then(
         (result) => {
           if (controller.signal.aborted) return;
           setSearchFailed(false);
-          setEntries((prev) => [...prev, { graph: okGraph, sunSec, timeSec, result }]);
+          setEntries((prev) => [...prev, { graph: okGraph, sunSec, timeSec, staySec, result }]);
           setCurrentKey(key);
         },
         (error) => {
@@ -183,10 +197,14 @@ export function useSunBudget(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [okGraph, sunMin, walkMin, search]);
+  }, [okGraph, sunMin, walkMin, stayMin, search]);
 
-  // Only the current graph's results: a stale entry for another graph is never read.
-  const ownEntries = useMemo(() => entries.filter((e) => e.graph === okGraph), [entries, okGraph]);
+  // Only the current graph's and trip's results: a one-way street never proves a
+  // round trip, and a stale entry for another graph is never read.
+  const ownEntries = useMemo(
+    () => entries.filter((e) => e.graph === okGraph && e.staySec === currentKey?.staySec),
+    [entries, okGraph, currentKey],
+  );
   const current =
     currentKey && currentKey.graph === okGraph
       ? (ownEntries.find((e) => e.sunSec === currentKey.sunSec && e.timeSec === currentKey.timeSec) ?? null)
@@ -220,7 +238,7 @@ export function useSunBudget(
         return;
       }
       const edges = prover.result.reachable.filter(onStreet);
-      const budgets = { sunBudgetSec: prover.sunSec, timeBudgetSec: prover.timeSec };
+      const budgets = { sunBudgetSec: prover.sunSec, timeBudgetSec: prover.timeSec, ...tripOf(prover.staySec) };
       const ask1 = () => Promise.all(edges.map((e) => walkFor(okGraph.graphId, budgets, e).catch(() => null)));
       const pick = (walks: Array<SunReachWalk | null>) => walks.filter((w): w is SunReachWalk => w !== null);
       ask1()
@@ -259,7 +277,9 @@ export function useSunBudget(
               : "loading";
 
   // #380: the shown walk can reach the cut only if its radius (as reachGraph sizes it) gets there.
-  const shownRadiusM = current ? current.timeSec * getTravelModePolicy("walk").speedMps * 1.1 : 0;
+  // A round trip's walking time is out and back, so it reaches half as far.
+  const shownWalkSec = current ? (current.timeSec - (current.staySec ?? 0)) / (current.staySec === null ? 1 : 2) : 0;
+  const shownRadiusM = shownWalkSec * getTravelModePolicy("walk").speedMps * 1.1;
   const clipped = Boolean(current && okGraph && okGraph.edgeM !== null && shownRadiusM >= okGraph.edgeM);
 
   // #378: one fit per start — not per graph, so a timeline move or a rebuild never refits.
@@ -276,7 +296,14 @@ export function useSunBudget(
     startPoint: okGraph?.startPoint ?? null,
     sunMin,
     walkMin,
-    shown: current ? { sunMin: current.sunSec / 60, walkMin: current.timeSec / 60 } : null,
+    stayMin,
+    shown: current
+      ? {
+          sunMin: current.sunSec / 60,
+          walkMin: (current.timeSec - (current.staySec ?? 0)) / 60,
+          stayMin: current.staySec === null ? null : current.staySec / 60,
+        }
+      : null,
     region,
     // A region that reaches the data's edge may miss streets near it: never "every street".
     outcome: current ? (clipped && current.result.outcome === "exact" ? "approximate" : current.result.outcome) : null,
@@ -288,6 +315,7 @@ export function useSunBudget(
     setStart: setStartState,
     setSunMin,
     setWalkMin,
+    setStayMin,
     walk,
     walkMode,
     setWalkMode: (on: boolean) => {

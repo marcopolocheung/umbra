@@ -431,6 +431,8 @@ export default function Home() {
       onHideWalk={sunBudget.clearWalk}
       sunMin={sunBudget.sunMin}
       walkMin={sunBudget.walkMin}
+      stayMin={sunBudget.stayMin}
+      onStayMinChange={sunBudget.setStayMin}
       shown={sunBudget.shown}
       clipped={sunBudget.clipped}
       onSunMinChange={sunBudget.setSunMin}

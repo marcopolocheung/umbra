@@ -116,7 +116,8 @@ export function walkFeatures(
       geometry: { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
     });
   }
-  const end = nodes.get(walk.nodeIds[walk.nodeIds.length - 1]);
+  // A round trip ends back at the start: mark its stop, the far end, instead (H5c).
+  const end = nodes.get(walk.nodeIds[walk.dwell ? walk.dwell.atNode : walk.nodeIds.length - 1]);
   if (end) features.push({ type: "Feature", properties: { end: true }, geometry: { type: "Point", coordinates: [end.lon, end.lat] } });
   return { type: "FeatureCollection", features };
 }

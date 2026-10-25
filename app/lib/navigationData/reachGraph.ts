@@ -122,12 +122,16 @@ export function timeAwareGraphFromTable(
 
 export async function buildReachGraph(args: {
   center: [number, number];
+  /** How far a walk can go: sizes the street area. */
   timeBudgetSec: number;
+  /** How long an outing can last, stops included: sizes the shade buckets. Defaults to `timeBudgetSec`. */
+  horizonSec?: number;
   departure: Date;
   travelMode: TravelModeId;
   signal?: AbortSignal;
 }): Promise<ReachGraph> {
   const { center, timeBudgetSec, departure, travelMode, signal } = args;
+  const horizonSec = Math.max(timeBudgetSec, args.horizonSec ?? 0);
   const snapshot = await acquireNavigationSnapshot({ signal });
   if (!snapshot) return { status: "uncovered", reason: "no navigation dataset" };
   if (QUARANTINED_SHADE_GENERATIONS.has(snapshot.generation)) {
@@ -163,7 +167,7 @@ export async function buildReachGraph(args: {
   if (!selection || selection.shadeShards.length === 0) {
     return { status: "uncovered", reason: "outside the shade table" };
   }
-  const bucketCount = Math.max(1, Math.min(MAX_BUCKETS, Math.ceil((timeBudgetSec * 1000) / REACH_BUCKET_MS)));
+  const bucketCount = Math.max(1, Math.min(MAX_BUCKETS, Math.ceil((horizonSec * 1000) / REACH_BUCKET_MS)));
   const { perBucket, slotIndices } = shadeSlotsForDeparture(
     departure,
     bucketCount,

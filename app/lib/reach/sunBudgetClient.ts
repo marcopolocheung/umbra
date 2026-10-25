@@ -79,11 +79,17 @@ function send(payload: Payload, signal?: AbortSignal): Promise<SunBudgetEvent> {
 
 /** Build and keep the graph for a start; resolves with what the map needs to draw. */
 export async function buildSunReachGraph(
-  args: { center: [number, number]; timeBudgetSec: number; departure: Date },
+  args: { center: [number, number]; timeBudgetSec: number; horizonSec?: number; departure: Date },
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<BuiltReachGraph> {
   const event = await send(
-    { type: "build", center: args.center, timeBudgetSec: args.timeBudgetSec, departureMs: args.departure.getTime() },
+    {
+      type: "build",
+      center: args.center,
+      timeBudgetSec: args.timeBudgetSec,
+      horizonSec: args.horizonSec,
+      departureMs: args.departure.getTime(),
+    },
     signal,
   );
   if (event.type !== "built") throw new Error(`unexpected ${event.type}`);
@@ -107,7 +113,7 @@ export async function searchSunReachGraph(
  */
 export async function sunReachWalk(
   graphId: number,
-  budgets: { sunBudgetSec: number; timeBudgetSec: number },
+  budgets: Pick<SunReachOptions, "sunBudgetSec" | "timeBudgetSec" | "roundTrip">,
   edge: { fromId: number; toId: number; side?: string },
 ): Promise<SunReachWalk | null> {
   const event = await send({ type: "walk", graphId, budgets, edge });

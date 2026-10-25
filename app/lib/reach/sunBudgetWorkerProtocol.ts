@@ -21,6 +21,8 @@ export type SunBudgetCommand =
       requestId: number;
       center: [number, number];
       timeBudgetSec: number;
+      /** How long an outing can last, stops included (H5c); defaults to `timeBudgetSec`. */
+      horizonSec?: number;
       departureMs: number;
     }
   | {
@@ -36,8 +38,8 @@ export type SunBudgetCommand =
       protocol: typeof SUN_BUDGET_WORKER_PROTOCOL_VERSION;
       requestId: number;
       graphId: number;
-      /** The budgets of the region the user tapped; a newer search answers nothing. */
-      budgets: { sunBudgetSec: number; timeBudgetSec: number };
+      /** The budgets (and trip) of the region the user tapped; a newer search answers nothing. */
+      budgets: Pick<SunReachOptions, "sunBudgetSec" | "timeBudgetSec" | "roundTrip">;
       edge: { fromId: number; toId: number; side?: string };
     };
 
@@ -99,7 +101,7 @@ export function nodeMap(built: Extract<BuiltReachGraph, { status: "ok" }>): Map<
 export function createSunBudgetHandler(build: typeof buildReachGraph = buildReachGraph) {
   let kept: { graphId: number; graph: Extract<ReachGraph, { status: "ok" }> } | null = null;
   // The last search on the kept graph, for replaying the walk behind a street.
-  let lastRun: { run: SunReachRun; sunBudgetSec: number; timeBudgetSec: number } | null = null;
+  let lastRun: { run: SunReachRun; options: SunReachOptions } | null = null;
   let nextGraphId = 1;
   // Builds overlap (a second tap while the first fetches); only the latest may become kept.
   let latestBuild = 0;
@@ -115,6 +117,7 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         const graph = await build({
           center: command.center,
           timeBudgetSec: command.timeBudgetSec,
+          horizonSec: command.horizonSec,
           departure: new Date(command.departureMs),
           travelMode: "walk",
         });
@@ -135,12 +138,14 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         // Only the search behind the region on screen may answer: a slider step since then
         // ran a newer search whose walks belong to another region.
         const same =
-          lastRun?.sunBudgetSec === command.budgets.sunBudgetSec && lastRun.timeBudgetSec === command.budgets.timeBudgetSec;
+          lastRun?.options.sunBudgetSec === command.budgets.sunBudgetSec &&
+          lastRun.options.timeBudgetSec === command.budgets.timeBudgetSec &&
+          lastRun.options.roundTrip?.dwellSec === command.budgets.roundTrip?.dwellSec;
         return { type: "walked", requestId, walk: same ? lastRun!.run.witness(fromId, toId, side) : null };
       }
       const { graph } = kept;
       const run = sunReachRun(graph.graph, graph.startId, { ...command.options, timeAware: graph.timeAware });
-      lastRun = { run, sunBudgetSec: command.options.sunBudgetSec, timeBudgetSec: command.options.timeBudgetSec };
+      lastRun = { run, options: command.options };
       return { type: "searched", requestId, result: run.result };
     } catch (e) {
       return { type: "error", requestId, error: e instanceof Error ? e.message : String(e) };

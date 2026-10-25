@@ -103,6 +103,43 @@ describe("buildReachGraph", () => {
   const support = { south: 40.6, west: -74.1, north: 40.9, east: -73.8 };
   const snapshot = (generation = "nyc-2026-09-18-393d4cd24a30") => ({ generation, manifest: { supportBounds: support }, base: "x" });
 
+  it("loads shade slots for the whole outing (horizonSec), streets for the walk (H5c)", async () => {
+    let slotsAsked: number[] = [];
+    let box: { east: number; west: number } | null = null;
+    const nodes = new Map([1, 2].map((id) => [id, { id, lat: 40.75, lon: -73.99 + id * 0.001 }]));
+    const streetGraph = { nodes, adj: new Map([[1, [{ toId: 2, distanceM: 84, shadowFactor: 0 }]], [2, [{ toId: 1, distanceM: 84, shadowFactor: 0 }]]]) };
+    vi.resetModules();
+    vi.doMock("../remoteNavigation", async (orig) => ({
+      ...(await orig<object>()),
+      acquireNavigationSnapshot: async () => snapshot(),
+      selectNavigationShards: (_m: unknown, b: { east: number; west: number }) => {
+        box = b;
+        return { streets: [], buildings: [], shadeShards: [{}] };
+      },
+      loadNavigationStreetShards: async () => [],
+      loadNavigationShadeShard: async () => ({}),
+      loadShadeSlotBlocks: async (_s: unknown, _sh: unknown, slots: number[]) => {
+        slotsAsked = slots;
+        return new Map();
+      },
+    }));
+    vi.doMock("../routingGraphAdapter", () => ({ buildRoutingGraphFromStreetShards: () => streetGraph }));
+    vi.doMock("../shadeTable", async (orig) => ({
+      ...(await orig<object>()),
+      createShadeTableView: () => ({ covers: () => true, shadowFor: () => ({ left: 0, right: 0 }), slots: () => [] }),
+    }));
+    const { buildReachGraph } = await import("../reachGraph");
+    const built = await buildReachGraph({ ...args, horizonSec: 3600 });
+    const plain = await buildReachGraph(args);
+    vi.doUnmock("../routingGraphAdapter");
+    vi.doUnmock("../shadeTable");
+    expect(built.status === "ok" && built.timeAware.bucketCount).toBe(4);
+    expect(slotsAsked.length).toBe(2); // the last call: no horizon → the walk's 2 buckets
+    expect(plain.status === "ok" && plain.timeAware.bucketCount).toBe(2);
+    // The street box is the same either way: a stop doesn't walk anywhere.
+    expect(box).not.toBeNull();
+  });
+
   it("is uncovered with no navigation dataset configured", async () => {
     expect(await withLoaders({ acquireNavigationSnapshot: async () => null })).toMatchObject({ status: "uncovered" });
   });

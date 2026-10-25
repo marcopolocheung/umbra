@@ -40,7 +40,40 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.status).toBe("ready"));
     expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
     expect(search.mock.calls[0][1]).toMatchObject({ sunBudgetSec: 480, timeBudgetSec: 1200, travelMode: "walk" });
-    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20 });
+    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20, stayMin: null });
+  });
+
+  it("searches a round trip with its stop added to the walking time (H5c)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+      hook.current.setStayMin(10);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    expect(search.mock.calls.at(-1)![1]).toEqual({ sunBudgetSec: 480, timeBudgetSec: 1800, travelMode: "walk", roundTrip: { dwellSec: 600 } });
+    expect(hook.current.shown).toEqual({ sunMin: 8, walkMin: 20, stayMin: 10 });
+  });
+
+  it("never paints a one-way street into a round trip's region, or back (H5c)", async () => {
+    // One way proves 1>2 and 2>3; the round trip at a wider sun budget only 1>2.
+    const search = vi.fn<Search>(async (_id, o) => (o.roundTrip ? result([edge(1, 2)]) : result([edge(1, 2), edge(2, 3)])));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(ids(hook.current.region?.proven)).toEqual(["1>2", "2>3"]));
+    act(() => {
+      hook.current.setStayMin(0);
+      hook.current.setSunMin(10);
+    });
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBe(0));
+    expect(ids(hook.current.region?.proven)).toEqual(["1>2"]);
+    act(() => hook.current.setStayMin(null));
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBeNull());
+    expect(ids(hook.current.region?.proven)).toEqual(["1>2", "2>3"]);
   });
 
   it("never drops a proven street when the sun budget widens and the new result is approximate", async () => {
@@ -192,6 +225,59 @@ describe("useSunBudget", () => {
     await waitFor(() => expect(hook.current.shown?.walkMin).toBe(10));
     expect(hook.current.clipped).toBe(false);
     expect(hook.current.outcome).toBe("exact");
+  });
+
+  it("a round trip reaches half as far: clipped from its walk out, not its whole time (H5c, #380)", async () => {
+    // Edge 1.2 km away. One way, 20 min reaches it (~1.85 km); a 20-min round trip
+    // with a 30-min stop goes out 10 min (~0.92 km) and doesn't — even on a 50-min budget.
+    const edgeBuild = async (args: { center: [number, number] }): Promise<BuiltReachGraph> => ({
+      ...((await ok(args)) as Extract<BuiltReachGraph, { status: "ok" }>),
+      edgeM: 1200,
+    });
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, edgeBuild, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    expect(hook.current.clipped).toBe(true);
+    act(() => hook.current.setStayMin(30));
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBe(30));
+    expect(hook.current.clipped).toBe(false);
+    // 30 min there and back: 15 min out (~1.39 km) does reach it.
+    act(() => hook.current.setWalkMin(30));
+    await waitFor(() => expect(hook.current.shown?.walkMin).toBe(30));
+    expect(hook.current.clipped).toBe(true);
+  });
+
+  it("builds the graph's shade for the longest outing, stop included (H5c)", async () => {
+    const build = vi.fn(ok);
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, build, search));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+    });
+    await waitFor(() => expect(hook.current.status).toBe("ready"));
+    // Streets for a 30-min walk; shade for a 30-min walk + a 30-min stop.
+    expect(build.mock.calls[0][0]).toMatchObject({ timeBudgetSec: 1800, horizonSec: 3600 });
+  });
+
+  it("asks for a round trip's walk when a street in a round-trip region is tapped (H5c)", async () => {
+    const search = vi.fn<Search>(async () => result([edge(1, 2)]));
+    const walk: SunReachWalk = { nodeIds: [9, 1, 2, 1, 9], sides: ["left", "left", "left", "left"], waits: [], dwell: { atNode: 2, seconds: 600 }, sunSec: 40, arrivalSec: 1500 };
+    const walkFor = vi.fn(async (_g: number, _b: unknown, _e: unknown) => walk);
+    const { result: hook } = renderHook(() => useSunBudget(departure, false, ok, search, walkFor));
+    act(() => {
+      hook.current.enter();
+      hook.current.setStart([-73.99, 40.75]);
+      hook.current.setStayMin(10);
+    });
+    await waitFor(() => expect(hook.current.shown?.stayMin).toBe(10));
+    act(() => hook.current.showWalk({ lo: 1, hi: 2 }));
+    await waitFor(() => expect(hook.current.walk).toEqual(walk));
+    expect(walkFor.mock.calls[0][1]).toEqual({ sunBudgetSec: 480, timeBudgetSec: 1800, roundTrip: { dwellSec: 600 } });
   });
 
   it("shows the least-sun walk behind a tapped street, and forgets it when the region changes (#379)", async () => {

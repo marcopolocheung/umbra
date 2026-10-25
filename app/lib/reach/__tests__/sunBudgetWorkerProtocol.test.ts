@@ -108,6 +108,24 @@ describe("sun budget worker protocol", () => {
     expect(walked).toEqual({ type: "walked", requestId: 4, walk: null });
   });
 
+  it("replays a round trip's walk only for the same trip (H5c)", async () => {
+    const handle = createSunBudgetHandler(fakeBuild(5));
+    const built = await handle(build(1));
+    if (built.type !== "built" || built.built.status !== "ok") throw new Error("not built");
+    const graphId = built.built.graphId;
+    const budgets = { sunBudgetSec: 60, timeBudgetSec: 200, roundTrip: { dwellSec: 30 } };
+    const searched = await handle({ type: "search", protocol: P, requestId: 2, graphId, options: budgets });
+    if (searched.type !== "searched") throw new Error("not searched");
+    const edge = searched.result.reachable[0];
+    const walked = await handle({ type: "walk", protocol: P, requestId: 3, graphId, budgets, edge });
+    expect(walked.type === "walked" && walked.walk?.dwell).toEqual(expect.objectContaining({ seconds: 30 }));
+    // Same budgets, one way or another stop: not the region on screen.
+    const oneWay = { sunBudgetSec: 60, timeBudgetSec: 200 };
+    expect(await handle({ type: "walk", protocol: P, requestId: 4, graphId, budgets: oneWay, edge })).toEqual({ type: "walked", requestId: 4, walk: null });
+    const otherStop = { ...budgets, roundTrip: { dwellSec: 0 } };
+    expect(await handle({ type: "walk", protocol: P, requestId: 5, graphId, budgets: otherStop, edge })).toEqual({ type: "walked", requestId: 5, walk: null });
+  });
+
   it("never replays a walk from the previous graph after a new build (#379)", async () => {
     let seed = 5;
     const handle = createSunBudgetHandler(async () => fakeBuild(seed++)());

@@ -1,6 +1,6 @@
 import { type CSSProperties, useId, useRef } from "react";
 import type { SunBudgetStatus } from "../hooks/useSunBudget";
-import { SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
+import { SUN_BUDGET_STAY_MINUTES, SUN_BUDGET_WALK_MINUTES } from "../hooks/useSunBudget";
 import type { SunReachOutcome, SunReachWalk } from "../lib/sunReach";
 import Kicker from "./ui/Kicker";
 import Tag from "./ui/Tag";
@@ -15,8 +15,10 @@ interface SunBudgetPanelProps {
   undecidedCount: number;
   sunMin: number;
   walkMin: number;
+  /** H5c: null for one way; else a round trip with a stop of this many minutes. */
+  stayMin?: number | null;
   /** The budgets of the region on screen; the sliders run ahead of it while a search runs. */
-  shown: { sunMin: number; walkMin: number } | null;
+  shown: { sunMin: number; walkMin: number; stayMin?: number | null } | null;
   /** The region was cut at the edge of NYC's shade data (#380). */
   clipped?: boolean;
   /** The walk behind a tapped street (#379); "none" when this search can't replay it. */
@@ -27,6 +29,7 @@ interface SunBudgetPanelProps {
   onWalkModeChange?: (on: boolean) => void;
   onSunMinChange: (minutes: number) => void;
   onWalkMinChange: (minutes: number) => void;
+  onStayMinChange?: (minutes: number | null) => void;
   onUseLocation?: () => void;
   onExit: () => void;
 }
@@ -43,7 +46,7 @@ export function sunBudgetMessage(p: {
   outcome: SunReachOutcome | null;
   provenCount: number;
   undecidedCount: number;
-  shown: { sunMin: number; walkMin: number } | null;
+  shown: { sunMin: number; walkMin: number; stayMin?: number | null } | null;
   clipped?: boolean;
 }): { headline: string; detail?: string; plate?: string } {
   if (p.status === "sun-down") {
@@ -59,7 +62,10 @@ export function sunBudgetMessage(p: {
   if (p.status === "error") return { headline: "Couldn't load the streets here.", detail: "Try another start." };
   if (p.status === "loading" || !p.shown) return { headline: "Finding where you can go…" };
   // Worded from the region on screen, never from a slider that has moved past it.
-  const scope = `in ${p.shown.walkMin} min on ≤ ${p.shown.sunMin} min of direct sun, one way`;
+  const stay = p.shown.stayMin;
+  const trip =
+    stay === null || stay === undefined ? "one way" : stay === 0 ? "there and back" : `there and back, with a ${stay}-min stop`;
+  const scope = `in ${p.shown.walkMin} min on ≤ ${p.shown.sunMin} min of direct sun, ${trip}`;
   const dashed = p.undecidedCount > 0;
   // Appended wherever it applies: the region ends where NYC's data does.
   const edge = p.clipped
@@ -151,6 +157,26 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
         options={SUN_BUDGET_WALK_MINUTES.map((m) => ({ value: String(m), label: `${m} min walk` }))}
       />
 
+      {props.onStayMinChange && (
+        <Segmented
+          label="Trip"
+          value={props.stayMin === null || props.stayMin === undefined ? "one-way" : "round"}
+          onChange={(value) => props.onStayMinChange?.(value === "round" ? 0 : null)}
+          options={[
+            { value: "one-way", label: "One way" },
+            { value: "round", label: "Round trip" },
+          ]}
+        />
+      )}
+      {props.onStayMinChange && props.stayMin !== null && props.stayMin !== undefined && (
+        <Segmented
+          label="Stop on the way"
+          value={String(props.stayMin)}
+          onChange={(value) => props.onStayMinChange?.(Number(value))}
+          options={SUN_BUDGET_STAY_MINUTES.map((m) => ({ value: String(m), label: m === 0 ? "No stop" : `${m} min stop` }))}
+        />
+      )}
+
       {props.onWalkModeChange && props.status === "ready" && (
         <Segmented
           label="What a tap does"
@@ -186,7 +212,9 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
             {props.walk === "none"
               ? "Can't redraw the walk behind this street. Change a budget and tap it again."
               : // Rounded up: never shows less sun than the walk has. Not "the best way there".
-                `Shadiest walk found: ${Math.ceil(props.walk.arrivalSec / 60)} min, ${Math.ceil(props.walk.sunSec / 60)} min of direct sun, on the sidewalks drawn.`}
+                props.walk.dwell
+                ? `Shadiest round trip found: ${Math.ceil(props.walk.arrivalSec / 60)} min home${props.walk.dwell.seconds > 0 ? `, ${Math.round(props.walk.dwell.seconds / 60)} of them at the stop` : ""}, ${Math.ceil(props.walk.sunSec / 60)} min of direct sun in all, on the sidewalks drawn.`
+                : `Shadiest walk found: ${Math.ceil(props.walk.arrivalSec / 60)} min, ${Math.ceil(props.walk.sunSec / 60)} min of direct sun, on the sidewalks drawn.`}
           </p>
         )}
         {props.status === "ready" && !props.walk && (
@@ -211,7 +239,7 @@ export default function SunBudgetPanel(props: SunBudgetPanelProps) {
       )}
 
       <p style={{ fontSize: "var(--text-caption)", color: "var(--color-ink-muted)" }}>
-        Modelled shade (clear sky) in 15-minute steps from building and tree data, for a steady 5 km/h walk with no stops at crossings. One way, no waiting for shade.
+        Modelled shade (clear sky) in 15-minute steps from building and tree data, for a steady 5 km/h walk with no stops at crossings and no waiting for shade. A stop is spent on that corner's shadiest sidewalk.
       </p>
     </section>
   );
