@@ -229,13 +229,14 @@ it("route search comparison", { timeout: 6 * 3600_000 }, async () => {
  * 8 minutes of sun, 20 minutes of walking, one way, at the route's departure.
  * `REACH_SLOT` / `REACH_MAX` override the per-slot and work caps for sweeps.
  * H5: `REACH_WAITS=1` lets the walker wait; `REACH_DWELL=<minutes>` makes it a
- * round trip with that stay.
+ * round trip with that stay. `REACH_REPEAT=<n>` runs each search n times and
+ * reports min/median/max ms and heap growth (H4's runtime and memory figures).
  */
 it("sun budget reachability", { timeout: 6 * 3600_000 }, async () => {
   for (const route of ROUTES) {
     if (only && !only.some((name) => route.name.startsWith(name))) continue;
     const c = await buildCase(route);
-    const result = sunReach(c.graph, c.startId, {
+    const run = () => sunReach(c.graph, c.startId, {
       sunBudgetSec: 8 * 60,
       timeBudgetSec: 20 * 60,
       travelMode: "walk",
@@ -245,6 +246,22 @@ it("sun budget reachability", { timeout: 6 * 3600_000 }, async () => {
       ...(process.env.REACH_WAITS ? { allowWaits: true } : {}),
       ...(process.env.REACH_DWELL ? { roundTrip: { dwellSec: Number(process.env.REACH_DWELL) * 60 } } : {}),
     });
+    const repeat = Number(process.env.REACH_REPEAT ?? 1);
+    const times: number[] = [];
+    let heapMb = 0;
+    let result = run();
+    for (let i = 1; i < repeat; i++) {
+      const before = process.memoryUsage().heapUsed;
+      result = run();
+      heapMb = Math.max(heapMb, (process.memoryUsage().heapUsed - before) / 2 ** 20);
+      times.push(result.stats.ms);
+    }
+    if (times.length) {
+      times.sort((a, b) => a - b);
+      process.stderr.write(
+        `REPEAT ${c.name.padEnd(32)} min ${times[0].toFixed(0)} median ${times[times.length >> 1].toFixed(0)} max ${times.at(-1)!.toFixed(0)} ms, heap +${heapMb.toFixed(1)} MB\n`,
+      );
+    }
     // Street km: each undirected segment once, whichever sidewalk or direction reached it.
     const seg = (e: { fromId: number; toId: number }) => `${Math.min(e.fromId, e.toId)},${Math.max(e.fromId, e.toId)}`;
     const reachSegs = new Set(result.reachable.map(seg));

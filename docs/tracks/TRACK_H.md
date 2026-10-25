@@ -14,8 +14,10 @@ G's fixture and benchmark infrastructure).
 
 - **Active checkpoint:** H5 — waiting, dwell and the return leg. **H5 is done:** waiting (H5a, #390), the round
   trip (H5b, #392) and the panel's round-trip switch and stop (H5c). Waits stay off in the UI:
-  on NYC they shrink the region at the default cap. Directions ignoring dwell is #391. Next: the
-  rest of H4 (property tests, figures, the gap on the evidence page). **H3 is done:** the search
+  on NYC they shrink the region at the default cap. Directions ignoring dwell is #391. **H4 is done**
+  (this PR): the four property tests, the NYC runtime/memory/cache figures, and Sun Budget's gap
+  on the evidence page (§2.4). Next: #391 (routes with stops become time-aware), then H7, then
+  H6. **H3 is done:** the search
   (H3a, #375), the map (H3b, #376) and its follow-ups — the graph built in its own worker
   (#382, #377), the fit to the region and per-outcome labels (#383, #378/#381), starts near
   NYC's edge (#383, the cheap part of #380) and the walk behind a street (#384, #379). NYC only,

@@ -381,3 +381,47 @@ in place of MapTiler, Midtown, July 1 15:00).
   - with real MapTiler tiles, or at night;
   - the panel's look inside the phone's bottom sheet: the scripted drag couldn't open the sheet,
     so the controls were measured, not seen.
+
+## H4 — properties, figures and the published gap
+
+The four property tests the brief asks for. Three are new (`app/lib/__tests__/sunBudgetProperties.test.ts`);
+the fourth is H3's one-way monotonicity, extended here.
+- **Widening a budget never removes a street.** H3 proved it one way. It now covers waits,
+  round trips, and both together, on every `exact` result along a sun-then-time widening
+  ladder.
+- **The region under *B − ε* is inside the region under *B*, as painted.** A single capped
+  result can shrink when the budget grows by 1 s; the test finds such shrinks (at slot caps
+  1–2) and requires that `mergeRegion`, which is what the map paints, never does.
+- **Zoom and basemap never change geometry exposure.** The table path,
+  `timeAwareGraphFromTable(graph, view, slots)` → `sunReachRun(graph, start, options)`, and the
+  departure sample `departureFromShadeTable` take no map, zoom, viewport or style input, and
+  repeated builds are identical.
+  - **Not true of the live tile provider:** below zoom 15 MapTiler serves a decimated building
+    layer. That path is zoom-dependent by design and guarded instead: it reports completeness
+    0.5 there, so its answers fall under the routing confidence floor
+    (`providers.test.ts`, "reports full completeness only where the tile layer is complete").
+- **A start time reaches every leg and every stay.** Two halves:
+  - a departure 15 min later reads every bucket one table slot later
+    (`shadeSlotsForDeparture`);
+  - on that later sky, every proof the search returns (one way, with waits, round trip)
+    re-prices exactly on the original sky with its clock started one bucket in, streets, waits,
+    the stop and the walk home alike.
+  - For Directions this needs #391: routes with stops are priced at one instant today.
+- **The tests can fail.** Each of these breaks at least one test:
+  - pricing a street at its start bucket;
+  - pricing a stop at its first bucket only;
+  - painting without the merge;
+  - reading every bucket at the departure slot.
+
+**Figures** are in `docs/notes/evidence.md` §2.4: the gap, runtime, memory and cache. Reproduce
+the NYC ones with `REACH_REPEAT=6` (plus `REACH_WAITS=1` or `REACH_DWELL=10`) on the audit
+command in "H3", above.
+
+**CI budget.** Actions is off on `umbra`, so these timings come from local runs:
+- `sunReach.test.ts`: 22.8 s for 82 tests (the exhaustive oracles);
+- `sunBudgetProperties.test.ts`: 0.4 s;
+- `routingOracle.test.ts`: under 0.1 s.
+
+The whole suite ran in 33 s wall time (3,034 tests). No flake has been seen in these files across the H5 runs.
+The oracles and their seeded cases now live in `app/lib/__tests__/sunReachOracle.fixture.ts`,
+shared with H7.

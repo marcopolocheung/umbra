@@ -28,6 +28,7 @@ Three rules govern it.
 |---|---|---|---|
 | **Geometry** | synthetic analytic fixtures; NYC LiDAR; independent observation | shadow-field ↔ pixel-sampler agreement, 150 cases, CI-gated; per-segment error against a LiDAR shade raster | ⚠️ **geometry against geometry — no observed-shadow number exists** |
 | **Routing** | tiny exact fixtures; independently checked constraints | brute-force oracle over small fixtures, with one published gap | ⚠️ **gap measured on fixtures only — no real-graph bound, no violation rate** |
+| **Sun Budget** | exhaustive walk and round-trip oracles; property tests | exact on 60 lattices; NYC undecided km as a bound; runtime, memory, cache | ⚠️ **no real-graph optimality bound; discretization error unmeasured** |
 | **Agent** | final app state + task graders | 36 orchestrator scenarios + a sabotage suite, scripted model; one live-model run | ⚠️ **live groundedness measured once — no task-completion number** |
 | **Systems** | documented hardware, fixed snapshots | shadow-index microbenchmark, bundle sizes, CI suite, one browser smoke test | ⚠️ **Node microbenchmark and build sizes only — no browser latency budget** |
 
@@ -154,6 +155,47 @@ sketches and pixel-fallback edges still use one instant. The error from 15-minut
 against continuous time has not been measured.
 
 ### 2.3 Constraint-violation rate — **not measured**
+
+### 2.4 Sun Budget reachability — **exact on fixtures; on NYC, an upper bound on what is missed**
+
+Sun Budget (`app/lib/sunReach.ts`) answers "which streets can I reach on ≤ *S* of sun and ≤ *T*
+of walking", one way or as a round trip with a stop. It never returns a single guess. A street
+is **proven** (a real walk exists, and it can be replayed) or **undecided** (not ruled out); the
+outcome says which: `exact`, `approximate` or `budget-exhausted`. Method:
+[`sun-budget-model.md`](./sun-budget-model.md), H3–H5 and "H4 — properties".
+
+- **The gap on fixtures is 0.** On 60 seeded lattices (static and 2–6 buckets, walk and
+  scoot), the search equals an exhaustive oracle that enumerates every walk. This holds one
+  way, with waiting, and (`exact` results) as a round trip.
+- **Round trips are proven, not guessed.** An exhaustive oracle enumerates every outing (out,
+  waits, stop, home). Proofs find 962 of its 996 true streets (96.6%). The other 34 are
+  undecided, never claimed and never ruled out.
+- **On NYC there is no ground truth**, so the gap is stated as a bound. The undecided street km
+  is the most the region can be missing: 0–23 km beside 96–354 km proven, one way (12 starts,
+  *S* = 8 min, *T* = 20 min). **No real-graph optimality bound exists** beyond that.
+- **Properties (H4)**, each with a test that fails when the code is broken:
+  - widening a budget never removes a street (`exact` results, waits and round trips included);
+  - what the map paints never shrinks, even from capped results that do;
+  - geometry exposure from the shade table takes no map, zoom or basemap input;
+  - a later departure moves every walking, waiting and stop price by exactly that much.
+- **Runtime on NYC** (Node, SwiftShader WSL box, 6 runs per start, median of medians across the
+  12 starts; min–max of the medians):
+  - one way: 370 ms (204–560 ms);
+  - with waits: 550 ms (346–832 ms);
+  - round trip, 10-min stop: 360 ms (270–555 ms).
+  - Browser, desktop: the first region draws in 4.1–4.7 s (graph build + search); later trip
+    switches redraw in 0.3–1.2 s.
+- **Memory:** 29 bytes per label in typed arrays, grown by doubling. Peak labels were 0.59M one
+  way (about 30 MB allocated) and 1.14M with waits (about 61 MB). Heap readings around the
+  search were too noisy to report (0.2–70 MB, swamped by garbage collection).
+- **Cache:** the panel keeps every result for its graph. Sweeping the sun slider 18 steps over
+  8–15 min and back ran 9 searches, one per new value; the 9 repeats were served from the cache.
+
+**What this does not say.**
+- Proven streets are proven on the *model*: clear-sky geometry at 15-minute buckets, a steady
+  walking pace, no crossings. The model's own error against observed shade is §1's, unmeasured
+  outside geometry.
+- The bucket discretization error is not measured.
 
 ---
 
