@@ -1,0 +1,657 @@
+{
+ "fixtures": 24,
+ "ipEqualsOracle": 24,
+ "searchEqualsIp": 24,
+ "searchExact": 24,
+ "integralityGapLeastSun": {
+  "n": 342,
+  "min": 0,
+  "p50": 0,
+  "p90": 0,
+  "max": 0
+ },
+ "integralityGapEarliest": {
+  "n": 204,
+  "min": 0,
+  "p50": 0,
+  "p90": 0,
+  "max": 4
+ },
+ "looseEarliest": 2,
+ "arcsPerProgram": {
+  "n": 1404,
+  "min": 1420,
+  "p50": 2756,
+  "p90": 4836,
+  "max": 5180
+ },
+ "ipMs": {
+  "n": 1404,
+  "min": 7.6,
+  "p50": 15.8,
+  "p90": 27.9,
+  "max": 83
+ },
+ "lpMs": {
+  "n": 1404,
+  "min": 6.8,
+  "p50": 14.4,
+  "p90": 24.2,
+  "max": 38.1
+ },
+ "discretizationStreetsChanged": {
+  "n": 24,
+  "min": 0,
+  "p50": 0,
+  "p90": 0,
+  "max": 0
+ },
+ "fixtureReports": [
+  {
+   "seed": 900,
+   "start": 8,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 48,
+   "ipRegion": 4,
+   "oracle": 4,
+   "search": 4,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 1707
+  },
+  {
+   "seed": 901,
+   "start": 3,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 72,
+   "ipRegion": 6,
+   "oracle": 6,
+   "search": 6,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 3322
+  },
+  {
+   "seed": 902,
+   "start": 4,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 48,
+   "ipRegion": 18,
+   "oracle": 18,
+   "search": 18,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2674
+  },
+  {
+   "seed": 903,
+   "start": 4,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 2
+    },
+    "allowWaits": true
+   },
+   "streets": 76,
+   "ipRegion": 3,
+   "oracle": 3,
+   "search": 3,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 4866
+  },
+  {
+   "seed": 904,
+   "start": 7,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 56,
+   "ipRegion": 2,
+   "oracle": 2,
+   "search": 2,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 3165
+  },
+  {
+   "seed": 905,
+   "start": 5,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 64,
+   "ipRegion": 3,
+   "oracle": 3,
+   "search": 3,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2612
+  },
+  {
+   "seed": 906,
+   "start": 7,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 48,
+   "ipRegion": 10,
+   "oracle": 10,
+   "search": 10,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2790
+  },
+  {
+   "seed": 907,
+   "start": 0,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 3
+    },
+    "allowWaits": true
+   },
+   "streets": 68,
+   "ipRegion": 5,
+   "oracle": 5,
+   "search": 5,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 6761
+  },
+  {
+   "seed": 908,
+   "start": 3,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 48,
+   "ipRegion": 6,
+   "oracle": 6,
+   "search": 6,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 1521
+  },
+  {
+   "seed": 909,
+   "start": 2,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 64,
+   "ipRegion": 5,
+   "oracle": 5,
+   "search": 5,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 4725
+  },
+  {
+   "seed": 910,
+   "start": 2,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 48,
+   "ipRegion": 7,
+   "oracle": 7,
+   "search": 7,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2696
+  },
+  {
+   "seed": 911,
+   "start": 9,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 4
+    },
+    "allowWaits": true
+   },
+   "streets": 68,
+   "ipRegion": 17,
+   "oracle": 17,
+   "search": 17,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 8744
+  },
+  {
+   "seed": 912,
+   "start": 5,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 48,
+   "ipRegion": 6,
+   "oracle": 6,
+   "search": 6,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 1622
+  },
+  {
+   "seed": 913,
+   "start": 3,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 72,
+   "ipRegion": 2,
+   "oracle": 2,
+   "search": 2,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 3473
+  },
+  {
+   "seed": 914,
+   "start": 6,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 44,
+   "ipRegion": 6,
+   "oracle": 6,
+   "search": 6,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 1278
+  },
+  {
+   "seed": 915,
+   "start": 6,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 2
+    },
+    "allowWaits": true
+   },
+   "streets": 72,
+   "ipRegion": 25,
+   "oracle": 25,
+   "search": 25,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 10101
+  },
+  {
+   "seed": 916,
+   "start": 1,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 48,
+   "ipRegion": 15,
+   "oracle": 15,
+   "search": 15,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2752
+  },
+  {
+   "seed": 917,
+   "start": 3,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 68,
+   "ipRegion": 14,
+   "oracle": 14,
+   "search": 14,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 4970
+  },
+  {
+   "seed": 918,
+   "start": 8,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 52,
+   "ipRegion": 7,
+   "oracle": 7,
+   "search": 7,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 1806
+  },
+  {
+   "seed": 919,
+   "start": 11,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 3
+    },
+    "allowWaits": true
+   },
+   "streets": 64,
+   "ipRegion": 4,
+   "oracle": 4,
+   "search": 4,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 3460
+  },
+  {
+   "seed": 920,
+   "start": 6,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 20,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 4
+    }
+   },
+   "streets": 44,
+   "ipRegion": 8,
+   "oracle": 8,
+   "search": 8,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2200
+  },
+  {
+   "seed": 921,
+   "start": 2,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 2,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 2
+    }
+   },
+   "streets": 64,
+   "ipRegion": 17,
+   "oracle": 17,
+   "search": 17,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 4786
+  },
+  {
+   "seed": 922,
+   "start": 6,
+   "rows": 3,
+   "cols": 3,
+   "buckets": 3,
+   "options": {
+    "sunBudgetSec": 40,
+    "timeBudgetSec": 100,
+    "timeAware": {
+     "bucketMs": 20000,
+     "bucketCount": 3
+    }
+   },
+   "streets": 48,
+   "ipRegion": 4,
+   "oracle": 4,
+   "search": 4,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 2446
+  },
+  {
+   "seed": 923,
+   "start": 11,
+   "rows": 3,
+   "cols": 4,
+   "buckets": 4,
+   "options": {
+    "sunBudgetSec": 60,
+    "timeBudgetSec": 80,
+    "timeAware": {
+     "bucketMs": 30000,
+     "bucketCount": 4
+    },
+    "allowWaits": true
+   },
+   "streets": 72,
+   "ipRegion": 10,
+   "oracle": 10,
+   "search": 10,
+   "searchOutcome": "exact",
+   "ipEqualsOracle": true,
+   "searchEqualsIp": true,
+   "onlyIp": [],
+   "onlySearch": [],
+   "ms": 4913
+  }
+ ]
+}

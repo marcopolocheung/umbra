@@ -202,6 +202,13 @@ outcome says which: `exact`, `approximate` or `budget-exhausted`. Method:
     for 8 distinct values. Each repeat was a value whose first search was aborted.
   - A hand on a slider moves slower than this script, so this is the worst case.
 
+- **A second implementation agrees (H7).** The question is also written as an integer program
+  over a time-expanded network and solved with HiGHS, offline. On 24 lattices it equals the
+  exhaustive oracle and the label search. Its LP relaxation is tight for least sun (342 of 342
+  streets) and loose on 2 of 204 under earliest arrival with a sun cap (worst 4 s; the committed
+  hand fixture shows 15 s, 37%). Method:
+  [`sun-budget-formulation.md`](./sun-budget-formulation.md); reproduce with `npm run eval:h7`.
+
 **What this does not say.**
 - Proven streets are proven on the *model*: clear-sky geometry at 15-minute buckets, a steady
   walking pace, no crossings. The model's own error against observed shade is §1's, unmeasured
