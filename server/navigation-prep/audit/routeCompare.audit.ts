@@ -228,6 +228,8 @@ it("route search comparison", { timeout: 6 * 3600_000 }, async () => {
  * H3 Sun Budget reachability from each route's start on the same graph:
  * 8 minutes of sun, 20 minutes of walking, one way, at the route's departure.
  * `REACH_SLOT` / `REACH_MAX` override the per-slot and work caps for sweeps.
+ * H5: `REACH_WAITS=1` lets the walker wait; `REACH_DWELL=<minutes>` makes it a
+ * round trip with that stay.
  */
 it("sun budget reachability", { timeout: 6 * 3600_000 }, async () => {
   for (const route of ROUTES) {
@@ -240,6 +242,8 @@ it("sun budget reachability", { timeout: 6 * 3600_000 }, async () => {
       timeAware: c.options!.timeAware,
       ...(process.env.REACH_SLOT ? { maxLabelsPerSlot: Number(process.env.REACH_SLOT) } : {}),
       ...(process.env.REACH_MAX ? { maxLabels: Number(process.env.REACH_MAX) } : {}),
+      ...(process.env.REACH_WAITS ? { allowWaits: true } : {}),
+      ...(process.env.REACH_DWELL ? { roundTrip: { dwellSec: Number(process.env.REACH_DWELL) * 60 } } : {}),
     });
     // Street km: each undirected segment once, whichever sidewalk or direction reached it.
     const seg = (e: { fromId: number; toId: number }) => `${Math.min(e.fromId, e.toId)},${Math.max(e.fromId, e.toId)}`;

@@ -470,3 +470,233 @@ describe("H5 — waiting at a corner until the shade arrives", () => {
   });
 });
 
+
+/**
+ * H5b oracle: every outing — out from the start (waiting where allowed), a stay
+ * of `dwellSec` at one corner, home again — within both budgets, and the set of
+ * streets the successful ones walk. `finish` is memoized per state, and a state's
+ * future depends only on (node, arrival, sun, phase), so nothing is missed.
+ */
+function oracleRoundTrip(graph: RoutingGraph, startId: number, o: SunReachOptions): Set<string> {
+  const mode = o.travelMode ?? "walk";
+  const W = o.timeAware ? o.timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
+  const B = o.timeAware?.bucketCount ?? 1;
+  const D = o.roundTrip!.dwellSec;
+  const bucket = (t: number) => (o.timeAware ? Math.min(Math.floor(t / W), B - 1) : 0);
+  const out = new Set<string>();
+  const memo = new Map<string, boolean>();
+  const finish = (node: number, t: number, s: number, home: boolean): boolean => {
+    const state = `${node}|${t}|${s}|${home}`;
+    const known = memo.get(state);
+    if (known !== undefined) return known;
+    memo.set(state, false);
+    let ok = home && node === startId;
+    for (const edge of graph.adj.get(node) ?? []) {
+      if (isProhibitedEdge(edge, mode)) continue;
+      const sec = edgeTraversalSeconds(edge, mode);
+      const nt = t + sec;
+      if (nt > o.timeBudgetSec) continue;
+      const ts = edge.timeShadow;
+      const f = !o.timeAware || !ts || ts.length === 0 ? edge.shadowFactor : ts[Math.min(bucket(nt), ts.length - 1)];
+      const ns = s + sec * (1 - f);
+      if (ns > o.sunBudgetSec) continue;
+      if (finish(edge.toId, nt, ns, home)) {
+        out.add(keyOf(node, edge));
+        ok = true;
+      }
+    }
+    if (o.allowWaits && o.timeAware && Math.floor(t / W) < B - 1) {
+      const boundary = (Math.floor(t / W) + 1) * W;
+      const ns = s + (boundary - t) * (1 - nodeShadeAt(graph, node, Math.floor(t / W)));
+      if (boundary <= o.timeBudgetSec && ns <= o.sunBudgetSec && finish(node, boundary, ns, home)) ok = true;
+    }
+    if (!home) {
+      const ns = s + dwellSunAt(graph, node, t, D, o);
+      if (t + D <= o.timeBudgetSec && ns <= o.sunBudgetSec && finish(node, t + D, ns, true)) ok = true;
+    }
+    memo.set(state, ok);
+    return ok;
+  };
+  finish(startId, 0, 0, false);
+  return out;
+}
+
+/** Sun for standing `D` seconds at `node` from `t`, on its shadiest sidewalk, bucket by bucket. */
+function dwellSunAt(graph: RoutingGraph, node: number, t: number, D: number, o: SunReachOptions): number {
+  if (!o.timeAware) return D * (1 - nodeShadeAt(graph, node, 0));
+  const W = o.timeAware.bucketMs / 1000;
+  const B = o.timeAware.bucketCount;
+  let s = 0;
+  for (let at = t, end = t + D; at < end; ) {
+    const b = Math.min(Math.floor(at / W), B - 1);
+    const until = b < B - 1 ? Math.min(end, (b + 1) * W) : end;
+    s += (until - at) * (1 - nodeShadeAt(graph, node, b));
+    at = until;
+  }
+  return s;
+}
+
+/** Re-price a round-trip witness from scratch, split into walking, waiting and dwell sun. */
+function outingCost(graph: RoutingGraph, walk: SunReachWalk, o: SunReachOptions) {
+  const mode = o.travelMode ?? "walk";
+  const W = o.timeAware ? o.timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
+  const B = o.timeAware?.bucketCount ?? 1;
+  let states = [{ t: 0, walking: 0, waiting: 0, dwell: 0 }];
+  for (let i = 0; i < walk.nodeIds.length; i++) {
+    const node = walk.nodeIds[i];
+    for (const w of walk.waits.filter((x) => x.atNode === i)) {
+      states = states.map((st) => {
+        const b = Math.min(Math.floor(st.t / W), B - 1);
+        return { ...st, t: st.t + w.seconds, waiting: st.waiting + w.seconds * (1 - nodeShadeAt(graph, node, b)) };
+      });
+    }
+    if (walk.dwell?.atNode === i) {
+      states = states.map((st) => ({ ...st, t: st.t + walk.dwell!.seconds, dwell: st.dwell + dwellSunAt(graph, node, st.t, walk.dwell!.seconds, o) }));
+    }
+    if (i + 1 === walk.nodeIds.length) break;
+    const edges = (graph.adj.get(node) ?? []).filter(
+      (e) => e.toId === walk.nodeIds[i + 1] && !isProhibitedEdge(e, mode) && (e.side ?? null) === walk.sides[i],
+    );
+    states = states.flatMap((st) =>
+      edges.map((e) => {
+        const sec = edgeTraversalSeconds(e, mode);
+        const t = st.t + sec;
+        const ts = e.timeShadow;
+        const f = !o.timeAware || !ts || ts.length === 0 ? e.shadowFactor : ts[Math.min(Math.min(Math.floor(t / W), B - 1), ts.length - 1)];
+        return { ...st, t, walking: st.walking + sec * (1 - f) };
+      }),
+    );
+  }
+  return states;
+}
+
+/** Round-trip cases: the seeded lattices with shorter budgets, so the two-phase oracle stays quick. */
+function roundTripCases() {
+  const r = rng(20261025);
+  return cases().map((c, i) => ({
+    ...c,
+    options: {
+      ...c.options,
+      timeBudgetSec: Math.round(c.options.timeBudgetSec * 0.8),
+      allowWaits: Boolean(c.options.timeAware) && i % 2 === 0,
+      roundTrip: { dwellSec: [0, 15, 40][Math.floor(r() * 3)] },
+    } satisfies SunReachOptions,
+  }));
+}
+
+describe("H5b — the round trip: out, a stay, and home", () => {
+  it("never claims a street the oracle rules out, and leaves no true street unmarked", () => {
+    let proven = 0;
+    let truthTotal = 0;
+    let exact = 0;
+    for (const c of roundTripCases()) {
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const truth = oracleRoundTrip(graph, c.start, c.options);
+      const result = sunReach(graph, c.start, c.options);
+      const got = reachKeys(result);
+      expect(subset(got, truth), `seed ${c.seed}: proven but impossible`).toBe(true);
+      expect(subset(truth, new Set([...got, ...undecidedKeys(result)])), `seed ${c.seed}: true street unmarked`).toBe(true);
+      if (result.outcome === "exact") {
+        exact++;
+        expect(got, `seed ${c.seed}`).toEqual(truth);
+      }
+      proven += got.size;
+      truthTotal += truth.size;
+    }
+    // Measured 962 of 996 (96.6%). Pruning outings that could get home, or one
+    // try per street, each drop it below 96% — this is what catches them.
+    expect(proven / truthTotal).toBeGreaterThan(0.96);
+    expect(exact).toBeGreaterThan(0);
+  });
+
+  it("every outing it reports goes home, and walking + waiting + dwell sun = its reported sun", () => {
+    let checked = 0;
+    for (const c of roundTripCases()) {
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const run = sunReachRun(graph, c.start, c.options);
+      for (const edge of run.result.reachable) {
+        const walk = run.witness(edge.fromId, edge.toId, edge.side)!;
+        expect(walk.nodeIds[0]).toBe(c.start);
+        expect(walk.nodeIds.at(-1)).toBe(c.start);
+        expect(walk.dwell?.seconds).toBe(c.options.roundTrip.dwellSec);
+        // The street is on the outing.
+        const on = walk.nodeIds.some((id, i) => id === edge.fromId && walk.nodeIds[i + 1] === edge.toId && walk.sides[i] === (edge.side ?? null));
+        expect(on, `seed ${c.seed} ${edge.fromId}>${edge.toId}`).toBe(true);
+        const match = outingCost(graph, walk, c.options).some(
+          (k) => Math.abs(k.t - walk.arrivalSec) < 1e-6 && Math.abs(k.walking + k.waiting + k.dwell - walk.sunSec) < 1e-6,
+        );
+        expect(match, `seed ${c.seed} ${edge.fromId}>${edge.toId}`).toBe(true);
+        expect(walk.arrivalSec).toBeLessThanOrEqual(c.options.timeBudgetSec + 1e-9);
+        expect(walk.sunSec).toBeLessThanOrEqual(c.options.sunBudgetSec + 1e-9);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  // Corner 0 (home) — 1 — 2, 28 m apart (20 s at walking pace), both ways.
+  const line = (shade: { out01: number[]; out12: number[]; at2: number[] }) => {
+    const node = (id: number, m: number) => [id, { id, lat: 40.7 + m / 111_320, lon: -74 }] as const;
+    const graph: RoutingGraph = { nodes: new Map([node(0, 0), node(1, 28), node(2, 56)]), adj: new Map() };
+    const one = (from: number, to: number, ts: number[]) => {
+      if (!graph.adj.has(from)) graph.adj.set(from, []);
+      graph.adj.get(from)!.push({ toId: to, distanceM: 28, shadowFactor: ts[0], timeShadow: ts });
+    };
+    one(0, 1, shade.out01);
+    one(1, 0, shade.out01);
+    one(1, 2, shade.out12);
+    one(2, 1, shade.at2);
+    return graph;
+  };
+
+  it("adds it up on a hand fixture: 20 s of walking sun, 30 s of dwell sun", () => {
+    // Out 0→1→2 in full shade, stay 60 s at 2, home 2→1→0. Corner 2's only
+    // sidewalk (2→1) is shaded 0.5 in the first minute and fully after, and the
+    // walk home along it starts at 100 s. Stay: 20 s at 0.5 shade (10 s of sun)
+    // + 40 s shaded = 10 s... priced per bucket: [40,60) at 0.5, [60,100) at 1.
+    const graph = line({ out01: [1, 1, 1], out12: [1, 1, 1], at2: [0.5, 1, 0] });
+    const o: SunReachOptions = {
+      sunBudgetSec: 100, timeBudgetSec: 200, timeAware: { bucketMs: 60_000, bucketCount: 3 }, roundTrip: { dwellSec: 60 },
+    };
+    const walk = sunReachRun(graph, 0, o).witness(1, 2)!;
+    expect(walk.nodeIds).toEqual([0, 1, 2, 1, 0]);
+    expect(walk.dwell).toEqual({ atNode: 2, seconds: 60 });
+    // Walking home 2→1 ends at 120 s, in bucket 2, where 2→1 has no shade: 20 s of sun.
+    const [cost] = outingCost(graph, walk, o);
+    expect(cost).toMatchObject({ walking: 20, waiting: 0, dwell: 10 });
+    expect(walk.sunSec).toBeCloseTo(30, 9);
+    expect(walk.arrivalSec).toBeCloseTo(140, 9);
+  });
+
+  it("a long stay is priced in every shade bucket it spans, not just one", () => {
+    // Two corners 1.4 m apart (1 s). Home's only sidewalk is sunny, so staying
+    // home costs a full 60 s of sun. Corner 1's sidewalk is sunny in the first
+    // minute and shaded after: walk out (1 s), stay 1–61 s (59 s in sun, 1 s
+    // shaded), walk home in shade. 60 s of sun in all. Priced at its end bucket
+    // only, the stay would be free and the outing would fit a 5 s budget.
+    const node = (id: number, m: number) => [id, { id, lat: 40.7 + m / 111_320, lon: -74 }] as const;
+    const graph: RoutingGraph = { nodes: new Map([node(0, 0), node(1, 1.4)]), adj: new Map() };
+    graph.adj.set(0, [{ toId: 1, distanceM: 1.4, shadowFactor: 0, timeShadow: [0, 0] }]);
+    graph.adj.set(1, [{ toId: 0, distanceM: 1.4, shadowFactor: 0, timeShadow: [0, 1] }]);
+    const o: SunReachOptions = {
+      sunBudgetSec: 5, timeBudgetSec: 200, timeAware: { bucketMs: 60_000, bucketCount: 2 }, roundTrip: { dwellSec: 60 },
+    };
+    expect(reachKeys(sunReach(graph, 0, o)).has("0>1:")).toBe(false);
+    expect(oracleRoundTrip(graph, 0, o).has("0>1:")).toBe(false);
+    const run = sunReachRun(graph, 0, { ...o, sunBudgetSec: 61 });
+    expect(run.witness(0, 1)!.sunSec).toBeCloseTo(60, 9);
+  });
+
+  it("a street you can reach but not get back from in time is out", () => {
+    // One way, 2 is 40 s out; a 30 s stay and 40 s home make 110 s. A 100 s
+    // budget reaches it one way but not as a round trip.
+    const graph = line({ out01: [1], out12: [1], at2: [1] });
+    const o: SunReachOptions = { sunBudgetSec: 100, timeBudgetSec: 100 };
+    expect(reachKeys(sunReach(graph, 0, o)).has("1>2:")).toBe(true);
+    const trip = sunReach(graph, 0, { ...o, roundTrip: { dwellSec: 30 } });
+    expect(reachKeys(trip).has("1>2:")).toBe(false);
+    expect(undecidedKeys(trip).has("1>2:")).toBe(false);
+    expect(reachKeys(trip).has("0>1:")).toBe(true);
+    expect(trip.outcome).toBe("exact");
+  });
+});
