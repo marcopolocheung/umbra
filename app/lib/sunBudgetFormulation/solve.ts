@@ -35,9 +35,12 @@ export interface FixtureReport {
   searchOutcome: string;
 }
 
+/** Optimal means optimal within HiGHS's numerical tolerances: no relative MIP gap allowed. */
+export const SOLVER_OPTIONS = { mip_rel_gap: 0 };
+
 function solveSun(highs: Highs, lp: string): { sun: number | null; ms: number } {
   const t0 = performance.now();
-  const r = highs.solve(lp);
+  const r = highs.solve(lp, SOLVER_OPTIONS);
   const ms = performance.now() - t0;
   if (r.Status === "Optimal") return { sun: r.ObjectiveValue, ms };
   if (r.Status === "Infeasible") return { sun: null, ms };
@@ -58,7 +61,7 @@ export async function solveFixture(graph: RoutingGraph, startId: number, o: SunR
     }
     const integer = solveSun(highs, ip);
     const lp = solveSun(highs, streetProgram(graph, startId, street, o, true)!);
-    // HiGHS works to a 1e-6 relative gap; sun budgets here are whole seconds.
+    // mip_rel_gap 0 and HiGHS's 1e-6 absolute gap; the budget comparison allows the same.
     const reachable = integer.sun !== null && integer.sun <= o.sunBudgetSec + 1e-6;
     if (reachable) ipRegion.add(key);
     streets.push({

@@ -8,10 +8,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
 import { randomGraph, rng } from "../../../__tests__/paretoCases.fixture";
-import { oracleReach } from "../../../__tests__/sunReachOracle.fixture";
+import { oracleReach, oracleRoundTrip } from "../../../__tests__/sunReachOracle.fixture";
 import { sunReach, type SunReachOptions } from "../../../sunReach";
 import { integerSecondsGraph, streetProgram, streetsOf } from "../../model";
-import { loadHighs, solveFixture } from "../../solve";
+import { loadHighs, SOLVER_OPTIONS, solveFixture } from "../../solve";
 
 const pct = (xs: number[], p: number) => {
   if (xs.length === 0) return null;
@@ -33,6 +33,8 @@ it("H7 report", async () => {
   let agreeSearch = 0;
   let searchExact = 0;
   const highs = await loadHighs();
+  // Solver memory: the WASM heap's capacity (an upper bound on live use) before and after.
+  const memoryStartBytes = highs.memoryBytes;
   for (let i = 0; i < 24; i++) {
     const seed = 900 + i;
     const rows = 3;
@@ -68,7 +70,7 @@ it("H7 report", async () => {
     for (const street of streetsOf(graph)) {
       const ip = streetProgram(graph, start, street, o, false, "earliest");
       if (!ip) continue;
-      const a = highs.solve(ip);
+      const a = highs.solve(ip, SOLVER_OPTIONS);
       if (a.Status !== "Optimal") continue;
       const b = highs.solve(streetProgram(graph, start, street, o, true, "earliest")!);
       if (b.Status === "Optimal") lpGapsEarliest.push(a.ObjectiveValue - b.ObjectiveValue);
@@ -81,6 +83,24 @@ it("H7 report", async () => {
       onlySearch: [...rep.searchRegion].filter((k) => !rep.ipRegion.has(k)),
       ms: Math.round(performance.now() - t0),
     });
+  }
+  // Round trips (the return budget): 12 lattices, a 10 s stay; IP vs the round-trip oracle and the search.
+  let rtAgreeOracle = 0;
+  let rtSearchSubset = 0;
+  const rtLpGaps: number[] = [];
+  const rtFixtures: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < 12; i++) {
+    const graph = integerSecondsGraph(randomGraph(950 + i, 3, 3, 3));
+    const o: SunReachOptions = { sunBudgetSec: [20, 40][i % 2], timeBudgetSec: 100, timeAware: { bucketMs: 30_000, bucketCount: 3 }, roundTrip: { dwellSec: 10 } };
+    const start = Math.floor(r() * 9);
+    const rep = await solveFixture(graph, start, o);
+    const truth = oracleRoundTrip(graph, start, o);
+    const eq = rep.ipRegion.size === truth.size && [...truth].every((k) => rep.ipRegion.has(k));
+    const subset = [...rep.searchRegion].every((k) => rep.ipRegion.has(k));
+    if (eq) rtAgreeOracle++;
+    if (subset) rtSearchSubset++;
+    for (const s of rep.streets) if (s.integerSun !== null && s.lpSun !== null) rtLpGaps.push(s.integerSun - s.lpSun);
+    rtFixtures.push({ seed: 950 + i, start, options: o, ip: rep.ipRegion.size, oracle: truth.size, search: rep.searchRegion.size, ipEqualsOracle: eq, searchWithinIp: subset });
   }
   // Discretization: the same lattices at their real (fractional) seconds, searched,
   // against the whole-second version the IP solves — what rounding to seconds moves.
@@ -104,6 +124,8 @@ it("H7 report", async () => {
     ipMs: dist(ipMs.map((x) => Math.round(x * 10) / 10)),
     lpMs: dist(lpMs.map((x) => Math.round(x * 10) / 10)),
     discretizationStreetsChanged: dist(discretization),
+    roundTrip: { fixtures: 12, ipEqualsOracle: rtAgreeOracle, searchWithinIp: rtSearchSubset, integralityGap: dist(rtLpGaps), looseStreets: rtLpGaps.filter((g) => g > 1e-6).length, fixtureReports: rtFixtures },
+    solverMemoryBytes: { start: memoryStartBytes, end: highs.memoryBytes, note: "WASM linear-memory capacity: an upper bound on HiGHS's live use, not a measurement of it" },
     fixtureReports: fixtures,
   };
   mkdirSync("docs/notes/h7", { recursive: true });

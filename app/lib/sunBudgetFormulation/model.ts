@@ -11,21 +11,26 @@
  *     t + d) — arrival pricing, as the search and oracle price it;
  *   - (allowWaits) a wait arc per (corner, t) to (corner, t + 1), costing
  *     1 − the corner's shadiest-sidewalk shade in the bucket of t. The search
- *     only waits to bucket boundaries; on whole seconds a run of 1 s waits
- *     covers that and every shorter wait, so this model is never tighter than
- *     the search's — any gap between them is the search's restriction, and the
- *     comparison states it.
+ *     and oracle wait only to bucket boundaries; 1 s waits cover that and
+ *     every shorter wait, so with waits on this model's region CONTAINS
+ *     theirs and can be larger (a partial wait that pays) — equality there is
+ *     a measured fact on given fixtures, not a theorem;
+ *   - (roundTrip) every arc again in a "coming back" phase, joined by a stay
+ *     arc (v, t, out) → (v, t + D, back) priced bucket by bucket on v's
+ *     shadiest sidewalk, and the walk must end at the start in that phase —
+ *     H5b's round trip, as the round-trip oracle enumerates it.
  * Variables x_a ∈ {0,1}: one unit leaves (start, 0), flow is conserved, and it
  * may stop at any node (a free sink arc per node). "Can street e be walked on
  * ≤ S of sun?" is: minimise total sun subject to Σ x over e's arcs ≥ 1. The
  * street is reachable iff that optimum ≤ S. Its LP relaxation (0 ≤ x ≤ 1) is a
  * lower bound; integer − LP is the integrality gap.
  *
- * That program is a min-cost flow with one forced arc set, so its LP is
- * integral: the gap is always 0, and the tests say so. The relaxation turns
- * loose once a second resource binds — `"earliest"`: least arrival time at the
- * street's end subject to sun ≤ S, the resource-constrained shortest path,
- * whose LP can mix a fast sunny walk with a slow shaded one.
+ * The LP is NOT integral in general: "Σ over e's arcs ≥ 1" sums every time
+ * copy of the street, so half a unit on a walk that crosses it twice counts
+ * once at half the sun (a committed fixture: integer 10 s, LP 5 s). It is
+ * tight only when no walk within T can cross a street twice. A second
+ * resource loosens it too — `"earliest"`: least arrival at the street's end
+ * subject to sun ≤ S, the resource-constrained shortest path.
  *
  * Exact equivalence with the search needs whole-second edge times (distances
  * a multiple of 1.4 m at walking pace) — `integerSecondsGraph` builds those.
@@ -39,6 +44,8 @@ export interface FormulationOptions {
   timeAware?: { bucketMs: number; bucketCount: number };
   allowWaits?: boolean;
   travelMode?: TravelModeId;
+  /** H5b's round trip: stay `dwellSec` at one corner, then walk home, all within T. */
+  roundTrip?: { dwellSec: number };
 }
 
 export interface Street {
@@ -86,32 +93,54 @@ export function streetProgram(
   };
   const nodeShade = (id: number, b: number) => Math.max(0, ...(graph.adj.get(id) ?? []).map((e) => shadeOf(e, b)));
 
-  const node = (id: number, t: number) => `n${id}_${t}`;
-  const arcs: Array<{ name: string; from: string; to: string; cost: number; target: boolean }> = [];
+  const D = o.roundTrip ? Math.round(o.roundTrip.dwellSec) : -1;
+  const phases = D >= 0 ? [0, 1] : [0];
+  const node = (id: number, t: number, p = 0) => `n${id}_${t}${p ? "b" : ""}`;
+  const arcs: Array<{ name: string; from: string; to: string; cost: number; target: boolean; at: number }> = [];
   let k = 0;
-  for (const [fromId, edges] of graph.adj) {
-    edges.forEach((e, index) => {
-      if (isProhibitedEdge(e, mode)) return;
-      const d = Math.round(edgeTraversalSeconds(e, mode));
-      for (let t = 0; t + d <= T; t++) {
-        arcs.push({
-          name: `x${k++}`,
-          from: node(fromId, t),
-          to: node(e.toId, t + d),
-          cost: d * (1 - shadeOf(e, bucket(t + d))),
-          target: fromId === street.fromId && index === street.index,
-        });
+  for (const p of phases) {
+    for (const [fromId, edges] of graph.adj) {
+      edges.forEach((e, index) => {
+        if (isProhibitedEdge(e, mode)) return;
+        const d = Math.round(edgeTraversalSeconds(e, mode));
+        for (let t = 0; t + d <= T; t++) {
+          arcs.push({
+            name: `x${k++}`,
+            from: node(fromId, t, p),
+            to: node(e.toId, t + d, p),
+            cost: d * (1 - shadeOf(e, bucket(t + d))),
+            target: fromId === street.fromId && index === street.index,
+            at: t + d,
+          });
+        }
+      });
+      if (o.allowWaits && o.timeAware) {
+        for (let t = 0; t < T; t++) {
+          arcs.push({ name: `x${k++}`, from: node(fromId, t, p), to: node(fromId, t + 1, p), cost: 1 - nodeShade(fromId, bucket(t)), target: false, at: t + 1 });
+        }
       }
-    });
-    if (o.allowWaits && o.timeAware) {
-      for (let t = 0; t < T; t++) {
-        arcs.push({ name: `x${k++}`, from: node(fromId, t), to: node(fromId, t + 1), cost: 1 - nodeShade(fromId, bucket(t)), target: false });
+    }
+  }
+  // The stay: out-phase corner to its back-phase copy, D seconds later, priced per bucket.
+  if (D >= 0) {
+    for (const v of graph.adj.keys()) {
+      for (let t = 0; t + D <= T; t++) {
+        let cost = 0;
+        for (let at = t; at < t + D; ) {
+          const b = bucket(at);
+          const until = o.timeAware && b < B - 1 ? Math.min(t + D, (b + 1) * W) : t + D;
+          cost += (until - at) * (1 - nodeShade(v, b));
+          at = until;
+        }
+        arcs.push({ name: `x${k++}`, from: node(v, t, 0), to: node(v, t + D, 1), cost, target: false, at: t + D });
       }
     }
   }
   if (!arcs.some((a) => a.target)) return null;
 
-  // Conservation: out − in = 1 at the source, out − in − sink = 0 elsewhere (sink ≥ 0 ends the walk).
+  // Conservation: out − in = 1 at the source, out − in + sink = 0 elsewhere. A
+  // one-way walk may end anywhere; a round trip only at the start, coming back.
+  const canEnd = (n: string) => D < 0 || (n.endsWith("b") && n.startsWith(`n${startId}_`));
   const touched = new Set<string>([node(startId, 0)]);
   for (const a of arcs) {
     touched.add(a.from);
@@ -127,7 +156,7 @@ export function streetProgram(
   // "earliest": arrival second at the street's end = Σ (t + d) over its arcs (exactly one is used).
   const objectiveTerms = objective === "least-sun"
     ? arcs.map((a) => `${fmt(a.cost)} ${a.name}`)
-    : arcs.filter((a) => a.target).map((a) => `${fmt(Number(a.to.split("_")[1]))} ${a.name}`);
+    : arcs.filter((a) => a.target).map((a) => `${fmt(a.at)} ${a.name}`);
   const lines: string[] = ["Minimize", ` obj: ${objectiveTerms.join(" + ") || "0"}`, "Subject To"];
   let c = 0;
   const sinks: string[] = [];
@@ -135,8 +164,9 @@ export function streetProgram(
     const out = outOf.get(n) ?? [];
     const inn = into.get(n) ?? [];
     const sink = `s_${n}`;
-    sinks.push(sink);
-    const terms = [...out.map((x) => `+ ${x}`), ...inn.map((x) => `- ${x}`), `+ ${sink}`];
+    if (canEnd(n)) sinks.push(sink);
+    const terms = [...out.map((x) => `+ ${x}`), ...inn.map((x) => `- ${x}`), ...(canEnd(n) ? [`+ ${sink}`] : [])];
+    if (terms.length === 0) continue;
     // At the source: out − in + sink = 1 (the walk may also end where it began).
     lines.push(` c${c++}: ${terms.join(" ")} = ${n === node(startId, 0) ? 1 : 0}`.replace(": +", ":"));
   }

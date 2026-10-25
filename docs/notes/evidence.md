@@ -203,11 +203,14 @@ outcome says which: `exact`, `approximate` or `budget-exhausted`. Method:
   - A hand on a slider moves slower than this script, so this is the worst case.
 
 - **A second implementation agrees (H7).** The question is also written as an integer program
-  over a time-expanded network and solved with HiGHS, offline. On 24 lattices it equals the
-  exhaustive oracle and the label search. Its LP relaxation is tight for least sun (342 of 342
-  streets) and loose on 2 of 204 under earliest arrival with a sun cap (worst 4 s; the committed
-  hand fixture shows 15 s, 37%). Method:
-  [`sun-budget-formulation.md`](./sun-budget-formulation.md); reproduce with `npm run eval:h7`.
+  over a time-expanded network, round trips included, and solved offline with HiGHS.
+  - It equals the exhaustive oracle and the label search on 24 lattices, and the round-trip oracle
+    on 12 more.
+  - Its LP relaxation is loose wherever a walk can cross a street twice, or when a second
+    resource binds. The committed fixtures show gaps of 50% and 37%; the random lattices are too
+    small to show either, and measure 0 for least sun and 2 of 204 for earliest arrival.
+  - Method: [`sun-budget-formulation.md`](./sun-budget-formulation.md); reproduce with
+    `npm run eval:h7`.
 
 **What this does not say.**
 - Proven streets are proven on the *model*: clear-sky geometry at 15-minute buckets, a steady

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 120_000 });
 import { randomGraph } from "../../__tests__/paretoCases.fixture";
-import { oracleReach } from "../../__tests__/sunReachOracle.fixture";
+import { oracleReach, oracleRoundTrip } from "../../__tests__/sunReachOracle.fixture";
 import type { GraphEdge, RoutingGraph } from "../../routing";
 import { sunReach } from "../../sunReach";
 import { integerSecondsGraph, streetKey, streetProgram, streetsOf } from "../model";
@@ -19,14 +19,15 @@ const timeAware = { bucketMs: 30_000, bucketCount: 3 };
 
 describe("H7 — the integer program equals the oracle and the search", () => {
   for (const seed of [11, 12]) {
-    it(`seed ${seed}: three implementations, one region; the LP of the least-sun program is tight`, async () => {
+    it(`seed ${seed}: three implementations, one region; on these lattices no walk crosses a street twice, so the least-sun LP is tight`, async () => {
       const graph = integerSecondsGraph(randomGraph(seed, 3, 3, 3));
       const o = { sunBudgetSec: 30, timeBudgetSec: 90, timeAware };
       const r = await solveFixture(graph, 0, o);
       expect(same(r.ipRegion, oracleReach(graph, 0, o))).toBe(true);
       expect(r.searchOutcome).toBe("exact");
       expect(same(r.searchRegion, r.ipRegion)).toBe(true);
-      // A min-cost flow with one forced arc set: integral, so no gap.
+      // Every edge here is ≥ 36 s and T = 90 s: no walk can cross a street twice,
+      // the one way the least-sun LP goes loose (see the next describe).
       for (const s of r.streets) if (s.integerSun !== null) expect(s.integerSun - s.lpSun!).toBeLessThan(1e-6);
     });
   }
@@ -41,7 +42,57 @@ function secondsGraph(edges: Array<[number, number, number, number[]]>): Routing
   return graph;
 }
 
-describe("H7 — where the relaxation is loose (the resource-constrained form)", () => {
+describe("H7 — round trips: the return budget, formulated", () => {
+  it("the integer program equals the exhaustive round-trip oracle; the search proves a subset of it", async () => {
+    for (const seed of [21, 22]) {
+      const graph = integerSecondsGraph(randomGraph(seed, 3, 3, 3));
+      const o = { sunBudgetSec: 30, timeBudgetSec: 100, timeAware, roundTrip: { dwellSec: 10 } };
+      const r = await solveFixture(graph, 0, o);
+      expect(same(r.ipRegion, oracleRoundTrip(graph, 0, o)), `seed ${seed}`).toBe(true);
+      // H5b proves round trips through fixed walks home: never more than the truth.
+      expect([...r.searchRegion].every((k) => r.ipRegion.has(k)), `seed ${seed}`).toBe(true);
+      expect(r.ipRegion.size).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("H7 — where the relaxation is loose", () => {
+  it("least sun: half a unit on a walk crossing the street twice counts once at half the sun", async () => {
+    // Street 0→1 (10 s) is sunny before 15 s and shaded after; its reverse is
+    // shaded. With no waits every walk leaves at t = 0, so any walk using 0→1
+    // pays its first crossing in sun: 10 s. The LP sends half a unit across at
+    // t = 0 (5 s of sun), back, and across again at t = 20 (shaded) — the two
+    // halves sum to one "use" of the street for 5 s of sun.
+    const graph = secondsGraph([
+      [0, 1, 10, [0, 1, 1]],
+      [1, 0, 10, [1, 1, 1]],
+    ]);
+    const street = streetsOf(graph).find((s) => s.fromId === 0 && s.toId === 1)!;
+    const o = { timeBudgetSec: 40, timeAware: { bucketMs: 15_000, bucketCount: 3 } };
+    const highs = await loadHighs();
+    const ip = highs.solve(streetProgram(graph, 0, street, o)!, { mip_rel_gap: 0 });
+    const lp = highs.solve(streetProgram(graph, 0, street, o, true)!);
+    expect(ip.ObjectiveValue).toBeCloseTo(10, 6);
+    expect(lp.ObjectiveValue).toBeCloseTo(5, 6);
+  });
+
+  it("with waits, the model can prove more than the search: a partial wait that pays", async () => {
+    // Street 0→1 (20 s) sunny in bucket 0 (< 30 s), shaded after; corner 0 has
+    // a shaded sidewalk (0→2). Sun budget 15 s. Leaving at 10 s arrives at 30 s
+    // in shade: 0 s of sun. The search and oracle wait only to the boundary
+    // (30 s) — leaving at 30 s arrives at 50 s, also shaded; so they prove it
+    // too. Budget the time at 40 s instead: only the 10 s partial wait fits.
+    const graph = secondsGraph([
+      [0, 1, 20, [0, 1]],
+      [0, 2, 1, [1, 1]],
+    ]);
+    const o = { sunBudgetSec: 15, timeBudgetSec: 40, timeAware: { bucketMs: 30_000, bucketCount: 2 }, allowWaits: true };
+    const r = await solveFixture(graph, 0, o);
+    expect(r.ipRegion.has("0>1:")).toBe(true);
+    expect(oracleReach(graph, 0, o).has("0>1:")).toBe(false);
+    expect(r.searchRegion.has("0>1:")).toBe(false);
+  });
+
   it("the LP blends a fast sunny walk with a slow shaded one and undercuts every real walk", async () => {
     // 0→1 two ways: fast (10 s, full sun) or slow (40 s via 2, full shade);
     // then the street 1→3 (1 s, shaded). Sun budget 5 s: only the slow way
@@ -67,6 +118,9 @@ describe("H7 — where the relaxation is loose (the resource-constrained form)",
 });
 
 describe("H7 — an independent check catches a wrong dominance rule", () => {
+  // This is the class of bug only a crafted fixture exposes: on the 24 random
+  // eval lattices, the production search with its slack removed still agrees
+  // with the integer program every time (checked once by hand, 0/24 caught).
   it("dropping the bucket-boundary slack (#246) loses a street the integer program proves", async () => {
     // H3's #246 fixture in whole seconds: two ways to node 3 (50 s / 50 s sun,
     // 55 s / 55 s sun); 3→4 (7 s) is sunny until 60 s, shaded after. Only the
@@ -82,9 +136,11 @@ describe("H7 — an independent check catches a wrong dominance rule", () => {
     const o = { sunBudgetSec: 55.5, timeBudgetSec: 120, timeAware: { bucketMs: 60_000, bucketCount: 2 } };
     const r = await solveFixture(graph, 0, o);
     expect(r.ipRegion.has(streetKey({ fromId: 3, toId: 4, side: null }))).toBe(true);
-    // The shipped search keeps it (its slack covers the boundary)…
+    // The shipped search keeps it (its slack covers the boundary): a change to
+    // production that drops the slack fails here, against the integer program.
     expect(r.searchRegion.has("3>4:")).toBe(true);
-    // …and a search with the slack removed would not: the rule the IP is there to catch.
+    expect(same(r.searchRegion, r.ipRegion)).toBe(true);
+    // A reference search with that rule, written independently, loses it.
     const naive = naiveDominance(graph, 0, o);
     expect(naive.has("3>4:")).toBe(false);
   });

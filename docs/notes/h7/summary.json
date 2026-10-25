@@ -27,17 +27,17 @@
  },
  "ipMs": {
   "n": 1404,
-  "min": 7.6,
-  "p50": 15.8,
-  "p90": 27.9,
-  "max": 83
+  "min": 8,
+  "p50": 16.3,
+  "p90": 28.9,
+  "max": 86.2
  },
  "lpMs": {
   "n": 1404,
-  "min": 6.8,
-  "p50": 14.4,
-  "p90": 24.2,
-  "max": 38.1
+  "min": 7.3,
+  "p50": 14.8,
+  "p90": 25.2,
+  "max": 43.9
  },
  "discretizationStreetsChanged": {
   "n": 24,
@@ -45,6 +45,266 @@
   "p50": 0,
   "p90": 0,
   "max": 0
+ },
+ "roundTrip": {
+  "fixtures": 12,
+  "ipEqualsOracle": 12,
+  "searchWithinIp": 12,
+  "integralityGap": {
+   "n": 64,
+   "min": 0,
+   "p50": 0,
+   "p90": 0,
+   "max": 0
+  },
+  "looseStreets": 0,
+  "fixtureReports": [
+   {
+    "seed": 950,
+    "start": 7,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 4,
+    "oracle": 4,
+    "search": 4,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 951,
+    "start": 8,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 2,
+    "oracle": 2,
+    "search": 2,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 952,
+    "start": 3,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 0,
+    "oracle": 0,
+    "search": 0,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 953,
+    "start": 1,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 6,
+    "oracle": 6,
+    "search": 6,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 954,
+    "start": 4,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 2,
+    "oracle": 2,
+    "search": 2,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 955,
+    "start": 4,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 3,
+    "oracle": 3,
+    "search": 3,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 956,
+    "start": 5,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 2,
+    "oracle": 2,
+    "search": 2,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 957,
+    "start": 0,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 0,
+    "oracle": 0,
+    "search": 0,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 958,
+    "start": 0,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 0,
+    "oracle": 0,
+    "search": 0,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 959,
+    "start": 0,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 4,
+    "oracle": 4,
+    "search": 4,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 960,
+    "start": 4,
+    "options": {
+     "sunBudgetSec": 20,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 2,
+    "oracle": 2,
+    "search": 2,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   },
+   {
+    "seed": 961,
+    "start": 0,
+    "options": {
+     "sunBudgetSec": 40,
+     "timeBudgetSec": 100,
+     "timeAware": {
+      "bucketMs": 30000,
+      "bucketCount": 3
+     },
+     "roundTrip": {
+      "dwellSec": 10
+     }
+    },
+    "ip": 2,
+    "oracle": 2,
+    "search": 2,
+    "ipEqualsOracle": true,
+    "searchWithinIp": true
+   }
+  ]
+ },
+ "solverMemoryBytes": {
+  "start": 21233664,
+  "end": 21233664,
+  "note": "WASM linear-memory capacity: an upper bound on HiGHS's live use, not a measurement of it"
  },
  "fixtureReports": [
   {
@@ -70,7 +330,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 1707
+   "ms": 1855
   },
   {
    "seed": 901,
@@ -95,7 +355,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 3322
+   "ms": 3623
   },
   {
    "seed": 902,
@@ -120,7 +380,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2674
+   "ms": 2785
   },
   {
    "seed": 903,
@@ -146,7 +406,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 4866
+   "ms": 5057
   },
   {
    "seed": 904,
@@ -171,7 +431,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 3165
+   "ms": 3239
   },
   {
    "seed": 905,
@@ -196,7 +456,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2612
+   "ms": 2778
   },
   {
    "seed": 906,
@@ -221,7 +481,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2790
+   "ms": 2901
   },
   {
    "seed": 907,
@@ -247,7 +507,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 6761
+   "ms": 6952
   },
   {
    "seed": 908,
@@ -272,7 +532,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 1521
+   "ms": 1614
   },
   {
    "seed": 909,
@@ -297,7 +557,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 4725
+   "ms": 4950
   },
   {
    "seed": 910,
@@ -322,7 +582,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2696
+   "ms": 2845
   },
   {
    "seed": 911,
@@ -348,7 +608,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 8744
+   "ms": 9079
   },
   {
    "seed": 912,
@@ -373,7 +633,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 1622
+   "ms": 1695
   },
   {
    "seed": 913,
@@ -398,7 +658,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 3473
+   "ms": 3627
   },
   {
    "seed": 914,
@@ -423,7 +683,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 1278
+   "ms": 1353
   },
   {
    "seed": 915,
@@ -449,7 +709,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 10101
+   "ms": 10195
   },
   {
    "seed": 916,
@@ -474,7 +734,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2752
+   "ms": 2731
   },
   {
    "seed": 917,
@@ -499,7 +759,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 4970
+   "ms": 4994
   },
   {
    "seed": 918,
@@ -524,7 +784,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 1806
+   "ms": 1879
   },
   {
    "seed": 919,
@@ -550,7 +810,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 3460
+   "ms": 3604
   },
   {
    "seed": 920,
@@ -575,7 +835,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2200
+   "ms": 2300
   },
   {
    "seed": 921,
@@ -600,7 +860,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 4786
+   "ms": 5025
   },
   {
    "seed": 922,
@@ -625,7 +885,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 2446
+   "ms": 2583
   },
   {
    "seed": 923,
@@ -651,7 +911,7 @@
    "searchEqualsIp": true,
    "onlyIp": [],
    "onlySearch": [],
-   "ms": 4913
+   "ms": 5058
   }
  ]
 }
