@@ -22,9 +22,11 @@ export type SunBudgetStatus = "off" | "picking" | "loading" | "uncovered" | "rea
 
 /** The graph is built for the longest walk the panel offers, so changing walk time never refetches. */
 export const SUN_BUDGET_WALK_MINUTES = [10, 20, 30] as const;
+const GRAPH_WALK_SEC = Math.max(...SUN_BUDGET_WALK_MINUTES) * 60;
 /** H5c: stops a round trip offers. A round trip walks half as far out, so the graph above still covers it. */
 export const SUN_BUDGET_STAY_MINUTES = [0, 10, 30] as const;
-const GRAPH_WALK_SEC = Math.max(...SUN_BUDGET_WALK_MINUTES) * 60;
+/** But a stop makes the outing last longer than the walk: the graph's shade must cover walk + stop. */
+const GRAPH_HORIZON_SEC = GRAPH_WALK_SEC + Math.max(...SUN_BUDGET_STAY_MINUTES) * 60;
 const SLIDER_DEBOUNCE_MS = 150;
 /** While the timeline plays, wait for the clock to settle before rebuilding. */
 const DEPARTURE_SETTLE_MS = 600;
@@ -134,7 +136,7 @@ export function useSunBudget(
     setGraph("loading");
     // Always walking (the worker builds at walk pace): the panel speaks in walking minutes.
     build(
-      { center: start, timeBudgetSec: GRAPH_WALK_SEC, departure: new Date(settledSlot * SLOT_MS) },
+      { center: start, timeBudgetSec: GRAPH_WALK_SEC, horizonSec: GRAPH_HORIZON_SEC, departure: new Date(settledSlot * SLOT_MS) },
       { signal: controller.signal },
     ).then(
       (built) => {

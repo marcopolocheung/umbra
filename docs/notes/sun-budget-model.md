@@ -356,6 +356,12 @@ street shows its whole outing: out, the stop (where the marker sits), and home, 
 home, the minutes at the stop and all the sun. Waiting stays off in the UI (H5b: on NYC it
 shrinks regions at the default cap).
 
+**The graph's shade covers the whole outing.** Streets are fetched for the longest walk
+(30 min), but shade buckets for the longest outing: walk + the longest stop, 60 min (4 buckets,
+`horizonSec`). Built for the walk alone, a 30 + 30 round trip would price its last half hour
+at the second bucket's shade, which the search clamps to (found in review). The first region
+still draws in 4.1–4.7 s.
+
 **Trips never mix.** The map merges results for the same graph *and* the same trip only. A
 one-way street is never proof of a round trip (`useSunBudget.test.tsx`; the mutant that merges
 across trips fails it). The worker replays a walk only for the trip on screen
@@ -368,7 +374,7 @@ in place of MapTiler, Midtown, July 1 15:00).
   trip, then a 10-minute stop, then back to one way redrew in 0.3–1.2 s each, and the right
   region showed each time.
 - A tapped street showed its round trip ("30 min home, 10 of them at the stop, 3 min of direct
-  sun in all").
+  sun in all"; at 30 + 30, "57 min home, 30 of them at the stop").
 - Phone (390×844): the round trip with a 30-minute stop drew. Every control in the panel is at
   least 44 px tall.
 - **Not checked:**

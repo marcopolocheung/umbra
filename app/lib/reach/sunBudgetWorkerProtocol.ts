@@ -21,6 +21,8 @@ export type SunBudgetCommand =
       requestId: number;
       center: [number, number];
       timeBudgetSec: number;
+      /** How long an outing can last, stops included (H5c); defaults to `timeBudgetSec`. */
+      horizonSec?: number;
       departureMs: number;
     }
   | {
@@ -115,6 +117,7 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
         const graph = await build({
           center: command.center,
           timeBudgetSec: command.timeBudgetSec,
+          horizonSec: command.horizonSec,
           departure: new Date(command.departureMs),
           travelMode: "walk",
         });
