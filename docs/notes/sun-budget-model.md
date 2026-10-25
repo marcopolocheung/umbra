@@ -437,3 +437,65 @@ command in "H3", above.
 The whole suite ran in 33 s wall time (3,034 tests). No flake has been seen in these files across the H5 runs.
 The oracles and their seeded cases now live in `app/lib/__tests__/sunReachOracle.fixture.ts`,
 shared with H7.
+
+## H6 — "is this outing possible?" for the assistant
+
+**The question.** From a start, walk to a target, stay `stayMin` there, and be home within
+`timeMin` on at most `sunMin` of direct sun. This is H5b's round trip, asked of one street (the one
+nearest the target). The stay counts inside `timeMin`.
+
+**The answer is a typed certificate** (`app/lib/reach/feasibility.ts`), never prose.
+- **`feasible`.** The target street is proven. The certificate carries the outing behind it (walk,
+  waits, stay, walk home) and a ledger of the sun and time it used against each budget.
+- **`infeasible`.** The search's outer bound rules the target out: no outing meets both budgets.
+  The ledger names the binding budget.
+  - The search re-runs with sun lifted to the whole outing.
+  - If the target is then reachable, sun binds. If it still isn't, time alone rules it out.
+- **`unknown`.** The target is undecided: the search was capped (`approximate`) or stopped
+  (`budget-exhausted`). This is never worded as a no.
+- **`uncovered`, `cancelled`, `superseded`.** No answer, with the reason. A newer question from the
+  same session supersedes an older one still running.
+- **Every certificate cites** the question, its input version, the model version and the shade
+  generation it was computed on.
+
+**How the assistant uses it** (`check_sun_budget`, `app/lib/agent/tools.ts`):
+- **Inputs.** The start and target must be places the app produced (a located user, a geocoded or
+  searched result) or the call is refused. Budgets are bounded: up to 60 min each.
+- **Where it runs.** In the Sun Budget worker, on a graph of its own, so the panel's graph is left
+  alone.
+- **What can be said.** The answer is a `feasibility` receipt. It verifies only if the status the
+  model claims equals the certificate's and the certificate is the newest one asked. The words shown
+  come from the certificate (`feasibilityLabel`).
+  - A model that claims "feasible" against an infeasible certificate is rejected.
+  - The loop then rebuilds the answer from the evidence, so the user sees the certificate's verdict.
+  - Each verified verdict links to `evidence.md` §2.4: how the search is checked (H4) and the
+    independent integer program (H7).
+
+**Evidence.**
+- **Unit tests.** Per status (`app/lib/reach/__tests__/feasibility.test.ts`), the authority
+  boundary, and the worker command.
+- **Through the agent loop** (`app/lib/agent/__tests__/feasibilityLoop.test.ts`):
+  - feasible, proven infeasible, budget-exhausted unknown, cancelled, superseded, and uncovered
+    (outside NYC's shade data, the closest thing here to "partial");
+  - two sabotage cases, a false "feasible" and an unknown upgraded to "infeasible";
+  - an executor test that a newer question supersedes one still running.
+- **Mutants.** Six deliberately broken versions are caught:
+  - no status match;
+  - no supersede check;
+  - the target not checked by authority;
+  - the binding budget flipped;
+  - unknown worded as a no;
+  - an executor that never supersedes.
+- **In a browser** (production preview, the real worker on generation `nyc-2026-09-18-393d4cd24a30`
+  served locally; the model scripted, because Gemini needs the owner's key):
+  - "home → Bryant Park Cafe, 15-min stop, 45 min, ≤ 8 min of sun" was **feasible** in 3.5 s:
+    *"a walk found does it in 22 min with 3 min of sun"*;
+  - "6 min with a 5-min stop" was **infeasible, time binding**, in 1.9 s;
+  - a scripted model claiming "feasible" against that infeasible certificate still showed **"Not
+    possible … the time budget is what rules it out"**;
+  - the "How this is checked" link resolves to §2.4.
+
+**Not done here.**
+- The live comparison against a text-only or single-pass baseline under C13 needs the real model:
+  `npm run eval:agent`, run by the owner.
+- NYC only (#380).

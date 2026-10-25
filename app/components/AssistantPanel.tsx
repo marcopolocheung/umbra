@@ -26,6 +26,9 @@ const SUGGESTIONS = [
   "Plan a 3-stop day trip that stays out of the sun",
 ];
 const focusClass = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current";
+/** H6: an outing verdict links to how it is checked — the H4 properties and H7's independent program. */
+const FEASIBILITY_METHOD_URL =
+  "https://github.com/marcopolocheung/umbra/blob/main/docs/notes/evidence.md#24-sun-budget-reachability--exact-on-fixtures-on-nyc-an-upper-bound-on-what-is-missed";
 
 export default function AssistantPanel({
   open, onClose, messages, isThinking, progress, onSend, onReset, onFocusMapObject, stopIds, routeIds = [],
@@ -147,6 +150,12 @@ export default function AssistantPanel({
                           )}
                         </div>
                         {receipt.kind === "shade_window" && <ShadeWindowDetails receipt={receipt} />}
+                        {receipt.kind === "feasibility" && receipt.verification === "verified" && (
+                          <a href={FEASIBILITY_METHOD_URL} target="_blank" rel="noreferrer"
+                            className={`ml-2 inline-flex min-h-11 items-center px-2 text-[12px] underline ${focusClass}`}>
+                            How this is checked
+                          </a>
+                        )}
                         <p className="text-[11px]" style={{ color: "var(--color-ink-muted)", paddingLeft: stopIndex >= 0 ? 60 : 8, paddingRight: 8 }}>{detail}</p>
                       </div>
                     );

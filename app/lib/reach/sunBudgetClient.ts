@@ -18,11 +18,13 @@ import {
   type SunBudgetEvent,
 } from "./sunBudgetWorkerProtocol";
 import type { SunReachOptions, SunReachResult, SunReachWalk } from "../sunReach";
+import type { FeasibilityCertificate, FeasibilityQuestion } from "./feasibility";
 
 type Payload =
   | Omit<Extract<SunBudgetCommand, { type: "build" }>, "requestId" | "protocol">
   | Omit<Extract<SunBudgetCommand, { type: "search" }>, "requestId" | "protocol">
-  | Omit<Extract<SunBudgetCommand, { type: "walk" }>, "requestId" | "protocol">;
+  | Omit<Extract<SunBudgetCommand, { type: "walk" }>, "requestId" | "protocol">
+  | Omit<Extract<SunBudgetCommand, { type: "feasibility" }>, "requestId" | "protocol">;
 
 let worker: Worker | null = null;
 let disabled = false;
@@ -121,3 +123,13 @@ export async function sunReachWalk(
   return event.walk;
 }
 
+/** H6: answer one outing question in the worker, on a graph of its own (#380: NYC only). */
+export async function sunBudgetFeasibility(
+  question: FeasibilityQuestion,
+  inputVersion: number,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<FeasibilityCertificate> {
+  const event = await send({ type: "feasibility", question, inputVersion }, signal);
+  if (event.type !== "feasibility") throw new Error(`unexpected ${event.type}`);
+  return event.certificate;
+}

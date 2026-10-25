@@ -10,6 +10,7 @@
 
 import { buildReachGraph } from "../navigationData/reachGraph";
 import { type SunReachOptions, type SunReachResult, type SunReachRun, type SunReachWalk, sunReachRun } from "../sunReach";
+import { FEASIBILITY_MODEL_VERSION, type FeasibilityCertificate, type FeasibilityQuestion, feasibilityCertificate } from "./feasibility";
 import type { ReachGraph } from "../navigationData/reachGraph";
 
 export const SUN_BUDGET_WORKER_PROTOCOL_VERSION = "umbra-sun-budget-worker-v1";
@@ -41,6 +42,17 @@ export type SunBudgetCommand =
       /** The budgets (and trip) of the region the user tapped; a newer search answers nothing. */
       budgets: Pick<SunReachOptions, "sunBudgetSec" | "timeBudgetSec" | "roundTrip">;
       edge: { fromId: number; toId: number; side?: string };
+    }
+  | {
+      /**
+       * H6: answer one outing question on a graph of its own, built and
+       * dropped here — the panel's kept graph is left alone.
+       */
+      type: "feasibility";
+      protocol: typeof SUN_BUDGET_WORKER_PROTOCOL_VERSION;
+      requestId: number;
+      question: FeasibilityQuestion;
+      inputVersion: number;
     };
 
 /**
@@ -66,6 +78,7 @@ export type SunBudgetEvent =
   | { type: "built"; requestId: number; built: BuiltReachGraph }
   | { type: "searched"; requestId: number; result: SunReachResult }
   | { type: "walked"; requestId: number; walk: SunReachWalk | null }
+  | { type: "feasibility"; requestId: number; certificate: FeasibilityCertificate }
   | { type: "error"; requestId: number; error: string };
 
 /** The node positions of a graph, as transferable parallel arrays. */
@@ -131,6 +144,24 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
           requestId,
           built: { status: "ok", graphId, startPoint: graph.startPoint, edgeM: graph.edgeM, ...nodeArrays(graph.graph) },
         };
+      }
+      if (command.type === "feasibility") {
+        const q = command.question;
+        // The farthest a round trip goes is half the walking time out; the
+        // shade must cover the whole outing, stop included (both inside timeMin).
+        const built = await build({
+          center: q.start,
+          timeBudgetSec: (Math.max(0, q.timeMin - q.stayMin) * 60) / 2,
+          horizonSec: q.timeMin * 60,
+          departure: new Date(q.departure),
+          travelMode: "walk",
+        });
+        const meta = { inputVersion: command.inputVersion, geometryVersion: built.status === "ok" ? built.generation : undefined };
+        const certificate: FeasibilityCertificate =
+          built.status === "ok"
+            ? feasibilityCertificate(built.graph, built.startId, q, { timeAware: built.timeAware }, meta)
+            : { status: "uncovered", question: q, inputVersion: command.inputVersion, modelVersion: FEASIBILITY_MODEL_VERSION, reason: built.reason };
+        return { type: "feasibility", requestId, certificate };
       }
       if (!kept || kept.graphId !== command.graphId) throw new Error(`graph ${command.graphId} is not kept`);
       if (command.type === "walk") {

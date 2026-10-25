@@ -11,6 +11,7 @@ import type {
 } from "../navigationData/shadeSpotsSource";
 import type { ShadeSpotSample, ShadeSpotWindow } from "../navigationData/shadeSpots";
 import { validateRoutePlanTerminalResult, type RoutePlanTerminalResult } from "../routePlanJob";
+import type { FeasibilityCertificate, FeasibilityStatus } from "../reach/feasibility";
 import {
   isContentProvenance,
   providerText,
@@ -28,7 +29,8 @@ export type AgentToolName =
   | "find_shade_spots"
   | "set_time"
   | "plot_points"
-  | "plan_shadowed_route";
+  | "plan_shadowed_route"
+  | "check_sun_budget";
 
 export interface ToolResultEnvelope<TPayload = Record<string, unknown>> {
   resultId: string;
@@ -83,6 +85,7 @@ export type ToolPayloadByName = {
   set_time: TimeToolPayload;
   plot_points: PlotToolPayload;
   plan_shadowed_route: RoutePlanTerminalResult;
+  check_sun_budget: FeasibilityCertificate;
 };
 export type TypedToolResultEnvelope<N extends AgentToolName> = ToolResultEnvelope<
   ToolPayloadByName[N]
@@ -144,6 +147,13 @@ export function validateToolResultEnvelope(value: unknown): boolean {
     }
     case "locate_user":
       return asNumber(value.payload.lat) != null && asNumber(value.payload.lng) != null;
+    case "check_sun_budget":
+      return (
+        value.provenance.category === "application_state" &&
+        FEASIBILITY_STATUSES.includes(value.payload.status as FeasibilityStatus) &&
+        isRecord(value.payload.question) &&
+        asNumber(value.payload.inputVersion) != null
+      );
     default:
       return false;
   }
@@ -202,10 +212,13 @@ function isAgentToolName(value: unknown): value is AgentToolName {
     "set_time",
     "plot_points",
     "plan_shadowed_route",
+    "check_sun_budget",
   ].includes(value as AgentToolName);
 }
 
-export type ClaimKind = "place" | "shadow" | "shade_window" | "time" | "route" | "accessibility";
+const FEASIBILITY_STATUSES: FeasibilityStatus[] = ["feasible", "infeasible", "unknown", "cancelled", "superseded", "uncovered"];
+
+export type ClaimKind = "place" | "shadow" | "shade_window" | "time" | "route" | "accessibility" | "feasibility";
 export type ClaimVerificationStatus = "verified" | "unknown" | "rejected";
 export type ClaimRejectionReason =
   | "missing_result"
@@ -217,6 +230,7 @@ export type ClaimRejectionReason =
   | "contradictory_route_status"
   | "stale_plan_revision"
   | "unsupported_accessibility_evidence"
+  | "contradictory_feasibility"
   | "malformed_claim";
 
 export interface EvidenceDetails {
@@ -270,6 +284,11 @@ export interface RouteClaimReceipt
 
 export interface AccessibilityClaimReceipt extends ClaimBase<"accessibility", "unknown"> {}
 
+/** H6: the answer to "is this outing possible?", worded from the certificate alone. */
+export interface FeasibilityClaimReceipt extends ClaimBase<"feasibility", { status: FeasibilityStatus }> {
+  certificate: FeasibilityCertificate;
+}
+
 export interface ShadeWindowClaimReceipt
   extends ClaimBase<"shade_window", { meanShade: number; hours: ShadeSpotSample[] }> {
   similarity?: {
@@ -296,7 +315,8 @@ export type ClaimReceipt =
   | ShadeWindowClaimReceipt
   | TimeClaimReceipt
   | RouteClaimReceipt
-  | AccessibilityClaimReceipt;
+  | AccessibilityClaimReceipt
+  | FeasibilityClaimReceipt;
 
 export type VerifiedAnswerBlock =
   | { kind: "claim"; claimId: string }
@@ -339,6 +359,7 @@ export interface ClaimSupportMetrics {
   time: ClaimKindSupportMetrics;
   route: ClaimKindSupportMetrics;
   accessibility: ClaimKindSupportMetrics;
+  feasibility: ClaimKindSupportMetrics;
   unsupportedClaimEscapes: number;
   rejectedUnsupportedProse: number;
   danglingClaimProposals: number;
@@ -369,6 +390,7 @@ export function claimSupportMetrics(
     time: measure("time"),
     route: measure("route"),
     accessibility: measure("accessibility"),
+    feasibility: measure("feasibility"),
     // All model text blocks are discarded before rendering, so an escape is impossible by construction.
     unsupportedClaimEscapes: 0,
     rejectedUnsupportedProse: answer.rejectedProseCount,
@@ -560,6 +582,13 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
         };
       if (claimKind === "time")
         return { ...common, kind: "time", value: { localTime: "unknown", unit: "local-time" } };
+      if (claimKind === "feasibility")
+        return {
+          ...common,
+          kind: "feasibility",
+          value: { status: "unknown" },
+          certificate: { status: "unknown", question: { start: [0, 0], target: [0, 0], sunMin: 0, timeMin: 0, stayMin: 0, departure: "" }, inputVersion: -1, modelVersion: "none" },
+        };
       return {
         ...common,
         kind: "route",
@@ -572,7 +601,7 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     };
     if (
       !kind ||
-      !["place", "shadow", "shade_window", "time", "route", "accessibility"].includes(kind)
+      !["place", "shadow", "shade_window", "time", "route", "accessibility", "feasibility"].includes(kind)
     ) {
       // An unknown kind supports nothing; it must not render as an accessibility claim.
       return;
@@ -585,6 +614,34 @@ export function verifyAnswer(proposed: unknown, options: VerifyAnswerOptions): V
     }
     if (malformed) {
       receipts.push(reject(kind, "missing_result"));
+      return;
+    }
+    if (kind === "feasibility") {
+      if (envelope!.toolName !== "check_sun_budget") {
+        receipts.push(reject(kind, "wrong_tool_kind"));
+        return;
+      }
+      const certificate = envelope!.payload as unknown as FeasibilityCertificate;
+      // Superseded: only the newest outing question may be answered.
+      const newest = options.evidence
+        .filter((e) => e.toolName === "check_sun_budget")
+        .reduce((a, b) => ((asNumber(b.payload.inputVersion) ?? -1) > (asNumber(a.payload.inputVersion) ?? -1) ? b : a));
+      if (newest.resultId !== envelope!.resultId) {
+        receipts.push(reject(kind, "stale_evidence"));
+        return;
+      }
+      const claimed = isRecord(value.value) ? asString(value.value.status) : undefined;
+      if (claimed !== certificate.status) {
+        receipts.push(reject(kind, "contradictory_feasibility"));
+        return;
+      }
+      receipts.push({
+        ...base({ ...value, subject: "outing" }, index, kind, envelope, "verified"),
+        subject: "outing",
+        kind,
+        value: { status: certificate.status },
+        certificate,
+      });
       return;
     }
     if (kind === "place") {
@@ -1009,6 +1066,32 @@ export function receiptLabel(receipt: ClaimReceipt): string {
         : `Route partial — plan revision ${receipt.planRevision}`;
     case "accessibility":
       return "Accessibility — unknown";
+    case "feasibility":
+      return feasibilityLabel(receipt.certificate);
+  }
+}
+
+/** The certificate in words. Never "no" for unknown; the binding budget for infeasible. */
+export function feasibilityLabel(c: FeasibilityCertificate): string {
+  const q = c.question;
+  const outing = `${q.timeMin} min there and back${q.stayMin > 0 ? ` with a ${q.stayMin}-min stop` : ""} on ≤ ${q.sunMin} min of sun`;
+  switch (c.status) {
+    case "feasible": {
+      const sun = c.ledger ? Math.ceil(c.ledger.sun.usedSec! / 60) : null;
+      const home = c.ledger ? Math.ceil(c.ledger.time.usedSec! / 60) : null;
+      return `Possible: ${outing} — a walk found does it in ${home} min with ${sun} min of sun`;
+    }
+    case "infeasible": {
+      const binds = c.ledger?.sun.binding ? "the sun budget" : "the time budget";
+      return `Not possible: no walk does ${outing} — ${binds} is what rules it out`;
+    }
+    case "unknown":
+      return `Not confirmed either way: ${outing} — the search stopped before it could tell`;
+    case "uncovered":
+      return "Can't check: the target is outside NYC's shade data";
+    case "cancelled":
+    case "superseded":
+      return "No answer: a newer question replaced this one";
   }
 }
 
