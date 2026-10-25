@@ -298,3 +298,37 @@ describe("dijkstra reports at the leg's own clock (#391)", () => {
     expect(late.endClockSec! - 60).toBeCloseTo(early.endClockSec!, 9);
   });
 });
+
+describe("reportClock never steers the path (#391 review)", () => {
+  it("on a graph with a real choice, the path with and without a clock is the same", () => {
+    // Two ways 0→3: via 1 (short, sunny early) or via 2 (longer, shaded). The
+    // clock moves which buckets are reported; it must not move the choice.
+    const node = (id: number, lat: number, lon: number): OsmNode => ({ id, lat, lon });
+    const g: RoutingGraph = {
+      nodes: new Map([[0, node(0, 40.7, -74)], [1, node(1, 40.701, -74)], [2, node(2, 40.7005, -73.999)], [3, node(3, 40.702, -74)]]),
+      adj: new Map([
+        [0, [{ toId: 1, distanceM: 111, shadowFactor: 0, timeShadow: [0, 1, 1, 1] }, { toId: 2, distanceM: 120, shadowFactor: 1, timeShadow: [1, 1, 1, 1] }]],
+        [1, [{ toId: 3, distanceM: 111, shadowFactor: 0, timeShadow: [0, 1, 1, 1] }]],
+        [2, [{ toId: 3, distanceM: 140, shadowFactor: 1, timeShadow: [1, 1, 1, 1] }]],
+        [3, []],
+      ]),
+    };
+    const timeAware = { bucketMs: 60_000, bucketCount: 4 };
+    for (const strength of [0, 0.5, 1]) {
+      for (const startSec of [0, 120]) {
+        expect(dijkstra(g, 0, 3, strength, { reportClock: { timeAware, startSec } })!.nodeIds).toEqual(dijkstra(g, 0, 3, strength)!.nodeIds);
+      }
+    }
+  });
+});
+
+describe("which stays a route counts (#391 review)", () => {
+  it("the trip's stays, positionally; none for an agent plan or a misaligned signature", async () => {
+    const { stopStaysSec } = await import("../../hooks/useRouting");
+    expect(stopStaysSec("[0,30,0]", 1, false)).toEqual([0, 1800, 0]);
+    expect(stopStaysSec("[0,30,0]", 1, true)).toEqual([]);
+    expect(stopStaysSec("[0,30]", 1, false)).toEqual([]);
+    expect(stopStaysSec("not json", 1, false)).toEqual([]);
+    expect(stopStaysSec("[0,0]", 0, false)).toEqual([]);
+  });
+});

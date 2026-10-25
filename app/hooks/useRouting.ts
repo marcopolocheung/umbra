@@ -160,6 +160,32 @@ export function routeNeedsCanvas(c: { departureFromTable: boolean; rain: boolean
   return !c.departureFromTable && !c.rain && c.coverageConfidence < LOW_CONFIDENCE;
 }
 
+/**
+ * #391: seconds of stay at each stop, positional over [A, ...via, B], from the
+ * trip's dwell signature. None for an agent plan (a plan carries no dwell, so
+ * the trip's stays would sit on stops the plan does not have) or when the
+ * signature doesn't line up with the stops.
+ */
+export function stopStaysSec(dwellSignature: string, viaCount: number, fromPlan: boolean): number[] {
+  if (fromPlan || viaCount === 0) return [];
+  try {
+    const minutes = JSON.parse(dwellSignature) as unknown;
+    return Array.isArray(minutes) && minutes.length === viaCount + 2
+      ? minutes.map((m) => (typeof m === "number" && m > 0 ? m * 60 : 0))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The conditions a route's exposure was priced at; the refresh runs when they change. */
+function exposureRefreshKey(
+  time: Date,
+  s: { objective: string; windSource: string; manualWind: { directionDeg: number; speedMps: number } },
+): string {
+  return [time.getTime(), s.objective, s.windSource, s.manualWind.directionDeg, s.manualWind.speedMps].join("|");
+}
+
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
   id: string;
@@ -315,6 +341,8 @@ export function useRouting({
   // Volatile across renders: `calculateRoute` keeps its identity and reads this.
   const rainModeRef = useRef(rainMode);
   rainModeRef.current = rainMode;
+  // The conditions the routes on screen were priced at (see the refresh effect).
+  const lastRefreshKeyRef = useRef<string | null>(null);
   // #391: the trip's stay at each stop, positional over [A, ...via, B].
   const dwellSignatureRef = useRef(dwellSignature);
   dwellSignatureRef.current = dwellSignature;
@@ -1080,17 +1108,7 @@ export function useRouting({
         // (#391) — so they sweep too, over the whole trip.
         // A plan from the agent carries no stays; only the trip's own stops have them.
         const viaCount = (plan?.via ?? additionalWaypoints).length;
-        const stopStays: number[] = (() => {
-          if (plan || viaCount === 0) return [];
-          try {
-            const minutes = JSON.parse(dwellSignatureRef.current) as unknown;
-            return Array.isArray(minutes) && minutes.length === viaCount + 2
-              ? minutes.map((m) => (typeof m === "number" && m > 0 ? m * 60 : 0))
-              : [];
-          } catch {
-            return [];
-          }
-        })();
+        const stopStays = stopStaysSec(dwellSignatureRef.current, viaCount, Boolean(plan));
         const staySec = stopStays.slice(1, -1).reduce((sum, sec) => sum + sec, 0);
         if (TIME_AWARE_ROUTING && !rainObjective && edgeRefs.length > 0) {
           const tSweep = performance.now();
@@ -1391,6 +1409,8 @@ export function useRouting({
             let failedLeg: number | null = null;
             // #391: the clock each leg starts at — earlier legs and stays included.
             let clockSec = 0;
+            // The stays this pass actually priced; the card's duration includes them.
+            let stayTotalSec = 0;
             const legClock = opts.timeAware ? { timeAware: opts.timeAware } : null;
 
             // A1: one progress update per strength pass. The browser yield that
@@ -1417,6 +1437,7 @@ export function useRouting({
                   });
                 }
                 clockSec += stay;
+                stayTotalSec += stay;
               }
               const segResult = dijkstra(
                 routingGraph,
@@ -1501,7 +1522,7 @@ export function useRouting({
                   exposureSegments,
                   sampledEdges,
                   travelMode,
-                  totalTimeSec: travelTimeSeconds(totalDist, travelMode),
+                  totalTimeSec: travelTimeSeconds(totalDist, travelMode) + stayTotalSec,
                   surfaceMetresM: { ...surfaceMetresM },
                   partial: {
                     completedLegs: failedLeg - 1,
@@ -1549,7 +1570,7 @@ export function useRouting({
               exposureSegments,
               sampledEdges,
               travelMode,
-              totalTimeSec: travelTimeSeconds(totalDist, travelMode),
+              totalTimeSec: travelTimeSeconds(totalDist, travelMode) + stayTotalSec,
               surfaceMetresM: { ...surfaceMetresM },
               partial: forcedPartial ?? undefined,
             });
@@ -2219,6 +2240,13 @@ export function useRouting({
         setRouteSolarIntensity(solarIntensity);
         setRouteWind(rainObjective ? routeWindNow : null);
         setRouteExposureContext(routeExposureContext);
+        // These routes were priced at these conditions (per leg and arrival
+        // bucket): the refresh below is for later changes only, never a
+        // re-pricing at one instant of the result just committed (#391).
+        lastRefreshKeyRef.current = exposureRefreshKey(
+          routeExposureContext.time,
+          exposureSettingsRef.current,
+        );
         setRoutePreview(null);
         seam.current.setSketchPoints([]);
         seam.current.setNavWarning(
@@ -2319,7 +2347,6 @@ export function useRouting({
   // Conditions changes re-evaluate the displayed geometry after a short settle
   // window. The search, selected alternative and camera remain untouched; a new
   // objective still clears alternatives through the explicit mode handler.
-  const lastRefreshKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (
       navRoutes.length === 0 ||
@@ -2327,13 +2354,14 @@ export function useRouting({
       !routeExposureContext ||
       isCalculating
     ) return;
-    const key = [
-      (date ?? dateRef.current).getTime(),
-      exposureSettings.objective,
-      exposureSettings.windSource,
-      exposureSettings.manualWind.directionDeg,
-      exposureSettings.manualWind.speedMps,
-    ].join("|");
+    const key = exposureRefreshKey(date ?? dateRef.current, {
+      objective: exposureSettings.objective,
+      windSource: exposureSettings.windSource,
+      manualWind: {
+        directionDeg: exposureSettings.manualWind.directionDeg,
+        speedMps: exposureSettings.manualWind.speedMps,
+      },
+    });
     if (lastRefreshKeyRef.current === key) return;
     lastRefreshKeyRef.current = key;
     let cancelled = false;

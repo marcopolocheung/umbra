@@ -831,6 +831,11 @@ describe("routing reads the shadow field (A4b)", () => {
         result.current.handleCalculateRoute();
       });
       await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+      // Past the 250 ms conditions-refresh window: a fresh result at unchanged
+      // conditions must keep its per-leg pricing, not be re-priced at one instant.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 600));
+      });
       return result.current.navRoutes[0];
     };
 
@@ -844,6 +849,9 @@ describe("routing reads the shadow field (A4b)", () => {
     // (bucket 0 ends at 900 s; the stay starts at ~54 s) + leg 2 shaded.
     const leg1 = 75 / 1.4;
     expect(withStay.exposure!.exposedDurationSec).toBeCloseTo(leg1 + (900 - leg1), 3);
+    // The trip lasts its walking plus the stay: never fewer minutes than it spends in sun.
+    expect(withStay.totalTimeSec).toBeCloseTo(150 / 1.4 + 1800, 3);
+    expect(noStay.totalTimeSec).toBeCloseTo(150 / 1.4, 3);
     // Walking + stay = what the route reports (the brief's acceptance, for Directions).
     const parts = withStay.exposureSegments!.reduce((sum, seg) => sum + (seg.durationSec ?? seg.distanceM / 1.4) * (1 - (seg.protection ?? 0)), 0);
     expect(parts).toBeCloseTo(withStay.exposure!.exposedDurationSec, 6);

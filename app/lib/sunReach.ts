@@ -98,7 +98,7 @@ const WAIT_EDGE = -2;
 
 /**
  * #391: standing `seconds` at `nodeId` from `startSec` after departure, on its
- * shadiest sidewalk, priced bucket by bucket — the stay `sunReachRun` prices
+ * shadiest sidewalk (for a snapped mid-block stop, the street it lies on), priced bucket by bucket — the stay `sunReachRun` prices
  * for a round trip, for any caller with a graph. One piece per bucket spanned,
  * each with that bucket's shade.
  */
@@ -111,7 +111,16 @@ export function stayExposure(
 ): Array<{ durationSec: number; shade: number }> {
   const W = timeAware ? timeAware.bucketMs / 1000 : Number.POSITIVE_INFINITY;
   const B = timeAware?.bucketCount ?? 1;
-  const edges = graph.adj.get(nodeId) ?? [];
+  // A stop snapped mid-block is a virtual node (negative id, `snapToEdge`) that
+  // copies only one sidewalk of the street it split; its sidewalks are every
+  // edge between that street's two ends.
+  const own = graph.adj.get(nodeId) ?? [];
+  const ends = nodeId < 0 ? [...new Set(own.map((e) => e.toId))] : [];
+  const split =
+    ends.length === 2
+      ? [...(graph.adj.get(ends[0]) ?? []).filter((e) => e.toId === ends[1]), ...(graph.adj.get(ends[1]) ?? []).filter((e) => e.toId === ends[0])]
+      : [];
+  const edges = [...own, ...split];
   const shadeIn = (b: number) =>
     Math.max(0, ...edges.map((e) => (!timeAware || !e.timeShadow?.length ? e.shadowFactor : e.timeShadow[Math.min(b, e.timeShadow.length - 1)])));
   const pieces: Array<{ durationSec: number; shade: number }> = [];

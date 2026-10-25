@@ -103,9 +103,21 @@ bucket (#369).
   control in the app sets one yet. The card's "N min in sun" adds a stay's sun
   (`routeExposureMinutes`), and a conditions refresh keeps the stays, since they
   have no location to re-sample. Measured on NYC (Midtown A → stop → B, July 1
-  14:00, preview build, SwiftShader): the card read 7 min in sun with or without
-  a 30-min stay before; it reads 7 without and 14 with. Shade sampling went
+  14:00, preview build, SwiftShader, read 1.5 s after the result, past the conditions
+  refresh): the card read 7 min in sun with or without a 30-min stay before; it reads 7
+  without and 14 with, and the trips last 12–14 and 42–44 min. Shade sampling went
   from ~40 ms to ~85 ms (now swept); the whole route stayed ~2.4 s.
+  - **The 2-hour horizon caps stays too.** `MAX_TIME_BUCKETS` (8 × 15 min) bounds walking plus
+    stays. Past it, a stay and every leg after it are priced at the last bucket, so a stay longer
+    than about 1 h 45 min is priced coarsely.
+  - **A stay at a stop snapped mid-block** stands on the shadiest sidewalk of the street it lies
+    on. `snapToEdge` copies only one sidewalk onto the virtual node; `stayExposure` reads both.
+  - **The trip's duration includes the stays.** `totalTimeSec` adds them, so the card never shows
+    more minutes in sun than the trip lasts.
+  - **A fresh result is not re-priced at one instant.** The conditions refresh used to fire 250 ms
+    after every first calculation, at the very conditions it was computed at, and priced every
+    edge at departure. That undid the per-leg clock (and H1's arrival buckets on no-via routes).
+    The commit now records its conditions key, so the refresh runs only when they change.
 - **Transit walk legs are still priced at one frozen instant.**
 - The sketch pipeline (`useSketch.ts`) and condition-only refresh
   (`routeExposureRefresh.ts`) still sample at one instant. H2/H3 consume them.

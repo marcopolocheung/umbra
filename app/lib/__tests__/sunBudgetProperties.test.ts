@@ -287,3 +287,25 @@ describe("stayExposure — one pricing of a stay for routes and Sun Budget (#391
     expect(compared).toBeGreaterThan(10);
   });
 });
+
+describe("stayExposure at a stop snapped mid-block (#391 review)", () => {
+  it("stands on the street's shadiest sidewalk, not the one sidewalk the snap copied", async () => {
+    const { stayExposure } = await import("../sunReach");
+    const { snapToEdge } = await import("../routing");
+    // One street 1–2 with a sunny left sidewalk and a shaded right one, both ways.
+    const graph: RoutingGraph = {
+      nodes: new Map([[1, { id: 1, lat: 40.75, lon: -73.99 }], [2, { id: 2, lat: 40.751, lon: -73.99 }]]),
+      adj: new Map([
+        [1, [{ toId: 2, distanceM: 111, shadowFactor: 0, side: "left" }, { toId: 2, distanceM: 111, shadowFactor: 1, side: "right" }]],
+        [2, [{ toId: 1, distanceM: 111, shadowFactor: 1, side: "left" }, { toId: 1, distanceM: 111, shadowFactor: 0, side: "right" }]],
+      ]),
+    };
+    const v = snapToEdge([-73.99, 40.7505], graph, -1);
+    expect(v).toBe(-1);
+    // The snap copied one sidewalk only (the sunny left, first found).
+    expect(graph.adj.get(v)!.every((e) => e.shadowFactor === 0)).toBe(true);
+    expect(stayExposure(graph, v, 0, 600, undefined)).toEqual([{ durationSec: 600, shade: 1 }]);
+    // A real corner keeps its own sidewalks only.
+    expect(stayExposure(graph, 1, 0, 600, undefined)).toEqual([{ durationSec: 600, shade: 1 }]);
+  });
+});
