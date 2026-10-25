@@ -264,7 +264,84 @@ changes.
 - Mutants: removing the wait move, or making waits free, each fails the oracle and witness tests.
 
 **What H5a does not claim.**
-- There is no dwell, and no return leg. Those are H5b, a round trip on a two-phase graph.
+- There is no dwell, and no return leg. Those are H5b, below.
 - The waiting walker crosses to the corner's shadiest sidewalk for free, the way the search
   already switches sidewalks for free.
 - Opening hours are not modelled.
+
+## H5b — the round trip: out, a stay, and home
+
+**The question.** With `roundTrip: { dwellSec }`, a street counts only if some whole outing
+walks it within both budgets: out from the start (waiting where `allowWaits` lets it), a stay
+of `dwellSec` at one corner, then home. Sun and time count the whole outing, so a route's sun
+is walking sun + waiting sun + dwell sun. The stay is spent on the corner's shadiest sidewalk,
+as a wait is, and **priced bucket by bucket**: a 30-minute stay spanning two shade buckets pays
+each its share.
+
+**How it proves a street.** The H3 search runs one way and tries each street it walks as a
+turnaround: stay at its far corner, then walk home along one of two fixed walks, the fastest or
+the shadiest (each a least-cost tree to the start over the reversed graph), priced at the
+buckets it is actually walked in. A success proves every street that outing walks, out and
+back. Each street gets 4 tries before it is left to the bound. Labels that cannot get home even
+on the best case (least time home plus the stay, least optimistic sun home) are not kept.
+
+**Never more than the truth.** A round trip proves only what a walk home from that corner
+shows, so it can miss a street that only a cleverer walk home (one that waits, or loops for the
+shade) would reach. That street stays **undecided**, never unreachable, because the outer bound
+adds the stay and the best case home to H3's bound. The outcome is `exact` only when that bound
+leaves nothing undecided.
+
+**Evidence (`app/lib/__tests__/sunReach.test.ts`, "H5b").**
+- **Oracle.** An exhaustive two-phase oracle enumerates every outing (out, waits, stay, home) on
+  the 60 seeded lattices (with stays of 0, 15 or 40 s, and waits on half the cases). On every
+  case `reachable ⊆ truth ⊆ reachable ∪ undecided`, and `exact` results equal the truth (36 of 60).
+- **Coverage.** Proofs find 962 of 996 true streets (96.6%).
+- **Every reported outing adds up.** It starts and ends at home, includes the street, and
+  re-priced from scratch, its walking + waiting + dwell sun equals the reported sun and its
+  arrival equals the reported time. This is the brief's acceptance test, on every proven street
+  of every case.
+- **Hand fixtures.**
+  - 20 s of walking sun + 10 s of dwell sun = 30 s.
+  - A stay spanning a sunny and a shaded bucket pays for both.
+  - A street reachable one way but not there and back is neither proven nor undecided.
+- **Mutants.** Each of these fails at least one test:
+  - a free stay;
+  - a stay priced at its end bucket only;
+  - a stay that takes no time;
+  - ignoring the sun or the time of the walk home;
+  - a bound that forgets the way home;
+  - claiming `exact` from a complete search;
+  - pruning outings that could still get home (coverage drops to 94.5%; the test needs 96%).
+
+**Measured on NYC** (the H3 setup above: 12 starts, *S* = 8 min, *T* = 20 min, walk; run
+with `REACH_WAITS=1` and/or `REACH_DWELL=<minutes>` on the same audit command; street km).
+
+| start | one way (H3) | + waits | round trip, no stay | round trip, waits + 10 min stay |
+|---|---|---|---|---|
+| LES → Kips Bay 12:43 | 353.7 km / 574 ms | 352.2 / 624 | 75.1 / 611 | 17.2 / 533 |
+| UES → Murray Hill 16:03 | 230.7 / 318 | 230.7 / 413 | 59.4 / 483 | 11.7 / 391 (exact) |
+| UWS → FiDi 15:12 | 219.5 / 557 | 219.4 / 692 | 62.2 / 737 | 13.3 / 654 |
+| Chelsea → Union Sq 10:00 | 252.6 / 304 | 250.6 / 440 | 53.3 / 375 | 10.9 / 329 |
+| Harlem → UWS 08:30 | 260.2 / 388 | 259.8 / 474 | 58.6 / 456 | 11.2 / 414 |
+| Park Slope → Bklyn Hts 14:00 | 230.6 / 382 | 229.1 / 529 | 57.5 / 548 | 11.2 / 495 |
+| Williamsburg → Greenpoint 17:30 | 286.2 / 422 | 284.9 / 547 | 71.4 / 468 | 17.0 / 467 |
+| Astoria → LIC 11:15 | 286.7 / 375 | 283.3 / 1803 | 57.8 / 478 | 12.0 / 471 |
+| Midtown → Central Park 13:00 | 294.6 / 419 | 293.2 / 1830 | 66.7 / 508 | 17.4 / 525 |
+| FiDi → Chinatown 09:00 | 228.6 / 445 | 228.4 / 748 | 93.3 / 511 | 25.8 / 383 |
+| Bed-Stuy → Crown Hts 15:45 | 260.8 / 327 | 259.6 / 363 | 51.5 / 407 | 11.3 / 405 |
+| Inwood → Washington Hts 12:00 | 95.7 / 243 | 95.4 / 361 | 30.3 / 320 | 10.6 / 360 |
+
+- **Waits do not pay on NYC at the default cap.** They roughly double the labels and make
+  every region the same or *smaller*: waiting labels evict others from full slots
+  (`approximate` can shrink; see H3). Turning waits on in the UI needs a larger cap, or a cap
+  for waits of their own, and should be re-measured first.
+- **A round trip covers about a quarter of the one-way street km**, as halving the walk radius
+  should. Undecided stays small: ≤ 8.5 km with no stay, ≤ 3.8 km with a 10-minute one.
+- Round trips cost about what one way does: 320–740 ms. The two 1.8 s figures ran alongside
+  the full test suite and are load, not the search.
+
+**What H5b does not claim.**
+- The walk home is one of two fixed walks, so a street that only a waiting or looping way home
+  reaches is undecided, not proven.
+- There is no UI yet. The panel's round-trip toggle and stay length are H5c.
+- Directions routes ignore a stop's dwell (#391).

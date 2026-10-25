@@ -3,7 +3,7 @@
  * on at most `sunBudgetSec` of direct sun and `timeBudgetSec` of walking, one
  * way. Sun is priced the way `paretoRoutes` prices it (H1/H2): each edge costs
  * `seconds × (1 − shade)`, with shade read at the bucket of the walker's arrival
- * at the edge's end. No waiting, no dwell, no return leg — H5 owns those.
+ * at the edge's end. Waiting (H5a) and the round trip (H5b) are options.
  *
  * The answer is a pair of edge sets, never a single guess:
  *   - `reachable` — edges a real walk from the start traverses within both
@@ -39,6 +39,12 @@ export interface SunReachOptions {
    * with `timeAware` — under static shade waiting never helps.
    */
   allowWaits?: boolean;
+  /**
+   * H5b: a round trip. A street counts only if some outing walks it — out from
+   * the start, a stay of `dwellSec` at one corner (on its shadiest sidewalk), and
+   * home again — within both budgets. Sun and time count the whole outing.
+   */
+  roundTrip?: { dwellSec: number };
 }
 
 export type SunReachOutcome = "exact" | "approximate" | "budget-exhausted";
@@ -52,7 +58,7 @@ export interface SunReachEdge {
 
 export interface SunReachResult {
   outcome: SunReachOutcome;
-  /** Proven reachable, with the least sun any kept walk traversed it on. */
+  /** Proven reachable, with the least sun any kept walk traversed it on (round trip: a proven outing's whole sun, and its arrival home). */
   reachable: Array<SunReachEdge & { sunSec: number; arrivalSec: number }>;
   /** Neither proven reachable nor ruled out. */
   undecided: SunReachEdge[];
@@ -66,6 +72,8 @@ export interface SunReachWalk {
   sides: Array<"left" | "right" | null>;
   /** H5: where the walk stands still, as an index into `nodeIds`, and for how long. */
   waits: Array<{ atNode: number; seconds: number }>;
+  /** H5b: the stay at the turnaround, as an index into `nodeIds`; the walk home follows it. */
+  dwell?: { atNode: number; seconds: number };
   sunSec: number;
   arrivalSec: number;
 }
@@ -81,6 +89,9 @@ export interface SunReachRun {
 }
 
 export const SUN_REACH_DEFAULTS = { maxLabelsPerSlot: 8, maxLabels: 2_000_000 };
+
+/** H5b: labels tried per street before a round trip through it is left undecided. */
+const ROUND_TRIP_TRIES = 4;
 
 /** `lEdge` for a label made by waiting where it stood (H5), not by walking a street. */
 const WAIT_EDGE = -2;
@@ -110,7 +121,8 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   // H5: waiting. A node's shade in a bucket is its shadiest sidewalk — where a
   // waiting walker stands. Only time-aware shade makes waiting worth anything.
   const waits = Boolean(options.allowWaits && ta);
-  const nodeShade = new Float64Array(waits ? N * B : 0);
+  const D = options.roundTrip ? Math.max(0, options.roundTrip.dwellSec) : -1;
+  const nodeShade = new Float64Array(waits || D >= 0 ? N * B : 0);
   for (let e = 0; e < E; e++) {
     const edge = cg.edges[e];
     if (isProhibitedEdge(edge, travelMode)) prohibited[e] = 1;
@@ -124,12 +136,12 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     }
     minInc[e] = m;
   }
-  if (waits) {
+  if (waits || D >= 0) {
     for (let x = 0; x < N; x++) {
       for (let e = offsets[x]; e < offsets[x + 1]; e++) {
         const ts = cg.edges[e].timeShadow;
         for (let b = 0; b < B; b++) {
-          const f = !ts || ts.length === 0 ? cg.edges[e].shadowFactor : ts[Math.min(b, ts.length - 1)];
+          const f = !ta || !ts || ts.length === 0 ? cg.edges[e].shadowFactor : ts[Math.min(b, ts.length - 1)];
           if (f > nodeShade[x * B + b]) nodeShade[x * B + b] = f;
         }
       }
@@ -191,13 +203,90 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     lT[a] <= t && lS[a] + slack(lT[a], t - lT[a]) + (waits ? t - lT[a] : 0) <= s;
   let evicted = 0;
 
+  // H5b: least time and least optimistic sun from each node home, over the
+  // reversed graph; `next` is each node's first edge on that walk home.
+  const edgeFrom = new Int32Array(E);
+  for (let x = 0; x < N; x++) for (let e = offsets[x]; e < offsets[x + 1]; e++) edgeFrom[e] = x;
+  const startIdx = cg.indexOf.get(startId)!;
+  const towardHome = (cost: Float64Array) => {
+    const d = new Float64Array(N).fill(Number.POSITIVE_INFINITY);
+    const next = new Int32Array(N).fill(-1);
+    if (D < 0) return { d, next };
+    const into: number[][] = Array.from({ length: N }, () => []);
+    for (let e = 0; e < E; e++) if (!prohibited[e]) into[targets[e]].push(e);
+    d[startIdx] = 0;
+    const h = new NumericMinHeap();
+    h.push(startIdx, 0);
+    while (h.size > 0) {
+      const y = h.pop();
+      for (const e of into[y]) {
+        const x = edgeFrom[e];
+        if (d[y] + cost[e] < d[x]) { d[x] = d[y] + cost[e]; next[x] = e; h.push(x, d[x]); }
+      }
+    }
+    return { d, next };
+  };
+  const fastHome = towardHome(sec);
+  const shadyHome = towardHome(minInc);
+  /** A walk standing here at `t` with `s` of sun can still get home in budget, with the dwell. */
+  const canGetHome = (v: number, t: number, s: number) =>
+    D < 0 || (t + D + fastHome.d[v] <= T && s + shadyHome.d[v] <= S);
+
   const reachSun = new Float64Array(E).fill(Number.POSITIVE_INFINITY);
   const reachT = new Float64Array(E);
+  // H5b: the outing that proved each edge — the label it left from, the last
+  // street before the stay, and which walk home (0 fastest, 1 shadiest).
+  const tripEdge = new Int32Array(D >= 0 ? E : 0);
+  const tripHome = new Uint8Array(D >= 0 ? E : 0);
+  const tries = new Uint8Array(D >= 0 ? E : 0);
+  /** Sun for the stay at `v` from `t0`, on its shadiest sidewalk, bucket by bucket. */
+  const dwellSun = (v: number, t0: number) => {
+    let s = 0;
+    for (let t = t0, end = t0 + D; t < end; ) {
+      const b = bucketOf(t);
+      const until = ta && b < B - 1 ? Math.min(end, (b + 1) * W) : end;
+      s += (until - t) * (1 - nodeShade[v * B + b]);
+      t = until;
+    }
+    return s;
+  };
+  /** Walk home from `v` at `t` along `next`, priced at its real buckets: [arrival, sun]. */
+  const homeCost = (v: number, t: number, next: Int32Array): [number, number] => {
+    let s = 0;
+    for (let x = v; x !== startIdx; x = targets[next[x]]) {
+      t += sec[next[x]];
+      s += inc[next[x] * B + bucketOf(t)];
+    }
+    return [t, s];
+  };
+  /**
+   * Try to prove a round trip through edge `e` (walked from `label`, reaching its
+   * end at `nt` with `ns`): stay there, then walk home the fastest or the
+   * shadiest way. A success proves every street the outing walks.
+   */
+  const proveTrip = (label: number, e: number, nt: number, ns: number) => {
+    const y = targets[e];
+    const t1 = nt + D;
+    const s1 = ns + dwellSun(y, t1 - D);
+    for (const home of [0, 1] as const) {
+      const [tHome, sHome] = homeCost(y, t1, home ? shadyHome.next : fastHome.next);
+      if (tHome > T || s1 + sHome > S) continue;
+      const total = s1 + sHome;
+      const mark = (edge: number) => {
+        if (total >= reachSun[edge]) return;
+        reachSun[edge] = total; reachT[edge] = tHome; proofLabel[edge] = label; tripEdge[edge] = e; tripHome[edge] = home;
+      };
+      mark(e);
+      for (let l = label; lParent[l] >= 0; l = lParent[l]) if (lEdge[l] !== WAIT_EDGE) mark(lEdge[l]);
+      const next = home ? shadyHome.next : fastHome.next;
+      for (let x = y; x !== startIdx; x = targets[next[x]]) mark(next[x]);
+      return;
+    }
+  };
   // What proved each edge: the label the walk stood on before taking it, or
   // −1 when the least-time tree did (its parents are `treeEdge`).
   const proofLabel = new Int32Array(E).fill(-1);
   const heap = new NumericMinHeap();
-  const startIdx = cg.indexOf.get(startId)!;
   lNode[0] = startIdx;
   lParent[0] = -1;
   lEdge[0] = -1;
@@ -213,6 +302,7 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
    * work cap stops the search.
    */
   const offer = (v: number, nt: number, ns: number, parent: number, edge: number): boolean => {
+    if (!canGetHome(v, nt, ns)) return true; // no walk on from here gets home: nothing to prove
     const slot = v * B + bucketOf(nt);
     const base = slot * K;
     let n = slotCount[slot];
@@ -262,8 +352,14 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
       const ns = s + inc[e * B + bucketOf(nt)];
       if (ns > S) continue;
       // A real walk traverses e within both budgets: e is reachable, whatever
-      // happens to the label below.
-      if (ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; proofLabel[e] = label; }
+      // happens to the label below. A round trip must also get home: each
+      // unproven edge gets a few tries (shortcut: a capped number of labels).
+      if (D >= 0) {
+        if (reachSun[e] === Number.POSITIVE_INFINITY && tries[e] < ROUND_TRIP_TRIES && canGetHome(targets[e], nt, ns)) {
+          tries[e]++;
+          proveTrip(label, e, nt, ns);
+        }
+      } else if (ns < reachSun[e]) { reachSun[e] = ns; reachT[e] = nt; proofLabel[e] = label; }
       if (!offer(targets[e], nt, ns, label, e)) break;
     }
     if (exhausted) break;
@@ -308,7 +404,7 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
   };
   const tMin = least(sec, T, true);
   const sMin = least(minInc, S, false);
-  for (let x = 0; x < N; x++) {
+  for (let x = 0; x < N && D < 0; x++) {
     if (tMin[x] === Number.POSITIVE_INFINITY) continue;
     for (let e = offsets[x]; e < offsets[x + 1]; e++) {
       if (prohibited[e]) continue;
@@ -331,13 +427,19 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     for (let e = offsets[x]; e < offsets[x + 1]; e++) {
       if (reachSun[e] < Number.POSITIVE_INFINITY) {
         reachable.push({ ...edgeOut(e, x), sunSec: reachSun[e], arrivalSec: reachT[e] });
-      } else if (!prohibited[e] && tMin[x] + sec[e] <= T && sMin[x] + minInc[e] <= S) {
+      } else if (
+        !prohibited[e] &&
+        tMin[x] + sec[e] + Math.max(D, 0) + (D >= 0 ? fastHome.d[targets[e]] : 0) <= T &&
+        sMin[x] + minInc[e] + (D >= 0 ? shadyHome.d[targets[e]] : 0) <= S
+      ) {
         outer.push(e);
         outerFrom.push(x);
       }
     }
   }
-  const complete = !exhausted && evicted === 0;
+  // A round trip proves only what a walk home from the street's end shows, so
+  // it is exact only when the outer bound leaves nothing undecided.
+  const complete = !exhausted && evicted === 0 && D < 0;
   const outcome: SunReachOutcome =
     complete || outer.length === 0 ? "exact" : exhausted ? "budget-exhausted" : "approximate";
   const result: SunReachResult = {
@@ -347,9 +449,6 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     stats: { labels: count, evicted, ms: performance.now() - t0 },
   };
 
-  // Edge → its source node, for walking a proof back to the start.
-  const edgeFrom = new Int32Array(E);
-  for (let x = 0; x < N; x++) for (let e = offsets[x]; e < offsets[x + 1]; e++) edgeFrom[e] = x;
   /** Edges from the start to node `x` along the least-time tree, start first. */
   const treePath = (x: number): number[] => {
     const path: number[] = [];
@@ -369,22 +468,28 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     for (let e = offsets[from]; e < offsets[from + 1]; e++) {
       if (cg.nodeIds[targets[e]] !== toId || (side !== undefined && cg.edges[e].side !== side)) continue;
       if (reachSun[e] === Number.POSITIVE_INFINITY) continue;
+      // A round trip's proof is the outing out to `tripEdge`'s end, the stay, and the walk home.
+      const out = D >= 0 ? tripEdge[e] : e;
       const steps = [
         ...(proofLabel[e] >= 0 ? labelPath(proofLabel[e]) : treePath(from).map((pe) => ({ edge: pe, seconds: 0 }))),
-        { edge: e, seconds: 0 },
+        { edge: out, seconds: 0 },
       ];
       const nodeIds = [startId];
       const sides: SunReachWalk["sides"] = [];
       const waits: SunReachWalk["waits"] = [];
+      const walkStep = (edge: number) => {
+        nodeIds.push(cg.nodeIds[targets[edge]]);
+        sides.push(cg.edges[edge].side ?? null);
+      };
       for (const step of steps) {
-        if (step.edge === WAIT_EDGE) {
-          waits.push({ atNode: nodeIds.length - 1, seconds: step.seconds });
-          continue;
-        }
-        nodeIds.push(cg.nodeIds[targets[step.edge]]);
-        sides.push(cg.edges[step.edge].side ?? null);
+        if (step.edge === WAIT_EDGE) waits.push({ atNode: nodeIds.length - 1, seconds: step.seconds });
+        else walkStep(step.edge);
       }
-      return { nodeIds, sides, waits, sunSec: reachSun[e], arrivalSec: reachT[e] };
+      if (D < 0) return { nodeIds, sides, waits, sunSec: reachSun[e], arrivalSec: reachT[e] };
+      const dwell = { atNode: nodeIds.length - 1, seconds: D };
+      const next = tripHome[e] ? shadyHome.next : fastHome.next;
+      for (let x = targets[out]; x !== startIdx; x = targets[next[x]]) walkStep(next[x]);
+      return { nodeIds, sides, waits, dwell, sunSec: reachSun[e], arrivalSec: reachT[e] };
     }
     return null;
   };
