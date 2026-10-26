@@ -14,15 +14,16 @@ G's fixture and benchmark infrastructure).
 
 - **Active checkpoint:** H5 — waiting, dwell and the return leg. **H5 is done:** waiting (H5a, #390), the round
   trip (H5b, #392) and the panel's round-trip switch and stop (H5c). Waits stay off in the UI:
-  on NYC they shrink the region at the default cap. Directions ignoring dwell is #391. Next: the
-  rest of H4 (property tests, figures, the gap on the evidence page). **H3 is done:** the search
+  on NYC they shrink the region at the default cap. Directions ignoring dwell is #391. **H4 is done**
+  (this PR): the four property tests, the NYC runtime/memory/cache figures, and Sun Budget's gap
+  on the evidence page (§2.4). Next: #391 (routes with stops become time-aware), then H7, then
+  H6. **H3 is done:** the search
   (H3a, #375), the map (H3b, #376) and its follow-ups — the graph built in its own worker
   (#382, #377), the fit to the region and per-outcome labels (#383, #378/#381), starts near
   NYC's edge (#383, the cheap part of #380) and the walk behind a street (#384, #379). NYC only,
-  walking pace, one way; #380 stays open for a fallback outside NYC's shade data. **H4 merged in
-  part** (#247, 2026-10-03): the oracle and the published gap are in
-  `docs/notes/sun-budget-model.md`. The checkpoint's Approach items (four property tests, the
-  runtime/memory/cache figures) and the P4 hand-off are still open. H1/H2 are merged (#222, #224).
+  walking pace, one way; #380 stays open for a fallback outside NYC's shade data. H4's oracle and
+  published gap merged as #247 (2026-10-03); its property tests, figures and evidence-page section
+  are this PR. H1/H2 are merged (#222, #224).
 - **H4 (#247):** `app/lib/__tests__/routingOracle.test.ts` — exhaustive path enumeration
   as ground truth for the H1/H2 search on small fixtures. Result: the search is exact on
   static fixtures, but **lost a Pareto point at a bucket-boundary merge**

@@ -149,6 +149,16 @@ const TIME_BUCKET_MS = 15 * 60 * 1000;
  */
 const MAX_TIME_BUCKETS = 8;
 
+/**
+ * Whether a route calculation reads the map canvas (the invariant-#5 pixel
+ * path). Never when the published shade table holds every edge: that answer
+ * is geometry and must not depend on the map's zoom, viewport or basemap (H4).
+ * Never for rain: the canvas paints shadow, not shelter.
+ */
+export function routeNeedsCanvas(c: { departureFromTable: boolean; rain: boolean; coverageConfidence: number }): boolean {
+  return !c.departureFromTable && !c.rain && c.coverageConfidence < LOW_CONFIDENCE;
+}
+
 /** An opaque map-owned route identity for a C4 terminal result. */
 export interface RouteReceiptMapObject {
   id: string;
@@ -806,7 +816,11 @@ export function useRouting({
         // Rain never falls back to the renderer: the canvas paints *shadow*, and
         // reading it as shelter would invent dryness. A rain edge the field cannot
         // answer keeps its real (low) confidence and reads exposed, honestly.
-        const needsCanvas = !rainModeRef.current && coverage.confidence < LOW_CONFIDENCE;
+        const needsCanvas = routeNeedsCanvas({
+          departureFromTable,
+          rain: rainModeRef.current,
+          coverageConfidence: coverage.confidence,
+        });
 
         let buildingMask: ReturnType<IShadowLayer["readBuildingShadowMask"]> = null;
 
