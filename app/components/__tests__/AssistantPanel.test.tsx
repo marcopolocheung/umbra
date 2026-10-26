@@ -101,6 +101,36 @@ describe("AssistantPanel C5 receipts", () => {
     expect(focus).toHaveBeenLastCalledWith("route:request-b:action-b:7");
   });
 
+  it("links a verified outing verdict to how it is checked, and only a verified one (H6)", () => {
+    const cert = {
+      status: "infeasible" as const, inputVersion: 1, modelVersion: "sun-budget-h6-2",
+      question: { start: [-73.98, 40.75] as [number, number], target: [-73.983, 40.754] as [number, number], targetLabel: "Bryant Park Cafe", sunMin: 8, timeMin: 45, stayMin: 15, departure: "2026-07-01T19:00:00Z" },
+      ledger: { sun: { budgetSec: 480, lowerBoundSec: 610, usedSec: null, binding: true }, time: { budgetSec: 2700, lowerBoundSec: 1500, usedSec: null, binding: false } },
+    };
+    const message = (verification: "verified" | "rejected"): ChatMessage[] => [{
+      id: `m-${verification}`, role: "assistant", text: "ignored",
+      answer: {
+        blocks: [{ kind: "claim", claimId: "f-1" }],
+        rejectedProseCount: 0, danglingClaimBlocks: 0, duplicateClaimProposals: 0,
+        receipts: [{
+          claimId: "f-1", kind: "feasibility", subject: "outing", value: { status: "infeasible" }, certificate: cert,
+          supportingResultIds: ["result-1"], observedAt: "2026-07-01T19:00:00.000Z", confidence: "unknown", verification,
+        }],
+      },
+    }];
+    const panel = (verification: "verified" | "rejected") => <AssistantPanel
+      open onClose={vi.fn()} messages={message(verification)} isThinking={false}
+      onSend={vi.fn()} onReset={vi.fn()} onFocusMapObject={vi.fn()} stopIds={[]}
+    />;
+    const { container, rerender } = render(panel("verified"));
+    const link = within(container).getByRole("link", { name: "How this is checked" });
+    expect(link.getAttribute("href")).toMatch(/evidence\.md#24-sun-budget-reachability/);
+    expect(link.getAttribute("rel")).toBe("noreferrer");
+    expect(within(container).getByText(/^Not possible: Bryant Park Cafe/)).toBeTruthy();
+    rerender(panel("rejected"));
+    expect(within(container).queryByRole("link", { name: "How this is checked" })).toBeNull();
+  });
+
   it("renumbers with map order and drops the number when its pin leaves the map", () => {
     const focus = vi.fn();
     const id = "assistant-pin:40.75360:-73.98320";

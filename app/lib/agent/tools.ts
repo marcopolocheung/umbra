@@ -42,6 +42,8 @@ import {
 } from "../routePlanJob";
 import type { LlmFunctionDeclaration } from "./llmClient";
 import type { MapObject } from "./receipts";
+import { sunBudgetFeasibility } from "../reach/sunBudgetClient";
+import { FEASIBILITY_MODEL_VERSION, type FeasibilityCertificate } from "../reach/feasibility";
 import { hasExecutionAuthority, providerText } from "./authority";
 
 export interface AssistantPin {
@@ -86,7 +88,12 @@ export interface AgentContext {
   /** Validated shade results only; latest search context wins per stable sidewalk ID. */
   getShadeCandidates: () => ShadeCandidate[];
   registerShadeCandidates: (candidates: ShadeCandidate[]) => void;
+  /** H6: answers one outing question; injected so tests need no worker. */
+  checkSunBudget?: (question: import("../reach/feasibility").FeasibilityQuestion, inputVersion: number, signal?: AbortSignal) => Promise<FeasibilityCertificate>;
 }
+
+/** H6: a newer outing question supersedes an older one; a session-wide counter orders them. */
+let feasibilityVersion = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -297,6 +304,26 @@ export const toolDeclarations: LlmFunctionDeclaration[] = [
         },
       },
       required: ["points"],
+    },
+  },
+  {
+    name: "check_sun_budget",
+    description:
+      "Is an outing possible? From a start, walk to a target, stay there, and be home within timeMin on at most sunMin of direct sun (NYC shade data, the selected map departure). Returns a certificate: feasible (with the walk), infeasible (and which budget rules it out), or unknown (the search could not tell). Use the start and target exactly as returned by locate_user, geocode_place or search_places.",
+    parameters: {
+      type: "object",
+      properties: {
+        startLat: { type: "number" },
+        startLng: { type: "number" },
+        startCandidateId: { type: "string" },
+        targetLat: { type: "number" },
+        targetLng: { type: "number" },
+        targetCandidateId: { type: "string" },
+        sunMin: { type: "number", description: "Most minutes of direct sun for the whole outing." },
+        timeMin: { type: "number", description: "Minutes from leaving to being home, stop included." },
+        stayMin: { type: "number", description: "Minutes spent at the target." },
+      },
+      required: ["startLat", "startLng", "targetLat", "targetLng", "sunMin", "timeMin"],
     },
   },
   {
@@ -728,6 +755,39 @@ export async function executeTool(
             ? `Plotted ${pins.length} point(s) on the map and framed them.`
             : "Cleared the map pins.",
       };
+    }
+
+    case "check_sun_budget": {
+      const startLat = num(args.startLat);
+      const startLng = num(args.startLng);
+      const targetLat = num(args.targetLat);
+      const targetLng = num(args.targetLng);
+      const sunMin = num(args.sunMin);
+      const timeMin = num(args.timeMin);
+      if (startLat == null || startLng == null || targetLat == null || targetLng == null || sunMin == null || timeMin == null)
+        return { error: "startLat, startLng, targetLat, targetLng, sunMin and timeMin are all required." };
+      const question = {
+        start: [startLng, startLat] as [number, number],
+        target: [targetLng, targetLat] as [number, number],
+        ...(str(args.targetLabel) ? { targetLabel: str(args.targetLabel) } : {}),
+        sunMin,
+        timeMin,
+        // The stop counts inside the time budget ("home by"): sunReach's round trip includes it.
+        stayMin: num(args.stayMin) ?? 0,
+        departure: ctx.dateRef.current.toISOString(),
+      };
+      const inputVersion = ++feasibilityVersion;
+      if (ctx.signal?.aborted)
+        return { status: "cancelled", question, inputVersion, modelVersion: FEASIBILITY_MODEL_VERSION, reason: "the conversation was reset" } satisfies FeasibilityCertificate;
+      const check = ctx.checkSunBudget ?? ((q, v, signal) => sunBudgetFeasibility(q, v, { signal }));
+      try {
+        const answer: FeasibilityCertificate = await check(question, inputVersion, ctx.signal);
+        return { ...(inputVersion === feasibilityVersion ? answer : { ...answer, status: "superseded", reason: "a newer outing question was asked" }) };
+      } catch {
+        return ctx.signal?.aborted
+          ? { status: "cancelled", question, inputVersion, modelVersion: FEASIBILITY_MODEL_VERSION, reason: "the conversation was reset" }
+          : { error: "The Sun Budget search failed." };
+      }
     }
 
     case "plan_shadowed_route": {

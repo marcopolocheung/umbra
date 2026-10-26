@@ -235,6 +235,11 @@ export function useAgent(args: UseAgentArgs) {
         mapObjects: currentMapObjects(),
         currentPlanRevision: args.getCurrentPlanRevision(),
         now: args.dateRef.current.toISOString(),
+        // H6: a stored verdict keeps the outing checks of its own turn; a new
+        // turn can never cite them (its own list is its own checks only).
+        currentFeasibilityResultIds: message.answer.receipts
+          .filter((r) => r.kind === "feasibility" && r.verification === "verified")
+          .flatMap((r) => r.supportingResultIds),
       },
     );
     return {

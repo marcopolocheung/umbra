@@ -234,6 +234,7 @@ const KNOWN_TOOLS = new Set([
   "set_time",
   "plot_points",
   "plan_shadowed_route",
+  "check_sun_budget",
 ]);
 
 function geo(lat: unknown, lng: unknown): boolean {
@@ -518,6 +519,18 @@ export function authorizeToolCall(
       !candidateFor(state, args.nearCandidateId, args.lat, args.lng)
     )
       return reject("sensitive_argument_not_application_candidate");
+    if (tool === "check_sun_budget") {
+      // H6: both ends must be places the app produced (a located user, a tool
+      // result); the budgets are bounded so a proposal cannot ask for a city-wide search.
+      if (
+        !candidateFor(state, args.startCandidateId, args.startLat, args.startLng) ||
+        !candidateFor(state, args.targetCandidateId, args.targetLat, args.targetLng)
+      )
+        return reject("sensitive_argument_not_application_candidate");
+      const inRange = (v: unknown, lo: number, hi: number) => typeof v === "number" && v >= lo && v <= hi;
+      if (!inRange(args.sunMin, 0, 60) || !inRange(args.timeMin, 5, 60) || !(args.stayMin == null || inRange(args.stayMin, 0, 60)))
+        return reject("invalid_time_bounds");
+    }
     if (tool === "search_places") {
       const hasCoordinateAnchor = args.lat != null || args.lng != null;
       if (hasCoordinateAnchor && !candidateFor(state, args.nearCandidateId, args.lat, args.lng))

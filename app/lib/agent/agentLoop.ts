@@ -40,6 +40,7 @@ import {
   currentTurnTerms,
   isContentProvenance,
   NYC_QUALIFIER_TERMS,
+  providerText,
   toolErrorText,
   type AuthorityAuditEvent,
   type FieldSourceCategory,
@@ -56,6 +57,7 @@ For "more like this" or similar annual shade patterns, use find_shade_spots with
 For an instantaneous check at the selected map time, use check_shadow. If the user gave a time of day (e.g. "afternoon"), call set_time to that hour. Shadows depend on time.
 3. For ordinary place or itinerary requests, find stops with search_places (anchor to lat/lng or a 'near' name), or geocode_place for named places. You have up to four searches: if one comes back empty, reformulate with a different kind of stop or a different anchor — a first guess at a vague request often misses, and the retry is the call that finds the answer. Never repeat an identical call.
 4. For those instantaneous place checks, only if the user asked how shaded the spots are, call check_shadow ONCE with every spot in points — it returns real building-shadow 0..1 per spot.
+For "can I…?" / "is it possible…?" outing questions with a sun limit and a time limit (e.g. "coffee, back by 5:30, under 8 minutes of sun"), resolve the start (locate_user) and the destination (geocode_place or search_places), then call check_sun_budget with timeMin = minutes until they must be home, sunMin, and stayMin for the stop. Its answer is the verdict; never judge feasibility yourself.
 5. Call plot_points with the FULL ordered list of itinerary stops or the returned shade alternatives (numbered pins, map auto-framed). This ends your research: if the user asked for an itinerary walk or route, one through the stops is drawn for you. Shade alternatives are exempt: never route through them automatically.
 
 Rules: never repeat an identical call; stay in the user's area; sequence stops by time of day (shadow moves with the sun); keep answers short and concrete; in your final answer, name only places you plotted. Lead the final answer with your recommendation in one sentence, then the reasons. If the answer offers itineraries or route options, offer at most three, best first — more is slower to read than to walk.`;
@@ -91,7 +93,7 @@ const MAX_PINS = 8;
 // a reasoning model handed those instructions with no tools available narrates
 // the calls it can't make (raw `{"name":...}` JSON) into the answer. This prompt
 // keeps the topic guardrail but tells it to synthesize only, never tool-call.
-const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. Recommendations from find_shade_spots must use shade_window receipts, never place or instantaneous shadow receipts. For shade_window include candidateId, requestedDate, requestedWindow {fromMinutes,toMinutes}, value {meanShade}, and supportingResultIds; use the returned requested window and exact sidewalk identity, never coordinates as identity. Hour samples are optional proposals and must match returned slots. The application renders the verified timeline. For time include value {localTime}. For a route include value {status, objective}, requestId, actionId, planRevision and mapObjectId; use the objective from the route evidence (sun or rain). Accessibility has no verification tool: say unknown. Lead the answer with the recommendation in one sentence, then the reasons. If itineraries are offered, at most three, best first. Do not call or mention tools.`;
+const WRITE_SYSTEM_PROMPT = `You are the Umbra Assistant in a sun/shadow mapping app. Return JSON only, never markdown. The JSON must be {"blocks":[{"kind":"text","text":"non-factual connective language only"},{"kind":"claim","claimId":"..."},{"kind":"unknown","claimKind":"accessibility","text":"Accessibility is unknown."}],"receipts":[...]}. Every named place, percentage, time, route-status, or accessibility statement MUST be represented by a claim or unknown block; text blocks may not contain facts. Each receipt must cite exactly one resultId from the supplied evidence, and must match that result's tool kind. For a place include kind, subject, value {lat,lng}, supportingResultIds and mapObjectId. For shadow include value {fraction}, coordinates and atLocalTime. Recommendations from find_shade_spots must use shade_window receipts, never place or instantaneous shadow receipts. For shade_window include candidateId, requestedDate, requestedWindow {fromMinutes,toMinutes}, value {meanShade}, and supportingResultIds; use the returned requested window and exact sidewalk identity, never coordinates as identity. Hour samples are optional proposals and must match returned slots. The application renders the verified timeline. For time include value {localTime}. For a route include value {status, objective}, requestId, actionId, planRevision and mapObjectId; use the objective from the route evidence (sun or rain). For an outing check include value {status} exactly as the check_sun_budget evidence returned it (feasible, infeasible, unknown, uncovered, cancelled or superseded); never upgrade unknown to a yes or a no. Accessibility has no verification tool: say unknown. Lead the answer with the recommendation in one sentence, then the reasons. If itineraries are offered, at most three, best first. Do not call or mention tools.`;
 
 export interface ToolEvent {
   name: string;
@@ -397,6 +399,13 @@ function evidenceProposal(
         value: { localTime: payload.newLocalTime },
         supportingResultIds: [envelope.resultId],
       });
+    } else if (envelope.toolName === "check_sun_budget" && typeof payload.status === "string") {
+      push({
+        kind: "feasibility",
+        subject: "outing",
+        value: { status: payload.status },
+        supportingResultIds: [envelope.resultId],
+      });
     } else if (envelope.toolName === "plan_shadowed_route") {
       const terminal = validateRoutePlanTerminalResult(payload);
       if (terminal?.status === "completed" || terminal?.status === "partial") {
@@ -494,6 +503,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const priorEvidenceCount = evidence.length;
   let resultSequence = evidence.length;
   const currentShadeResultIds: string[] = [];
+  const currentFeasibilityResultIds: string[] = [];
   const shadeRouteNotices = new Set<"shade_route_time" | "shade_alternatives">();
   /** A completed route's destination when it is a verified shade sidewalk. */
   let routeShadeDestination: string | undefined;
@@ -547,6 +557,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         payload: { error: "The tool returned an invalid evidence payload." },
       });
     evidence.push(envelope);
+    if (name === "check_sun_budget") currentFeasibilityResultIds.push(envelope.resultId);
     if (name === "find_shade_spots" && !ctx.signal?.aborted) {
       currentShadeResultIds.push(envelope.resultId);
       if (isShadeWindowPayload(envelope.payload) && envelope.payload.status === "ok") {
@@ -746,6 +757,26 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         nearCandidateId: fixId(rawArgs.nearCandidateId, rawArgs.lat, rawArgs.lng),
       };
     }
+    if (tool === "check_sun_budget") {
+      const start = snap({ candidateId: rawArgs.startCandidateId, lat: rawArgs.startLat, lng: rawArgs.startLng });
+      const target = snap({ candidateId: rawArgs.targetCandidateId, lat: rawArgs.targetLat, lng: rawArgs.targetLng });
+      return {
+        ...rawArgs,
+        startLat: start.lat,
+        startLng: start.lng,
+        targetLat: target.lat,
+        targetLng: target.lng,
+        startCandidateId: fixId(rawArgs.startCandidateId, start.lat, start.lng),
+        targetCandidateId: fixId(rawArgs.targetCandidateId, target.lat, target.lng),
+        // The name shown with the verdict is the app's (a tool result's, bounded), never the model's.
+        targetLabel: (() => {
+          const hit = pointCandidates.find(
+            (c) => typeof target.lat === "number" && typeof target.lng === "number" && samePlace(c, { lat: target.lat, lng: target.lng }),
+          );
+          return hit?.label ? providerText(primaryName(hit.label)) || undefined : undefined;
+        })(),
+      };
+    }
     if (tool === "plan_shadowed_route") {
       const from = snap({
         candidateId: rawArgs.fromCandidateId,
@@ -789,7 +820,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       return ["model_generated", "current_user_intent"];
     if (tool === "plot_points" || tool === "plan_shadowed_route")
       return ["model_generated", "current_user_intent", "application_state"];
-    if (tool === "check_shadow" || tool === "find_shade_spots")
+    if (tool === "check_shadow" || tool === "find_shade_spots" || tool === "check_sun_budget")
       return ["model_generated", "current_user_intent", "application_state"];
     const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
     const userTerms = currentTurnTerms(opts.userText);
@@ -883,6 +914,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       currentPlanRevision: ctx.getCurrentPlanRevision(),
       now: now(),
       currentShadeResultIds,
+      currentFeasibilityResultIds,
     };
     const fallback = (source = currentShadeEvidence) =>
       verifyAnswer(

@@ -19,7 +19,10 @@ G's fixture and benchmark infrastructure).
   on the evidence page (§2.4). **#391 is done** (this PR, on top of H4): legs with stops report at
   their own clock and count each stay's sun, card included. **H7 is done** (this PR, on #391): an integer program and LP
   relaxation, offline with HiGHS, round trips included, agree with the oracles and the search
-  (`docs/notes/sun-budget-formulation.md`). Not modelled: non-linear comfort terms. Next: H6. **H3 is done:** the search
+  (`docs/notes/sun-budget-formulation.md`). Not modelled: non-linear comfort terms. **H6 is
+  implemented** (this PR, on H7): `check_sun_budget` answers with a typed certificate the
+  assistant cannot override; the live C13 baseline comparison awaits `npm run eval:agent` by the
+  owner. **H3 is done:** the search
   (H3a, #375), the map (H3b, #376) and its follow-ups — the graph built in its own worker
   (#382, #377), the fit to the region and per-outcome labels (#383, #378/#381), starts near
   NYC's edge (#383, the cheap part of #380) and the walk behind a street (#384, #379). NYC only,

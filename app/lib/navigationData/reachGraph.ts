@@ -56,6 +56,8 @@ export type ReachGraph =
        * missing streets near the edge.
        */
       edgeM: number | null;
+      /** The published generation the streets and shade came from (H6 certificates cite it). */
+      generation?: string;
     };
 
 /** A start piece this small is a stray fragment (a cut-off path), not a neighbourhood. */
@@ -204,6 +206,7 @@ export async function buildReachGraph(args: {
   const start = graph.nodes.get(startId)!;
   return {
     status: "ok",
+    generation: snapshot.generation,
     graph,
     startId,
     startPoint: [start.lon, start.lat],
