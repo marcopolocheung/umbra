@@ -43,7 +43,7 @@ import {
 import type { LlmFunctionDeclaration } from "./llmClient";
 import type { MapObject } from "./receipts";
 import { sunBudgetFeasibility } from "../reach/sunBudgetClient";
-import type { FeasibilityCertificate } from "../reach/feasibility";
+import { FEASIBILITY_MODEL_VERSION, type FeasibilityCertificate } from "../reach/feasibility";
 import { hasExecutionAuthority, providerText } from "./authority";
 
 export interface AssistantPin {
@@ -778,14 +778,14 @@ export async function executeTool(
       };
       const inputVersion = ++feasibilityVersion;
       if (ctx.signal?.aborted)
-        return { status: "cancelled", question, inputVersion, modelVersion: "sun-budget-h6-1", reason: "the conversation was reset" } satisfies FeasibilityCertificate;
+        return { status: "cancelled", question, inputVersion, modelVersion: FEASIBILITY_MODEL_VERSION, reason: "the conversation was reset" } satisfies FeasibilityCertificate;
       const check = ctx.checkSunBudget ?? ((q, v, signal) => sunBudgetFeasibility(q, v, { signal }));
       try {
         const answer: FeasibilityCertificate = await check(question, inputVersion, ctx.signal);
         return { ...(inputVersion === feasibilityVersion ? answer : { ...answer, status: "superseded", reason: "a newer outing question was asked" }) };
       } catch {
         return ctx.signal?.aborted
-          ? { status: "cancelled", question, inputVersion, modelVersion: "sun-budget-h6-1", reason: "the conversation was reset" }
+          ? { status: "cancelled", question, inputVersion, modelVersion: FEASIBILITY_MODEL_VERSION, reason: "the conversation was reset" }
           : { error: "The Sun Budget search failed." };
       }
     }

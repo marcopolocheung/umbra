@@ -21,7 +21,7 @@
  */
 
 import { NumericMinHeap } from "../minHeap";
-import { haversineMeters, type RoutingGraph, snapToEdge } from "../routing";
+import { haversineMeters, type RoutingGraph } from "../routing";
 import { type SunReachOptions, type SunReachRun, type SunReachWalk, stayExposure, sunReachRun } from "../sunReach";
 import { edgeTraversalSeconds, isProhibitedEdge } from "../travelMode";
 
@@ -68,6 +68,91 @@ export interface FeasibilityCertificate {
   gap?: { reason: "no-kept-walk-fits" | "data-edge"; searchOutcome: string };
   /** Why there is no answer, for the no-answer statuses. */
   reason?: string;
+}
+
+/**
+ * Puts `coord` on the street graph as node `id`, keeping BOTH sidewalks.
+ * `snapToEdge` copies one sidewalk of the split street and never splits a
+ * virtual edge; a bound computed through it is too high (review of #398). Here
+ * the nearest segment is found among all edges (virtual ones too, so a start
+ * and target on one block meet directly) and every parallel edge between its
+ * ends, both ways, is split at the projection. Returns `id`, an existing
+ * endpoint when the projection lands on one, or null with no segment at all.
+ */
+export function splitStreetsAt(graph: RoutingGraph, coord: [number, number], id: number): number | null {
+  const toXY = (lon: number, lat: number) => [lon * Math.cos((coord[1] * Math.PI) / 180), lat] as const;
+  const [px, py] = toXY(coord[0], coord[1]);
+  let best: { a: number; b: number; t: number; d: number; len2: number } | null = null;
+  for (const [a, edges] of graph.adj) {
+    const na = graph.nodes.get(a);
+    if (!na) continue;
+    for (const e of edges) {
+      const nb = graph.nodes.get(e.toId);
+      if (!nb) continue;
+      const [ax, ay] = toXY(na.lon, na.lat);
+      const [bx, by] = toXY(nb.lon, nb.lat);
+      const len2 = (bx - ax) ** 2 + (by - ay) ** 2;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / len2));
+      const d = (px - (ax + t * (bx - ax))) ** 2 + (py - (ay + t * (by - ay))) ** 2;
+      // Ties (the target lies on a street and on its earlier split pieces) go to
+      // the shortest segment: the finest split, so a snapped start on the same
+      // block is a direct neighbour.
+      if (!best || d < best.d - 1e-18 || (d <= best.d + 1e-18 && len2 < best.len2)) best = { a, b: e.toId, t, d, len2 };
+    }
+  }
+  if (!best) return null;
+  if (best.t <= 1e-9) return best.a;
+  if (best.t >= 1 - 1e-9) return best.b;
+  const { a, b, t } = best;
+  const na = graph.nodes.get(a)!;
+  const nb = graph.nodes.get(b)!;
+  graph.nodes.set(id, { id, lat: na.lat + t * (nb.lat - na.lat), lon: na.lon + t * (nb.lon - na.lon) });
+  const ab = (graph.adj.get(a) ?? []).filter((e) => e.toId === b);
+  const ba = (graph.adj.get(b) ?? []).filter((e) => e.toId === a);
+  // a→id→b along each a→b sidewalk, and b→id→a along each b→a one; each piece keeps its sidewalk.
+  const out: typeof ab = [];
+  for (const e of ab) {
+    graph.adj.get(a)!.push({ ...e, toId: id, distanceM: e.distanceM * t });
+    out.push({ ...e, toId: b, distanceM: e.distanceM * (1 - t) });
+  }
+  for (const e of ba) {
+    graph.adj.get(b)!.push({ ...e, toId: id, distanceM: e.distanceM * (1 - t) });
+    out.push({ ...e, toId: a, distanceM: e.distanceM * t });
+  }
+  graph.adj.set(id, out);
+  return id;
+}
+
+/**
+ * A virtual node from `snapToEdge` (the snapped start) carries one sidewalk of
+ * the street it split. Re-wire it with every sidewalk between that street's two
+ * ends, split in the same proportion, so no bound through it is too high.
+ */
+export function widenVirtualNode(graph: RoutingGraph, id: number): void {
+  if (id >= 0) return;
+  const own = graph.adj.get(id) ?? [];
+  const ends = [...new Set(own.map((e) => e.toId))];
+  if (ends.length !== 2) return;
+  const [a, b] = ends;
+  const toA = own.find((e) => e.toId === a)!.distanceM;
+  const toB = own.find((e) => e.toId === b)!.distanceM;
+  const t = toA + toB > 0 ? toA / (toA + toB) : 0.5;
+  const ab = (graph.adj.get(a) ?? []).filter((e) => e.toId === b);
+  const ba = (graph.adj.get(b) ?? []).filter((e) => e.toId === a);
+  if (ab.length + ba.length === 0) return;
+  // Drop the one-sidewalk wiring both ways, then wire every sidewalk.
+  graph.adj.set(a, (graph.adj.get(a) ?? []).filter((e) => e.toId !== id));
+  graph.adj.set(b, (graph.adj.get(b) ?? []).filter((e) => e.toId !== id));
+  const out: typeof ab = [];
+  for (const e of ab) {
+    graph.adj.get(a)!.push({ ...e, toId: id, distanceM: e.distanceM * t });
+    out.push({ ...e, toId: b, distanceM: e.distanceM * (1 - t) });
+  }
+  for (const e of ba) {
+    graph.adj.get(b)!.push({ ...e, toId: id, distanceM: e.distanceM * (1 - t) });
+    out.push({ ...e, toId: a, distanceM: e.distanceM * t });
+  }
+  graph.adj.set(id, out);
 }
 
 /** Least `cost` from `src` to every node (forward), or to `src` from every node (reverse). */
@@ -140,8 +225,9 @@ export function feasibilityCertificate(
       ? { ...base, status: "too-far", reason: "the target is beyond the walking range searched" }
       : { ...base, status: "uncovered", reason: "no street near the target in the shade data" };
   }
-  const targetId = snapToEdge(question.target, graph, -900_001, mode);
-  if (nearM(targetId) > 60) return { ...base, status: "uncovered", reason: "no street within 60 m of the target" };
+  widenVirtualNode(graph, startId);
+  const targetId = splitStreetsAt(graph, question.target, -900_001);
+  if (targetId === null || nearM(targetId) > 60) return { ...base, status: "uncovered", reason: "no street within 60 m of the target" };
 
   // Lower bounds — each a proof about every outing.
   const secOf = (_f: number, e: GraphEdgeLike) => (isProhibitedEdge(e, mode) ? Number.POSITIVE_INFINITY : edgeTraversalSeconds(e, mode));

@@ -442,7 +442,15 @@ shared with H7.
 
 **The question.** From a start, walk to a target, stay `stayMin` **at the target**, and be home
 within `timeMin` (stay included) on at most `sunMin` of direct sun. The target is snapped into the
-street graph exactly (`snapToEdge`), so a café mid-block is half a block away, not a whole street.
+street graph exactly, so a café mid-block is half a block away, not a whole street. Both ends keep
+**both sidewalks**:
+- `splitStreetsAt` splits every parallel sidewalk edge at the target, choosing the finest split
+  piece, so a start on the same block is a direct neighbour.
+- `widenVirtualNode` re-wires the snapped start the same way.
+
+`snapToEdge`, which routing uses, copies one sidewalk and never splits a virtual edge. The final
+review showed that made a "Not possible" bound too high: a shaded sidewalk was missed, and a café
+on the start's own block was reached via a corner.
 
 *An earlier version asked H5b's round trip of the street nearest the target. The review of the H6
 PR showed that was wrong in both directions: the round trip lets the stay happen at any corner (a
@@ -512,7 +520,9 @@ instead of the café, a disconnected path or the data's edge read as "time binds
   - home → Bryant Park Cafe with a 15-min stop, 45 min, ≤ 8 min of sun: *"Possible … a walk found
     does it in 35 min with 2 min of sun"*, in 4.3 s;
   - 6 min with a 5-min stop: *"Not possible … any such outing takes at least 11 min, and any such
-    outing gets at least 2 min of sun"*, in 1.9 s;
+    outing gets at least 1 min of sun"*, in 2.0 s. The sun bound was 2 min before both sidewalks
+    were kept;
+  - 12 min with a 2-min stop on ≤ 1 min of sun: *"Not confirmed either way"*;
   - a scripted model claiming "feasible" against that certificate showed the same "Not possible".
 - **Mutants.** Every one tried is caught, including the five the review found surviving:
   - envelope validation skipped;

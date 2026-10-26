@@ -139,6 +139,47 @@ describe("H6 — feasibility certificates", () => {
   });
 });
 
+describe("H6 — real sidewalk graphs: both sidewalks, and one block (final review probes)", () => {
+  /** One 280 m street 0–1, two sidewalks each way: left sunny, right shaded (as the reach graph builds them). */
+  const twoSidewalks = (): RoutingGraph => {
+    const nodes = new Map([0, 1].map((id) => [id, { id, lat: 40.7 + (id * 280) / 111_320, lon: -74 }] as const));
+    const e = (toId: number, side: "left" | "right", shade: number): GraphEdge => ({ toId, distanceM: 280, shadowFactor: shade, side });
+    return { nodes, adj: new Map([[0, [e(1, "left", 0), e(1, "right", 1)]], [1, [e(0, "left", 0), e(0, "right", 1)]]]) };
+  };
+
+  it("a mid-block café on a street with a shaded sidewalk is not 'not possible' on sun", async () => {
+    const { snapToEdge } = await import("../../routing");
+    const g = twoSidewalks();
+    const start = snapToEdge(at(0), g, -1); // a corner: 0
+    const cert = feasibilityCertificate(g, start, ask({ target: at(140), sunMin: 1, timeMin: 10 }), {}, meta);
+    expect(cert.status).toBe("feasible");
+    expect(cert.ledger!.sun.usedSec).toBeCloseTo(0, 6);
+  });
+
+  it("a start snapped mid-block can leave on the shaded sidewalk too", async () => {
+    const { snapToEdge } = await import("../../routing");
+    const g = twoSidewalks();
+    // Start mid-block (the snap copies the sunny left sidewalk), café at corner 1: 140 m each way.
+    const start = snapToEdge(at(140), g, -1);
+    const cert = feasibilityCertificate(g, start, ask({ start: at(140), target: at(280), sunMin: 1, timeMin: 10 }), {}, meta);
+    expect(cert.status).toBe("feasible");
+    expect(cert.ledger!.sun.usedSec).toBeCloseTo(0, 6);
+  });
+
+  it("a start and a café on the same block meet directly, not via a corner", async () => {
+    const { snapToEdge } = await import("../../routing");
+    const g = twoSidewalks();
+    // Start 112 m up the block (snapped, a virtual node), café 56 m further.
+    const start = snapToEdge(at(112), g, -1);
+    expect(start).toBe(-1);
+    const cert = feasibilityCertificate(g, start, ask({ start: at(112), target: at(168), sunMin: 5, timeMin: 5 }), {}, meta);
+    expect(cert.status).toBe("feasible");
+    // 56 m there and back: 80 s.
+    expect(cert.ledger!.time.usedSec).toBeCloseTo(80, 0);
+    expect(cert.ledger!.time.lowerBoundSec).toBeCloseTo(80, 0);
+  });
+});
+
 describe("H6 — the authority boundary and the worker command", () => {
   it("rejects an outing check whose start or target the app never produced, or out-of-range budgets", async () => {
     const { authorizeToolCall } = await import("../../agent/authority");
