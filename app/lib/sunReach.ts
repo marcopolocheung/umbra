@@ -86,6 +86,8 @@ export interface SunReachRun {
   result: SunReachResult;
   /** The walk that proved `fromId → toId` (on `side`), or null if it is not proven. */
   witness(fromId: number, toId: number, side?: string): SunReachWalk | null;
+  /** H6: every way the search kept of arriving at `nodeId` (one way): each a real walk within both budgets. */
+  arrivalsAt(nodeId: number): SunReachWalk[];
 }
 
 export const SUN_REACH_DEFAULTS = { maxLabelsPerSlot: 8, maxLabels: 2_000_000 };
@@ -530,5 +532,25 @@ export function sunReachRun(graph: RoutingGraph, startId: number, options: SunRe
     }
     return null;
   };
-  return { result, witness };
+  const arrivalsAt = (nodeId: number): SunReachWalk[] => {
+    const at = cg.indexOf.get(nodeId);
+    if (at === undefined) return [];
+    const out: SunReachWalk[] = [];
+    for (let l = 0; l < count; l++) {
+      if (lNode[l] !== at || lDead[l]) continue;
+      const nodeIds = [startId];
+      const sides: SunReachWalk["sides"] = [];
+      const waits: SunReachWalk["waits"] = [];
+      for (const step of labelPath(l)) {
+        if (step.edge === WAIT_EDGE) waits.push({ atNode: nodeIds.length - 1, seconds: step.seconds });
+        else {
+          nodeIds.push(cg.nodeIds[targets[step.edge]]);
+          sides.push(cg.edges[step.edge].side ?? null);
+        }
+      }
+      out.push({ nodeIds, sides, waits, sunSec: lS[l], arrivalSec: lT[l] });
+    }
+    return out;
+  };
+  return { result, witness, arrivalsAt };
 }

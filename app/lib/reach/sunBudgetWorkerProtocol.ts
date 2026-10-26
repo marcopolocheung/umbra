@@ -156,7 +156,10 @@ export function createSunBudgetHandler(build: typeof buildReachGraph = buildReac
           departure: new Date(q.departure),
           travelMode: "walk",
         });
-        const meta = { inputVersion: command.inputVersion, geometryVersion: built.status === "ok" ? built.generation : undefined };
+        // edgeM: the graph was cut at the data's edge (#380) — no "infeasible" proof there.
+        const meta = built.status === "ok"
+          ? { inputVersion: command.inputVersion, geometryVersion: built.generation, edgeM: built.edgeM }
+          : { inputVersion: command.inputVersion };
         const certificate: FeasibilityCertificate =
           built.status === "ok"
             ? feasibilityCertificate(built.graph, built.startId, q, { timeAware: built.timeAware }, meta)

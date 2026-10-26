@@ -40,6 +40,7 @@ import {
   currentTurnTerms,
   isContentProvenance,
   NYC_QUALIFIER_TERMS,
+  providerText,
   toolErrorText,
   type AuthorityAuditEvent,
   type FieldSourceCategory,
@@ -502,6 +503,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const priorEvidenceCount = evidence.length;
   let resultSequence = evidence.length;
   const currentShadeResultIds: string[] = [];
+  const currentFeasibilityResultIds: string[] = [];
   const shadeRouteNotices = new Set<"shade_route_time" | "shade_alternatives">();
   /** A completed route's destination when it is a verified shade sidewalk. */
   let routeShadeDestination: string | undefined;
@@ -555,6 +557,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         payload: { error: "The tool returned an invalid evidence payload." },
       });
     evidence.push(envelope);
+    if (name === "check_sun_budget") currentFeasibilityResultIds.push(envelope.resultId);
     if (name === "find_shade_spots" && !ctx.signal?.aborted) {
       currentShadeResultIds.push(envelope.resultId);
       if (isShadeWindowPayload(envelope.payload) && envelope.payload.status === "ok") {
@@ -765,6 +768,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         targetLng: target.lng,
         startCandidateId: fixId(rawArgs.startCandidateId, start.lat, start.lng),
         targetCandidateId: fixId(rawArgs.targetCandidateId, target.lat, target.lng),
+        // The name shown with the verdict is the app's (a tool result's, bounded), never the model's.
+        targetLabel: (() => {
+          const hit = pointCandidates.find(
+            (c) => typeof target.lat === "number" && typeof target.lng === "number" && samePlace(c, { lat: target.lat, lng: target.lng }),
+          );
+          return hit?.label ? providerText(primaryName(hit.label)) || undefined : undefined;
+        })(),
       };
     }
     if (tool === "plan_shadowed_route") {
@@ -904,6 +914,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       currentPlanRevision: ctx.getCurrentPlanRevision(),
       now: now(),
       currentShadeResultIds,
+      currentFeasibilityResultIds,
     };
     const fallback = (source = currentShadeEvidence) =>
       verifyAnswer(

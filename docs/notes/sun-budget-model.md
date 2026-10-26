@@ -440,62 +440,90 @@ shared with H7.
 
 ## H6 — "is this outing possible?" for the assistant
 
-**The question.** From a start, walk to a target, stay `stayMin` there, and be home within
-`timeMin` on at most `sunMin` of direct sun. This is H5b's round trip, asked of one street (the one
-nearest the target). The stay counts inside `timeMin`.
+**The question.** From a start, walk to a target, stay `stayMin` **at the target**, and be home
+within `timeMin` (stay included) on at most `sunMin` of direct sun. The target is snapped into the
+street graph exactly (`snapToEdge`), so a café mid-block is half a block away, not a whole street.
+
+*An earlier version asked H5b's round trip of the street nearest the target. The review of the H6
+PR showed that was wrong in both directions: the round trip lets the stay happen at any corner (a
+false "Possible"), and "not reached" was not a proof for the user's question (a whole street
+instead of the café, a disconnected path or the data's edge read as "time binds").*
 
 **The answer is a typed certificate** (`app/lib/reach/feasibility.ts`), never prose.
-- **`feasible`.** The target street is proven. The certificate carries the outing behind it (walk,
-  waits, stay, walk home) and a ledger of the sun and time it used against each budget.
-- **`infeasible`.** The search's outer bound rules the target out: no outing meets both budgets.
-  The ledger names the binding budget.
-  - The search re-runs with sun lifted to the whole outing.
-  - If the target is then reachable, sun binds. If it still isn't, time alone rules it out.
-- **`unknown`.** The target is undecided: the search was capped (`approximate`) or stopped
-  (`budget-exhausted`). This is never worded as a no.
-- **`uncovered`, `cancelled`, `superseded`.** No answer, with the reason. A newer question from the
-  same session supersedes an older one still running.
-- **Every certificate cites** the question, its input version, the model version and the shade
-  generation it was computed on.
+- **`feasible` is constructive.** A walk the search kept that arrives at the target (`arrivalsAt`,
+  waits allowed), the stay at the target's shadiest sidewalk priced bucket by bucket
+  (`stayExposure`), and a walk home (the fastest or the shadiest fixed walk), all within both
+  budgets. The certificate carries that outing and the sun and time it used.
+- **`infeasible` is proved, per budget.** Each lower bound holds for every outing:
+  - time binds when least walking time out + stay + least walking time home > *T*;
+  - sun binds when least possible sun out (every street at its shadiest bucket) + least possible
+    stay sun + least possible sun home > *S*.
+  - Both bounds are in the certificate, and both flags can be set.
+- **`unknown` is never a no.** It means the bounds fit but no kept walk plus a fixed walk home
+  does. It is also the answer for any "infeasible" on a graph cut at the data's edge (#380),
+  because streets past the edge could change the answer.
+- **`unreachable`.** No path in the street data joins the start to the target, for example a
+  park path the streets don't reach. This is not a budget question.
+- **`too-far` / `uncovered` / `cancelled` / `superseded`.** No answer, and why. `superseded` means
+  a newer check of the same target in the same turn.
+- **Every certificate cites** the question (with the app's name for the target), its input
+  version, the model version and the shade generation.
 
 **How the assistant uses it** (`check_sun_budget`, `app/lib/agent/tools.ts`):
-- **Inputs.** The start and target must be places the app produced (a located user, a geocoded or
-  searched result) or the call is refused. Budgets are bounded: up to 60 min each.
-- **Where it runs.** In the Sun Budget worker, on a graph of its own, so the panel's graph is left
-  alone.
-- **What can be said.** The answer is a `feasibility` receipt. It verifies only if the status the
-  model claims equals the certificate's and the certificate is the newest one asked. The words shown
-  come from the certificate (`feasibilityLabel`).
-  - A model that claims "feasible" against an infeasible certificate is rejected.
-  - The loop then rebuilds the answer from the evidence, so the user sees the certificate's verdict.
-  - Each verified verdict links to `evidence.md` §2.4: how the search is checked (H4) and the
-    independent integer program (H7).
+- **Inputs.** The start and target must be places the app produced, or the call is refused. Budgets
+  are bounded: up to 60 min each.
+- **The target's name** comes from the tool result that produced the target, sanitised; the model
+  cannot supply it.
+- **Where it runs.** In the Sun Budget worker, on a graph of its own sized to the question, so the
+  panel's graph is left alone.
+- **When a verdict verifies.** A `feasibility` receipt verifies only if:
+  - it cites a check from **this turn**;
+  - the check passed envelope validation and is not an error;
+  - the claimed status equals the certificate's;
+  - no newer check of the same target replaced it.
+- **What is shown.** The words come from the certificate (`feasibilityLabel`, which names the
+  destination and, for "not possible", the bound that rules it out). A model that claims
+  "feasible" against an infeasible certificate is rejected, and the loop rebuilds the answer from
+  the evidence.
+- **The evidence link.** Each verified verdict links to `evidence.md` §2.4. The link is static:
+  it explains how the search is checked (H4) and the independent integer program (H7), not this
+  certificate's own walk.
 
 **Evidence.**
-- **Unit tests.** Per status (`app/lib/reach/__tests__/feasibility.test.ts`), the authority
-  boundary, and the worker command.
-- **Through the agent loop** (`app/lib/agent/__tests__/feasibilityLoop.test.ts`):
-  - feasible, proven infeasible, budget-exhausted unknown, cancelled, superseded, and uncovered
-    (outside NYC's shade data, the closest thing here to "partial");
-  - two sabotage cases, a false "feasible" and an unknown upgraded to "infeasible";
-  - an executor test that a newer question supersedes one still running.
-- **Mutants.** Six deliberately broken versions are caught:
-  - no status match;
-  - no supersede check;
-  - the target not checked by authority;
-  - the binding budget flipped;
-  - unknown worded as a no;
-  - an executor that never supersedes.
+- **Unit tests** (`app/lib/reach/__tests__/feasibility.test.ts`), including the review's probes:
+  - the stay must be at the target;
+  - a mid-block café is half a block;
+  - sun binds even when the search is capped;
+  - a disconnected target is `unreachable`;
+  - an "infeasible" at the data edge is `unknown`;
+  - the walk home's sun counts.
+- **Loop and verifier tests** (`app/lib/agent/__tests__/feasibilityLoop.test.ts`):
+  - every status;
+  - two sabotage cases;
+  - a missing status, a failed check, a malformed certificate, and an earlier turn's certificate,
+    all rejected;
+  - café A then café B in one turn both answer;
+  - the executor passes the question through as asked.
+- **The panel** shows the evidence link on verified verdicts only. A stored verdict keeps the
+  checks of its own turn when the app re-verifies answers on each render (`useAgent`); a reset
+  clears them. The browser run caught this: without it, every verdict rendered as "unverified".
 - **In a browser** (production preview, the real worker on generation `nyc-2026-09-18-393d4cd24a30`
-  served locally; the model scripted, because Gemini needs the owner's key):
-  - "home → Bryant Park Cafe, 15-min stop, 45 min, ≤ 8 min of sun" was **feasible** in 3.5 s:
-    *"a walk found does it in 22 min with 3 min of sun"*;
-  - "6 min with a 5-min stop" was **infeasible, time binding**, in 1.9 s;
-  - a scripted model claiming "feasible" against that infeasible certificate still showed **"Not
-    possible … the time budget is what rules it out"**;
-  - the "How this is checked" link resolves to §2.4.
+  served locally, the model scripted):
+  - home → Bryant Park Cafe with a 15-min stop, 45 min, ≤ 8 min of sun: *"Possible … a walk found
+    does it in 35 min with 2 min of sun"*, in 4.3 s;
+  - 6 min with a 5-min stop: *"Not possible … any such outing takes at least 11 min, and any such
+    outing gets at least 2 min of sun"*, in 1.9 s;
+  - a scripted model claiming "feasible" against that certificate showed the same "Not possible".
+- **Mutants.** Every one tried is caught, including the five the review found surviving:
+  - envelope validation skipped;
+  - the worker radius;
+  - the horizon;
+  - the stay doubled;
+  - the link shown on rejected verdicts.
 
 **Not done here.**
-- The live comparison against a text-only or single-pass baseline under C13 needs the real model:
-  `npm run eval:agent`, run by the owner.
+- The live comparison against a text-only or single-pass baseline under C13 needs the real model
+  (`npm run eval:agent`, run by the owner).
 - NYC only (#380).
+- `superseded` and `cancelled` rarely occur in practice, because a turn runs one check at a time
+  and a reset clears the evidence.

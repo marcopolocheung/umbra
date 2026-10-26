@@ -769,6 +769,7 @@ export async function executeTool(
       const question = {
         start: [startLng, startLat] as [number, number],
         target: [targetLng, targetLat] as [number, number],
+        ...(str(args.targetLabel) ? { targetLabel: str(args.targetLabel) } : {}),
         sunMin,
         timeMin,
         // The stop counts inside the time budget ("home by"): sunReach's round trip includes it.

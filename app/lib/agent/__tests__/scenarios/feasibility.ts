@@ -14,9 +14,9 @@ const ASK = "Can I walk to Bryant Park Cafe, have coffee for 15 minutes, and be 
 export function certificate(status: FeasibilityStatus, extra: Partial<FeasibilityCertificate> = {}): FeasibilityCertificate {
   return {
     status,
-    question: { start: [HOME.lng, HOME.lat], target: [CAFE.lng, CAFE.lat], sunMin: 8, timeMin: 45, stayMin: 15, departure: "2026-07-01T19:00:00Z" },
+    question: { start: [HOME.lng, HOME.lat], target: [CAFE.lng, CAFE.lat], targetLabel: CAFE.name, sunMin: 8, timeMin: 45, stayMin: 15, departure: "2026-07-01T19:00:00Z" },
     inputVersion: 1,
-    modelVersion: "sun-budget-h6-1",
+    modelVersion: "sun-budget-h6-2",
     geometryVersion: "nyc-2026-09-18-393d4cd24a30",
     ...extra,
   };

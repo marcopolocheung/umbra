@@ -115,6 +115,39 @@ describe("useAgent receipt revalidation", () => {
   });
 });
 
+describe("useAgent keeps an outing verdict through revalidation (H6)", () => {
+  it("a verified feasibility verdict stays verified on re-render, and a reset clears it", async () => {
+    const cert = {
+      status: "feasible", inputVersion: 1, modelVersion: "sun-budget-h6-2",
+      question: { start: [-73.984, 40.7536], target: [-73.9833, 40.7546], targetLabel: "Bryant Park Cafe", sunMin: 8, timeMin: 45, stayMin: 15, departure: "2026-07-01T19:00:00.000Z" },
+      ledger: { sun: { budgetSec: 480, lowerBoundSec: 90, usedSec: 100, binding: false }, time: { budgetSec: 2700, lowerBoundSec: 1250, usedSec: 2060, binding: false } },
+    };
+    const evidence: ToolResultEnvelope = {
+      resultId: "result-check", toolName: "check_sun_budget", producedAt: "2026-07-01T19:00:00.000Z",
+      provenance: { category: "application_state", bounded: true }, fieldProvenance: {}, payload: cert,
+    };
+    const answer: VerifiedAnswer = {
+      blocks: [{ kind: "claim", claimId: "f" }], rejectedProseCount: 0, danglingClaimBlocks: 0, duplicateClaimProposals: 0,
+      receipts: [{
+        claimId: "f", kind: "feasibility", subject: "outing", value: { status: "feasible" }, certificate: cert as never,
+        supportingResultIds: ["result-check"], observedAt: evidence.producedAt, confidence: "unknown", verification: "verified",
+      }],
+    };
+    runAgent.mockReset();
+    runAgent.mockResolvedValue({ text: "x", history: [], answer, evidence: [evidence] });
+    const { result, rerender } = renderHook(() =>
+      useAgent({ ...shadeHookArgs(), getCurrentPlanRevision: () => 0 } as never),
+    );
+    await act(async () => {
+      await result.current.sendMessage("can I get coffee and be back in 45 minutes?");
+    });
+    rerender();
+    expect(result.current.messages.at(-1)?.answer?.receipts[0]).toMatchObject({ kind: "feasibility", verification: "verified" });
+    act(() => result.current.reset());
+    expect(result.current.messages).toEqual([]);
+  });
+});
+
 const emptyResult = {
   text: "", history: [], evidence: [],
   answer: { blocks: [], receipts: [], rejectedProseCount: 0, danglingClaimBlocks: 0, duplicateClaimProposals: 0 },
