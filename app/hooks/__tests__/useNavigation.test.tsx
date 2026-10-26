@@ -802,6 +802,61 @@ describe("routing reads the shadow field (A4b)", () => {
     expect(shadowStub.sweepCalls[0][0]).toBe(new Date("2026-08-16T04:00:00Z").getTime());
   });
 
+  it("prices a leg after a stay at the clock it runs at, and adds the stay's sun (#391)", async () => {
+    // A → via (node 2) → B over two 75 m streets (~54 s each). Every street is
+    // sunny in bucket 0 and shaded from bucket 1. With a 30-min stay at the
+    // via, the second leg starts ~31 min in (bucket 2): shaded. The stay is at
+    // the via's shadiest sidewalk, also shaded from bucket 1 — sunny only for
+    // the ~14 min of bucket 0 still left when it starts.
+    vi.mocked(fetchRoutingGraph).mockResolvedValue(threeNodeGraph() as never);
+    shadowStub.edgeShadow = [{ left: 0, right: 0, source: "tiles", confidence: 0.8 }];
+    const sunny = { left: 0, right: 0, source: "tiles", confidence: 0.8 };
+    const shaded = { left: 1, right: 1, source: "tiles", confidence: 0.8 };
+    shadowStub.sweepBuckets = [[sunny, sunny], [shaded, shaded], [shaded, shaded], [shaded, shaded], [shaded, shaded]];
+    const { map } = fakeMap({ pitch: 0, boundsAtPitch: wideBounds });
+    const route = async (stayMin: number) => {
+      shadowStub.sweepCalls = [];
+      const { result } = renderHook(() =>
+        useNavigation({
+          mapRef: { current: map as never },
+          shadowLayerRef: { current: { readBuildingShadowMask: () => ({ data: new Uint8Array(64), width: 8, height: 8, pixelRatioX: 1, pixelRatioY: 1 }) } as never },
+          dateRef: { current: new Date("2026-08-16T04:00:00Z") },
+          setDate: vi.fn(),
+        }),
+      );
+      act(() => result.current.handleSetWaypointA([103.8, 1.3], "Start"));
+      act(() => result.current.handleSetWaypointB([103.801, 1.301], "End"));
+      act(() => result.current.handleSetAdditionalWaypoints([[103.8005, 1.3005]], [stayMin]));
+      await act(async () => {
+        result.current.handleCalculateRoute();
+      });
+      await waitFor(() => expect(result.current.isCalculating).toBe(false), { timeout: 4000 });
+      // Past the 250 ms conditions-refresh window: a fresh result at unchanged
+      // conditions must keep its per-leg pricing, not be re-priced at one instant.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 600));
+      });
+      return result.current.navRoutes[0];
+    };
+
+    const noStay = await route(0);
+    const withStay = await route(30);
+    // The sweep ran on a route with a stop, over a horizon that holds the stay.
+    expect(shadowStub.sweepCalls[0].length).toBeGreaterThanOrEqual(3);
+    // No stay: both legs in bucket 0, all sun (~107 s).
+    expect(noStay.exposure!.exposedDurationSec).toBeGreaterThan(100);
+    // With the stay: leg 1 in sun (~54 s) + the stay's first ~14 min in sun
+    // (bucket 0 ends at 900 s; the stay starts at ~54 s) + leg 2 shaded.
+    const leg1 = 75 / 1.4;
+    expect(withStay.exposure!.exposedDurationSec).toBeCloseTo(leg1 + (900 - leg1), 3);
+    // The trip lasts its walking plus the stay: never fewer minutes than it spends in sun.
+    expect(withStay.totalTimeSec).toBeCloseTo(150 / 1.4 + 1800, 3);
+    expect(noStay.totalTimeSec).toBeCloseTo(150 / 1.4, 3);
+    // Walking + stay = what the route reports (the brief's acceptance, for Directions).
+    const parts = withStay.exposureSegments!.reduce((sum, seg) => sum + (seg.durationSec ?? seg.distanceM / 1.4) * (1 - (seg.protection ?? 0)), 0);
+    expect(parts).toBeCloseTo(withStay.exposure!.exposedDurationSec, 6);
+  });
+
   it("keeps the frozen sample's answer where the sweep cannot answer (H1)", async () => {
     // sweepBuckets stays null: the field's sweep answers nothing, so every
     // bucket falls back to the static sample the existing gating chose.

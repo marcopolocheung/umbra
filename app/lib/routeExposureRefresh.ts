@@ -168,7 +168,13 @@ export function refreshRouteExposure(
     };
   }
 
-  const { segments } = sample(edges);
+  const { segments: walked } = sample(edges);
+  // #391: stays at stops (time, no distance) were priced at their own clock
+  // and carry no location to re-sample; keep them through the refresh, sun only.
+  const stays = context.objective === "rain"
+    ? []
+    : (route.exposureSegments ?? []).filter((seg) => seg.distanceM === 0 && (seg.durationSec ?? 0) > 0);
+  const segments: ExposureSegment[] = [...walked, ...stays];
   const exposure = computeExposureMetrics(context.objective, segments, context);
   const knownProtection = exposure.shelteredDistanceM + exposure.exposedDistanceM;
   const protectedPct = knownProtection > 0 ? exposure.shelteredDistanceM / knownProtection : null;

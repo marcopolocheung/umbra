@@ -150,8 +150,9 @@ points is unproven, so the search must still not be described as optimal.
 
 Each edge is priced at the 15-minute bucket the walker reaches it in, not at departure
 ([`time-aware-routing-h1.md`](./time-aware-routing-h1.md),
-[`exposure-objective-h2.md`](./exposure-objective-h2.md)). Via-stop legs, transit walk legs,
-sketches and pixel-fallback edges still use one instant. The error from 15-minute buckets
+[`exposure-objective-h2.md`](./exposure-objective-h2.md)). Via-stop legs report at their
+own clock, stays at stops included (#391), though each leg's path is still chosen at one
+instant. Transit walk legs, sketches and pixel-fallback edges still use one instant. The error from 15-minute buckets
 against continuous time has not been measured.
 
 ### 2.3 Constraint-violation rate — **not measured**

@@ -247,3 +247,65 @@ function priceFrom(graph: RoutingGraph, walk: SunReachWalk, o: SunReachOptions, 
   }
   return states;
 }
+
+describe("stayExposure — one pricing of a stay for routes and Sun Budget (#391)", () => {
+  it("prices a round trip's stay exactly as the Sun Budget search does", async () => {
+    const { stayExposure } = await import("../sunReach");
+    let compared = 0;
+    for (const c of roundTripCases().slice(0, 20)) {
+      if (!c.options.timeAware) continue;
+      const graph = randomGraph(c.seed, c.rows, c.cols, c.buckets);
+      const run = sunReachRun(graph, c.start, { ...c.options, allowWaits: false });
+      for (const edge of run.result.reachable.slice(0, 5)) {
+        const walk = run.witness(edge.fromId, edge.toId, edge.side)!;
+        if (!walk.dwell || walk.dwell.seconds === 0) continue;
+        // Re-price the outing with stayExposure for the stay and plain arrival
+        // pricing for the streets: it must total the reported sun.
+        const mode = c.options.travelMode ?? "walk";
+        const W = c.options.timeAware!.bucketMs / 1000;
+        const B = c.options.timeAware!.bucketCount;
+        let t = 0;
+        let s = 0;
+        for (let i = 0; i < walk.nodeIds.length; i++) {
+          if (walk.dwell.atNode === i) {
+            for (const p of stayExposure(graph, walk.nodeIds[i], t, walk.dwell.seconds, c.options.timeAware)) s += p.durationSec * (1 - p.shade);
+            t += walk.dwell.seconds;
+          }
+          if (i + 1 === walk.nodeIds.length) break;
+          const e = (graph.adj.get(walk.nodeIds[i]) ?? []).find(
+            (x) => x.toId === walk.nodeIds[i + 1] && !isProhibitedEdge(x, mode) && (x.side ?? null) === walk.sides[i],
+          )!;
+          const sec = edgeTraversalSeconds(e, mode);
+          t += sec;
+          const ts = e.timeShadow;
+          s += sec * (1 - (!ts || ts.length === 0 ? e.shadowFactor : ts[Math.min(Math.floor(t / W), B - 1, ts.length - 1)]));
+        }
+        expect(s, `seed ${c.seed}`).toBeCloseTo(walk.sunSec, 6);
+        compared++;
+      }
+    }
+    expect(compared).toBeGreaterThan(10);
+  });
+});
+
+describe("stayExposure at a stop snapped mid-block (#391 review)", () => {
+  it("stands on the street's shadiest sidewalk, not the one sidewalk the snap copied", async () => {
+    const { stayExposure } = await import("../sunReach");
+    const { snapToEdge } = await import("../routing");
+    // One street 1–2 with a sunny left sidewalk and a shaded right one, both ways.
+    const graph: RoutingGraph = {
+      nodes: new Map([[1, { id: 1, lat: 40.75, lon: -73.99 }], [2, { id: 2, lat: 40.751, lon: -73.99 }]]),
+      adj: new Map([
+        [1, [{ toId: 2, distanceM: 111, shadowFactor: 0, side: "left" }, { toId: 2, distanceM: 111, shadowFactor: 1, side: "right" }]],
+        [2, [{ toId: 1, distanceM: 111, shadowFactor: 1, side: "left" }, { toId: 1, distanceM: 111, shadowFactor: 0, side: "right" }]],
+      ]),
+    };
+    const v = snapToEdge([-73.99, 40.7505], graph, -1);
+    expect(v).toBe(-1);
+    // The snap copied one sidewalk only (the sunny left, first found).
+    expect(graph.adj.get(v)!.every((e) => e.shadowFactor === 0)).toBe(true);
+    expect(stayExposure(graph, v, 0, 600, undefined)).toEqual([{ durationSec: 600, shade: 1 }]);
+    // A real corner keeps its own sidewalks only.
+    expect(stayExposure(graph, 1, 0, 600, undefined)).toEqual([{ durationSec: 600, shade: 1 }]);
+  });
+});

@@ -228,9 +228,19 @@ export function routeExposureMinutes(route: RouteOption): {
   }
   const speedMps = speedOf(route);
   const sunM = directSunMeters(route);
+  // #391: a stay at a stop is a segment with time but no distance; count its sun too.
+  let staySunSec = 0;
+  let stayShadeSec = 0;
+  if (route.objective !== "rain") {
+    for (const seg of route.exposureSegments ?? []) {
+      if (seg.distanceM > 0 || !seg.durationSec || seg.protection == null) continue;
+      staySunSec += seg.durationSec * (1 - seg.protection);
+      stayShadeSec += seg.durationSec * seg.protection;
+    }
+  }
   return {
-    sunMinutes: sunM / speedMps / 60,
-    shadowMinutes: Math.max(0, route.distanceM - sunM) / speedMps / 60,
+    sunMinutes: sunM / speedMps / 60 + staySunSec / 60,
+    shadowMinutes: Math.max(0, route.distanceM - sunM) / speedMps / 60 + stayShadeSec / 60,
   };
 }
 
